@@ -1,0 +1,75 @@
+{
+  "audio": {
+    "filename": "短访谈_另备音频.m4a",
+    "duration": 40
+  },
+  "speakers": [
+    {
+      "id": "host",
+      "name": "采访者"
+    },
+    {
+      "id": "guest",
+      "name": "受访者"
+    }
+  ],
+  "segments": [
+    {
+      "id": "s1",
+      "speaker_id": "host",
+      "start": 0,
+      "end": 5,
+      "text": "今天我们聊聊河边书店。"
+    },
+    {
+      "id": "s2",
+      "speaker_id": "guest",
+      "start": 5,
+      "end": 10,
+      "text": "嗯，我大概是二〇一八年，不对，是二〇一九年春天开的店。"
+    },
+    {
+      "id": "s3",
+      "speaker_id": "host",
+      "start": 10,
+      "end": 15,
+      "text": "最初准备了多少本书？"
+    },
+    {
+      "id": "s4",
+      "speaker_id": "guest",
+      "start": 15,
+      "end": 20,
+      "text": "大约三百本，准确说是三百二十本。"
+    },
+    {
+      "id": "s5",
+      "speaker_id": "host",
+      "start": 20,
+      "end": 25,
+      "text": "周末有什么活动？"
+    },
+    {
+      "id": "s6",
+      "speaker_id": "guest",
+      "start": 25,
+      "end": 30,
+      "text": "每周六下午三点读书。河边书店也欢迎带孩子来。"
+    },
+    {
+      "id": "s7",
+      "speaker_id": "host",
+      "start": 30,
+      "end": 35,
+      "text": "你希望保留什么？"
+    },
+    {
+      "id": "s8",
+      "speaker_id": "guest",
+      "start": 35,
+      "end": 40,
+      "text": "保留慢慢聊天的时间。最后一句是：小船已经靠岸。"
+    }
+  ],
+  "timeAligned": true
+}

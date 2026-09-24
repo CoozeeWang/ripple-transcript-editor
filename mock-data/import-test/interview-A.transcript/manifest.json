@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "audio": "interview-A.wav",
+  "models": [
+    {
+      "id": "m1",
+      "engine": "imported",
+      "label": "导入 · 2026-08-30",
+      "edits": [
+        {
+          "id": "e1",
+          "label": "修改稿 v1",
+          "file": "m1-e1.json",
+          "updated_at": "2026-08-30T18:06:28.219Z"
+        }
+      ],
+      "activeEditId": "e1"
+    },
+    {
+      "id": "m2",
+      "engine": "imported",
+      "label": "导入 · 2026-08-30",
+      "edits": [
+        {
+          "id": "e1",
+          "label": "修改稿 v1",
+          "file": "m2-e1.json",
+          "updated_at": "2026-08-31T03:18:40.263Z"
+        }
+      ],
+      "activeEditId": "e1"
+    }
+  ],
+  "activeModelId": "m2"
+}

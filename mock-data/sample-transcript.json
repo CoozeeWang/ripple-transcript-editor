@@ -1,0 +1,20 @@
+{
+  "audio": {
+    "filename": "请选择本地音频",
+    "duration": 88.5
+  },
+  "speakers": [
+    { "id": "speaker_0", "name": "林老师" },
+    { "id": "speaker_1", "name": "采访者" }
+  ],
+  "segments": [
+    { "id": "seg_000001", "speaker_id": "speaker_1", "start": 0.0, "end": 7.6, "text": "我们先从最早的记忆说起吧。您小时候住在哪里？" },
+    { "id": "seg_000002", "speaker_id": "speaker_0", "start": 7.6, "end": 19.8, "text": "我小时候住在江边，那时候附近还没有现在这么多楼。" },
+    { "id": "seg_000003", "speaker_id": "speaker_0", "start": 19.8, "end": 29.4, "text": "每天放学以后，我们都会沿着堤岸走回家。" },
+    { "id": "seg_000004", "speaker_id": "speaker_1", "start": 29.4, "end": 36.1, "text": "您还记得那条路是什么样的吗？" },
+    { "id": "seg_000005", "speaker_id": "speaker_0", "start": 36.1, "end": 51.7, "text": "路很窄，一边是旧房子，另一边能看见水。夏天傍晚特别热闹。" },
+    { "id": "seg_000006", "speaker_id": "speaker_1", "start": 51.7, "end": 58.3, "text": "这种环境后来对您的工作有影响吗？" },
+    { "id": "seg_000007", "speaker_id": "speaker_0", "start": 58.3, "end": 75.9, "text": "我想是有的。后来无论去哪里，我都会先观察那里的人怎么使用空间。" },
+    { "id": "seg_000008", "speaker_id": "speaker_0", "start": 75.9, "end": 88.5, "text": "很多细节当时没有意识到，但过了很多年又会突然想起来。" }
+  ]
+}

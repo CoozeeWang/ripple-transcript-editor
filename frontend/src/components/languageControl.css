@@ -1,0 +1,23 @@
+/* Native selection keeps keyboard and screen-reader support; the globe is the visible control. */
+.language-control--welcome {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+.language-control svg { width: 18px; height: 18px; pointer-events: none; }
+.language-control:hover { border-color: var(--color-border-active); background: var(--color-surface-warm); }
+.language-control:has(select:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.language-control select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.language-control select:focus-visible { outline: none; }
+
+
+.language-control { position: relative; flex-shrink: 0; }
+.language-control.icon-button svg { width: 16px; height: 16px; }

@@ -1,0 +1,29 @@
+{
+  "segments": [
+    {
+      "id": "seg_000001",
+      "speaker_id": "spk_a",
+      "start": 0.0,
+      "end": 6.2,
+      "text": "这一段是正常的。"
+    },
+    {
+      "speaker_id": "spk_a",
+      "start": 6.2,
+      "end": 12.0,
+      "text": "这一段没有 id。"
+    },
+    {
+      "id": "seg_000003",
+      "speaker_id": "spk_b",
+      "start": 12.0,
+      "end": 18.5
+    },
+    {
+      "id": "seg_000004",
+      "start": 18.5,
+      "end": 24.0,
+      "text": "这一段没有标说话人。"
+    }
+  ]
+}

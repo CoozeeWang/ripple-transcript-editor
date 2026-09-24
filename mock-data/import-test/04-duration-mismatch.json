@@ -1,0 +1,32 @@
+{
+  "audio": {
+    "filename": "interview-B.wav",
+    "duration": 3600
+  },
+  "speakers": [
+    {
+      "id": "speaker_0",
+      "name": "林老师"
+    },
+    {
+      "id": "speaker_1",
+      "name": "采访者"
+    }
+  ],
+  "segments": [
+    {
+      "id": "seg_000001",
+      "speaker_id": "speaker_1",
+      "start": 0.0,
+      "end": 600.0,
+      "text": "（测试用）这一段的结束时间被故意写到 10 分钟。"
+    },
+    {
+      "id": "seg_000002",
+      "speaker_id": "speaker_0",
+      "start": 600.0,
+      "end": 3600.0,
+      "text": "（测试用）最后一段结束时间 60 分钟，远超音频长度。"
+    }
+  ]
+}

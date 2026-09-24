@@ -1,0 +1,17 @@
+{
+  "audio": {
+    "filename": "interview-A.wav",
+    "duration": 0
+  },
+  "speakers": [
+    {
+      "id": "speaker_0",
+      "name": "林老师"
+    },
+    {
+      "id": "speaker_1",
+      "name": "采访者"
+    }
+  ],
+  "segments": []
+}

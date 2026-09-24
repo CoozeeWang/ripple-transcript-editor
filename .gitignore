@@ -1,0 +1,64 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Interview data must remain local.
+interviews/
+*.m4a
+*.mp3
+*.wav
+*.aac
+*.flac
+
+# Synthetic fixtures are explicitly public-safe; real audio remains ignored.
+!mock-data/**/*.wav
+!mock-data/**/*.mp3
+!mock-data/**/*.amr
+!mock-data/**/*.wma
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.ruff_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+**/__pycache__/
+.mypy_cache/
+.coverage
+htmlcov/
+*.py[cod]
+
+# Node
+frontend/node_modules/
+frontend/dist/
+**/node_modules/
+**/.vite/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Runtime logs from start.command / stop.command
+.logs/
+*.log
+*.tmp
+
+# 本地密钥档案库（含真实 API 密钥，绝不入库）
+credentials.json
+ai-editing.json
+ai-editing.json.*.tmp
+
+# Chrome 独立应用窗口的 profile（含缓存，不入库）
+.chrome-profile/
+
+# Desktop build outputs. Keep source, lockfiles and icon assets trackable.
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/dist/
+# Local acceptance recordings and interview manuscripts.
+docs/eval_09221330/
+frontend/tests/*.local.*

@@ -1,0 +1,422 @@
+[
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "全文",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "AI 编辑稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "本次编辑规则",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "编辑偏好",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "保留原有表达，仅执行明确规则。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "AI 编辑稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": " · AI 修改稿 ",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": " · AI 修改稿 ",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": " · AI 辅助 ",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "全文",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIEditingDialog.tsx",
+    "text": "片段{{v0}}–{{v1}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/AIPlanSections.tsx",
+    "text": "片段{{v0}}–{{v1}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/ProjectBoard.tsx",
+    "text": "{{v0}} 副本",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "components/LanguageControl.tsx",
+    "text": "简体中文",
+    "reason": "语言自称"
+  },
+  {
+    "file": "components/SettingsModal.tsx",
+    "text": "简体中文",
+    "reason": "语言自称"
+  },
+  {
+    "file": "hooks/useEditor.ts",
+    "text": "说话人 {{v0}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "hooks/useEditor.ts",
+    "text": "说话人 {{v0}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "hooks/useImport.ts",
+    "text": "导入 · {{v0}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "中文标点",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "中文语句使用中文标点，保留网址、小数和英文词语内部的符号。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "中英文空格",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "中文与英文单词、阿拉伯数字之间各留一个半角空格。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留口语表达",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留说话人的措辞、语气和句式，不改写为书面语。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "精简无意义重复",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "删减明显的口吃和重复起句，保留用于强调或表达情绪的重复。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留不确定性",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留可能、大概、我记得等限定语，不将推测或模糊记忆改为确定陈述。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留有意义的重复",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留表达强调、情绪或思考过程的重复；仅凭文字无法判断时保留，不一概去重。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留自我修正",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留说话人否定、补充或修正自己说法的过程，不只留下最后的结论。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "不擅自改动事实",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "不擅自补全或修改人名、地名、日期和数字，不用常识改写说话人的陈述；有疑问时保留原文并在修改理由中提示人工核对。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留存疑标记",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "保留原稿已有的听不清、存疑及非语言事件标记，不猜填内容，不凭文字虚构停顿、笑声或语气。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：你好,世界 → 你好，世界。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：用了AI处理20段 → 用了 AI 处理 20 段。此项是排版偏好。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘我觉得吧，这事还得看看’保留口语句式。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘我，我当时去了’可整理为‘我当时去了’；拿不准是否有意义时保留。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘大概是八月’不能改成‘是八月’。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘真的，真的很难’保留强调。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘去年……不，是前年’保留修正过程。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘我记得是 1982 年’不能凭常识改为另一年。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "例如：‘后来去了[听不清]’保留标记，不猜地名。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "{{v0}} · AI 辅助 ",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/aiEditing.ts",
+    "text": "{{v0}} · AI 修改稿 ",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "忠实转写",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "仅修正标点和明确文字错误，保留原话及全部口语特征。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "仅调整明显错误的标点和断句，不改变句子含义。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "仅纠正上下文能够明确判断的转写文字错误；不因句子不顺就认定转写有误。无法确定时保留原文，并在修改理由中提示回听核对。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "保留语气词、填充词、重复词、口吃、重复起句、自我修正和未完成句，不删减这些口语特征。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "保留原有措辞、语序、说话人轮次和片段顺序，不改写为书面语，不合并或删除片段。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "不补齐省略成分，不添加解释、总结或原文没有的内容。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "不擅自改动人名、地名、日期、数字和事实陈述；有疑问时保留并提示人工核对。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "保留已有的停顿、笑声、存疑和听不清标记；本次仅处理文字，不凭文字添加声音、语气或动作信息。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "口述史访谈稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "修正标点和明确文字错误，精简明确无意义的冗余，保留说话人的措辞、语气和叙述。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "以保留原话为基础，仅减少明确的阅读障碍，不重写、概括或提炼内容，不转换为书面语。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "可以删除明确无意义的口吃、机械重复和重复起句；不能确定是否有意义时保留。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "可以删除纯粹用于拖延发声、没有具体意义的填充词；不得按词表统一删除嗯、就是、然后等词，不能确定其作用时保留。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "保留表达态度、情绪、强调和不确定性的措辞，包括可能、大概、我记得等限定语，以及有意义的重复。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "保留个人习惯用语、方言特点和基本口语句式，不为追求流畅而替换原有表达。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "自我修正涉及观点、事实、时间或判断变化时保留；仅机械重说时可以精简。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "可以适度断句、调整标点；不重排叙述顺序，不跨说话人合并，不因内容矛盾、重复或不够漂亮而删去有意义的信息。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "仅纠正上下文能够明确判断的文字错误；不擅自补齐省略成分、改动人名、日期、数字或事实，不添加解释、结论或因果关系。有疑问时保留并提示人工核对。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/editingPresets.ts",
+    "text": "保留已有的停顿、笑声、存疑和听不清标记，不凭文字虚构声音、语气或动作。",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/import.ts",
+    "text": "未标注说话人",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/import.ts",
+    "text": "说话人 {{v0}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/import.ts",
+    "text": "未标注",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/import.ts",
+    "text": "说话人 {{v0}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/materialImport.ts",
+    "text": "未标注说话人",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/materialImport.ts",
+    "text": "占位",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/projectStore.ts",
+    "text": "回收站",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/projectStore.ts",
+    "text": "{{v0}} · 转录稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "外部导入",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "修改稿 v{{v0}}",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "初稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "导入稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "原始转录稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "{{v0}} 副本",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "导入稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "原始转录稿",
+    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
+  },
+  {
+    "file": "lib/desktopRuntime.ts",
+    "text": "Ripple 后台未能启动，请查看应用日志。",
+    "reason": "桌面启动失败提示；由 native runtime 直接显示"
+  }
+]

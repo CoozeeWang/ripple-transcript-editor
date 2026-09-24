@@ -1,0 +1,62 @@
+{
+  "kind": "te-edited",
+  "audio": "interview-A.wav",
+  "metadata": {
+    "id": "interview-A",
+    "title": "interview-A",
+    "recorded_at": null,
+    "location": "",
+    "participants": [],
+    "topics": [],
+    "notes": "",
+    "created_at": "2026-08-30T18:06:46.745Z",
+    "updated_at": "2026-08-30T18:06:46.745Z"
+  },
+  "transcript": {
+    "audio": {
+      "filename": "interview-A.wav",
+      "duration": 30
+    },
+    "speakers": [
+      {
+        "id": "speaker_0",
+        "name": "林老师"
+      },
+      {
+        "id": "speaker_1",
+        "name": "采访者"
+      }
+    ],
+    "segments": [
+      {
+        "id": "seg_000001",
+        "speaker_id": "speaker_1",
+        "start": 0,
+        "end": 6.2,
+        "text": "我们先从最早的记忆说起吧。您小时候住在哪里？"
+      },
+      {
+        "id": "seg_000002",
+        "speaker_id": "speaker_0",
+        "start": 6.2,
+        "end": 14.8,
+        "text": "我小时候住在江边，那时候附近还没有现在这么多楼。"
+      },
+      {
+        "id": "seg_000003",
+        "speaker_id": "speaker_1",
+        "start": 14.8,
+        "end": 20.1,
+        "text": "您还记得那条路是什么样的吗？"
+      },
+      {
+        "id": "seg_000004",
+        "speaker_id": "speaker_0",
+        "start": 20.1,
+        "end": 29.5,
+        "text": "路很窄，一边是旧房子，另一边能看见水。"
+      }
+    ]
+  },
+  "updated_at": "2026-08-31T03:18:40.257Z"
+}
