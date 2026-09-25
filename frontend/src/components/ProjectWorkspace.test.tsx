@@ -115,6 +115,21 @@ it('adds a session in the existing board while preserving earlier sessions and a
   expect(screen.queryByRole('button', { name: '完成整理' })).toBeNull();
 });
 
+it('saves reordered sessions from the existing project board', async () => {
+ const opened = { ...project, data: { ...project.data, interviews: [
+  { id: 'first', title: 'Reference', recordings: [] },
+  { id: 'second', title: '2026-09-11', recordings: [] },
+  { id: 'third', title: '2026-09-15', recordings: [] },
+ ] } } as store.OpenProject;
+ vi.mocked(store.openProject).mockResolvedValue(opened);
+ vi.mocked(store.saveProject).mockImplementation(async (existing, data) => ({ ...existing, data: { ...data, revision: existing.data.revision + 1 } }));
+ render(<ProjectWorkspace />);
+ fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+ await screen.findByRole('button', { name: '调整Reference顺序' });
+ fireEvent.keyDown(screen.getByRole('button', { name: '调整Reference顺序' }), { key: 'ArrowDown', altKey: true });
+ await waitFor(() => expect(store.saveProject).toHaveBeenCalledWith(opened, expect.objectContaining({ interviews: [opened.data.interviews[1], opened.data.interviews[0], opened.data.interviews[2]] })));
+});
+
 it('adds transcripts to a reopened audio card through both dropping and file selection', async () => {
   vi.mocked(store.importProjectMaterials).mockResolvedValue(project);
   const handle = { name: '补充.txt', getFile: async () => ({ name: '补充.txt', text: async () => '补充记录' }) } as FileSystemFileHandle;
