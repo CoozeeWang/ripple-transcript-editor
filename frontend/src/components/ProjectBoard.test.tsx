@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectBoard } from './ProjectBoard';
 import * as local from '../localStore';
@@ -57,4 +57,47 @@ it('clears a failed manifest-read error when switching interviews',async()=>{
  await screen.findByText('无法读取第一场次');
  view.rerender(<ProjectBoard project={project} selected="second" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
  expect(screen.queryByText('无法读取第一场次')).toBeNull();
+});
+
+function boardProject() {
+ const interviews=[
+  {id:'reference',title:'Reference',recordings:[]},
+  {id:'sep-11',title:'2026-09-11',recordings:[]},
+  {id:'sep-15',title:'2026-09-15',recordings:[]},
+ ];
+ return {data:{id:'p',interviews}} as unknown as OpenProject;
+}
+
+function renderBoard(project:OpenProject,save=vi.fn()) {
+ render(<ProjectBoard project={project} selected={project.data.interviews[0].id} busy={false} select={()=>{}} save={save} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ return save;
+}
+
+it('reorders saved-project sessions with the Option+Arrow shortcut',()=>{
+ const project=boardProject();
+ const save=renderBoard(project);
+ fireEvent.keyDown(screen.getByRole('button',{name:'调整Reference顺序'}),{key:'ArrowDown',altKey:true});
+ expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
+});
+
+it('also accepts the Option+Arrow shortcut when the session row has focus',()=>{
+ const project=boardProject();
+ const save=renderBoard(project);
+ fireEvent.keyDown(document.querySelector('.setup-session-select')!,{key:'ArrowDown',altKey:true});
+ expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
+});
+
+it('reorders saved-project sessions by dragging the grip onto another session',()=>{
+ const project=boardProject();
+ const save=renderBoard(project);
+ const transfer={setData:vi.fn(),getData:vi.fn(()=> 'reference'),types:['application/x-ripple-order'],effectAllowed:'',dropEffect:''};
+ const source=screen.getByRole('button',{name:'调整Reference顺序'});
+ fireEvent.dragStart(source,{dataTransfer:transfer});
+ const target=screen.getByText('2026-09-15').closest('.setup-session')!;
+ fireEvent.dragOver(target,{dataTransfer:transfer,clientY:0});
+ expect(transfer.dropEffect).toBe('move');
+ const event=createEvent.drop(target,{dataTransfer:transfer});
+ Object.defineProperty(event,'clientY',{value:0});
+ fireEvent(target,event);
+ expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
 });

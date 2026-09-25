@@ -5,7 +5,7 @@ export function reorder<T extends { id: string }>(list: T[], source: string, tar
   const item = list.find(i => i.id === source)!;
   const next = list.filter(i => i.id !== source);
   next.splice(next.findIndex(i => i.id === target) + Number(after), 0, item);
-  return next;
+  return next.every((entry,index) => entry.id === list[index]?.id) ? list : next;
 }
 export interface DroppedFile { handle: FileSystemFileHandle; referenceable: boolean }
 /** Capture handles during the drop event, before browser drag data becomes inaccessible. */
