@@ -46,3 +46,15 @@ it('confirms read-only designation and allows removing the marker',async()=>{
  fireEvent.click(await screen.findByRole('button',{name:'取消“原始转录稿”标记 采访稿'}));
  await waitFor(()=>expect(local.setModelOriginal).toHaveBeenLastCalledWith(expect.anything(),'source.m4a','m',false));
 });
+
+it('clears a failed manifest-read error when switching interviews',async()=>{
+ const first={id:'first',title:'第一次访谈',recordings:[{id:'r1',file:'first.m4a',name:'第一段音频.m4a',storage:'copy'}]};
+ const second={id:'second',title:'第二次访谈',recordings:[{id:'r2',file:'second.m4a',name:'第二段音频.m4a',storage:'copy'}]};
+ const project={data:{id:'p',interviews:[first,second]}} as OpenProject;
+ vi.mocked(local.readManifest).mockRejectedValueOnce(new Error('无法读取第一场次'));
+ vi.mocked(local.readManifest).mockImplementationOnce(()=>new Promise(()=>{}));
+ const view=render(<ProjectBoard project={project} selected="first" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ await screen.findByText('无法读取第一场次');
+ view.rerender(<ProjectBoard project={project} selected="second" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ expect(screen.queryByText('无法读取第一场次')).toBeNull();
+});
