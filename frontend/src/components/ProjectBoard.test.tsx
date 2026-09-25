@@ -73,6 +73,13 @@ function renderBoard(project:OpenProject,save=vi.fn(),select=vi.fn(),selected=pr
  return save;
 }
 
+it('shows the session count beside the session list heading',()=>{
+ const project=boardProject();
+ renderBoard(project);
+ const sidebar=screen.getByRole('complementary',{name:'场次'});
+ expect(sidebar.querySelector('.panel-heading__count')?.textContent).toBe('3');
+});
+
 it('reorders saved-project sessions with the Option+Arrow shortcut',()=>{
  const project=boardProject();
  const save=renderBoard(project);
