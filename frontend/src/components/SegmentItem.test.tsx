@@ -34,6 +34,29 @@ it("shows exactly one arrow on the emphasized segment, moving on click and edito
   expectCurrent("a");
 });
 
+it("does not keep the keyboard focus ring around the speaker control after pointer activation", () => {
+  const noop = () => {};
+  const ui = render(<SegmentItem
+    segment={{id: "speaker", text: "内容", speaker_id: "s", start: 0, end: 1}}
+    index={0} totalSegments={1} speakers={[{id: "s", name: "说话人"}]}
+    effectiveSelectedSegmentId="speaker" isPlaying={false} currentTime={0}
+    findQuery="" audioUrl="" viewingOriginal={false} audioRef={{current: null}}
+    textareaRefs={{current: new Map()}} editingRef={{current: false}}
+    setSelectedSegmentId={noop} seekTo={noop} recordEditorCursor={noop}
+    addSpeaker={noop} updateSegment={noop} removeSegment={noop} splitSegment={noop}
+    mergeWithNext={noop} handleEditorKeydown={noop}
+  />);
+  const select = ui.getByRole("combobox");
+  const control = select.parentElement!;
+  fireEvent.pointerDown(select);
+  expect(control.dataset.focusSource).toBe("pointer");
+  fireEvent.keyDown(select, {key: "ArrowDown"});
+  expect(control.dataset.focusSource).toBeUndefined();
+  fireEvent.pointerDown(select);
+  fireEvent.blur(select);
+  expect(control.dataset.focusSource).toBeUndefined();
+});
+
 it("seeks to the clicked character while playing, without a focus-time jump to segment start", () => {
   const calls: [number, boolean | undefined][] = [];
   const noop = () => {};

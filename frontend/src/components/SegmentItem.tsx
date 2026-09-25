@@ -165,6 +165,15 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         <span aria-hidden="true">{speakerEntry?.name ?? segment.speaker_id}</span>
       <select
         aria-label={msg('SegmentItem.m0944')}
+        onPointerDown={(event) => {
+          event.currentTarget.parentElement?.setAttribute('data-focus-source', 'pointer');
+        }}
+        onKeyDown={(event) => {
+          event.currentTarget.parentElement?.removeAttribute('data-focus-source');
+        }}
+        onBlur={(event) => {
+          event.currentTarget.parentElement?.removeAttribute('data-focus-source');
+        }}
         value={segment.speaker_id}
         onClick={(event) => event.stopPropagation()}
         onChange={(event) => {

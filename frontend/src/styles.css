@@ -3067,7 +3067,7 @@ input.ripple-checkbox[type="checkbox"]:disabled { cursor: default; opacity: .45;
 .segment-speaker > span { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .segment-speaker > select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
 .segment-speaker::after { content: ""; position: static; flex: none; width: 5px; height: 5px; margin-left: 8px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-1px) rotate(45deg); pointer-events: none; }
-.segment-speaker:has(select:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.segment-speaker:has(select:focus-visible):not([data-focus-source="pointer"]) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 @media (max-width: 679px) {
   .speaker-add { padding-inline: 2px; white-space: nowrap; }

@@ -14,7 +14,7 @@
 }
 .language-control svg { width: 18px; height: 18px; pointer-events: none; }
 .language-control:hover { border-color: var(--color-border-active); background: var(--color-surface-warm); }
-.language-control:has(select:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.language-control:has(select:focus-visible):not([data-focus-source="pointer"]) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .language-control select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .language-control select:focus-visible { outline: none; }
 
