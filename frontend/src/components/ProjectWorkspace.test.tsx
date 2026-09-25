@@ -21,6 +21,8 @@ it('opens a project, selects an interview, and releases the editor lock when ret
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText('测试项目');
+  expect(screen.getByRole('complementary', { name: '场次' }).querySelector('.panel-heading__count')?.textContent).toBe('1');
+  expect(screen.queryByText('1 个场次')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /第一次访谈.*音频：1 个/ }));
   expect(screen.getByRole('img', { name: '音频保存在项目内' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: '开始转录' })).toBeNull();

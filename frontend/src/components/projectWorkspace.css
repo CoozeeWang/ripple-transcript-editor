@@ -241,7 +241,6 @@ body:has(.project-home--welcome) { min-width: 0; }
 
 .project-title-heading { display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;flex:1;min-width:0; }
 .project-title-heading h1 { flex:0 1 auto; }
-.project-interview-count { flex:none;white-space:nowrap;color:var(--color-text-3);font:400 12px/1.5 var(--font-sans); }
 .project-title-actions { display:flex;align-items:center;gap:6px;flex:none; }
 
 .project-home__header { max-width:1200px;margin-inline:auto;padding-right:52px; }
