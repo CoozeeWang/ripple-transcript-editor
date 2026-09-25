@@ -75,6 +75,17 @@ it('opens the organizer before choosing a save location or writing a project', a
   expect(state.picker).not.toHaveBeenCalled();
 });
 
+it('clears a failed open-project error when starting a new project', async () => {
+  const openError = '这个文件夹不是 Ripple 项目';
+  state.picker.mockRejectedValueOnce(new Error(openError));
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  await screen.findByText(openError);
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  await screen.findByRole('heading', { name: '点击填写场次名称' });
+  expect(screen.queryByText(openError)).toBeNull();
+});
+
 it('imports documents from the independent drop zone into the selected interview without audio association', async () => {
   vi.mocked(store.importProjectMaterials).mockResolvedValue(project);
   render(<ProjectWorkspace />);

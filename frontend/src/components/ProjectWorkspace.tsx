@@ -181,7 +181,7 @@ export function ProjectWorkspace() {
             <div className="project-welcome__title"><h1>Ripple</h1><p>{msg('ProjectWorkspace.m0912')}</p></div>
           </div>
           <div className="project-welcome__actions">
-            <button className="welcome-card" disabled={busy} onClick={() => setCreating(true)}><ProjectIcon kind="plus" /><span>{msg('ProjectWorkspace.m0914')}</span></button>
+            <button className="welcome-card" disabled={busy} onClick={() => { setError(''); setCreating(true); }}><ProjectIcon kind="plus" /><span>{msg('ProjectWorkspace.m0914')}</span></button>
             <button className="welcome-card" disabled={busy} onClick={() => void chooseProject()}><ProjectIcon kind="project" /><span>{msg('ProjectWorkspace.m0915')}</span></button>
             <div className="recent-dock" ref={recentRef}>
               <button className="recent-dock__btn" aria-label={msg('ProjectWorkspace.m0916')} title={msg('ProjectWorkspace.m0917')} aria-expanded={recentOpen} aria-controls="welcome-recent-projects" disabled={busy} onClick={() => setRecentOpen(open => !open)}>
