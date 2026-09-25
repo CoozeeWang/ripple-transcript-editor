@@ -50,8 +50,8 @@
 [data-sort-edge=before]::after { top:-4px; }
 [data-sort-edge=after]::after { bottom:-4px; }
 .setup-session[data-sort-edge]::after { left:12px;right:12px;height:1px; }
-.setup-session[data-sort-edge=before]::after { top:-7px; }
-.setup-session[data-sort-edge=after]::after { bottom:-7px; }
+.setup-session[data-sort-edge=before]::after { top:-2px; }
+.setup-session[data-sort-edge=after]::after { bottom:-3px; }
 .setup-session-form { display:grid;gap:16px; }
 .setup-fields { display:grid;grid-template-columns:1fr;gap:0; }
 .setup-session-form .field { margin:0; }
