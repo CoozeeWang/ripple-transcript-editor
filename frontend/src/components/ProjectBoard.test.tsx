@@ -68,8 +68,8 @@ function boardProject() {
  return {data:{id:'p',interviews}} as unknown as OpenProject;
 }
 
-function renderBoard(project:OpenProject,save=vi.fn()) {
- render(<ProjectBoard project={project} selected={project.data.interviews[0].id} busy={false} select={()=>{}} save={save} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+function renderBoard(project:OpenProject,save=vi.fn(),select=vi.fn(),selected=project.data.interviews[0].id) {
+ render(<ProjectBoard project={project} selected={selected} busy={false} select={select} save={save} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
  return save;
 }
 
@@ -89,10 +89,13 @@ it('also accepts the Option+Arrow shortcut when the session row has focus',()=>{
 
 it('reorders saved-project sessions by dragging the grip onto another session',()=>{
  const project=boardProject();
- const save=renderBoard(project);
+ const select=vi.fn();
+ const save=renderBoard(project,vi.fn(),select,project.data.interviews[1].id);
  const transfer={setData:vi.fn(),getData:vi.fn(()=> 'reference'),types:['application/x-ripple-order'],effectAllowed:'',dropEffect:''};
  const source=screen.getByRole('button',{name:'调整Reference顺序'});
  fireEvent.dragStart(source,{dataTransfer:transfer});
+ expect(select).toHaveBeenCalledWith('reference');
+ expect(source.closest('.setup-session')?.classList.contains('is-selected')).toBe(true);
  const target=screen.getByText('2026-09-15').closest('.setup-session')!;
  fireEvent.dragOver(target,{dataTransfer:transfer,clientY:0});
  expect(transfer.dropEffect).toBe('move');
