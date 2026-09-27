@@ -13,4 +13,6 @@ desktop/package-mac.sh /path/printed/by/stage-backend
 
 The packaging script writes `desktop/dist/Ripple.app`. Backend state is stored under the app's user data directory. Selected project and audio files remain in their chosen locations. Closing the window stops the owned backend. The personal test build uses an ad hoc signature and is not notarized.
 
+The main window sets `dragDropEnabled: false` so file drops reach the editor's HTML drop zones. Tauri's native drop interception must not consume these events: the app uses the same target validation and import flow as its browser version. When WebKit supplies a dropped File without a persistent file handle, audio can be copied into the project; external-reference storage still requires the file picker. This also leaves the editor's internal drag sorting available.
+
 The desktop and web icons use `Icon/Ripple_logo_1024.png` as the transparent master. `desktop/make-icon.swift` centers the mark with an 80 px inset on the 1024 px Mac icon canvas, giving roughly 820 px of visible artwork; then use macOS `sips` and `iconutil` to build `desktop/src-tauri/icons/icon.icns` from standard iconset sizes. Both generated icon assets are stored in `src-tauri/icons` so regular packaging does not need to regenerate them.
