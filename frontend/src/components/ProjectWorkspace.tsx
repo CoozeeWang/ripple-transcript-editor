@@ -1,3 +1,4 @@
+import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { LanguageControl } from './LanguageControl';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory, pickerLocation, OPEN_LAST_PROJECT, restoredInterview, rememberInterview, canRestoreProject } from '../lib/projectPreferences';
@@ -243,7 +244,7 @@ export function ProjectWorkspace() {
           importDocuments={async (id, files, kind = 'manuscript', audioId, referenceable = true) => {
             const materials = await prepareMaterials(files.map(handle => ({ handle, group: id })));
             if (materials.some(item => item.kind !== kind)) throw new Error(kind === 'audio' ? msg('ProjectWorkspace.m0935') : msg('ProjectWorkspace.m0936'));
-            const storage = kind === 'audio' ? await audioStorage.choose(materials.map(i=>i.name), referenceable) : 'copy';
+            const storage = kind === 'audio' ? await audioStorage.choose(materials.map(i=>i.name), referenceable, async()=>{ const selected=await selectAudioReferences(materials.map(i=>i.handle)); if(!selected)return false; materials.forEach((item,index)=>{item.handle=selected[index];}); return true; }) : 'copy';
             if (!storage) return;
             const snapshot = current.current!;
             const recording = audioId ? snapshot.data.interviews.find(session => session.id === id)?.recordings.find(item => item.id === audioId && item.storage !== 'none') : undefined;

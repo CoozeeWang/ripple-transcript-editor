@@ -3,6 +3,8 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ProjectSetup } from './ProjectSetup';
 import * as store from '../lib/projectStore';
+import { selectAudioReferences } from '../lib/audioReferenceSelection';
+vi.mock('../lib/audioReferenceSelection',()=>({selectAudioReferences:vi.fn()}));
 vi.mock('../lib/projectStore', async original=>({...await original<typeof store>(),createProject:vi.fn(),importProjectMaterials:vi.fn()}));
 beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute("open", "");};});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -122,4 +124,26 @@ it('stores the storage choice per batch without asking again on the save step',a
  fireEvent.click(screen.getByText('选择保存位置'));await screen.findByText('目录');fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
  await waitFor(()=>expect(store.importProjectMaterials).toHaveBeenCalled());
  expect(vi.mocked(store.importProjectMaterials).mock.calls[0][1].map(i=>i.storage)).toEqual(['reference','copy']);
+});
+
+it('stages dropped audio as a reference using the selected original handle',async()=>{
+ const original={kind:'file',name:'录音.wav',getFile:async()=>new File(['audio'],'录音.wav')} as FileSystemFileHandle;
+ vi.mocked(selectAudioReferences).mockResolvedValue([original]);
+ Object.assign(window,{showOpenFilePicker:vi.fn(),showDirectoryPicker:vi.fn(async()=>({name:'项目目录'}))});
+ const project={directory:{},data:{title:'项目',id:'p',interviews:[]}} as unknown as store.OpenProject;
+ vi.mocked(store.createProject).mockResolvedValue(project);
+ vi.mocked(store.importProjectMaterials).mockResolvedValue(project);
+ render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'引用验收'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
+ drop('选择或拖入音频，加入这个场次',[new File(['audio'],'录音.wav')]);
+ fireEvent.click(await screen.findByRole('button',{name:'选择原文件并引用'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'音频存放方式'})).toBeNull());
+ await screen.findByText('录音.wav');
+ fireEvent.click(screen.getByRole('button',{name:'完成整理'}));
+ fireEvent.click(screen.getByText('选择保存位置'));await screen.findByText('项目目录');
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ await waitFor(()=>expect(store.importProjectMaterials).toHaveBeenCalled());
+ const material=vi.mocked(store.importProjectMaterials).mock.calls[0][1][0];
+ expect(material.handle).toBe(original);expect(material.storage).toBe('reference');
+ expect(selectAudioReferences).toHaveBeenCalledOnce();
 });

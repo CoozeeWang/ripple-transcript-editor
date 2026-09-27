@@ -423,5 +423,10 @@
     "file": "localStore.ts",
     "text": "{{v0}}_只读",
     "reason": "持久化只读底稿文件名；文稿名称不翻译，固定磁盘标记不随界面语言变化"
+  },
+  {
+    "file": "lib/audioReferenceSelection.ts",
+    "text": "已取消选择",
+    "reason": "Stable native command cancellation sentinel, not UI copy."
   }
 ]

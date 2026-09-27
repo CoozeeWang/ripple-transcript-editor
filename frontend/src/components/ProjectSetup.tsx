@@ -1,3 +1,4 @@
+import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { IS_MAC } from '../lib/format';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory, pickerLocation } from '../lib/projectPreferences';
@@ -77,7 +78,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
         }
         accepted.push({ ...next, group: session.id, audioId, referenceable: files[index].referenceable });
       }
-      if (kind === 'audio') { const storage = await audioStorage.choose(accepted.map(i=>i.name), accepted.every(i=>i.referenceable)); if (!storage) return; accepted.forEach(i=>{ i.storage=storage; }); }
+      if (kind === 'audio') { const storage = await audioStorage.choose(accepted.map(i=>i.name), accepted.every(i=>i.referenceable), async()=>{ const selected=await selectAudioReferences(accepted.map(i=>i.handle)); if(!selected)return false; accepted.forEach((item,index)=>{item.handle=selected[index];item.referenceable=true;}); return true; }); if (!storage) return; accepted.forEach(i=>{ i.storage=storage; }); }
       setItems(previous => [...previous, ...accepted]);setUndo(null);
 
   }
