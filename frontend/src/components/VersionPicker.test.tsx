@@ -153,3 +153,17 @@ it('navigates version actions without dispatching a global arrow shortcut',()=>{
  fireEvent.keyDown(document.activeElement!,{key:'Home'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'原始转录稿（只读）'}));
  expect(globalKey).not.toHaveBeenCalled();window.removeEventListener('keydown',globalKey);
 });
+
+it('keeps a mouse selection alive when WebKit would blur the focused row without a related target',()=>{
+ const select=vi.fn();
+ render(<VersionPicker models={models} value="m1:e1" variant="comparison" excluded="m1:e1" onSelect={select} onRename={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'对照版本：选择版本'}));
+ const option=screen.getByRole('button',{name:'原始转录稿（只读）'});
+ const focused=document.activeElement!;
+ // On macOS, a pointer press on a button can move focus to the document,
+ // closing the popup before its subsequent click reaches the option.
+ const allowed=fireEvent.pointerDown(option,{button:0});
+ if(allowed)fireEvent.blur(focused,{relatedTarget:null});
+ if(option.isConnected)fireEvent.click(option,{detail:1});
+ expect(select).toHaveBeenCalledWith('m1','original');
+});

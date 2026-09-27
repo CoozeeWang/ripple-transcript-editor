@@ -121,7 +121,12 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
       aria-expanded={open} aria-controls={popupId} disabled={disabled || !groups.length} onClick={()=>{if(open)close();else setOpen(true);}}>
       <span>{selected?.label ?? msg('VersionPicker.m1090')}</span><span aria-hidden="true">▾</span>
     </button>
-    {open && <div ref={menu} popover="manual" id={popupId} className="version-picker-menu" role="group" aria-label={msg('VersionPicker.m1091', { v0: title })}>
+    {open && <div ref={menu} popover="manual" id={popupId} className="version-picker-menu" role="group" aria-label={msg('VersionPicker.m1091', { v0: title })}
+      onPointerDown={event=>{
+        // macOS WebKit does not focus buttons on pointer press. Keep the
+        // existing focus until click, otherwise onBlur unmounts this menu.
+        if(event.button===0 && (event.target as HTMLElement).closest('button')) event.preventDefault();
+      }}>
       {groups.map(({model,entries})=><section key={model.id} className={`version-picker-group${model.sourceKind === "import" ? " version-picker-group--import" : ""}`}>
         {model.sourceKind !== "import" && <div className="version-picker-engine"><span>{msg('VersionPicker.m1092')}</span><strong>{displayEngineLabel(model.engine)}</strong></div>}
         {entries.map(entry=><div key={entry.id} className={`version-picker-row version-picker-row--${entry.id==="original" ? "original" : "edit"}${`${model.id}:${entry.id}`===value ? " is-selected" : ""}`}>
