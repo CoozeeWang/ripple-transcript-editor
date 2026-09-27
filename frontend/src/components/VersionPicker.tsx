@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { TranscriptModel } from "../types";
 import { defaultEditLabel, displayEngineLabel } from "../localStore";
 import { useDismissable } from "../useDismissable";
+import { originalVersionLabel } from '../lib/transcriptLabels';
 
 export interface VersionPickerProps {
   models: TranscriptModel[];
@@ -94,7 +95,7 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
     .sort((a,b)=>Number(!!b.designatedOriginal)-Number(!!a.designatedOriginal));
   let importIndex=0;
   const groups=orderedModels.map(model=>model.sourceKind === "import" ? imported[importIndex++] : model).map(model=>({model,entries:[
-    ...((model.designatedOriginal || (model.original && (model.sourceKind !== "import" || variant === "comparison" || value === `${model.id}:original`))) ? [{id:"original",label:model.sourceKind === "import" && !model.designatedOriginal ? msg('VersionPicker.m1085') : msg('VersionPicker.m1086')}] : []),
+    ...((model.designatedOriginal || (model.original && (model.sourceKind !== "import" || variant === "comparison" || value === `${model.id}:original`))) ? [{id:"original",label:originalVersionLabel(model)}] : []),
     ...(model.designatedOriginal && variant === "current" ? [] : model.edits).map((edit,index)=>({id:edit.id,label:edit.label ?? defaultEditLabel(index)})),
   ].filter(entry=>`${model.id}:${entry.id}`!==excluded)})).filter(group=>group.entries.length);
   const selected=groups.flatMap(({model,entries})=>entries.map(entry=>({...entry,value:`${model.id}:${entry.id}`}))).find(entry=>entry.value===value);

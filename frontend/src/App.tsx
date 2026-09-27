@@ -1,3 +1,4 @@
+import { originalVersionLabel } from './lib/transcriptLabels';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
 import { CopyProblem } from "./components/CopyProblem";
@@ -854,7 +855,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       {transcript.timeAligned === false && <p className="project-timing-notice">{msg('App.m0029')}</p>}
       {aiSession && aiSession.dir === dirHandle && aiSession.context === aiContext && (
         <AIEditingDialog transcript={aiSession.transcript} source={aiSession.source}
-          sourceLabel={viewingOriginal ? (activeModel?.sourceKind === "import" && !activeModel?.designatedOriginal ? msg('App.m0030') : msg('App.m0031')) : activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))}
+          sourceLabel={viewingOriginal ? (activeModel ? originalVersionLabel(activeModel) : msg('App.m0031')) : activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))}
           suggestedName={nextAIEditName(activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0)), activeModel?.edits.map((e,i) => e.label ?? defaultEditLabel(i)) ?? [])}
           loadDocumentId={() => aiEditingDocumentId(aiSession.dir, aiSession.source)}
           loadDraft={() => readAIReviewDraft(aiSession.dir, aiSession.source, viewingOriginal ? `original:${activeModelId}` : activeEditKey)}

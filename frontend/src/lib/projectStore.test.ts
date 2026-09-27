@@ -253,7 +253,9 @@ it('imports manuscript-only interviews with a read-only import baseline, archive
   const manuscript = await view.getDirectoryHandle(recording.file.replace('.wav', '.transcript'));
   const manifest = JSON.parse(await (await (await manuscript.getFileHandle('manifest.json')).getFile()).text());
   expect(manifest.models[0].sourceKind).toBe('import');
-  expect(manifest.models[0].original).toContain('导入稿');
+  expect(manifest.models[0].label).toBe('已有访谈');
+  expect(manifest.models[0].original).toContain('已有访谈_只读');
+  expect(manifest.models[0].original).not.toContain('导入稿');
   const baseline = await (await manuscript.getFileHandle(manifest.models[0].original)).getFile();
   expect(JSON.parse(await baseline.text()).transcript.segments[0].text).toBe('口述原话');
   const portable = await savePortableProject(p, directory().handle, '副本');

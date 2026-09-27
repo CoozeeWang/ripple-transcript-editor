@@ -1,3 +1,4 @@
+import { importedManuscriptName } from './lib/transcriptLabels';
 import { apiErrorMessage } from './i18n/errors';
 import { msg } from './i18n';
 import { chooseDirectory } from './lib/projectPreferences';
@@ -1084,7 +1085,7 @@ async function createModelUnlocked(
 
   let originalFile: string | undefined;
   if (params.original) {
-    originalFile = transcriptFilename(existing.title ?? stem, `${params.sourceKind === "import" && !params.designatedOriginal ? "导入稿" : "原始转录稿"}${existing.models.length ? `_${params.engine}_${createdAt.replace(/[:.]/g, "-")}_${id}` : ""}`);
+    originalFile = transcriptFilename(existing.title ?? stem, `${params.sourceKind === "import" && !params.designatedOriginal ? `${importedManuscriptName(params, defaultModelLabel(params.engine))}_只读` : "原始转录稿"}${existing.models.length ? `_${params.engine}_${createdAt.replace(/[:.]/g, "-")}_${id}` : ""}`);
     if (await hasSidecar(tDir, originalFile)) throw new Error(msg('localStore.m1490', { v0: originalFile }));
     await writeFileJson(tDir, originalFile, {
       kind: params.sourceKind === "import" ? "te-imported" : "te-original",
@@ -1285,7 +1286,7 @@ async function syncTranscriptNames(
   const previousRaw = await readManifestText(dir);
   const next: TranscriptManifest = { ...structuredClone(proposed), title };
   const files = next.models.flatMap(m => [
-    ...(m.original ? [{ old: m.original, target: transcriptFilename(title, `${m.sourceKind === "import" && !m.designatedOriginal ? "导入稿" : "原始转录稿"}${next.models.length > 1 ? `_${m.engine}_${m.createdAt?.replace(/[:.]/g, "-") ?? m.id}` : ""}`), set: (file: string) => { m.original = file; } }] : []),
+    ...(m.original ? [{ old: m.original, target: transcriptFilename(title, `${m.sourceKind === "import" && !m.designatedOriginal ? `${importedManuscriptName(m, defaultModelLabel(m.engine))}_只读` : "原始转录稿"}${next.models.length > 1 ? `_${m.engine}_${m.createdAt?.replace(/[:.]/g, "-") ?? m.id}` : ""}`), set: (file: string) => { m.original = file; } }] : []),
     ...m.edits.map(e => ({ old: e.file, target: transcriptFilename(title, e.label ?? defaultEditLabel(m.edits.indexOf(e))), set: (file: string) => { e.file = file; } })),
   ]);
   // Older model groups can each contain a default v1; preserve these versions distinctly.

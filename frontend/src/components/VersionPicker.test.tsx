@@ -93,7 +93,7 @@ it("single pointer click still selects after the double-click window",()=>{
 it('labels external baselines as imported and offers comparison and new edits without pretending they were transcribed',()=>{
  const select=vi.fn();
  render(<VersionPicker models={[{...models[0],sourceKind:'import',label:undefined}]} value="m1:original" variant="current" onSelect={select} onRename={vi.fn()} onCopy={vi.fn()}/>);
- fireEvent.click(screen.getByRole('button',{name:'当前版本：导入稿（只读）'}));
+ fireEvent.click(screen.getByRole('button',{name:'当前版本：外部导入（只读）'}));
  expect(screen.getAllByText('外部导入').length).toBeGreaterThan(0);
  expect(screen.queryByText('原始转录稿（只读）')).toBeNull();
  expect(screen.queryByRole('button',{name:/重命名导入稿/})).toBeNull();
@@ -102,13 +102,13 @@ it('labels external baselines as imported and offers comparison and new edits wi
 it('renames an imported transcript independently of its edit versions',async()=>{
  const rename=vi.fn();
  render(<VersionPicker models={[{...models[0],sourceKind:'import',label:'人工初稿',sourceName:'访谈.txt'}]} value="m1:original" variant="current" onRename={rename} onSelect={vi.fn()}/>);
- fireEvent.click(screen.getByRole('button',{name:'当前版本：导入稿（只读）'}));
+ fireEvent.click(screen.getByRole('button',{name:'当前版本：人工初稿（只读）'}));
  fireEvent.click(screen.getByRole('button',{name:'重命名转录稿 人工初稿'}));
  fireEvent.change(screen.getByRole('textbox',{name:'转录稿名称'}),{target:{value:'人工校订稿'}});
  await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'转录稿名称'}),{key:'Enter'}));
  expect(rename).toHaveBeenCalledWith('m1','model-name','人工校订稿');
  expect(screen.queryByRole('group')).toBeNull();
- const trigger=screen.getByRole('button',{name:'当前版本：导入稿（只读）'});expect(document.activeElement).toBe(trigger);fireEvent.click(trigger);
+ const trigger=screen.getByRole('button',{name:'当前版本：人工初稿（只读）'});expect(document.activeElement).toBe(trigger);fireEvent.click(trigger);
  expect(screen.getByRole('button',{name:/^v1.*人工初稿/})).toBeTruthy();
 });
 

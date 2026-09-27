@@ -1,3 +1,4 @@
+import { originalVersionLabel } from '../lib/transcriptLabels';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { trapDialogFocus } from '../lib/dialogFocus';
 import { useEffect, useRef, useState } from 'react';
@@ -51,7 +52,7 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
           audioRow.reference=referenceAudioNotice(recording,session.title,(manifest?.models??[]).map(m=>m.label||m.sourceName||m.engine));
         }
         for (const model of manifest?.models ?? []) {
-          const versions = [...(model.original ? [{ id: 'original', label: model.designatedOriginal ? msg('ProjectExportDialog.m0719') : msg('ProjectExportDialog.m0720') }] : []), ...model.edits.map((e, i) => ({ id: e.id, label: e.label || `v${i + 1}` }))];
+          const versions = [...(model.original ? [{ id: 'original', label: originalVersionLabel(model) }] : []), ...model.edits.map((e, i) => ({ id: e.id, label: e.label || `v${i + 1}` }))];
           for (const version of versions.filter(v => v.id === (model.activeEditId || model.edits[0]?.id || 'original'))) {
             const data = version.id === 'original' ? await readModelOriginal(dir, recording.file, model.id) : await readModelEdit(dir, recording.file, model.id, version.id);
             if (!data) throw new Error(msg('ProjectExportDialog.m0721', { v0: model.label || recording.name }));

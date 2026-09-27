@@ -340,7 +340,7 @@
     "m0610": "Copy into project (recommended)",
     "m0611": "Reference originals without copying",
     "m0612": "You may need to relink if the originals move or you switch computers.",
-    "m0613": "External transcripts keep a read-only “Imported transcript” and create an editable version. Only transcripts generated in Ripple are labeled “Original transcript”.",
+    "m0613": "Manuscripts use the source filename and can be renamed on the project page. Import keeps a read-only source snapshot and creates an editable version. A manuscript can also be designated as the original on the project page.",
     "m0614": "Add to this interview",
     "m0615": "Import {{v0}} interviews",
     "m0616": "Import materials",
@@ -1233,7 +1233,7 @@
   "VersionPicker": {
     "m1083": "Enter a version name",
     "m1084": "Couldn’t rename this version",
-    "m1085": "Imported transcript (read-only)",
+    "m1085": "{{name}} (read-only)",
     "m1086": "Original transcript (read-only)",
     "m1087": "Current version",
     "m1088": "Comparison version",

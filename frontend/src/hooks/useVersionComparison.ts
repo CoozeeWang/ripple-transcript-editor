@@ -2,7 +2,8 @@ import { msg, useInterfaceLanguage } from '../i18n';
 import { recordProblem } from "../lib/diagnostics";
 import { useEffect, useMemo, useState } from "react";
 import type { Transcript, TranscriptModel } from "../types";
-import { defaultEditLabel, displayEngineLabel, readModelEdit, readModelOriginal } from "../localStore";
+import { defaultEditLabel, readModelEdit, readModelOriginal } from "../localStore";
+import { originalVersionLabel } from '../lib/transcriptLabels';
 import { flushEditorDrafts } from "../lib/editorDrafts";
 import { useComparisonReadingPosition } from "./useComparisonReadingPosition";
 
@@ -14,13 +15,15 @@ export function useVersionComparison(dir: FileSystemDirectoryHandle | null, audi
   const [state, setState] = useState<{dir:typeof dir;context:string;shown:boolean;base:string}>({dir:null,context:"",shown:false,base:""});
   const [loaded, setLoaded] = useState<{dir:typeof dir;context:string;base:string;selection:typeof state;transcript:Transcript|null;error:string}>();
   const options = useMemo(() => { void language; return models.flatMap(model => [
-    ...(model.original ? [{value:`${model.id}:original`,model:model.id,edit:"original",label:`${model.sourceKind === "import" ? (model.sourceName ?? msg('useVersionComparison.m1179')) : displayEngineLabel(model.engine)} · ${model.sourceKind === "import" && !model.designatedOriginal ? msg('useVersionComparison.m1180') : msg('useVersionComparison.m1181')}`}] : []),
+    ...(model.original ? [{value:`${model.id}:original`,model:model.id,edit:"original",label:originalVersionLabel(model)}] : []),
     ...model.edits.map((edit,i)=>({value:`${model.id}:${edit.id}`,model:model.id,edit:edit.id,label:edit.label ?? defaultEditLabel(i)})),
   ]).filter(option=>option.value!==`${modelId}:${original ? "original" : editId}`); }, [models,modelId,editId,original,language]);
   const preferred=models.find(m=>m.id===modelId)?.edits.find(e=>e.id===editId)?.comparisonBaseId;
   const same = state.dir===dir && state.context===context;
   const base = same && options.some(o=>o.value===state.base) ? state.base
-    : options.find(o=>o.value===`${modelId}:${preferred}`)?.value ?? options.find(o=>o.model===modelId && o.edit==="original")?.value ?? options[0]?.value ?? "";
+    : options.find(o=>o.value===`${modelId}:${preferred}`)?.value
+      ?? options.find(o=>o.edit==="original" && models.find(m=>m.id===o.model)?.designatedOriginal)?.value
+      ?? options.find(o=>o.model===modelId && o.edit==="original")?.value ?? options[0]?.value ?? "";
   const shown = !original && same && state.shown;
   const toggle = () => { if (original) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:!shown,base}); };
   const choose = (base:string) => { if (original) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:true,base}); };

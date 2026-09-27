@@ -46,3 +46,24 @@ it('keeps comparison off in original mode including keyboard toggle and direct s
  act(()=>result.current.choose('m1:e1'));expect(result.current.shown).toBe(false);
  expect(result.current.baseline).toBeNull();expect(readModelEdit).not.toHaveBeenCalled();
 });
+
+it('prefers the designated original over an imported revision snapshot, while keeping explicit choices',async()=>{
+ const imported:TranscriptModel[]=[
+  {id:'edit',engine:'imported',sourceKind:'import',sourceName:'人工修改稿.json',original:'legacy_导入稿.json',edits:[{id:'e1',file:'edit.json',updated_at:''}],activeEditId:'e1'},
+  {id:'source',engine:'imported',sourceKind:'import',designatedOriginal:true,original:'source.json',edits:[],activeEditId:''},
+ ];
+ const {result}=renderHook(()=>useVersionComparison(dir,'A',imported,'edit','e1',false));
+ expect(result.current.base).toBe('source:original');
+ expect(result.current.options.find(o=>o.value==='edit:original')?.label).toBe('人工修改稿（只读）');
+ act(()=>result.current.toggle());await waitFor(()=>expect(result.current.loading).toBe(false));
+ act(()=>result.current.choose('edit:original'));await waitFor(()=>expect(result.current.loading).toBe(false));
+ expect(result.current.base).toBe('edit:original');
+ act(()=>result.current.toggle());act(()=>result.current.toggle());
+ expect(result.current.base).toBe('edit:original');
+});
+
+it('keeps the recorded AI source ahead of a designated original',()=>{
+ const data:TranscriptModel[]=[{...models[0],sourceKind:'import'}, {id:'source',engine:'imported',designatedOriginal:true,original:'source.json',edits:[],activeEditId:''}];
+ const {result}=renderHook(()=>useVersionComparison(dir,'A',data,'m1','e2',false));
+ expect(result.current.base).toBe('m1:e1');
+});

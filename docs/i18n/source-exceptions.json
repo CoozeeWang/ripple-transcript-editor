@@ -418,5 +418,10 @@
     "file": "lib/desktopRuntime.ts",
     "text": "Ripple 后台未能启动，请查看应用日志。",
     "reason": "桌面启动失败提示；由 native runtime 直接显示"
+  },
+  {
+    "file": "localStore.ts",
+    "text": "{{v0}}_只读",
+    "reason": "持久化只读底稿文件名；文稿名称不翻译，固定磁盘标记不随界面语言变化"
   }
 ]
