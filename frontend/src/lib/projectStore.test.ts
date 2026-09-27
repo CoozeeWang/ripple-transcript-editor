@@ -1,7 +1,7 @@
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
-import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, renameModelLabel } from '../localStore';
+import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
 function directory(name = 'root'): TestDirectory {
@@ -239,7 +239,7 @@ it('removes only the selected recent entry and allows an intact project to be re
   expect((await recentProjects())[0].id).toBe(p.data.id);
 });
 
-it('imports manuscript-only interviews with a read-only import baseline, archives them, and later attaches audio', async () => {
+it('imports manuscript-only interviews as editable files, archives them, and later attaches audio', async () => {
   const source = directory('source');
   source.files.set('已有访谈.txt', new File(['口述原话\n第二段'], '已有访谈.txt'));
   const materials = await prepareMaterials([{ handle: await source.handle.getFileHandle('已有访谈.txt') }]);
@@ -254,9 +254,8 @@ it('imports manuscript-only interviews with a read-only import baseline, archive
   const manifest = JSON.parse(await (await (await manuscript.getFileHandle('manifest.json')).getFile()).text());
   expect(manifest.models[0].sourceKind).toBe('import');
   expect(manifest.models[0].label).toBe('已有访谈');
-  expect(manifest.models[0].original).toContain('已有访谈_只读');
-  expect(manifest.models[0].original).not.toContain('导入稿');
-  const baseline = await (await manuscript.getFileHandle(manifest.models[0].original)).getFile();
+  expect(manifest.models[0].original).toBeUndefined();
+  const baseline = await (await manuscript.getFileHandle(manifest.models[0].edits[0].file)).getFile();
   expect(JSON.parse(await baseline.text()).transcript.segments[0].text).toBe('口述原话');
   const portable = await savePortableProject(p, directory().handle, '副本');
   expect(portable.data.interviews[0].recordings[0].storage).toBe('none');
@@ -319,7 +318,7 @@ it('rejects reassignment onto existing manuscripts and keeps both histories inta
   for (const record of [recording, target]) expect((await readEdited(await recordingDirectory(next, interview.id, record), record.file))?.transcript.segments[0].text).toBe(record.id);
 });
 
-it('imports multiple transcripts for one audio with independent originals and names, even at the same clock time', async () => {
+it('imports multiple editable transcripts for one audio with independent files and names, even at the same clock time', async () => {
   const source = directory('source');
   for (const name of ['访谈.wav', '机器.txt', '人工.txt', '整理.txt']) source.files.set(name, new File([name], name));
   const materials = await prepareMaterials(await Promise.all([...source.files.keys()].map(async name => ({ handle: await source.handle.getFileHandle(name) }))));
@@ -333,8 +332,9 @@ it('imports multiple transcripts for one audio with independent originals and na
     const view = await recordingDirectory(project, interview.id, recording);
     const manifest = await readManifest(view, recording.file);
     expect(manifest?.models.map(m => m.label)).toEqual(['机器', '人工', '整理']);
-    expect(new Set(manifest?.models.map(m => m.original)).size).toBe(3);
-    for (const model of manifest!.models) expect((await readModelOriginal(view, recording.file, model.id))?.transcript.segments[0].text).toBe(model.sourceName);
+    expect(manifest?.models.every(m => !m.original)).toBe(true);
+    expect(new Set(manifest?.models.map(m => m.edits[0].file)).size).toBe(3);
+    for (const model of manifest!.models) expect((await readModelEdit(view, recording.file, model.id, model.activeEditId))?.transcript.segments[0].text).toBe(model.sourceName);
     await renameModelLabel(view, recording.file, manifest!.models[1].id, '人工校订');
     const renamed = await readManifest(view, recording.file);
     expect(renamed?.models[1].label).toBe('人工校订');
@@ -397,7 +397,7 @@ it('imports multiple designated originals read-only alongside editable manuscrip
  const view=await recordingDirectory(saved,interview.id,recording),manifest=await readManifest(view,recording.file);
  expect(manifest!.models).toHaveLength(3);
  expect(manifest!.models.filter(m=>m.designatedOriginal)).toHaveLength(2);
- for(const model of manifest!.models){expect(model.sourceKind).toBe('import');expect(model.edits).toHaveLength(model.designatedOriginal?0:1);expect(model.original).toBeTruthy();}
+ for(const model of manifest!.models){expect(model.sourceKind).toBe('import');expect(model.edits).toHaveLength(model.designatedOriginal?0:1);expect(Boolean(model.original)).toBe(Boolean(model.designatedOriginal));}
  const edited=await readEdited(view,recording.file);expect(edited?.metadata).toMatchObject({location:'上海',notes:'备注'});
  expect(JSON.parse(await source.files.get('原稿.json')!.text()).transcript.segments[0].text).toBe('正文');
 });
@@ -560,7 +560,9 @@ it('makes an imported original editable when its designation is removed', async 
  const first=await createModel(dir,'a.m4a',{engine:'imported',sourceKind:'import',transcript,original:transcript,originalOnly:true,designatedOriginal:true});
  const next=await setModelOriginal(dir,'a.m4a',first.model.id,false);
  expect(next.models[0].designatedOriginal).toBe(false);
- expect(next.models[0].original).toBe(first.model.original);
+ expect(next.models[0].original).toBeUndefined();
+ expect(next.models[0].edits[0].file).toBe(first.model.original);
+ expect((await readEdited(dir,'a.m4a'))?.transcript).toEqual(transcript);
  expect(next.models[0].edits).toHaveLength(1);
 });
 
@@ -639,3 +641,20 @@ it('rejects malformed interview people before they can crash the project board',
     expect(() => parseProject(raw)).toThrow('场次信息损坏');
   }
 });
+
+ it('imports one editable file and designates that same file without a snapshot', async () => {
+ const root=directory(); const dir=root.handle;
+ const transcript={audio:{filename:'a.wav',duration:1},speakers:[],segments:[{id:'s',start:0,end:1,text:'导入正文',speaker_id:'s'}]};
+ const created=await createModel(dir,'a.wav',{engine:'imported',sourceKind:'import',transcript,original:transcript});
+ const files=root.dirs.get('a.transcript')!.files;
+ const contentFiles=()=>[...files.keys()].filter(name=>name.endsWith('.json')&&name!=='manifest.json');
+ expect(created.model.original).toBeUndefined();
+ expect(contentFiles()).toEqual([created.model.edits[0].file]);
+ const before=await files.get(created.model.edits[0].file)!.text();
+ await setModelOriginal(dir,'a.wav',created.model.id,true);
+ expect(contentFiles()).toEqual([created.model.edits[0].file]);
+ expect(await files.get(created.model.edits[0].file)!.text()).toBe(before);
+ expect((await readModelOriginal(dir,'a.wav',created.model.id))?.transcript.segments[0].text).toBe('导入正文');
+ await setModelOriginal(dir,'a.wav',created.model.id,false);
+ expect(contentFiles()).toEqual([created.model.edits[0].file]);
+ });

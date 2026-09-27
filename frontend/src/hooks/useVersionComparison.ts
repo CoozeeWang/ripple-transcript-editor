@@ -15,8 +15,8 @@ export function useVersionComparison(dir: FileSystemDirectoryHandle | null, audi
   const [state, setState] = useState<{dir:typeof dir;context:string;shown:boolean;base:string}>({dir:null,context:"",shown:false,base:""});
   const [loaded, setLoaded] = useState<{dir:typeof dir;context:string;base:string;selection:typeof state;transcript:Transcript|null;error:string}>();
   const options = useMemo(() => { void language; return models.flatMap(model => [
-    ...(model.original ? [{value:`${model.id}:original`,model:model.id,edit:"original",label:originalVersionLabel(model)}] : []),
-    ...model.edits.map((edit,i)=>({value:`${model.id}:${edit.id}`,model:model.id,edit:edit.id,label:edit.label ?? defaultEditLabel(i)})),
+    ...((model.original || model.designatedOriginal) ? [{value:`${model.id}:original`,model:model.id,edit:"original",label:originalVersionLabel(model)}] : []),
+    ...model.edits.filter(edit=>!model.designatedOriginal || edit.id!==(model.designatedOriginalEditId ?? model.activeEditId)).map((edit,i)=>({value:`${model.id}:${edit.id}`,model:model.id,edit:edit.id,label:edit.label ?? defaultEditLabel(i)})),
   ]).filter(option=>option.value!==`${modelId}:${original ? "original" : editId}`); }, [models,modelId,editId,original,language]);
   const preferred=models.find(m=>m.id===modelId)?.edits.find(e=>e.id===editId)?.comparisonBaseId;
   const same = state.dir===dir && state.context===context;

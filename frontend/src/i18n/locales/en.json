@@ -340,7 +340,7 @@
     "m0610": "Copy into project (recommended)",
     "m0611": "Reference originals without copying",
     "m0612": "You may need to relink if the originals move or you switch computers.",
-    "m0613": "Manuscripts use the source filename and can be renamed on the project page. Import keeps a read-only source snapshot and creates an editable version. A manuscript can also be designated as the original on the project page.",
+    "m0613": "Imported transcripts are editable. Marking a transcript as Original makes that same transcript read-only without creating another copy.",
     "m0614": "Add to this interview",
     "m0615": "Import {{v0}} interviews",
     "m0616": "Import materials",

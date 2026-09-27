@@ -1084,7 +1084,7 @@ async function createModelUnlocked(
   if (!params.originalOnly) await writeFileJson(tDir, editFile, { ...edited, updated_at: new Date().toISOString() });
 
   let originalFile: string | undefined;
-  if (params.original) {
+  if (params.original && (params.sourceKind !== "import" || params.originalOnly)) {
     originalFile = transcriptFilename(existing.title ?? stem, `${params.sourceKind === "import" && !params.designatedOriginal ? `${importedManuscriptName(params, defaultModelLabel(params.engine))}_只读` : "原始转录稿"}${existing.models.length ? `_${params.engine}_${createdAt.replace(/[:.]/g, "-")}_${id}` : ""}`);
     if (await hasSidecar(tDir, originalFile)) throw new Error(msg('localStore.m1490', { v0: originalFile }));
     await writeFileJson(tDir, originalFile, {
@@ -1350,9 +1350,9 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
     const raw = await readFileText(tDir, model.original!);
     if (!raw) throw new Error(msg('localStore.m1514'));
     const source = JSON.parse(raw);
-    const file = `editable-${crypto.randomUUID()}.json`;
+    const file = model.original!;
     await writeFileJson(tDir, file, {kind:"te-edited",audio:name,metadata:{...defaultMetadata(stemOf(name)),...manifest.interviewDetails,...source.metadata},transcript:source.transcript});
-    const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
+    const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
     await writeFileJson(tDir, MANIFEST_NAME, next);return next;
   }
   const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal, designatedOriginalEditId: designatedOriginal ? (m.activeEditId || m.edits[0]?.id) : undefined } : m) };

@@ -67,3 +67,12 @@ it('keeps the recorded AI source ahead of a designated original',()=>{
  const {result}=renderHook(()=>useVersionComparison(dir,'A',data,'m1','e2',false));
  expect(result.current.base).toBe('m1:e1');
 });
+
+it('compares against a designated existing version without requiring a snapshot file',async()=>{
+ const data:TranscriptModel[]=[{id:'source',engine:'imported',sourceKind:'import',designatedOriginal:true,designatedOriginalEditId:'e1',edits:[{id:'e1',file:'import.json',updated_at:''}],activeEditId:'e1'}, {id:'edited',engine:'imported',sourceKind:'import',edits:[{id:'e1',file:'edit.json',updated_at:''}],activeEditId:'e1'}];
+ const {result}=renderHook(()=>useVersionComparison(dir,'A',data,'edited','e1',false));
+ expect(result.current.options.map(o=>o.value)).toEqual(['source:original']);
+ act(()=>result.current.toggle());
+ await waitFor(()=>expect(result.current.loading).toBe(false));
+ expect(result.current.base).toBe('source:original');
+});
