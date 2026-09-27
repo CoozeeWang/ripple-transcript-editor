@@ -1,7 +1,7 @@
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
-import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, renameModelLabel } from '../localStore';
+import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
 function directory(name = 'root'): TestDirectory {
@@ -658,3 +658,13 @@ it('rejects malformed interview people before they can crash the project board',
  await setModelOriginal(dir,'a.wav',created.model.id,false);
  expect(contentFiles()).toEqual([created.model.edits[0].file]);
  });
+
+it('removes a designated imported version without needing a hidden original copy',async()=>{
+ const root=directory();
+ const transcript={audio:{filename:'a.wav',duration:0},speakers:[],segments:[]};
+ const created=await createModel(root.handle,'a.wav',{engine:'imported',sourceKind:'import',transcript});
+ await setModelOriginal(root.handle,'a.wav',created.model.id,true);
+ const remaining=await removeModelOriginal(root.handle,'a.wav',created.model.id);
+ expect(remaining?.models).toHaveLength(0);
+ expect(root.dirs.get('a.transcript')!.files.has(created.model.edits[0].file)).toBe(false);
+});

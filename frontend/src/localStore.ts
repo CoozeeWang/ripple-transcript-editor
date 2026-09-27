@@ -1443,6 +1443,7 @@ async function removeEditUnlocked(
 
   newModel = {
     ...model,
+    ...(model.designatedOriginal && editId === (model.designatedOriginalEditId ?? model.activeEditId) ? { designatedOriginal: false, designatedOriginalEditId: undefined } : {}),
     edits: remainingEdits,
     activeEditId: model.activeEditId === editId ? remainingEdits[0].id : model.activeEditId,
   };
@@ -1462,8 +1463,12 @@ async function removeModelOriginalUnlocked(
   if (!tDir) return null;
   const manifest = await readManifestUnlocked(dir, name);
   const model = manifest?.models.find((m) => m.id === modelId);
-  if (!manifest || !model || !model.original) return null;
-
+  if (!manifest || !model) return null;
+  if (!model.original && model.designatedOriginal) {
+    const editId = model.designatedOriginalEditId ?? model.activeEditId;
+    return removeEditUnlocked(dir, name, modelId, editId);
+  }
+  if (!model.original) return null;
 
   if (model.edits.length === 0) {
     // 原稿是最后一份内容 → 整个模型移除
