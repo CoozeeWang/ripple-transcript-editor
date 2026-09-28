@@ -12,6 +12,7 @@
 .setup-session-select > svg { flex:none;height:24px; }
 .setup-session-select > span { min-width:0;overflow-wrap:anywhere; }
 .setup-session.is-selected .setup-session-select { color:var(--color-brand); }
+.setup-session.is-selected .setup-session-select:focus-visible { outline:none; }
 .setup-session-select small { display:block;font-size:12px;font-weight:400;color:var(--color-text-3);line-height:1.5;margin-top:4px; }
 .setup-canvas { min-width:0;padding:var(--space-5); }
 .setup-canvas h2,.setup-save h2 { margin:0;font:600 18px/1.5 var(--font-sans); }
