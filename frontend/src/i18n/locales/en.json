@@ -205,7 +205,8 @@
     "m0939": " originals · ",
     "m0940": " revisions. Version names, comparison links, and interview details will be kept. Existing interview details will not be overwritten.",
     "m0941": "Import all versions",
-    "m0942": "Not now"
+    "m0942": "Not now",
+    "recentProjectMismatch": "This isn't the selected recent project. Choose its original project folder."
   },
   "SettingsModal": {
     "m0972": "Settings",
@@ -418,6 +419,9 @@
     "m0708": "Delete audio {{v0}}",
     "m0709": "Delete audio",
     "m0710": "Audio is unavailable. Locate the original file to restore playback.",
+    "m0718": "Cannot read audio stored in this project. Reopen the project and check that its folder is accessible.",
+    "m0719": "Cannot find or access this project's interview folder. Use Open project to select the complete project folder again.",
+    "m0720": "Cannot read the interview files right now. Reopen this project.",
     "m0711": "Add transcript to {{v0}}",
     "m0712": "Choose or drop transcripts to link to this audio",
     "m0713": "Choose or drop audio to add to this session",

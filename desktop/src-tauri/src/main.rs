@@ -104,8 +104,12 @@ async fn fs_reauthorize(app: tauri::AppHandle, state: tauri::State<'_, Grants>, 
 #[tauri::command]
 fn fs_stat(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> Result<Option<NativeEntry>, String> {
     let path = grant_path(&state, &root, &parts, false)?;
-    if !path.exists() { return Ok(None); }
-    let kind = if path.is_dir() { "directory" } else if path.is_file() { "file" } else { return Err("不是普通文件或文件夹".into()) };
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.to_string()),
+    };
+    let kind = if metadata.is_dir() { "directory" } else if metadata.is_file() { "file" } else { return Err("不是普通文件或文件夹".into()) };
     Ok(Some(NativeEntry { name: path.file_name().unwrap_or_default().to_string_lossy().to_string(), kind }))
 }
 
