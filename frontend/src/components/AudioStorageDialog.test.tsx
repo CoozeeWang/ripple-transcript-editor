@@ -10,7 +10,7 @@ it('opens the picker through the reference choice, then waits for Add audio', as
   render(<AudioStorageDialog names={['A.wav']} referenceable={false} selectReference={selectReference} finish={finish}/>);
   const radio=screen.getByRole('radio', {name:/引用原文件/}) as HTMLInputElement;
   expect(radio.disabled).toBe(false);
-  expect(screen.getByText(/拖入音频后选择“引用原文件”/)).toBeTruthy();
+  expect(screen.getByText(/重新选择刚才拖入的音频/).closest('label')).toBe(radio.closest('label'));
   expect(screen.queryByRole('button', {name:'选择原文件并引用'})).toBeNull();
   fireEvent.click(radio);
   await waitFor(()=>expect(radio.checked).toBe(true));
@@ -35,11 +35,13 @@ it('keeps the choice open after cancellation or a mismatched file', async () => 
   expect(finish).not.toHaveBeenCalled();
   fireEvent.click(radio);
   expect((await screen.findByRole('alert')).textContent).toBe('文件内容不一致');
+  expect(screen.getByRole('alert').classList.contains('audio-storage-feedback')).toBe(true);
+  expect(screen.getByRole('alert').classList.contains('form-error')).toBe(true);
   expect(radio.checked).toBe(false);
   expect(finish).not.toHaveBeenCalled();
 });
 it('retains a clear fallback when file selection is unavailable',()=>{
   render(<AudioStorageDialog names={['A.wav']} referenceable={false} finish={vi.fn()}/>);
-  expect(screen.getByText(/若要引用原文件/)).toBeTruthy();
+  expect(screen.getByText(/请取消后点击虚线框选择原音频/)).toBeTruthy();
   expect((screen.getByRole('radio',{name:/引用原文件/}) as HTMLInputElement).disabled).toBe(true);
 });

@@ -12,11 +12,11 @@ it('matches selected originals by full content and preserves the dropped order',
 });
 it('rejects a same-name file with different contents before replacing handles', async () => {
   vi.stubGlobal('window', { showOpenFilePicker: async () => [handle('A.wav', 'other')] });
-  await expect(selectAudioReferences([handle('A.wav', 'first')])).rejects.toThrow('内容不一致');
+  await expect(selectAudioReferences([handle('A.wav', 'first')])).rejects.toThrow('所选音频与拖入的文件不一致');
 });
 it('rejects extra or missing files rather than silently changing the import batch', async () => {
   vi.stubGlobal('window', { showOpenFilePicker: async () => [handle('A.wav', 'first'), handle('B.wav', 'second')] });
-  await expect(selectAudioReferences([handle('A.wav', 'first')])).rejects.toThrow('数量或内容不一致');
+  await expect(selectAudioReferences([handle('A.wav', 'first')])).rejects.toThrow('所选音频与拖入的文件不一致');
 });
 it.each([new DOMException('cancel', 'AbortError'), '已取消选择'])('leaves the import pending when selection is cancelled', async error => {
   vi.stubGlobal('window', { showOpenFilePicker: async () => { throw error; } });

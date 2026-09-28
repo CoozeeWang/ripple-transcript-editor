@@ -130,6 +130,10 @@ body:has(.project-home--welcome) { min-width: 0; }
 .project-brand-home { padding:0;border:0;background:transparent;text-align:left;color:inherit;cursor:pointer;font:inherit; }
 .project-brand-home:disabled { cursor:default;opacity:.5; }
 .audio-project-dialog { max-width:520px; }
+.audio-storage-filename { color: var(--color-text-3); font-size: 13px; }
+.audio-storage-feedback { margin: -8px 0 0 28px; font: 400 13px/1.5 var(--font-sans); }
+.audio-storage-feedback.form-error { color: var(--color-danger); }
+.audio-storage-feedback.settings-hint { color: var(--color-text-3); }
 .audio-project-file { display:flex;align-items:center;gap:10px;overflow-wrap:anywhere;font-size:14px; }
 .audio-project-file svg { flex:none;color:var(--color-brand); }
 .audio-project-options { display:flex;gap:24px;margin:16px 0 24px;font-size:14px; }

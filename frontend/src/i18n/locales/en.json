@@ -268,11 +268,11 @@
     "m0369": "Keep the original files and save copies in the project. This uses additional storage, but the project remains usable if the originals are moved.",
     "m0370": "Link to original files",
     "m0371": "Audio isn’t copied. Ripple reads the original files during playback. If they’re moved or access is lost, you’ll need to locate them again. Bring the original audio files when moving to another computer.",
-    "m0372": "Dragged files can’t retain long-term access, so they can only be copied. To link to the originals, cancel and click the dashed box to select the files, then choose “Link to original files”.",
+    "m0372": "These dropped files can’t be linked here. Cancel and select the original audio from the dashed box.",
     "m0373": "Cancel",
     "m0374": "Add audio",
-    "reselectHint": "After dropping audio, choosing “Link to original files” opens a file window. Select the original audio files again; once verified, Ripple links them without copying.",
-    "checking": "Checking that the selected audio matches the dropped files…"
+    "reselectHint": "Choose this option, then select the audio you just dropped again in the file window.",
+    "checking": "Checking audio…"
   },
   "AudioStorageIcon": {
     "m0375": "Linked external audio; original file not copied into the project",
@@ -1963,6 +1963,6 @@
     "RS032": "Index verification failed"
   },
   "audioReferenceSelection": {
-    "mismatch": "Select all the original audio files you just dropped. The file count or contents do not match; nothing has been added to the project."
+    "mismatch": "The selected audio doesn’t match the dropped files. Please select them again."
   }
 }
