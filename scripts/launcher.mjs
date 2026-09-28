@@ -35,9 +35,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const BACKEND_DIR = path.join(ROOT, "backend");
 const FRONTEND_DIR = path.join(ROOT, "frontend");
-export function defaultDataDir(root, exists = existsSync) {
-  const privateWorkspace = path.join(root, "..", "ripple-work", "local");
-  return exists(privateWorkspace) ? privateWorkspace : path.join(root, "..", "ripple-local");
+export function defaultDataDir(root) {
+  return path.join(root, "..", "ripple-work");
 }
 const DATA_DIR = process.env.RIPPLE_DATA_DIR || defaultDataDir(ROOT);
 const LOG_DIR = path.join(ROOT, ".logs");

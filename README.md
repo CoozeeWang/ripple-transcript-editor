@@ -64,7 +64,7 @@ The isolated visual fixture at `/tests/ai-editor.html` uses synthetic data and i
 
 ## Naming and compatibility
 
-The product is named **Ripple**. Startup scripts resolve paths relative to the checkout. The launcher uses the sibling `ripple-work/local/` directory when it exists, or a sibling `ripple-local/` directory for a standalone clone; `RIPPLE_DATA_DIR` overrides either location. Both defaults are outside this Git repository. Historical reviews retain the former product name. Existing `te-*` storage keys and transcript format identifiers are preserved so saved preferences and interview files remain compatible.
+The product is named **Ripple**. Startup scripts resolve paths relative to the checkout. The launcher uses a sibling `ripple-work/` directory for local data, creating it when needed; `RIPPLE_DATA_DIR` can point to another absolute path. This directory is outside the product repository. If it is itself a Git repository, local credentials and generated data must be ignored there. Historical reviews retain the former product name. Existing `te-*` storage keys and transcript format identifiers are preserved so saved preferences and interview files remain compatible.
 
 ## Project structure
 

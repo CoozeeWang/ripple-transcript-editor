@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { isOwnedService, isOwnedChrome, backendNeedsUpdate, defaultDataDir } from './launcher.mjs';
 
-test('uses the private workspace when present and stays usable in a standalone clone', () => {
+test('keeps local data in the sibling work directory, including in a standalone clone', () => {
   const root = path.join('workspace', 'ripple-public');
-  const privateData = path.join(root, '..', 'ripple-work', 'local');
-  assert.equal(defaultDataDir(root, candidate => candidate === privateData), privateData);
-  assert.equal(defaultDataDir(root, () => false), path.join(root, '..', 'ripple-local'));
+  assert.equal(defaultDataDir(root), path.join(root, '..', 'ripple-work'));
 });
 
 test('startup refreshes old backends without treating storage failures as old versions', async () => {
