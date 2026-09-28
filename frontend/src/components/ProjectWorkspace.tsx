@@ -1,4 +1,5 @@
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
+import { nativeDesktopAvailable } from '../lib/desktopFs';
 import { LanguageControl } from './LanguageControl';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory, pickerLocation, OPEN_LAST_PROJECT, restoredInterview, rememberInterview, canRestoreProject } from '../lib/projectPreferences';
@@ -107,10 +108,18 @@ export function ProjectWorkspace() {
     try { await work(); } catch (e) { if ((e as { name?: string }).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectWorkspace.m0901')); }
     finally { busyRef.current = false; setBusy(false); setShowProgress(false); setQuietSaving(false); }
   };
-  const chooseProject = (directory?: FileSystemDirectoryHandle) => run(async () => {
-    const handle = directory ?? await chooseDirectory('open-project');
+  const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => {
+    let handle = directory;
+    if (handle && expectedId && nativeDesktopAvailable()) {
+      const saved = handle as FileSystemDirectoryHandle & { queryPermission?: (options: { mode: string }) => Promise<string> };
+      let permission = 'prompt';
+      try { permission = await saved.queryPermission?.({ mode: 'readwrite' }) ?? 'prompt'; } catch { /* Re-select below. */ }
+      if (permission !== 'granted') handle = await chooseDirectory('open-project');
+    }
+    handle ??= await chooseDirectory('open-project');
     await permit(handle, 'readwrite');
     const next = await openProject(handle);
+    if (expectedId && next.data.id !== expectedId) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
     setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
@@ -190,7 +199,7 @@ export function ProjectWorkspace() {
               </button>
               {recentOpen && <section id="welcome-recent-projects" className="recent-pop project-welcome__recent"><h2>{msg('ProjectWorkspace.m0918')}</h2>
           {!recent.length ? <p className="settings-hint">{msg('ProjectWorkspace.m0919')}</p> : <div className="project-list">{recent.map(item => <div className="project-recent-row" key={item.id}>
-            <button className="project-list__item" disabled={busy} onClick={() => void chooseProject(item.directory)}><ProjectIcon kind="project" /><strong>{item.title}</strong></button>
+            <button className="project-list__item" disabled={busy} onClick={() => void chooseProject(item.directory, item.id)}><ProjectIcon kind="project" /><strong>{item.title}</strong></button>
             <button type="button" className="icon-button project-recent-remove" disabled={busy}
               aria-label={msg('ProjectWorkspace.m0920', { v0: item.title })} title={msg('ProjectWorkspace.m0921')}
               onClick={() => void run(async () => { await forgetRecentProject(item.id); setRecent(await recentProjects()); })}>

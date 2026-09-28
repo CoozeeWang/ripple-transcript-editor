@@ -16,7 +16,7 @@ beforeEach(() => {
   Object.assign(window, { showDirectoryPicker: state.picker });
   vi.mocked(store.openProject).mockResolvedValue(project);
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); delete (window as Window & { __TAURI__?: unknown }).__TAURI__; });
 it('opens a project, selects an interview, and releases the editor lock when returning', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
@@ -65,6 +65,39 @@ it('removes a recent entry without attempting to open its missing directory', as
   await waitFor(() => expect(screen.queryByText('河东河西')).toBeNull());
   expect(store.forgetRecentProject).toHaveBeenCalledWith('gone');
   expect(store.openProject).not.toHaveBeenCalled();
+});
+
+it('reselects a recent desktop project after its process grant expires', async () => {
+  const queryPermission = vi.fn(async () => 'prompt');
+  const stale = { name: '测试.ripple', queryPermission } as unknown as FileSystemDirectoryHandle;
+  const selected = { name: '测试.ripple' } as FileSystemDirectoryHandle;
+  const reopened = { ...project, directory: selected };
+  Object.assign(window, { __TAURI__: { core: {} } });
+  vi.mocked(store.recentProjects).mockResolvedValueOnce([{ id: 'p', title: '测试项目', directory: stale }]).mockResolvedValue([]);
+  state.picker.mockResolvedValue(selected);
+  vi.mocked(store.openProject).mockResolvedValue(reopened);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
+  fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
+  await screen.findByRole('heading', { name: '测试项目' });
+  expect(queryPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
+  expect(state.picker).toHaveBeenCalledOnce();
+  expect(store.permit).toHaveBeenCalledWith(selected, 'readwrite');
+  expect(store.permit).not.toHaveBeenCalledWith(stale, 'readwrite');
+  expect(store.rememberProject).toHaveBeenCalledWith(reopened);
+});
+
+it('does not replace a recent entry with a different project', async () => {
+  const stale = { name: '测试.ripple', queryPermission: vi.fn(async () => 'prompt') } as unknown as FileSystemDirectoryHandle;
+  Object.assign(window, { __TAURI__: { core: {} } });
+  vi.mocked(store.recentProjects).mockResolvedValueOnce([{ id: 'p', title: '测试项目', directory: stale }]);
+  vi.mocked(store.openProject).mockResolvedValue({ ...project, data: { ...project.data, id: 'other' } });
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
+  fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
+  await screen.findByText('选中的不是这个最近项目。请重新选择原项目文件夹。');
+  expect(store.rememberProject).not.toHaveBeenCalled();
+  expect(screen.queryByRole('heading', { name: '测试项目' })).toBeNull();
 });
 
 it('opens the organizer before choosing a save location or writing a project', async () => {

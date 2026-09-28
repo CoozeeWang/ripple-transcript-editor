@@ -59,6 +59,37 @@ it('clears a failed manifest-read error when switching interviews',async()=>{
  expect(screen.queryByText('无法读取第一场次')).toBeNull();
 });
 
+it('localizes a missing interview folder instead of showing the raw native error', async () => {
+ const session={id:'s',title:'访谈',recordings:[{id:'r',file:'source.m4a',name:'音频.m4a',storage:'copy'}]};
+ const project={data:{id:'p',interviews:[session]}} as OpenProject;
+ vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockRejectedValue(new DOMException('interviews does not exist','NotFoundError'));
+ renderBoard(project);
+ await screen.findByText('无法找到或访问项目中的场次文件夹。请通过“打开项目”重新选择完整的项目文件夹。');
+ expect(screen.queryByText('interviews does not exist')).toBeNull();
+});
+
+it('shows the same folder error in English when the interface is English', async () => {
+ const { setInterfaceLanguage } = await import('../i18n');
+ const session={id:'s',title:'Interview',recordings:[{id:'r',file:'source.m4a',name:'audio.m4a',storage:'copy'}]};
+ const project={data:{id:'p',interviews:[session]}} as OpenProject;
+ try {
+  await setInterfaceLanguage('en');
+  vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockRejectedValue(new DOMException('interviews does not exist','NotFoundError'));
+  renderBoard(project);
+  await screen.findByText("Cannot find or access this project's interview folder. Use Open project to select the complete project folder again.");
+ } finally { await setInterfaceLanguage('zh-CN'); }
+});
+
+it('does not tell users to locate an external original for audio copied into the project', async () => {
+ const session={id:'s',title:'访谈',recordings:[{id:'r',file:'source.m4a',name:'音频.m4a',storage:'copy'}]};
+ const project={data:{id:'p',interviews:[session]}} as OpenProject;
+ vi.mocked((await import('../lib/projectStore')).resolveMedia).mockRejectedValue(new Error('offline'));
+ vi.mocked(local.readManifest).mockResolvedValue(null);
+ renderBoard(project);
+ await screen.findByText('无法读取项目内的音频。请重新打开这个项目，确认项目文件夹可访问。');
+ expect(screen.queryByText('音频暂不可用。请找到原文件以恢复播放。')).toBeNull();
+});
+
 function boardProject() {
  const interviews=[
   {id:'reference',title:'Reference',recordings:[]},
