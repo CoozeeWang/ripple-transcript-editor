@@ -34,7 +34,6 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
   const [draft, setDraft] = useState({ title: '', date: '', location: '', people: [] as string[], notes: '' });
   const [dateError, setDateError] = useState(false);
   const locationInput = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<'organize' | 'save'>('organize');
   const audioStorage = useAudioStorageChoice();
   const [parent, setParent] = useState<FileSystemDirectoryHandle | null>(null);
 
@@ -134,26 +133,26 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
     </div>;
   }
   const save = () => run(async () => {
-    if (!title.trim() || (!project && !parent)) throw new Error(msg('ProjectSetup.m0805'));
+    if (!title.trim()) throw new Error(msg('ProjectSetup.m0808'));
     if (items.some(i=>i.storage==='reference'&&!i.referenceable)) throw new Error(msg('ProjectSetup.m0806'));
-    if (!project && !partial) await permit(parent!, 'readwrite');
-    const target = project ?? partial ?? await createProject(parent!,title);
+    const destination = project || partial ? parent : parent ?? await chooseDirectory('save-project');
+    if (destination && destination !== parent) setParent(destination);
+    if (!project && !partial) await permit(destination!, 'readwrite');
+    const target = project ?? partial ?? await createProject(destination!,title);
     setPartial(target);
     const ordered = sessions.flatMap(s=>items.filter(i=>i.group===s.id));
     const result = await importProjectMaterials(target,ordered,'copy',undefined,sessions);
     setPartial(null);onDone(result);
   });
   const edit = (value: string, label: string, commit: (value: string)=>void, placeholder: string, inputType='text'): ReactNode => <InlineEdit doubleClick={Boolean(value)} disabled={busy} value={value} ariaLabel={label} onCommit={commit} placeholder={placeholder} inputType={inputType} />;
-  const nextStepHint = step === 'save'
-    ? (!project && !parent ? msg('ProjectSetup.m0807') : '')
-    : !title.trim() ? msg('ProjectSetup.m0808')
+  const nextStepHint = !title.trim() ? msg('ProjectSetup.m0808')
     : adding ? (!draft.title.trim() ? msg('ProjectSetup.m0809') : msg('ProjectSetup.m0810'))
     : !sessions.length ? msg('ProjectSetup.m0811') : '';
   return <section className="project-setup" aria-label={msg('ProjectSetup.m0812')} aria-busy={busy} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={e=>{e.preventDefault();if(e.dataTransfer.types.includes('Files'))setError(msg('ProjectSetup.m0813'));}}>
     <div className="setup-title"><ProjectIcon kind="project" /><h1>{edit(title,msg('ProjectSetup.m0814'),v=>{if(!project&&!partial)setTitle(v);},msg('ProjectSetup.m0815'))}</h1>{project && <span>{msg('ProjectSetup.m0816')}</span>}</div>
     {error && <p className="form-error setup-message" role="alert">{uiMessage(error)}</p>}
     {busy && <ProcessingNotice>{msg('ProjectSetup.m0817')}</ProcessingNotice>}
-    {step==='organize' ? <div className="setup-body"><aside className="setup-sidebar" aria-label={msg('ProjectSetup.m0818')}><p className="section-label">{msg('ProjectSetup.m0819')}</p>
+    <div className="setup-body"><aside className="setup-sidebar" aria-label={msg('ProjectSetup.m0818')}><p className="section-label">{msg('ProjectSetup.m0819')}</p>
       {sessions.map(s=><div className={`setup-session${!adding&&s.id===selected?' is-selected':''}`} key={s.id} {...sortZone(s.id,'sessions')}><div role="button" tabIndex={0} className="setup-session-select" aria-disabled={busy} aria-pressed={!adding&&s.id===selected} onKeyDown={e=>{if(e.target===e.currentTarget && (e.key==='Enter'||e.key===' ')&&!busy){e.preventDefault();setSelected(s.id);setAdding(false);}}} onClick={()=>{if(!busy){setSelected(s.id);setAdding(false);setPlaying(null);}}}><ProjectIcon kind="mic" /><span><InlineEdit doubleClick disabled={busy} value={s.title} ariaLabel={msg('ProjectSetup.m0820', { v0: s.title })} onCommit={title=>{if(title.trim())patchSession(s.id,{title:title.trim()});}}/><small>{s.metadata?.recorded_at?.slice(0,10) || msg('ProjectSetup.m0821')}</small></span></div>{handle(s.id,'sessions',s.title,sessions)}</div>)}
       {!initial && <button type="button" className="setup-drop setup-new" disabled={busy||adding} onClick={newSession}><ProjectIcon kind="plus" />{msg('ProjectSetup.m0822')}</button>}
     </aside><div className="setup-canvas">
@@ -171,11 +170,8 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
         {zone('audio',msg('ProjectSetup.m0850'))}
         <section className="setup-independent" onDragOver={e=>{if(!busy&&!e.dataTransfer.types.includes(SORT)){e.preventDefault();e.stopPropagation();}}} onDrop={e=>drop(e,'manuscript')}><h3>{msg('ProjectSetup.m0851')}</h3>{own.filter(i=>i.kind==='manuscript'&&!i.audioId).map(item=>document(item,own.filter(i=>i.kind==='manuscript'&&!i.audioId)))}{zone('manuscript',msg('ProjectSetup.m0852'))}</section>
       </> : <p className="settings-hint">{msg('ProjectSetup.m0853')}</p>}
-    </div></div> : <div className="setup-save"><h2>{project?msg('ProjectSetup.m0854'):msg('ProjectSetup.m0855')}</h2>
-      {!project && <div className="project-section"><h3>{msg('ProjectSetup.m0856')}</h3><p className="settings-hint">{msg('review.projectFolder', { projectName: title.trim() })}</p><div className="project-actions"><span>{parent?.name||msg('ProjectSetup.m0859')}</span><button type="button" className="button button--secondary" disabled={busy||!!partial} onClick={()=>void run(async()=>setParent(await chooseDirectory('save-project')))}>{msg('ProjectSetup.m0860')}</button></div></div>}
-      <p className="settings-hint">{msg('ProjectSetup.m0861')}</p>
-    </div>}
-    {audioStorage.dialog}<footer className="setup-footer"><div className="setup-footer-status" role="status">{undo ? <><span>{msg('ProjectSetup.m0862')}</span><button type="button" className="setup-undo" disabled={busy} onClick={()=>{setItems(undo);setUndo(null);}}>{msg('ProjectSetup.m0863')}</button></> : <span>{step==='organize'?msg('ProjectSetup.m0864', { v0: sessions.length }):msg('ProjectSetup.m0865')}{nextStepHint && <small className="setup-next-hint">{nextStepHint}</small>}</span>}</div><div className="project-actions"><button type="button" className="button button--secondary" disabled={busy} onClick={()=>{if(step==='save')setStep('organize');else if((!items.length&&!sessions.length)||window.confirm(msg('ProjectSetup.m0866')))onCancel();}}>{step==='save'?msg('ProjectSetup.m0867'):msg('ProjectSetup.m0868')}</button>{step==='organize'?<>{!initial && <button type="button" className="button button--secondary" disabled={busy||adding} onClick={newSession}><ProjectIcon kind="plus" />{msg('ProjectSetup.m0869')}</button>}<button type="button" className="button button--primary" disabled={busy||!title.trim()||!sessions.length||adding} onClick={()=>{setError('');setStep('save');}}>{msg('ProjectSetup.m0870')}</button></>:<button type="button" className="button button--primary" disabled={busy||(!project&&!parent)} onClick={()=>void save()}>{project?msg('ProjectSetup.m0871'):msg('ProjectSetup.m0872')}</button>}</div></footer>
+    </div></div>
+    {audioStorage.dialog}<footer className="setup-footer"><div className="setup-footer-status" role="status">{undo ? <><span>{msg('ProjectSetup.m0862')}</span><button type="button" className="setup-undo" disabled={busy} onClick={()=>{setItems(undo);setUndo(null);}}>{msg('ProjectSetup.m0863')}</button></> : <span>{msg('ProjectSetup.m0864', { v0: sessions.length })}{nextStepHint && <small className="setup-next-hint">{nextStepHint}</small>}</span>}</div><div className="project-actions"><button type="button" className="button button--secondary" disabled={busy} onClick={()=>{if((!items.length&&!sessions.length)||window.confirm(msg('ProjectSetup.m0866')))onCancel();}}>{msg('ProjectSetup.m0868')}</button>{!initial && <button type="button" className="button button--secondary" disabled={busy||adding} onClick={newSession}><ProjectIcon kind="plus" />{msg('ProjectSetup.m0869')}</button>}{parent && !partial && !project && <button type="button" className="button button--secondary" disabled={busy} onClick={()=>void run(async()=>setParent(await chooseDirectory('save-project')))}>{msg('ProjectSetup.m0860')}</button>}<button type="button" className="button button--primary" disabled={busy||!title.trim()||!sessions.length||adding} onClick={()=>void save()}>{project?msg('ProjectSetup.m0871'):msg('ProjectSetup.m0872')}</button></div></footer>
     {preview && <PreviewDialog item={preview} onClose={()=>setPreview(null)} />}
   </section>;
 }

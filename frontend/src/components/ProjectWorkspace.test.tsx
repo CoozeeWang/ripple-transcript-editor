@@ -72,7 +72,7 @@ it('opens the organizer before choosing a save location or writing a project', a
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
   expect(screen.queryByText('最近项目')).toBeNull();
   expect(screen.getByRole('heading', { name: '点击填写场次名称' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '完成整理' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('button', { name: '保存项目' }).hasAttribute('disabled')).toBe(true);
   expect(store.createProject).not.toHaveBeenCalled();
   expect(state.picker).not.toHaveBeenCalled();
 });
@@ -114,7 +114,7 @@ it('adds a session in the existing board while preserving earlier sessions and a
   await screen.findByRole('heading', { name: '第二次访谈' });
   expect(screen.getByRole('button', { name: /第一次访谈.*音频：1 个/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: "选择或拖入音频，加入这个场次" })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: '完成整理' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '保存项目' })).toBeNull();
 });
 
 it('saves reordered sessions from the existing project board', async () => {

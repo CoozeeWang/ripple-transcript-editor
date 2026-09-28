@@ -24,17 +24,29 @@ it('stages separate materials, associates multiple transcripts, sorts, ignores a
  expect(screen.getByText('初稿.txt').closest('.setup-independent')).toBeTruthy();
  fireEvent.click(screen.getByText('撤销'));expect(screen.getByText('初稿.txt').closest('.setup-linked')).toBeTruthy();
 });
-it('does not create files until the final save and keeps the draft and target project after a failed import',async()=>{
+it('opens the folder picker from the organizer and keeps the draft and target project after a failed import',async()=>{
  const project={data:{id:'p',title:'河东河西',interviews:[],revision:0},directory:{}} as unknown as store.OpenProject;
  vi.mocked(store.createProject).mockResolvedValue(project);vi.mocked(store.importProjectMaterials).mockRejectedValueOnce(new Error('磁盘空间不足')).mockResolvedValueOnce(project);
  Object.assign(window,{showDirectoryPicker:vi.fn(async()=>({name:'项目目录'}))});const done=vi.fn();
  render(<ProjectSetup onDone={done} onCancel={vi.fn()}/>);
  fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'河东河西'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
  drop('选择或拖入独立转录稿，不关联音频',[textFile('访谈.txt')]);await screen.findByText('访谈.txt');
- fireEvent.click(screen.getByRole('button',{name:'完成整理'}));fireEvent.click(screen.getByText('选择保存位置'));await screen.findByText('项目目录');
  expect(store.createProject).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'保存项目'}));await screen.findByText('磁盘空间不足');expect(done).not.toHaveBeenCalled();
+ expect(screen.getByText('访谈.txt')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'保存项目'}));await waitFor(()=>expect(done).toHaveBeenCalledWith(project));expect(store.createProject).toHaveBeenCalledTimes(1);
  const args=vi.mocked(store.importProjectMaterials).mock.calls[1];expect(args[1][0].name).toBe('访谈.txt');expect(args[4]?.[0].metadata?.location).toBe('受访者家中');
+});
+it('keeps the organizer intact when the save-location picker is cancelled',async()=>{
+ const picker=vi.fn().mockRejectedValue(new DOMException('cancel','AbortError'));
+ Object.assign(window,{showDirectoryPicker:picker});
+ const done=vi.fn();
+ render(<ProjectSetup onDone={done} onCancel={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'河东河西'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
+ drop('选择或拖入独立转录稿，不关联音频',[textFile('访谈.txt')]);await screen.findByText('访谈.txt');
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ await waitFor(()=>expect(screen.getByRole('region',{name:'整理项目材料'}).getAttribute('aria-busy')).toBe('false'));
+ expect(picker).toHaveBeenCalledOnce();expect(store.createProject).not.toHaveBeenCalled();expect(done).not.toHaveBeenCalled();
+ expect(screen.getByText('访谈.txt')).toBeTruthy();expect(screen.getAllByText('第一次访谈')).toHaveLength(2);expect(screen.queryByRole('alert')).toBeNull();
 });
 it('rejects a drop onto the wrong target without adding any files',async()=>{
  render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();drop('选择或拖入音频，加入这个场次',[textFile('错放.txt')]);await screen.findByRole('alert');expect(screen.queryByText('错放.txt')).toBeNull();
@@ -92,7 +104,7 @@ it('continues adding interviews from the footer without saving or losing the fir
  render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();
  drop('选择或拖入独立转录稿，不关联音频',[textFile('第一场.txt')]);await screen.findByText('第一场.txt');
  expect(screen.getByText('已整理场次：1')).toBeTruthy();
- fireEvent.click(screen.getAllByRole('button',{name:'新增场次'})[0]);expect(screen.getByRole('button',{name:'完成整理'}).hasAttribute('disabled')).toBe(true);
+ fireEvent.click(screen.getAllByRole('button',{name:'新增场次'})[0]);expect(screen.getByRole('button',{name:'保存项目'}).hasAttribute('disabled')).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'第二次访谈'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});fireEvent.click(screen.getByRole('button',{name:'确认'}));
  expect(screen.getByText('已整理场次：2')).toBeTruthy();expect(store.createProject).not.toHaveBeenCalled();
  fireEvent.click(screen.getByText('第一次访谈'));expect(screen.getByText('第一场.txt')).toBeTruthy();
@@ -120,8 +132,8 @@ it('stores the storage choice per batch without asking again on the save step',a
  await screen.findByRole('img',{name:'引用外部音频，原文件未复制到项目'});await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
  fireEvent.click(screen.getByRole('button',{name:"选择或拖入音频，加入这个场次"}));fireEvent.click(await screen.findByRole('button',{name:'加入音频'}));
  await screen.findByRole('img',{name:"保存项目时会复制音频，原文件保留"});await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
- fireEvent.click(screen.getByRole('button',{name:'完成整理'}));expect(screen.queryByText('音频存放方式')).toBeNull();
- fireEvent.click(screen.getByText('选择保存位置'));await screen.findByText('目录');fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ expect(screen.queryByText('音频存放方式')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
  await waitFor(()=>expect(store.importProjectMaterials).toHaveBeenCalled());
  expect(vi.mocked(store.importProjectMaterials).mock.calls[0][1].map(i=>i.storage)).toEqual(['reference','copy']);
 });
@@ -141,8 +153,6 @@ it('stages dropped audio as a reference using the selected original handle',asyn
  fireEvent.click(screen.getByRole('button',{name:'加入音频'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'音频存放方式'})).toBeNull());
  await screen.findByText('录音.wav');
- fireEvent.click(screen.getByRole('button',{name:'完成整理'}));
- fireEvent.click(screen.getByText('选择保存位置'));await screen.findByText('项目目录');
  fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
  await waitFor(()=>expect(store.importProjectMaterials).toHaveBeenCalled());
  const material=vi.mocked(store.importProjectMaterials).mock.calls[0][1][0];
