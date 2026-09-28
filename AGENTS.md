@@ -6,7 +6,7 @@
 
 正式源码、测试、合成样本、必要资源、依赖锁文件、构建配置及现行产品文档放在这里。私人过程材料放在 `../ripple-work/`；真实项目、音频、转录稿和凭据只留在本机，绝不加入任何 Git 仓库。不要把忽略规则当作已提交内容的保护。
 
-旧的 `transcription-editor` 只作为归档历史，不再作为日常开发目录。日常开发、debug 和发布只使用 `ripple-public`；真实数据只使用 `ripple-local`。
+旧的 `transcription-editor` 只作为归档历史，不再作为日常开发目录。日常开发、debug 和发布只使用 `ripple-public`；真实数据和本机验收材料只使用同级 `ripple-work/local/`，该目录必须保持 Git 忽略状态。
 
 ## 分支、提交与 main
 

@@ -26,7 +26,7 @@ The first usable editor slice includes:
 
 Each interview is stored in its own local folder. The folder can contain the source audio, `metadata.json`, the untouched `original_api_response.json`, the app-normalized `normalized_transcript.json`, and the editable `transcript.json`. Saved demo edits are written to `interviews/demo/transcript.json`. The entire `interviews/` directory is ignored by Git.
 
-To transcribe, create or open an interview, choose an audio file, then click **转录音频**. Paste an ElevenLabs API key once and save it locally. When launched with the project launcher, the key is written to the adjacent local data directory (`ripple-local/.env`) and is never returned to the browser.
+To transcribe, create or open an interview, choose an audio file, then click **转录音频**. Paste an ElevenLabs API key once and save it locally. When launched with the project launcher, the key is written to the adjacent ignored local data directory (`ripple-work/local/.env`) and is never returned to the browser.
 
 ### Keyboard shortcuts
 
@@ -64,7 +64,7 @@ The isolated visual fixture at `/tests/ai-editor.html` uses synthetic data and i
 
 ## Naming and compatibility
 
-The product is named **Ripple**. Startup scripts resolve paths relative to the checkout, while local interviews and settings live in the separate `ripple-local/` directory. Historical reviews retain the former product name. Existing `te-*` storage keys and transcript format identifiers are preserved so saved preferences and interview files remain compatible.
+The product is named **Ripple**. Startup scripts resolve paths relative to the checkout, while local interviews and settings live in the Git-ignored `ripple-work/local/` directory. Historical reviews retain the former product name. Existing `te-*` storage keys and transcript format identifiers are preserved so saved preferences and interview files remain compatible.
 
 ## Project structure
 
@@ -72,7 +72,7 @@ The product is named **Ripple**. Startup scripts resolve paths relative to the c
 - `backend/`: FastAPI localhost service and local file access
 - `docs/`: project documentation
 - `mock-data/`: safe, synthetic transcripts for development
-- `ripple-local/`: local interviews, configuration, credentials, and logs (outside Git)
+- `../ripple-work/local/`: local interviews, configuration, credentials, test samples, and builds (ignored by the private Git repository)
 
 ## Development
 
@@ -87,7 +87,7 @@ Close that app window and both services stop automatically — no orphaned proce
 Run the backend with a separate local data directory:
 
 ```bash
-export RIPPLE_DATA_DIR="/absolute/path/to/ripple-local"
+export RIPPLE_DATA_DIR="/absolute/path/to/ripple-work/local"
 cd backend
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
