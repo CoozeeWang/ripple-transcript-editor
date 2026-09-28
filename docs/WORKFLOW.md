@@ -16,7 +16,9 @@
 
 ## 版本和测试包命名
 
-应用版本以 `desktop/src-tauri/tauri.conf.json` 的 `version` 为准；改版时同步核对 macOS 打包脚本中的 `CFBundleShortVersionString`，避免包内外版本不一致。单个 Issue 的提交不会自动提升应用版本。每个测试包用构建提交区分，并在文件名写明版本、平台和架构：`Ripple-<版本>-<提交短号>-<平台>-<架构>.<扩展名>`，例如 `Ripple-0.1.6-a1b2c3d-macOS-arm64.zip`。包内应用仍可叫 `Ripple.app`；交付记录写明完整提交、所含 Issue、包的校验值及实测安装版位置。正式发布的版本号、标签与安装包在发布准备阶段一致核对，不把测试包当成已发布版本。
+修 Issue、制作测试包、安装到自己的电脑继续试用，都属于内部构建。沿用当前应用版本号，用构建标识区分，不为每个 Issue 或内部安装重新定应用版本。应用版本以 `desktop/src-tauri/tauri.conf.json` 的 `version` 为准；改版时同步核对 macOS 打包脚本中的 `CFBundleShortVersionString`。测试包文件名写明应用版本、构建提交、平台和架构：`Ripple-<版本>-<提交短号>-<平台>-<架构>.<扩展名>`，例如 `Ripple-0.1.6-a1b2c3d-macOS-arm64.zip`。交付记录还需写明包内构建号、完整提交、所含 Issue、校验值及实际安装位置。目前 macOS 脚本的包内 `CFBundleVersion` 固定为 `7`，尚不能区分新旧内部安装包；下次制作新测试包前需使它随构建更新，并核对包内实际值。
+
+准备在 GitHub Releases 提供给其他人下载的 Beta 时，先提出新应用版本号，列明已修 Issue、macOS／Windows 与中文／英文各自的实测和待验范围，核对标签、包名和包内版本，再交由维护者决定是否发布。内部测试包或本机安装不会自动成为公开 Beta，也不触发发布。
 
 ## 按任务阅读现行规则
 
