@@ -6,4 +6,6 @@
 - [诊断说明](diagnostics.md)
 - [引擎设置](engine-presets.md)
 - [文案维护规则](i18n/AUTHORING.md)
+- [Ripple Stylebook](STYLEBOOK.md)：现行界面与交互规则；历史审阅和验收证据留在私有工作区。
+- [开发与仓库工作方式](WORKFLOW.md)：分支、验证、审阅与交付。
 - `acceptance-kit-2026-09-22/` 中保留被正式测试直接读取的合成样本。

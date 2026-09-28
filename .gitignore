@@ -62,3 +62,6 @@ desktop/dist/
 # Local acceptance recordings and interview manuscripts.
 docs/eval_09221330/
 frontend/tests/*.local.*
+
+# GSD plans and project state live in the private sibling workspace.
+.planning

@@ -119,4 +119,6 @@ Editing the title automatically updates the audio filename, its `.transcript` di
 
 See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance.
 
+For contributors, [development workflow](docs/WORKFLOW.md) defines branches, checks, review and delivery. [Ripple Stylebook](docs/STYLEBOOK.md) records current interface rules; read the relevant sections when changing visible behavior. Private planning and acceptance records remain outside this public source repository.
+
 Word timing in editable versions keeps provenance back to the model's original transcript. Replacements inherit the replaced source range; insertions use a separate approximate anchor. Comparison selection does not reassign unchanged text to a different source. Segments with replacement, approximate, or unresolved timing show “含近似定位”. This preserves existing audio references; it does not perform acoustic forced alignment. Origin metadata is saved locally and omitted from JSON exports.
