@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { ProjectBoard } from './ProjectBoard';
 import * as local from '../localStore';
 import type { OpenProject } from '../lib/projectStore';
@@ -78,6 +79,39 @@ it('shows the session count beside the session list heading',()=>{
  renderBoard(project);
  const sidebar=screen.getByRole('complementary',{name:'场次'});
  expect(sidebar.querySelector('.panel-heading__count')?.textContent).toBe('3');
+});
+
+it('keeps session focus and selection together when clicking, tabbing, and using arrow keys',()=>{
+ const project=boardProject();
+ const save=vi.fn();
+ function Board(){
+  const [selected,setSelected]=useState(project.data.interviews[0].id);
+  return <ProjectBoard project={project} selected={selected} busy={false} select={setSelected} save={save} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>;
+ }
+ const view=render(<Board/>);
+ const rows=Array.from(view.container.querySelectorAll<HTMLElement>('.setup-session-select'));
+ fireEvent.click(rows[1]);
+ expect(document.activeElement).toBe(rows[1]);
+ expect(rows[1].getAttribute('aria-pressed')).toBe('true');
+ expect(view.container.querySelector('.setup-canvas h2')?.textContent).toBe('2026-09-11');
+ fireEvent.keyDown(rows[1],{key:'ArrowDown'});
+ expect(document.activeElement).toBe(rows[2]);
+ expect(rows[2].getAttribute('aria-pressed')).toBe('true');
+ expect(view.container.querySelector('.setup-canvas h2')?.textContent).toBe('2026-09-15');
+ fireEvent.keyDown(rows[2],{key:'ArrowDown'});
+ expect(document.activeElement).toBe(rows[2]);
+ act(()=>rows[0].focus());
+ expect(rows[0].getAttribute('aria-pressed')).toBe('true');
+ const title=rows[0].querySelector<HTMLElement>('.inline-edit')!;
+ act(()=>title.focus());
+ fireEvent.click(title);
+ expect(document.activeElement).toBe(title);
+ fireEvent.keyDown(title,{key:'ArrowDown'});
+ expect(document.activeElement).toBe(title);
+ expect(rows[0].getAttribute('aria-pressed')).toBe('true');
+ fireEvent.keyDown(rows[0],{key:'ArrowDown',ctrlKey:true});
+ expect(document.activeElement).toBe(title);
+ expect(save).not.toHaveBeenCalled();
 });
 
 it('reorders saved-project sessions with the Option+Arrow shortcut',()=>{

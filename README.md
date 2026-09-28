@@ -34,6 +34,7 @@ To transcribe, create or open an interview, choose an audio file, then click **�
 | --- | --- |
 | `Space` | Play / pause when focus is outside an editor field |
 | `↑` / `↓` | Select previous / next segment |
+| `↑` / `↓` with a project session row focused | Focus and select the previous / next session |
 | `Cmd + F` | Open find and replace |
 | `Cmd + Enter` | Split at the text cursor |
 | `Cmd + Z` | Undo |

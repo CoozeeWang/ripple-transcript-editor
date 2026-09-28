@@ -109,6 +109,27 @@ it('continues adding interviews from the footer without saving or losing the fir
  expect(screen.getByText('已整理场次：2')).toBeTruthy();expect(store.createProject).not.toHaveBeenCalled();
  fireEvent.click(screen.getByText('第一次访谈'));expect(screen.getByText('第一场.txt')).toBeTruthy();
 });
+it('uses arrow keys to switch prepared sessions while keeping focus and the detail pane aligned',()=>{
+ render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);
+ scene();
+ fireEvent.click(screen.getAllByRole('button',{name:'新增场次'})[0]);
+ fireEvent.click(screen.getByRole('button',{name:'场次名称'}));
+ fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'第二次访谈'}});
+ fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});
+ fireEvent.click(screen.getByRole('button',{name:'确认'}));
+ const rows=Array.from(document.querySelectorAll<HTMLElement>('.setup-session-select'));
+ fireEvent.click(rows[0]);
+ expect(document.activeElement).toBe(rows[0]);
+ fireEvent.keyDown(rows[0],{key:'ArrowDown'});
+ expect(document.activeElement).toBe(rows[1]);
+ expect(rows[1].getAttribute('aria-pressed')).toBe('true');
+ expect(document.querySelector('.setup-canvas h2')?.textContent).toBe('第二次访谈');
+ fireEvent.keyDown(rows[1],{key:'ArrowUp'});
+ expect(document.activeElement).toBe(rows[0]);
+ expect(document.querySelector('.setup-canvas h2')?.textContent).toBe('第一次访谈');
+ fireEvent.keyDown(rows[0],{key:'ArrowUp'});
+ expect(document.activeElement).toBe(rows[0]);
+});
 it('asks before staging audio and cancellation leaves the session unchanged',async()=>{
  render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();
  drop('选择或拖入音频，加入这个场次',[new File(['a'],'取消.wav')]);
