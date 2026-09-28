@@ -28,8 +28,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>ripple-desktop</string>
   <key>CFBundleIconFile</key><string>Ripple-v015.icns</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleVersion</key><string>6</string>
-  <key>CFBundleShortVersionString</key><string>0.1.5</string>
+  <key>CFBundleVersion</key><string>7</string>
+  <key>CFBundleShortVersionString</key><string>0.1.6</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
