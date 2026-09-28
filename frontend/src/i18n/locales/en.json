@@ -271,8 +271,7 @@
     "m0372": "Dragged files can’t retain long-term access, so they can only be copied. To link to the originals, cancel and click the dashed box to select the files, then choose “Link to original files”.",
     "m0373": "Cancel",
     "m0374": "Add audio",
-    "reselect": "Select originals and link",
-    "reselectHint": "Directly dropped audio can only be copied. To link without copying, click “Select originals and link” and select the original audio files you just dropped.",
+    "reselectHint": "After dropping audio, choosing “Link to original files” opens a file window. Select the original audio files again; once verified, Ripple links them without copying.",
     "checking": "Checking that the selected audio matches the dropped files…"
   },
   "AudioStorageIcon": {

@@ -6,7 +6,7 @@ import * as store from '../lib/projectStore';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 vi.mock('../lib/audioReferenceSelection',()=>({selectAudioReferences:vi.fn()}));
 vi.mock('../lib/projectStore', async original=>({...await original<typeof store>(),createProject:vi.fn(),importProjectMaterials:vi.fn()}));
-beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute("open", "");};});
+beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute("open", "");};delete (window as unknown as {showOpenFilePicker?: unknown}).showOpenFilePicker;});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 function scene(){fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'第一次访谈'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});fireEvent.change(screen.getByLabelText('地点（选填）'),{target:{value:'受访者家中'}});fireEvent.click(screen.getByText('确认'));}
 function drop(label:string,files:File[]){fireEvent.drop(screen.getByRole('button',{name:label}),{dataTransfer:{types:['Files'],items:files.map(file=>({kind:'file',getAsFile:()=>file})),files}});}
@@ -136,7 +136,9 @@ it('stages dropped audio as a reference using the selected original handle',asyn
  render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);
  fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'引用验收'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
  drop('选择或拖入音频，加入这个场次',[new File(['audio'],'录音.wav')]);
- fireEvent.click(await screen.findByRole('button',{name:'选择原文件并引用'}));
+ fireEvent.click(await screen.findByRole('radio',{name:/引用原文件/}));
+ await waitFor(()=>expect((screen.getByRole('radio',{name:/引用原文件/}) as HTMLInputElement).checked).toBe(true));
+ fireEvent.click(screen.getByRole('button',{name:'加入音频'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'音频存放方式'})).toBeNull());
  await screen.findByText('录音.wav');
  fireEvent.click(screen.getByRole('button',{name:'完成整理'}));
