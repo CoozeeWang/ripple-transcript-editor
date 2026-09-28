@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isOwnedService, isOwnedChrome, backendNeedsUpdate } from './launcher.mjs';
+import path from 'node:path';
+import { isOwnedService, isOwnedChrome, backendNeedsUpdate, defaultDataDir } from './launcher.mjs';
+
+test('uses the private workspace when present and stays usable in a standalone clone', () => {
+  const root = path.join('workspace', 'ripple-public');
+  const privateData = path.join(root, '..', 'ripple-work', 'local');
+  assert.equal(defaultDataDir(root, candidate => candidate === privateData), privateData);
+  assert.equal(defaultDataDir(root, () => false), path.join(root, '..', 'ripple-local'));
+});
 
 test('startup refreshes old backends without treating storage failures as old versions', async () => {
   assert.equal(await backendNeedsUpdate(async () => ({ status: 404 })), true);
