@@ -4,7 +4,7 @@ import { msg } from './i18n';
 import { chooseDirectory } from './lib/projectPreferences';
 import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable } from './lib/desktopFs';
 import { readRecoverableManifest, writeRecoverableManifest } from "./lib/manifestRecovery";
-import { stripStubFirstFrame } from "./lib/adts";
+import { prepareAudioForPlayback } from "./lib/adts";
 import { restoreTranscriptOrigins, seedOriginalOrigins } from "./lib/transcriptOrigins";
 import type {
   InterviewMetadata,
@@ -619,16 +619,13 @@ export async function listAudioFiles(dir: FileSystemDirectoryHandle): Promise<Au
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * 给播放器用的地址。只在这里做一层垫片：裸 ADTS .aac 常带一个浏览器解不开的首帧桩帧
- * （见 lib/adts.ts），剥掉它再交给 <audio>。转录不经过这里，拿到的仍是原始文件。
- */
+/** 给播放器用的地址；保存和转录继续使用原文件句柄。 */
 export async function readAudioUrl(dir: FileSystemDirectoryHandle, name: string): Promise<string> {
   const fileHandle = await (dir as unknown as {
     getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
   }).getFileHandle(name);
   const file = await fileHandle.getFile();
-  return URL.createObjectURL(await stripStubFirstFrame(file));
+  return URL.createObjectURL(await prepareAudioForPlayback(file, name));
 }
 
 /**

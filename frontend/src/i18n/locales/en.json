@@ -1,4 +1,7 @@
 {
+  "audioPlayback": {
+    "unsupportedAdts": "“{{v0}}” uses AAC encoding or frames that Ripple cannot play yet. The original file was not changed. Check it in another player, then convert it to m4a or mp3 and relink the audio."
+  },
   "CredentialManager": {
     "m0056": "Choose…",
     "m0057": "Enter manually…",
