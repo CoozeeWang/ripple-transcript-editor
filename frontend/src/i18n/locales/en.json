@@ -4,6 +4,7 @@
     "copying": "Copying audio into the project…",
     "verifying": "Verifying the audio copy…",
     "saving": "Saving the project…",
+    "cancel": "Cancel import",
     "audioDone": "Audio added to the project.",
     "materialsDone": "Materials saved to the project."
   },

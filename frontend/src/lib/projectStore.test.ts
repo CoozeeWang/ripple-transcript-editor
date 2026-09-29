@@ -288,6 +288,42 @@ it('reports the copy, verification, and save stages while keeping the source aud
   expect(saved.data.interviews[0].recordings[0].storage).toBe('copy');
   expect(await source.files.get('sample.wav')!.text()).toBe('synthetic audio');
 });
+it('cancels an in-flight audio copy, removes the unpublished file, and permits a retry', async () => {
+  const source = directory('source');
+  const file = new File(['synthetic audio'], 'sample.wav');
+  source.files.set('sample.wav', file);
+  const materials = await prepareMaterials([{ handle: await source.handle.getFileHandle('sample.wav'), group: 'Sample session' }]);
+  const project = await createProject(directory().handle, 'Sample project');
+  const controller = new AbortController();
+  let reachedCopy!: () => void;
+  const copying = new Promise<void>(resolve => { reachedCopy = resolve; });
+  const sourceStream = file.stream.bind(file);
+  vi.spyOn(file, 'stream').mockImplementation(() => new ReadableStream({
+    async pull(stream) {
+      reachedCopy();
+      await new Promise<void>(() => {});
+      stream.enqueue(new Uint8Array([1]));
+    },
+  }) as ReturnType<File['stream']>);
+  const attempt = importProjectMaterials(project, materials, 'copy', undefined, undefined, undefined, controller.signal);
+  await copying;
+  controller.abort();
+  await expect(attempt).rejects.toMatchObject({ name: 'AbortError' });
+  expect((await openProject(project.directory)).data.interviews).toEqual([]);
+  const interviewRoot = await project.directory.getDirectoryHandle('interviews');
+  const ids = [];
+  for await (const [id] of (interviewRoot as FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, unknown]> }).entries()) ids.push(id);
+  for (const id of ids) {
+    const media = await (await interviewRoot.getDirectoryHandle(id)).getDirectoryHandle('media');
+    const files = [];
+    for await (const [name] of (media as FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, unknown]> }).entries()) files.push(name);
+    expect(files).toEqual([]);
+  }
+  vi.mocked(file.stream).mockImplementation(sourceStream);
+  const saved = await importProjectMaterials(project, materials, 'copy');
+  expect(saved.data.interviews[0].recordings).toHaveLength(1);
+  expect(await source.files.get('sample.wav')!.text()).toBe('synthetic audio');
+});
 it('keeps the existing project unchanged when a material batch cannot be published', async () => {
   const source=directory(); source.files.set('访谈.txt',new File(['完整正文'],'访谈.txt'));
   const materials=await prepareMaterials([{handle:await source.handle.getFileHandle('访谈.txt')}]);

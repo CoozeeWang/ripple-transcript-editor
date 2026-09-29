@@ -159,6 +159,30 @@ it('stores the storage choice per batch without asking again on the save step',a
  expect(vi.mocked(store.importProjectMaterials).mock.calls[0][1].map(i=>i.storage)).toEqual(['reference','copy']);
 });
 
+it('cancels copying from the organizer and retains the selected audio for retry',async()=>{
+ const project={data:{id:'p',title:'测试',interviews:[],revision:0},directory:{}} as unknown as store.OpenProject;
+ vi.mocked(store.createProject).mockResolvedValue(project);
+ vi.mocked(store.importProjectMaterials).mockImplementationOnce(async(_project,_materials,_storage,_id,_sessions,onStage,signal)=>{
+   onStage?.('copying');
+   return new Promise<store.OpenProject>((_resolve,reject)=>signal?.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError'))));
+ });
+ Object.assign(window,{showDirectoryPicker:vi.fn(async()=>({name:'项目目录'}))});
+ const done=vi.fn();
+ render(<ProjectSetup onDone={done} onCancel={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'测试'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
+ drop('选择或拖入音频，加入这个场次',[new File(['audio'],'sample.wav')]);
+ fireEvent.click(await screen.findByRole('button',{name:'加入音频'}));
+ await screen.findByText('sample.wav');
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ await screen.findByText('正在复制音频到项目…');
+ fireEvent.click(screen.getByRole('button',{name:'取消导入'}));
+ await waitFor(()=>expect(screen.getByRole('region',{name:'整理项目材料'}).getAttribute('aria-busy')).toBe('false'));
+ expect(screen.getByText('sample.wav')).toBeTruthy();expect(done).not.toHaveBeenCalled();
+ vi.mocked(store.importProjectMaterials).mockResolvedValueOnce(project);
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ await waitFor(()=>expect(done).toHaveBeenCalledWith(project));
+});
+
 it('stages dropped audio as a reference using the selected original handle',async()=>{
  const original={kind:'file',name:'录音.wav',getFile:async()=>new File(['audio'],'录音.wav')} as FileSystemFileHandle;
  vi.mocked(selectAudioReferences).mockResolvedValue([original]);
