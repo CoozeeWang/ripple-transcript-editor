@@ -4,6 +4,7 @@ import { flushEditorDrafts, hasEditorDrafts } from "../lib/editorDrafts";
 import { useLayoutEffect, useEffect, useRef, useState } from "react";
 import type {
   InterviewMetadata,
+  Speaker,
   Transcript,
   TranscriptModel,
 } from "../types";
@@ -25,6 +26,7 @@ export interface UsePersistenceDeps {
   saveStatus: SaveStatus;
   setSaveStatus: (s: SaveStatus) => void;
   setShuttingDown: (b: boolean) => void;
+  saveAudioDraft?: (draft: { metadata: InterviewMetadata; speakers: Speaker[] }) => Promise<void>;
 }
 
 export function usePersistence(deps: UsePersistenceDeps) {
@@ -44,6 +46,11 @@ export function usePersistence(deps: UsePersistenceDeps) {
   const writing = useRef<Promise<void>>(Promise.resolve());
   const snapshot = (): Snapshot | null => {
     const d = latest.current;
+    if (!d.initialLoadRef.current && !d.hasLoadedTranscript && d.saveAudioDraft &&
+        d.dirHandleRef.current && d.selectedAudio && d.transcript && d.metadata) {
+      return { dir: d.dirHandleRef.current, audio: d.selectedAudio, model: "", edit: "draft",
+        data: { kind: "te-edited", audio: d.selectedAudio, metadata: d.metadata, transcript: d.transcript } };
+    }
     const edit = d.viewingOriginal ? "original" : d.models.find(m => m.id === d.activeModelId)?.activeEditId;
     if (d.initialLoadRef.current || !d.hasLoadedTranscript ||
         !d.dirHandleRef.current || !d.selectedAudio || !d.transcript || !d.metadata || !d.activeModelId || !edit) return null;
@@ -60,8 +67,10 @@ export function usePersistence(deps: UsePersistenceDeps) {
         const unchanged = saved && sameDocument(task, saved) &&
           task.data.transcript === saved.data.transcript && task.data.metadata === saved.data.metadata;
         if (!unchanged) {
-          if (task.edit === "original") await saveInterviewDetails(task.dir,task.audio,task.data.metadata);
+          if (task.edit === "draft") await latest.current.saveAudioDraft?.({ metadata: task.data.metadata, speakers: task.data.transcript.speakers });
+          else if (task.edit === "original") await saveInterviewDetails(task.dir,task.audio,task.data.metadata);
           else await saveActiveEdit(task.dir, task.audio, task.model, task.edit, task.data);
+          if (task.edit !== "draft") await latest.current.saveAudioDraft?.({ metadata: task.data.metadata, speakers: task.data.transcript.speakers });
           lastWritten.current = task;
         }
         if (pending.current === task) {

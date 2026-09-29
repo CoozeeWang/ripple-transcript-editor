@@ -8,6 +8,7 @@ import { stripStubFirstFrame } from "./lib/adts";
 import { restoreTranscriptOrigins, seedOriginalOrigins } from "./lib/transcriptOrigins";
 import type {
   InterviewMetadata,
+  Speaker,
   Transcript,
   TranscriptEdit,
   TranscriptModel,
@@ -958,6 +959,14 @@ async function withOriginalOrigins(tDir:FileSystemDirectoryHandle, model:Transcr
 }
 
 /** 读取当前激活模型的激活修改稿；无转录时返回 null。 */
+function withSharedSpeakers(transcript: Transcript, shared?: Speaker[], matchByPosition = false): Transcript {
+  if (!shared?.length) return transcript;
+  return { ...transcript, speakers: transcript.speakers.map((speaker, index) => {
+    const detail = shared.find(item => item.id === speaker.id) ?? (matchByPosition ? shared[index] : undefined);
+    return detail ? { ...speaker, name: detail.name, color: detail.color, colorIndex: detail.colorIndex } : speaker;
+  }) };
+}
+
 async function readEditedUnlocked(dir: FileSystemDirectoryHandle, name: string): Promise<EditedFile | null> {
   const manifest = await readManifestUnlocked(dir, name);
   if (!manifest) return null;
@@ -969,9 +978,9 @@ async function readEditedUnlocked(dir: FileSystemDirectoryHandle, name: string):
   if (!tDir) return null;
   const raw = await readFileText(tDir, edit?.file ?? model.original!);
   if (!raw) return null;
-  if (!edit) return { kind: "te-edited", audio: name, metadata: { ...defaultMetadata(stemOf(name)), ...manifest.interviewDetails, title: manifest.title ?? stemOf(name) }, transcript: seedOriginalOrigins(JSON.parse(raw).transcript,model.id) };
+  if (!edit) return { kind: "te-edited", audio: name, metadata: { ...defaultMetadata(stemOf(name)), ...manifest.interviewDetails, title: manifest.title ?? stemOf(name) }, transcript: withSharedSpeakers(seedOriginalOrigins(JSON.parse(raw).transcript,model.id), manifest.sharedSpeakers, model.id === manifest.sharedSpeakerModelId) };
   const parsed = parseEdited(raw, name);
-  if (parsed) parsed.transcript = await withOriginalOrigins(tDir,model,parsed.transcript);
+  if (parsed) parsed.transcript = withSharedSpeakers(await withOriginalOrigins(tDir,model,parsed.transcript), manifest.sharedSpeakers, model.id === manifest.sharedSpeakerModelId);
   if (parsed) parsed.metadata = {...parsed.metadata, ...manifest.interviewDetails, title:manifest.title ?? parsed.metadata.title};
   return parsed;
 }
@@ -993,7 +1002,7 @@ async function readModelEditUnlocked(
   if (!raw) return null;
   const parsed=parseEdited(raw,name);
   if(parsed){
-    parsed.transcript=await withOriginalOrigins(tDir,model,parsed.transcript);
+    parsed.transcript=withSharedSpeakers(await withOriginalOrigins(tDir,model,parsed.transcript),manifest?.sharedSpeakers,model.id===manifest?.sharedSpeakerModelId);
     parsed.metadata={...parsed.metadata,...manifest?.interviewDetails,title:manifest?.title ?? parsed.metadata.title};
   }
   return parsed;
@@ -1015,7 +1024,7 @@ async function readModelOriginalUnlocked(
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { transcript?: Transcript };
-    return parsed.transcript ? { transcript: seedOriginalOrigins(parsed.transcript,model.id) } : null;
+    return parsed.transcript ? { transcript: withSharedSpeakers(seedOriginalOrigins(parsed.transcript,model.id),manifest?.sharedSpeakers,model.id===manifest?.sharedSpeakerModelId) } : null;
   } catch {
     return null;
   }
@@ -1057,6 +1066,7 @@ async function createModelUnlocked(
     sourceKind?: "transcription" | "import";
     sourceName?: string;
     metadata?: InterviewMetadata;
+    sharedSpeakers?: Speaker[];
     setActive?: boolean;
   },
 ): Promise<{ model: TranscriptModel; manifest: TranscriptManifest; edited: EditedFile }> {
@@ -1077,7 +1087,7 @@ async function createModelUnlocked(
     kind: "te-edited",
     audio: name,
     metadata: { ...defaultMetadata(stem), ...params.metadata, ...existing.interviewDetails, title: existing.title ?? params.metadata?.title ?? stem },
-    transcript: params.original ? restoreTranscriptOrigins({...params.transcript,segments:params.transcript.segments.map(s=>({...s,words:s.words?.map(w=>({...w,timing:undefined,origins:undefined}))}))},params.original,id) : params.transcript,
+    transcript: withSharedSpeakers(params.original ? restoreTranscriptOrigins({...params.transcript,segments:params.transcript.segments.map(s=>({...s,words:s.words?.map(w=>({...w,timing:undefined,origins:undefined}))}))},params.original,id) : params.transcript, params.sharedSpeakers ?? existing.sharedSpeakers, Boolean(params.sharedSpeakers?.length)),
   };
   const editFile = params.editLabel ? transcriptFilename(existing.title ?? stem, requireVersionName(params.editLabel)) : `${id}-e1.json`;
   if (params.editLabel && (await hasSidecar(tDir,editFile) || existing.models.some(m=>m.edits.some(e=>e.label===params.editLabel)))) throw new Error(msg('localStore.m1487'));
@@ -1109,6 +1119,7 @@ async function createModelUnlocked(
   const newManifest: TranscriptManifest = {
     ...existing,
     title: existing.title ?? params.metadata?.title ?? stem,
+    ...(params.sharedSpeakers?.length ? { sharedSpeakers: params.sharedSpeakers, sharedSpeakerModelId: id } : {}),
     ...(params.metadata && !existing.interviewDetails ? { interviewDetails: pickInterviewDetails(params.metadata) } : {}),
     audio: name,
     audioFingerprint: existing.audioFingerprint ?? (await safeAudioFingerprint(dir, name)),
@@ -1147,7 +1158,7 @@ async function createEditUnlocked(
   const parsed = JSON.parse(raw) as { transcript?: Transcript; metadata?: InterviewMetadata };
   const rawTranscript = parsed.transcript;
   if (!rawTranscript) throw new Error(msg('localStore.m1496'));
-  const srcTranscript=await withOriginalOrigins(tDir,model,rawTranscript);
+  const srcTranscript=withSharedSpeakers(await withOriginalOrigins(tDir,model,rawTranscript),manifest.sharedSpeakers,model.id===manifest.sharedSpeakerModelId);
   if (params.reviewed && JSON.stringify(srcTranscript) !== JSON.stringify(await withOriginalOrigins(tDir,model,params.reviewed.baseline))) {
     throw new Error(msg('localStore.m1497'));
   }
@@ -1157,6 +1168,7 @@ async function createEditUnlocked(
     const result = await createModelUnlocked(dir, name, {
       engine: model.engine, sourceKind: model.sourceKind, sourceName: model.sourceName,
       transcript: params.reviewed?.transcript ?? srcTranscript,
+      sharedSpeakers: manifest.sharedSpeakers ? srcTranscript.speakers : undefined,
       metadata: { ...(parsed.metadata ?? defaultMetadata(stem)), ...manifest.interviewDetails, ...params.metadata },
       label: params.reviewed?.label ?? params.label ?? `${model.label || model.sourceName || model.engine} 副本`,
       setActive: params.setActive,
@@ -1210,7 +1222,7 @@ async function createEditUnlocked(
 }
 
 function pickInterviewDetails(metadata: InterviewMetadata): NonNullable<TranscriptManifest["interviewDetails"]> {
-  return {recorded_at:metadata.recorded_at,location:metadata.location,topics:metadata.topics,notes:metadata.notes};
+  return {recorded_at:metadata.recorded_at,location:metadata.location,participants:metadata.participants,topics:metadata.topics,notes:metadata.notes};
 }
 
 /** Original mode saves only interview details; the engine output stays byte-for-byte intact. */
@@ -1244,7 +1256,7 @@ async function saveActiveEditUnlocked(
       e.id === editId ? { ...e, updated_at: new Date().toISOString() } : e,
     );
     const newModels = manifest.models.map((m) => (m.id === modelId ? { ...m, edits: newEdits } : m));
-    await writeFileJson(tDir, MANIFEST_NAME, { ...manifest, interviewDetails: pickInterviewDetails(data.metadata), models: newModels });
+    await writeFileJson(tDir, MANIFEST_NAME, { ...manifest, interviewDetails: pickInterviewDetails(data.metadata), sharedSpeakers: data.transcript.speakers, sharedSpeakerModelId: modelId, models: newModels });
   }
 }
 

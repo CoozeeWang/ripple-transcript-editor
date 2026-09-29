@@ -25,6 +25,7 @@ import { TranscriptionDialog } from "./TranscriptionDialog";
 import type {
   Highlight,
   InterviewMetadata,
+  Speaker,
   Segment,
   Transcript,
   TranscriptManifest,
@@ -89,6 +90,8 @@ export interface ProjectEditorProps {
   projectLabel?: string;
   interviewTitle?: string;
   interviewMetadata?: InterviewMetadata;
+  recordingDraft?: { metadata: InterviewMetadata; speakers: Speaker[] };
+  saveRecordingDraft?: (draft: { metadata: InterviewMetadata; speakers: Speaker[] }) => Promise<void>;
   onPatchInterview?: (patch: Partial<InterviewMetadata>) => Promise<void>;
   recordingLabel?: string;
   onRenameInterview?: (title: string) => Promise<void>;
@@ -302,8 +305,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setActualDuration(0);
       if (!edited || !manifest) {
         setViewingOriginal(false);
-        setMetadata(projectProps.interviewMetadata ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name)));
-        reset({ audio: { filename: name, duration: 0 }, speakers: [], segments: [] });
+        setMetadata(projectProps.recordingDraft?.metadata ?? projectProps.interviewMetadata ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name)));
+        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] });
         setHasLoadedTranscript(false);
         applyManifestRef.current(null);
         setProcessStatus("ready");
@@ -444,6 +447,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     cancelTranscription,
   } = useTranscription({
     initialMetadata: projectProps.projectDirectory ? metadata ?? undefined : undefined,
+    initialSpeakers: !hasLoadedTranscript ? transcript?.speakers : undefined,
     beforeChange: () => beforeChangeRef.current(),
     contextKey: transcribeContextKey,
     setViewingOriginal,
@@ -520,6 +524,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     saveStatus,
     setSaveStatus,
     setShuttingDown,
+    saveAudioDraft: projectProps.saveRecordingDraft,
   });
 
 
@@ -748,6 +753,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
 
   const renameCurrentAudio = async (title = metadata?.title ?? "") => {
+    if (!hasLoadedTranscript && projectProps.saveRecordingDraft) {
+      void patchMetadata({ title: title.trim() });
+      return;
+    }
     const dir = dirHandleRef.current;
     if (renamingRef.current || versionBusy || saveStatus === "loading" || !dir || !selectedAudio || !metadata || !transcript) return;
     const newStem = sanitizeForFilename(title);
@@ -762,6 +771,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if (projectProps.projectDirectory) {
         await renameAudio(dir, selectedAudio, stemOf(selectedAudio), title.trim());
         setMetadata(current => current ? { ...current, title: title.trim() } : current);
+        await projectProps.saveRecordingDraft?.({ metadata: { ...metadata, title: title.trim() }, speakers: savedTranscript.speakers });
         const manifest = await readManifest(dir, selectedAudio);
         if (manifest) applyManifest(manifest);
         setSaveStatus("saved");
