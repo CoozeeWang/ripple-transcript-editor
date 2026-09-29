@@ -1,4 +1,12 @@
 {
+  "projectImport": {
+    "preparing": "正在准备导入音频…",
+    "copying": "正在复制音频到项目…",
+    "verifying": "正在校验音频副本…",
+    "saving": "正在保存项目…",
+    "audioDone": "音频已加入项目。",
+    "materialsDone": "材料已保存到项目。"
+  },
   "CredentialManager": {
     "m0056": "请选择…",
     "m0057": "手动填写…",

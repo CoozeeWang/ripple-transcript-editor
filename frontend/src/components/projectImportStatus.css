@@ -1,0 +1,10 @@
+.project-import-status {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-warm);
+  color: var(--color-text);
+  font: 500 13px/1.5 var(--font-sans);
+}

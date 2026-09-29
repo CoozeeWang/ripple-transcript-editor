@@ -457,8 +457,10 @@ export async function importExistingManuscript(project: OpenProject, interviewId
   } finally { release(); }
 }
 
+export type ProjectImportStage = 'preparing' | 'copying' | 'verifying' | 'saving';
+
 /** Stage all selected materials; publish once so a failure cannot expose half an import. */
-export async function importProjectMaterials(project: OpenProject, materials: ImportMaterial[], storage: 'copy' | 'reference', existingInterviewId?: string, sessions?: ProjectInterview[]): Promise<OpenProject> {
+export async function importProjectMaterials(project: OpenProject, materials: ImportMaterial[], storage: 'copy' | 'reference', existingInterviewId?: string, sessions?: ProjectInterview[], onStage?: (stage: ProjectImportStage) => void): Promise<OpenProject> {
   if (!materials.length && !sessions?.length) throw new Error(msg('projectStore.m1438'));
   const release = await acquireProjectEditor(project.data.id);
   try {
@@ -510,11 +512,13 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       const id = crypto.randomUUID();
       const file = item.kind === 'audio' ? await item.handle.getFile() : undefined;
       const ext = file?.name.split('.').pop()?.toLowerCase() ?? 'wav';
+      if (file && (item.storage ?? storage) === 'copy') onStage?.('copying');
       const recording: ProjectRecording = { id, name: item.name, file: `${id}.${ext}`, storage: file ? item.storage ?? storage : 'none', fingerprint: file ? await mediaFingerprint(file) : '' };
       if (file && recording.storage === 'copy') {
         const media = await directory.getDirectoryHandle('media', { create: true });
         const target = await media.getFileHandle(recording.file, { create: true });
         await file.stream().pipeTo(await target.createWritable());
+        onStage?.('verifying');
         if (await mediaFingerprint(await target.getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1447'));
       } else if (file) await handleValue(`media:${project.data.id}:${id}`, item.handle);
       interview.recordings.push(recording); records.set(item.id, recording);
@@ -528,6 +532,7 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       await createModel(view, recording.file, { engine:item.ripple?.engine||'imported',sourceKind:'import',sourceName:item.name,transcript,original:transcript,originalOnly:!!item.isOriginal,designatedOriginal:!!item.isOriginal,metadata:{...defaultMetadata(stemOf(item.name)),recorded_at:interview.metadata?.recorded_at??null,location:interview.metadata?.location??'',...item.ripple?.metadata} });
     }
     const updated = new Map([...groups.values()].map(i => [i.id, i]));
+    onStage?.('saving');
     return await saveProject(project, { ...project.data, interviews: [
       ...project.data.interviews.map(i => updated.get(i.id) ?? i),
       ...[...updated.values()].filter(i => !project.data.interviews.some(old => old.id === i.id)),
