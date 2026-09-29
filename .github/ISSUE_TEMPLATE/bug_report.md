@@ -1,49 +1,49 @@
 ---
-name: Bug report
-about: Report a reproducible problem
+name: 问题反馈
+about: 记录使用中遇到的问题
 title: ""
 labels: "bug"
 assignees: ""
 ---
 
-## Problem
+## 遇到了什么问题？
 
-Describe what happened in one sentence.
+用一句话说明发生了什么。
 
-## Environment
+## 使用环境
 
-- Ripple app version:
-- Build number or commit (if known):
-- Usage: Browser or Ripple App
-- Interface language: Chinese or English
-- Operating system:
+- Ripple 应用版本（如知道）：
+- 构建号或提交号（如知道）：
+- 使用方式：浏览器／Ripple 安装版
+- 界面语言：中文／英文
+- 系统：macOS／Windows，版本如知道可填写
 
-## Steps to reproduce
+## 怎样重现？
 
 1. 
 2. 
 3. 
 
-## Expected result
+## 原本希望怎样？
 
-What should have happened?
+说明预期结果。
 
-## Actual result
+## 实际发生了什么？
 
-What actually happened?
+说明实际结果；如果偶尔才出现，也请写明。
 
-## Impact
+## 影响
 
-For example: import, save, or export failed; incorrect data; difficult-to-use interface.
+例如：无法导入、保存或导出，数据不正确，或操作不方便。
 
-## Evidence
+## 可提供的线索
 
-Attach redacted screenshots or logs if helpful.
+如有帮助，可附已遮盖私人信息的截图或日志。
 
-Do not upload real audio, real transcripts, passwords, API keys, credentials, or screenshots containing private paths.
+不要上传真实音频、文稿、密码、API 密钥、凭据或包含私人路径的截图。需要用真实材料复现时，先保留在私人工作区。
 
-## Verification after the fix
+## 修复后的进度（处理者填写）
 
-- [ ] Fixed
-- [ ] Retested
-- [ ] Merged into `main`
+- [ ] 代码已修改
+- [ ] 已复验，并记录平台与界面语言
+- [ ] 已合入 `main`

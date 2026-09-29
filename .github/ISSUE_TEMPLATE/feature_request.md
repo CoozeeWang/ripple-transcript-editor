@@ -1,28 +1,28 @@
 ---
-name: Feature request
-about: Describe a needed workflow or improvement
+name: 需求建议
+about: 记录希望改进的使用流程
 title: ""
 labels: "enhancement"
 assignees: ""
 ---
 
-## What are you trying to do?
+## 你想完成什么？
 
-Describe the current task and where it becomes difficult.
+说明当前的任务，以及卡在哪一步。
 
-## What would help?
+## 希望 Ripple 怎样帮助你？
 
-Describe the result you want to see. A proposed design is optional.
+说明希望看到的结果；不需要先设计界面。
 
-## Context
+## 使用环境（相关时填写）
 
-- Ripple app version and build number, if relevant:
-- Usage: Browser or Ripple App
-- Interface language: Chinese or English
-- Operating system:
+- Ripple 应用版本与构建号（如知道）：
+- 使用方式：浏览器／Ripple 安装版
+- 界面语言：中文／英文
+- 系统：macOS／Windows
 
-## How would you know it works?
+## 怎样判断需求已满足？
 
-Describe one or two examples of the expected behavior.
+举一两个实际使用例子。
 
-Do not upload real audio, real transcripts, passwords, API keys, credentials, or screenshots containing private paths. Keep sensitive examples in the private workspace.
+不要上传真实音频、文稿、密码、API 密钥、凭据或包含私人路径的截图。敏感样本留在私人工作区。
