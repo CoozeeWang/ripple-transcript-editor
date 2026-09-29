@@ -1,3 +1,9 @@
+export function normalizeDateParts(value:string):string {
+  return value
+    .replace(/^(\d{4})-([1-9])(?=-|T|$)/, '$1-0$2')
+    .replace(/^(\d{4}-\d{2})-([1-9])(?=T|$)/, '$1-0$2');
+}
+
 export function validDateTime(value:string):boolean {
   if(!value)return true;
   if (/^\d{4}$/.test(value)) return Number(value)>=1;

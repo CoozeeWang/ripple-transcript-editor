@@ -60,6 +60,22 @@ function makeDeps(overrides: Partial<UseTranscriptionDeps> = {}): UseTranscripti
 
 const options = {} as TranscriptionOptions;
 
+test('first transcription receives saved audio details and speaker names', async () => {
+  const transcript = transcriptWith('合成识别内容');
+  const metadata = { id: 'audio-a', title: '音频 A', recorded_at: '2026-09-20T10:30:00',
+    location: '合成地点', participants: [], topics: [], notes: '', created_at: '', updated_at: '' };
+  const speakers = [{ id: 'draft-speaker', name: '合成说话人' }];
+  store.transcribeAudio.mockResolvedValue(transcript);
+  store.createModel.mockResolvedValue({ model: { id: 'm1' }, manifest: { models: [], activeModelId: 'm1' },
+    edited: { metadata, transcript } });
+  const deps = makeDeps({ initialMetadata: metadata, initialSpeakers: speakers });
+  const { result } = renderHook(() => useTranscription(deps));
+  await act(async () => { await result.current.startTranscription(options, 'iflytek'); });
+  expect(store.createModel).toHaveBeenCalledWith(deps.dirHandleRef.current, 'a.wav', expect.objectContaining({
+    metadata, sharedSpeakers: speakers, originalOnly: true,
+  }));
+});
+
 /** 转录「挂住不返回」，直到测试自己 resolve / reject。 */
 function pendingTranscription() {
   const deferred: { resolve: (t: Transcript) => void; reject: (e: unknown) => void } = {

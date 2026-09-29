@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { stripStubFirstFrame } from "./adts";
+import { prepareAudioForPlayback, stripStubFirstFrame } from "./adts";
 
 /**
  * 造一个真实形态的 ADTS 帧。字段取值刻意抄自出问题的真文件：
@@ -11,7 +11,7 @@ function adtsFrame(payloadBytes: number): Uint8Array<ArrayBuffer> {
   frame[0] = 0xff;
   frame[1] = 0xf9;
   frame[2] = 0x54;
-  frame[3] = (length >> 11) & 0x03;
+  frame[3] = 0x40 | ((length >> 11) & 0x03);
   frame[4] = (length >> 3) & 0xff;
   frame[5] = ((length & 0x07) << 5) | 0x1f;
   frame[6] = 0xfc;
@@ -93,4 +93,12 @@ describe("stripStubFirstFrame", () => {
     const original = new Blob([]);
     expect(await stripStubFirstFrame(original)).toBe(original);
   });
+});
+
+test('playback rewraps a stub-frame ADTS file while preserving its original bytes', async () => {
+  const original = stubStream(2);
+  const before = new Uint8Array(await original.arrayBuffer());
+  const playable = await prepareAudioForPlayback(original, 'sample.aac');
+  expect(playable.type).toBe('audio/mp4');
+  expect(new Uint8Array(await original.arrayBuffer())).toEqual(before);
 });

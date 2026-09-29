@@ -70,6 +70,40 @@ it('supports multiple recordings and independent interviews without filename col
   const recordings = final.data.interviews[0].recordings;
   expect(recordings).toHaveLength(2); expect(recordings[0].file).not.toBe(recordings[1].file);
 });
+it('keeps an audio draft without a transcript and carries its details into the first versions', async () => {
+  const { p, interview, recording, source } = await fixture();
+  const second = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], 'copy');
+  const details = { ...interview.metadata!, title: '音频 A', recorded_at: '2026-09-20T10:30:00',
+    location: '合成地点', participants: [{ name: '合成受访者', role: '受访者' }] };
+  const speakers = [{ id: 'draft-speaker', name: '合成说话人', colorIndex: 2 }];
+  const recordings = second.data.interviews[0].recordings.map(item => item.id === recording.id
+    ? { ...item, draft: { metadata: details, speakers } } : item);
+  const saved = await saveProject(second, { ...second.data, interviews: [{ ...second.data.interviews[0], recordings }] });
+  const reopened = await openProject(saved.directory);
+  expect(reopened.data.interviews[0].recordings[0].draft).toEqual({ metadata: details, speakers });
+  expect(reopened.data.interviews[0].recordings[1].draft).toBeUndefined();
+  const view = await recordingDirectory(reopened, interview.id, reopened.data.interviews[0].recordings[0]);
+  expect(await readManifest(view, recording.file)).toBeNull();
+  expect(await readEdited(view, recording.file)).toBeNull();
+
+  const transcript = { audio: { filename: recording.file, duration: 2 },
+    speakers: [{ id: 'engine-speaker', name: '说话人 1' }],
+    segments: [{ id: 's1', speaker_id: 'engine-speaker', start: 0, end: 2, text: '合成内容' }] };
+  const original = await createModel(view, recording.file, { engine: 'test', transcript, original: transcript,
+    originalOnly: true, metadata: details, sharedSpeakers: speakers });
+  expect((await readEdited(view, recording.file))?.metadata).toMatchObject({ title: '音频 A', location: '合成地点', participants: details.participants });
+  expect((await readModelOriginal(view, recording.file, original.model.id))?.transcript.speakers[0].name).toBe('合成说话人');
+  const copy = await createEdit(view, recording.file, original.model.id, { fromOriginal: true, label: '修订稿' });
+  expect((await readModelEdit(view, recording.file, copy.model.id, copy.edit.id))?.transcript.speakers[0].name).toBe('合成说话人');
+  await saveActiveEdit(view, recording.file, copy.model.id, copy.edit.id, {
+    ...copy.edited, transcript: { ...copy.edited.transcript,
+      speakers: [{ ...copy.edited.transcript.speakers[0], name: '修订后的名字' }] },
+  });
+  expect((await readModelOriginal(view, recording.file, original.model.id))?.transcript.speakers[0].name).toBe('修订后的名字');
+  const rawOriginal = await (await (await view.getDirectoryHandle(`${recording.file.replace(/\.[^.]+$/, '')}.transcript`))
+    .getFileHandle(original.model.original!)).getFile();
+  expect(JSON.parse(await rawOriginal.text()).transcript.speakers[0].name).toBe('说话人 1');
+});
 it('renaming display titles preserves paths and detects stale updates', async () => {
   const { p } = await fixture(); const before = p.data.interviews[0].recordings[0].file;
   const next = await saveProject(p, { ...p.data, title: '新标题' });
@@ -276,6 +310,53 @@ it('groups multiple recordings in one interview and attaches a matching manuscri
   expect(p.data.interviews).toHaveLength(1);
   expect(p.data.interviews[0].recordings).toHaveLength(2);
   expect(await source.files.get('上午.txt')!.text()).toBe('转录稿正文');
+});
+it('reports the copy, verification, and save stages while keeping the source audio intact', async () => {
+  const source = directory('source');
+  source.files.set('sample.wav', new File(['synthetic audio'], 'sample.wav'));
+  const materials = await prepareMaterials([{ handle: await source.handle.getFileHandle('sample.wav'), group: 'Sample session' }]);
+  const project = await createProject(directory().handle, 'Sample project');
+  const stages: string[] = [];
+  const saved = await importProjectMaterials(project, materials, 'copy', undefined, undefined, stage => stages.push(stage));
+  expect(stages).toEqual(['copying', 'verifying', 'saving']);
+  expect(saved.data.interviews[0].recordings[0].storage).toBe('copy');
+  expect(await source.files.get('sample.wav')!.text()).toBe('synthetic audio');
+});
+it('cancels an in-flight audio copy, removes the unpublished file, and permits a retry', async () => {
+  const source = directory('source');
+  const file = new File(['synthetic audio'], 'sample.wav');
+  source.files.set('sample.wav', file);
+  const materials = await prepareMaterials([{ handle: await source.handle.getFileHandle('sample.wav'), group: 'Sample session' }]);
+  const project = await createProject(directory().handle, 'Sample project');
+  const controller = new AbortController();
+  let reachedCopy!: () => void;
+  const copying = new Promise<void>(resolve => { reachedCopy = resolve; });
+  const sourceStream = file.stream.bind(file);
+  vi.spyOn(file, 'stream').mockImplementation(() => new ReadableStream({
+    async pull(stream) {
+      reachedCopy();
+      await new Promise<void>(() => {});
+      stream.enqueue(new Uint8Array([1]));
+    },
+  }) as ReturnType<File['stream']>);
+  const attempt = importProjectMaterials(project, materials, 'copy', undefined, undefined, undefined, controller.signal);
+  await copying;
+  controller.abort();
+  await expect(attempt).rejects.toMatchObject({ name: 'AbortError' });
+  expect((await openProject(project.directory)).data.interviews).toEqual([]);
+  const interviewRoot = await project.directory.getDirectoryHandle('interviews');
+  const ids = [];
+  for await (const [id] of (interviewRoot as FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, unknown]> }).entries()) ids.push(id);
+  for (const id of ids) {
+    const media = await (await interviewRoot.getDirectoryHandle(id)).getDirectoryHandle('media');
+    const files = [];
+    for await (const [name] of (media as FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, unknown]> }).entries()) files.push(name);
+    expect(files).toEqual([]);
+  }
+  vi.mocked(file.stream).mockImplementation(sourceStream);
+  const saved = await importProjectMaterials(project, materials, 'copy');
+  expect(saved.data.interviews[0].recordings).toHaveLength(1);
+  expect(await source.files.get('sample.wav')!.text()).toBe('synthetic audio');
 });
 it('keeps the existing project unchanged when a material batch cannot be published', async () => {
   const source=directory(); source.files.set('访谈.txt',new File(['完整正文'],'访谈.txt'));

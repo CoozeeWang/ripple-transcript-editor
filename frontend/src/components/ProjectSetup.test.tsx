@@ -71,6 +71,14 @@ it('uses transcript date segmentation and refuses impossible scene dates',()=>{
  fireEvent.change(day,{target:{value:'31'}});scene();expect(screen.getByRole('alert').textContent).toContain('无效');
  fireEvent.change(day,{target:{value:'30'}});fireEvent.click(screen.getByText('确认'));expect(screen.getAllByText('2026-09-30').length).toBeGreaterThan(0);
 });
+it('confirms a scene with a one-digit day as a padded date',()=>{
+ render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();fireEvent.click(screen.getAllByRole('button',{name:'新增场次'})[0]);
+ fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'第二次访谈'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});
+ const year=screen.getByRole('textbox',{name:'场次日期：年'}),month=screen.getByRole('textbox',{name:'场次日期：月'}),day=screen.getByRole('textbox',{name:'场次日期：日'});
+ fireEvent.change(year,{target:{value:'2020'}});fireEvent.change(month,{target:{value:'10'}});fireEvent.change(day,{target:{value:'3'}});
+ fireEvent.click(screen.getByRole('button',{name:'确认'}));
+ expect(screen.queryByRole('alert')).toBeNull();expect(screen.getAllByText('2020-10-03').length).toBeGreaterThan(0);
+});
 it('accepts Word transcripts dropped onto the whole audio card and reports unsupported outside drops',async()=>{
  const fetcher=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({text:'旧版 Word 正文'}),{status:200}));
  render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();drop('选择或拖入音频，加入这个场次',[new File(['a'],'录音.wav')]);fireEvent.click(await screen.findByRole('button',{name:'加入音频'}));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'音频存放方式'})).toBeNull());await screen.findByText('录音.wav');
@@ -157,6 +165,30 @@ it('stores the storage choice per batch without asking again on the save step',a
  fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
  await waitFor(()=>expect(store.importProjectMaterials).toHaveBeenCalled());
  expect(vi.mocked(store.importProjectMaterials).mock.calls[0][1].map(i=>i.storage)).toEqual(['reference','copy']);
+});
+
+it('cancels copying from the organizer and retains the selected audio for retry',async()=>{
+ const project={data:{id:'p',title:'测试',interviews:[],revision:0},directory:{}} as unknown as store.OpenProject;
+ vi.mocked(store.createProject).mockResolvedValue(project);
+ vi.mocked(store.importProjectMaterials).mockImplementationOnce(async(_project,_materials,_storage,_id,_sessions,onStage,signal)=>{
+   onStage?.('copying');
+   return new Promise<store.OpenProject>((_resolve,reject)=>signal?.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError'))));
+ });
+ Object.assign(window,{showDirectoryPicker:vi.fn(async()=>({name:'项目目录'}))});
+ const done=vi.fn();
+ render(<ProjectSetup onDone={done} onCancel={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'测试'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
+ drop('选择或拖入音频，加入这个场次',[new File(['audio'],'sample.wav')]);
+ fireEvent.click(await screen.findByRole('button',{name:'加入音频'}));
+ await screen.findByText('sample.wav');
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ await screen.findByText('正在复制音频到项目…');
+ fireEvent.click(screen.getByRole('button',{name:'取消导入'}));
+ await waitFor(()=>expect(screen.getByRole('region',{name:'整理项目材料'}).getAttribute('aria-busy')).toBe('false'));
+ expect(screen.getByText('sample.wav')).toBeTruthy();expect(done).not.toHaveBeenCalled();
+ vi.mocked(store.importProjectMaterials).mockResolvedValueOnce(project);
+ fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
+ await waitFor(()=>expect(done).toHaveBeenCalledWith(project));
 });
 
 it('stages dropped audio as a reference using the selected original handle',async()=>{

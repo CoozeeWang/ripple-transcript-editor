@@ -9,6 +9,7 @@ import { TrashUndoNotice } from './TrashUndoNotice';
 import { DeleteMaterialDialog, ProjectTrashDialog } from './ProjectTrashDialog';
 import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
+import { ProjectImportStatus } from './ProjectImportStatus';
 import { manuscriptImportNotice } from '../lib/materialImport';
 import { useEffect, useRef, useState } from 'react';
 import App from '../App';
@@ -22,7 +23,7 @@ import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
 import { useDismissable } from '../useDismissable';
 import { trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject,
-  type ExistingManuscript, type OpenProject, type ProjectRecording } from '../lib/projectStore';
+  type ExistingManuscript, type OpenProject, type ProjectRecording, type ProjectImportStage } from '../lib/projectStore';
 import './projectWorkspace.css';
 
 type Picker = Window & {
@@ -67,6 +68,14 @@ export function ProjectWorkspace() {
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [archiving, setArchiving] = useState(false);
   const [importNotice, setImportNotice] = useState<string[]>([]);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [importStage, setImportStage] = useState<ProjectImportStage | null>(null);
+  const importController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!successNotice) return;
+    const timer = window.setTimeout(() => setSuccessNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [successNotice]);
   const [legacyCandidates, setLegacyCandidates] = useState<{ interviewId: string; items: ExistingManuscript[] } | null>(null);
   const busyRef = useRef(restoreOnStartup);
   const editorLease = useRef<(() => void) | null>(null);
@@ -106,7 +115,7 @@ export function ProjectWorkspace() {
     busyRef.current = true;
     setShowProgress(progress); setQuietSaving(!progress); setBusy(true); setError('');
     try { await work(); } catch (e) { if ((e as { name?: string }).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectWorkspace.m0901')); }
-    finally { busyRef.current = false; setBusy(false); setShowProgress(false); setQuietSaving(false); }
+    finally { busyRef.current = false; setBusy(false); setShowProgress(false); setQuietSaving(false); setImportStage(null); }
   };
   const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => {
     let handle = directory;
@@ -154,7 +163,18 @@ export function ProjectWorkspace() {
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={editor.recording.name}
-    interviewMetadata={interview?.metadata} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
+    interviewMetadata={interview?.metadata} recordingDraft={interview?.recordings.find(item => item.id === editor.recording.id)?.draft}
+    saveRecordingDraft={async draft => {
+      const snapshot = current.current!;
+      const session = snapshot.data.interviews.find(item => item.id === interview?.id);
+      const recording = session?.recordings.find(item => item.id === editor.recording.id);
+      if (!session || !recording) throw new Error(msg('ProjectWorkspace.m0902'));
+      if (JSON.stringify(recording.draft) === JSON.stringify(draft)) return;
+      const interviews = snapshot.data.interviews.map(item => item.id === session.id
+        ? { ...item, recordings: item.recordings.map(entry => entry.id === recording.id ? { ...entry, draft } : entry) }
+        : item);
+      await publish(await saveProject(snapshot, { ...snapshot.data, interviews }));
+    }} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
   const welcoming = !project && !creating;
   return <main className={`project-home${welcoming ? ' project-home--welcome' : ''}${quietSaving ? ' project-home--quiet-saving' : ''}`}>
     {!welcoming && <header className="project-home__header">
@@ -183,9 +203,10 @@ export function ProjectWorkspace() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
         <p>{uiMessage(error)}</p>
       </div>}
-      {busy && showProgress && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
+      {busy && showProgress && !importStage && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
+      {successNotice && <ProcessingNotice>{successNotice}</ProcessingNotice>}
       {!project ? <>
-        {creating ? <ProjectSetup onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { void publish(next); setCreating(false); setInterviewId(next.data.interviews[0]?.id ?? null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
+        {creating ? <ProjectSetup onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { void publish(next); setSuccessNotice(next.data.interviews.some(interview => interview.recordings.length > 0) ? msg('projectImport.materialsDone') : null); setCreating(false); setInterviewId(next.data.interviews[0]?.id ?? null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
           <div className="project-welcome__identity">
             <img src="/ripple-icon.svg" alt="" width="80" height="80" />
             <div className="project-welcome__title"><h1>Ripple</h1><p>{msg('ProjectWorkspace.m0912')}</p></div>
@@ -236,7 +257,8 @@ export function ProjectWorkspace() {
           <div className="project-actions"><button type="button" className="cred-btn" disabled={busy} onClick={() => { setEditingDescription(null); setDescriptionDrafts(previous => { const next = { ...previous }; delete next[project.data.id]; return next; }); }}>{msg('ProjectWorkspace.m0930')}</button><button className="cred-btn" disabled={busy}>{msg('ProjectWorkspace.m0931')}</button></div>
         </form> : <button type="button" className={`project-description-display${project.data.description ? '' : ' is-empty'}`} aria-label={msg('ProjectWorkspace.m0932')} title={msg('ProjectWorkspace.m0933')} disabled={busy} onDoubleClick={() => setEditingDescription(project.data.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingDescription(project.data.id); } }}>{project.data.description || msg('ProjectWorkspace.m0934')}</button>}
         </div></div>
-        {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
+        {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
+        {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
         {importNotice.length>0&&<div className="project-import-notices" role="status">{importNotice.map((note,index)=><p key={index}>{note}</p>)}</div>}
         <ProjectBoard key={project.data.id} project={project} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={setInterviewId}
           save={interviews => { void run(async () => {
@@ -255,12 +277,18 @@ export function ProjectWorkspace() {
             if (materials.some(item => item.kind !== kind)) throw new Error(kind === 'audio' ? msg('ProjectWorkspace.m0935') : msg('ProjectWorkspace.m0936'));
             const storage = kind === 'audio' ? await audioStorage.choose(materials.map(i=>i.name), referenceable, async()=>{ const selected=await selectAudioReferences(materials.map(i=>i.handle)); if(!selected)return false; materials.forEach((item,index)=>{item.handle=selected[index];}); return true; }) : 'copy';
             if (!storage) return;
+            if (kind === 'audio') { setImportNotice([]); setSuccessNotice(null); importController.current = new AbortController(); setImportStage('preparing'); }
             const snapshot = current.current!;
             const recording = audioId ? snapshot.data.interviews.find(session => session.id === id)?.recordings.find(item => item.id === audioId && item.storage !== 'none') : undefined;
             if (audioId && !recording) throw new Error(msg('ProjectWorkspace.m0937'));
             const linked = materials.map(item => ({ ...item, audioId: audioId ?? '' }));
             if (recording) linked.unshift({ id: recording.id, existingRecordingId: recording.id, name: recording.name, kind: 'audio', group: id, audioId: '', handle: {} as FileSystemFileHandle });
-            await publish(await importProjectMaterials(snapshot, linked, storage, id));
+            const imported = kind === 'audio'
+              ? await importProjectMaterials(snapshot, linked, storage, id, undefined, setImportStage, importController.current!.signal)
+              : await importProjectMaterials(snapshot, linked, storage, id);
+            importController.current = null;
+            await publish(imported);
+            if (kind === 'audio') setSuccessNotice(msg('projectImport.audioDone'));
             setImportNotice(materials.flatMap(item => { const note = manuscriptImportNotice(item); return note ? [`${item.name}：${note}`] : []; }));
           }}
           add={id => setMaterialTarget(id ?? null)} open={(recording, modelId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId); }} run={run}

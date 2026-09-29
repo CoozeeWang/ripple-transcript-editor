@@ -1,3 +1,6 @@
+import { msg } from '../i18n';
+import { remuxAdtsToMp4, UnsupportedAdtsError } from './adtsMp4';
+
 /**
  * 裸 ADTS AAC 的「首帧桩帧」规避。
  *
@@ -43,5 +46,19 @@ export async function stripStubFirstFrame(blob: Blob): Promise<Blob> {
   } catch {
     // 读不出来就当没这回事，让后续流程报它自己的错。
     return blob;
+  }
+}
+
+/** The returned view is for playback only; callers retain the original file for saving/transcription. */
+export async function prepareAudioForPlayback(blob: Blob, name: string): Promise<Blob> {
+  if (!/\.aac$/i.test(name)) return blob;
+  const withoutStub = await stripStubFirstFrame(blob);
+  try {
+    return await remuxAdtsToMp4(withoutStub);
+  } catch (error) {
+    if (error instanceof UnsupportedAdtsError) {
+      throw new Error(msg('audioPlayback.unsupportedAdts', { v0: name }), { cause: error });
+    }
+    throw error;
   }
 }

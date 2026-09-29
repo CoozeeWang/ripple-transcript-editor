@@ -4,20 +4,22 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { collectMaterialFiles, prepareMaterials, type ImportMaterial } from '../lib/materialImport';
 import { importProjectMaterials, type OpenProject } from '../lib/projectStore';
+import { prepareAudioForPlayback } from '../lib/adts';
 interface Props { project: OpenProject; interviewId?: string; onDone: (project: OpenProject) => void; onCancel: () => void; onBusyChange?: (busy: boolean) => void }
 type Pickers = { showOpenFilePicker(options: { multiple: boolean; types?: { description: string; accept: Record<string, string[]> }[] }): Promise<FileSystemFileHandle[]>; showDirectoryPicker(options: { mode: string }): Promise<FileSystemDirectoryHandle> };
 export function AudioPreview({ item, onDuration }: { item: ImportMaterial; onDuration: (duration: number) => void }) {
   useInterfaceLanguage();
   const [url, setUrl] = useState('');
   const [failed, setFailed] = useState(false);
+  const [failureMessage, setFailureMessage] = useState('');
   useEffect(() => {
     let disposed = false; let objectUrl = '';
-    void item.handle.getFile().then(file => {
-      if (!disposed) { objectUrl = URL.createObjectURL(file); setUrl(objectUrl); }
-    }).catch(() => { if (!disposed) setFailed(true); });
+    void item.handle.getFile().then(file => prepareAudioForPlayback(file, item.name)).then(playable => {
+      if (!disposed) { objectUrl = URL.createObjectURL(playable); setUrl(objectUrl); }
+    }).catch(error => { if (!disposed) { setFailureMessage(error instanceof Error ? error.message : ''); setFailed(true); } });
     return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [item.handle]);
-  return failed ? <small>{msg('MaterialImport.m0556')}</small> : <audio aria-label={msg('MaterialImport.m0557', { v0: item.name })} controls controlsList="nodownload noplaybackrate" preload="metadata" src={url || undefined} onLoadedMetadata={e => onDuration(e.currentTarget.duration)} onError={() => setFailed(true)} />;
+  }, [item.handle, item.name]);
+  return failed ? <small>{failureMessage || msg('MaterialImport.m0556')}</small> : <audio aria-label={msg('MaterialImport.m0557', { v0: item.name })} controls controlsList="nodownload noplaybackrate" preload="metadata" src={url || undefined} onLoadedMetadata={e => onDuration(e.currentTarget.duration)} onError={() => setFailed(true)} />;
 }
 function MaterialIcon({ kind }: { kind: 'audio' | 'transcript' | 'session' | 'ignore' | 'add' }) {
   useInterfaceLanguage();

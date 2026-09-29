@@ -33,6 +33,25 @@ it('deleting a digit does not pad or advance',()=>{
  month.focus();fireEvent.input(month,{target:{value:'9'},inputType:'deleteContentBackward'});
  expect(month.value).toBe('9');expect(document.activeElement).toBe(month);
 });
+it('pads a single-digit day on Enter and preserves an unchanged existing date',()=>{
+ const save=vi.fn();const ui=render(<InlineEdit value="2020-10-02" onCommit={save} inputType="date" ariaLabel="日期"/>);
+ fireEvent.click(screen.getByRole('button'));
+ const day=screen.getByRole('textbox',{name:'日期：日'}) as HTMLInputElement;
+ fireEvent.change(day,{target:{value:'3'}});expect(day.value).toBe('3');
+ fireEvent.keyDown(day,{key:'Enter'});expect(save).toHaveBeenCalledWith('2020-10-03');
+ ui.rerender(<InlineEdit value="2020-10-03" onCommit={save} inputType="date" ariaLabel="日期"/>);
+ fireEvent.click(screen.getByRole('button'));fireEvent.keyDown(screen.getByRole('textbox',{name:'日期：日'}),{key:'Enter'});
+ expect(save).toHaveBeenCalledTimes(1);
+});
+it('pads a single-digit month and day when leaving the editor, but rejects impossible dates',()=>{
+ const save=vi.fn();render(<InlineEdit value="2020-12-02" onCommit={save} inputType="date" ariaLabel="日期"/>);
+ fireEvent.click(screen.getByRole('button'));
+ const month=screen.getByRole('textbox',{name:'日期：月'}),day=screen.getByRole('textbox',{name:'日期：日'});
+ fireEvent.change(month,{target:{value:'1'}});fireEvent.blur(month,{relatedTarget:day});
+ expect((month as HTMLInputElement).value).toBe('01');
+ fireEvent.change(day,{target:{value:'3'}});fireEvent.blur(day,{relatedTarget:document.body});
+ expect(save).toHaveBeenCalledWith('2020-01-03');
+});
 it('saves a date without inventing a time, then allows time to be added and removed',()=>{
  const save=vi.fn();const ui=render(<InlineEdit value="" onCommit={save} inputType="datetime-local" ariaLabel="录制时间"/>);
  fireEvent.click(screen.getByRole('button'));

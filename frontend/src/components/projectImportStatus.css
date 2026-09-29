@@ -1,0 +1,39 @@
+.project-import-status {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-dialog);
+  color: var(--color-text-3);
+  font: 400 13px/1.5 var(--font-sans);
+  box-shadow: 0 4px 16px #0000000d;
+}
+
+.project-import-status button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.project-import-status button:disabled {
+  color: var(--color-text-3);
+  cursor: default;
+}
+
+.project-import-status button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
