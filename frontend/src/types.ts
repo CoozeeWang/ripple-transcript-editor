@@ -206,9 +206,13 @@ export interface TranscriptModel {
 
 export interface TranscriptManifest {
   /** Interview-level details shared by original and edited versions. */
-  interviewDetails?: Pick<InterviewDraft, "recorded_at" | "location" | "topics" | "notes">;
+  interviewDetails?: Pick<InterviewDraft, "recorded_at" | "location" | "participants" | "topics" | "notes">;
   /** Shared interview title, independent of version labels. */
   title?: string;
+  /** Display details shared by every version; original engine files remain untouched. */
+  sharedSpeakers?: Speaker[];
+  /** Position matching is limited to the model where these names were entered. */
+  sharedSpeakerModelId?: string;
   schemaVersion: number; // 2 = 二维 models 结构
   audio: string; // 音频文件名
   audioHash?: string;

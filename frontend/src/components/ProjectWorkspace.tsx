@@ -154,7 +154,18 @@ export function ProjectWorkspace() {
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={editor.recording.name}
-    interviewMetadata={interview?.metadata} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
+    interviewMetadata={interview?.metadata} recordingDraft={interview?.recordings.find(item => item.id === editor.recording.id)?.draft}
+    saveRecordingDraft={async draft => {
+      const snapshot = current.current!;
+      const session = snapshot.data.interviews.find(item => item.id === interview?.id);
+      const recording = session?.recordings.find(item => item.id === editor.recording.id);
+      if (!session || !recording) throw new Error(msg('ProjectWorkspace.m0902'));
+      if (JSON.stringify(recording.draft) === JSON.stringify(draft)) return;
+      const interviews = snapshot.data.interviews.map(item => item.id === session.id
+        ? { ...item, recordings: item.recordings.map(entry => entry.id === recording.id ? { ...entry, draft } : entry) }
+        : item);
+      await publish(await saveProject(snapshot, { ...snapshot.data, interviews }));
+    }} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
   const welcoming = !project && !creating;
   return <main className={`project-home${welcoming ? ' project-home--welcome' : ''}${quietSaving ? ' project-home--quiet-saving' : ''}`}>
     {!welcoming && <header className="project-home__header">

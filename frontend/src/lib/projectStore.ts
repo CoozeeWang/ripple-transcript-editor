@@ -1,6 +1,6 @@
 import { msg } from '../i18n';
 import type { ImportMaterial } from './materialImport';
-import type { InterviewMetadata, TranscriptManifest } from '../types';
+import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
 import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable } from './desktopFs';
 
@@ -8,6 +8,8 @@ export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
   manuscriptDirectory?: string;
   manuscriptOrder?: string[];
+  /** Details entered before the first transcript exists. Scoped to this audio. */
+  draft?: { metadata: InterviewMetadata; speakers: Speaker[] };
 }
 export interface ProjectInterview { id: string; title: string; metadata?: InterviewMetadata; recordings: ProjectRecording[] }
 export interface ProjectTrashItem {
@@ -42,6 +44,13 @@ export function parseProject(raw: string): RippleProject {
           || !['copy', 'reference', 'none'].includes(recording.storage) || typeof recording.fingerprint !== 'string'
           || (recording.storage !== 'none' && !/^\d+:[a-f0-9]{64}$/.test(recording.fingerprint))) throw new Error(msg('projectStore.m1386'));
       if (recording.manuscriptOrder && (!Array.isArray(recording.manuscriptOrder) || !recording.manuscriptOrder.every(id) || new Set(recording.manuscriptOrder).size !== recording.manuscriptOrder.length)) throw new Error(msg('projectStore.m1387'));
+      if (recording.draft && (!recording.draft.metadata || typeof recording.draft.metadata.title !== 'string'
+          || typeof recording.draft.metadata.location !== 'string'
+          || (recording.draft.metadata.recorded_at !== null && typeof recording.draft.metadata.recorded_at !== 'string')
+          || !Array.isArray(recording.draft.metadata.participants)
+          || !recording.draft.metadata.participants.every(person => person && typeof person.name === 'string' && typeof person.role === 'string')
+          || !Array.isArray(recording.draft.speakers)
+          || !recording.draft.speakers.every(speaker => speaker && typeof speaker.id === 'string' && typeof speaker.name === 'string'))) throw new Error(msg('projectStore.m1386'));
       identifiers.add(recording.id);
       if (recording.manuscriptDirectory !== undefined && (!safeName(recording.manuscriptDirectory) || !/^import-[a-zA-Z0-9-]+\.transcript$/.test(recording.manuscriptDirectory))) throw new Error(msg('projectStore.m1388'));
     }

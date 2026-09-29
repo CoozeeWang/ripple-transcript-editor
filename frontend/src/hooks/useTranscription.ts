@@ -4,6 +4,7 @@ import { recordProblem } from "../lib/diagnostics";
 import { useLayoutEffect, useEffect, useRef, useState } from "react";
 import type {
   InterviewMetadata,
+  Speaker,
   Transcript,
   TranscriptManifest,
   TranscriptionOptions,
@@ -58,6 +59,7 @@ export interface TranscribeJob {
  *  transcript / 版本 / 进度提示等共享状态通过回调注入解耦。 */
 export interface UseTranscriptionDeps {
   initialMetadata?: InterviewMetadata;
+  initialSpeakers?: Speaker[];
   beforeChange?: () => Promise<void>;
   contextKey?: string;
   setViewingOriginal?: (value: boolean) => void;
@@ -148,6 +150,8 @@ export function useTranscription(deps: UseTranscriptionDeps) {
     let wasCancelled = false;
     try {
       await deps.beforeChange?.();
+      const initialMetadata = latest.current.initialMetadata;
+      const initialSpeakers = latest.current.initialSpeakers;
       const transcript = await transcribeAudio(dir, audioName, options, {
         signal: controller.signal,
         providerId,
@@ -175,7 +179,8 @@ export function useTranscription(deps: UseTranscriptionDeps) {
         transcript,
         original: transcript,
         originalOnly: true,
-        metadata: deps.initialMetadata,
+        metadata: initialMetadata,
+        sharedSpeakers: initialSpeakers,
       });
       saved = true;
       await acknowledgeTranscription(dir, audioName).catch(() => {});
