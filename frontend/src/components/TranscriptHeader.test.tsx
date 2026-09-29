@@ -23,5 +23,32 @@ it('commits date-only metadata without a fabricated time',()=>{
  fireEvent.keyDown(screen.getByRole('textbox',{name:'录制日期和时间：时'}),{key:'Enter'});
  expect(patchMetadata).toHaveBeenCalledWith({recorded_at:'2026-09-20'});
  ui.rerender(<TranscriptHeader {...props} metadata={{...metadata,recorded_at:'2026-09-20'}}/>);
- expect(screen.getByRole('button',{name:"录制日期和时间"}).textContent).toBe('2026-09-20');
+ expect(screen.getByRole('button',{name:"录制日期和时间"}).textContent).toBe('2026-09-20HH:MM');
+});
+
+it('offers a keyboard-accessible time hint without saving it, then restores it when time is cleared',()=>{
+ const patchMetadata=vi.fn();
+ const metadata={id:'test',title:'测试访谈',recorded_at:'2026-09-20',location:'',participants:[],topics:[],notes:'',created_at:'',updated_at:''};
+ const props={metadata,segmentCount:0,viewingOriginal:true,activeModelId:'m1',versionControls:null,patchMetadata,forkFromOriginal:vi.fn()};
+ const ui=render(<TranscriptHeader {...props}/>);
+ const dateButton=()=>screen.getByRole('button',{name:'录制日期和时间'});
+ expect(screen.getByText('HH:MM').closest('[role="button"]')).toBe(dateButton());
+ dateButton().focus();fireEvent.keyDown(dateButton(),{key:'Enter'});
+ expect(screen.getByRole('textbox',{name:'录制日期和时间：时'})).toBeTruthy();
+ fireEvent.keyDown(screen.getByRole('textbox',{name:'录制日期和时间：时'}),{key:'Enter'});
+ expect(patchMetadata).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByText('HH:MM'));
+ fireEvent.change(screen.getByRole('textbox',{name:'录制日期和时间：时'}),{target:{value:'14'}});
+ fireEvent.change(screen.getByRole('textbox',{name:'录制日期和时间：分'}),{target:{value:'30'}});
+ fireEvent.keyDown(screen.getByRole('textbox',{name:'录制日期和时间：分'}),{key:'Enter'});
+ expect(patchMetadata).toHaveBeenLastCalledWith({recorded_at:'2026-09-20T14:30:00'});
+ ui.rerender(<TranscriptHeader {...props} metadata={{...metadata,recorded_at:'2026-09-20T14:30:00'}}/>);
+ expect(dateButton().textContent).toBe('2026-09-20 14:30');
+ fireEvent.click(dateButton());
+ fireEvent.change(screen.getByRole('textbox',{name:'录制日期和时间：时'}),{target:{value:''}});
+ fireEvent.change(screen.getByRole('textbox',{name:'录制日期和时间：分'}),{target:{value:''}});
+ fireEvent.keyDown(screen.getByRole('textbox',{name:'录制日期和时间：分'}),{key:'Enter'});
+ expect(patchMetadata).toHaveBeenLastCalledWith({recorded_at:'2026-09-20'});
+ ui.rerender(<TranscriptHeader {...props}/>);
+ expect(screen.getByText('HH:MM')).toBeTruthy();
 });

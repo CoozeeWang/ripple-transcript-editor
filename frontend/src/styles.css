@@ -1573,6 +1573,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
   color: #c2c0b8;
   content: "·";
 }
+.recorded-time-placeholder { margin-left: 6px; color: var(--color-accent); border-bottom: 1px dashed currentColor; }
 
 .inline-edit {
   cursor: text;
