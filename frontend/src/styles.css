@@ -1688,9 +1688,8 @@ button.brand:disabled { opacity: .5; cursor: default; }
   background: var(--speaker-bg);
   box-shadow: inset 2px 0 var(--speaker-accent);
   align-items: start;
-  /* Cap the grid track as well as the visible name: a long unbroken name
-     must not reserve invisible space and squeeze the transcript column. */
-  grid-template-columns: fit-content(168px) minmax(0, 1fr) 76px;
+  /* Use the same speaker track in every segment so transcript text aligns. */
+  grid-template-columns: 144px minmax(0, 1fr) 76px;
   gap: 11px;
   /* 选中反馈要在点击后立即出现；只让 hover 边框保留极短过渡。 */
   transition: border-color 80ms ease;
@@ -1771,13 +1770,10 @@ button.brand:disabled { opacity: .5; cursor: default; }
   display: flex;
   align-items: center;
   align-self: start;
-  /* 自适应列宽：max-content 让 select 按当前选中项文字决定可见宽度，
-     max-width 兜底以防「＋ 新建说话人…」这种 option 把列撑到接近 128px。
-     上限 168px 足够放下任何单字人名 + 「＋ 新建说话人…」中字符易触发的
-     select native 下拉控件（三态），并把列的最小边界留给后续 ellipsis 截断。 */
+  /* Keep short names compact; clip long names within the fixed speaker track. */
   width: max-content;
   min-width: 0;
-  max-width: 168px;
+  max-width: 100%;
   padding: 5px 8px;
   overflow: hidden;
   border: 1px solid transparent;
