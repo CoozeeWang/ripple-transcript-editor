@@ -105,6 +105,18 @@ function renderBoard(project:OpenProject,save=vi.fn(),select=vi.fn(),selected=pr
  return save;
 }
 
+it('stores a padded date when adding a scene to an existing project',async()=>{
+ const project=boardProject(),createSession=vi.fn();
+ render(<ProjectBoard project={project} selected="reference" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={createSession} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'新增场次'}));
+ fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'新场次'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});
+ fireEvent.change(screen.getByRole('textbox',{name:'场次日期：年'}),{target:{value:'2020'}});
+ fireEvent.change(screen.getByRole('textbox',{name:'场次日期：月'}),{target:{value:'10'}});
+ fireEvent.change(screen.getByRole('textbox',{name:'场次日期：日'}),{target:{value:'3'}});
+ fireEvent.click(screen.getByRole('button',{name:'确认'}));
+ await waitFor(()=>expect(createSession).toHaveBeenCalledWith(expect.objectContaining({metadata:expect.objectContaining({recorded_at:'2020-10-03'})})));
+});
+
 it('shows the session count beside the session list heading',()=>{
  const project=boardProject();
  renderBoard(project);

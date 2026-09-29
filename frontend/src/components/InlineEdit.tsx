@@ -55,11 +55,12 @@ export function InlineEdit({
     setDateError(false);
     setEditing(true);
   };
-  const commit = () => {
-    if((inputType==="datetime-local" || inputType==="date") && !validDateTime(draft)){setDateError(true);return;}
+  const commitValue = (next: string) => {
+    if((inputType==="datetime-local" || inputType==="date") && !validDateTime(next)){setDateError(true);return;}
     setEditing(false);
-    if (draft !== value) onCommit(draft);
+    if (next !== value) onCommit(next);
   };
+  const commit = () => commitValue(draft);
   const cancel = () => {
     setEditing(false);
     setDraft(value);
@@ -75,7 +76,7 @@ export function InlineEdit({
 
   if (editing) {
     if((inputType==="datetime-local" || inputType==="date"))return <span className="inline-date-edit">
-      <DateTimeInput includeTime={inputType!=="date"} value={draft} label={ariaLabel ?? msg('InlineEdit.m0541')} onCommit={commit} onCancel={cancel}
+      <DateTimeInput includeTime={inputType!=="date"} value={draft} label={ariaLabel ?? msg('InlineEdit.m0541')} onCommit={commitValue} onCancel={cancel}
         onChange={next=>{setDraft(next);setDateError(false);window.dispatchEvent(new Event("te:draft-dirty"));}}/>
       {dateError && <span className="inline-date-error" role="alert">{msg('InlineEdit.m0542')}</span>}
     </span>;
