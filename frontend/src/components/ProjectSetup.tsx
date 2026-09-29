@@ -5,12 +5,13 @@ import { chooseDirectory, pickerLocation } from '../lib/projectPreferences';
 import { AudioStorageIcon } from './AudioStorageIcon';
 import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
+import { ProjectImportStatus } from './ProjectImportStatus';
 import { ManuscriptImportHint } from './ManuscriptImportHint';
 import { manuscriptImportNotice } from '../lib/materialImport';
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { AUDIO_EXT, defaultMetadata } from '../localStore';
 import { prepareMaterials, type ImportMaterial } from '../lib/materialImport';
-import { createProject, permit, importProjectMaterials, type OpenProject, type ProjectInterview, resolveMedia } from '../lib/projectStore';
+import { createProject, permit, importProjectMaterials, type OpenProject, type ProjectInterview, type ProjectImportStage, resolveMedia } from '../lib/projectStore';
 import { droppedFiles, reorder, type DroppedFile } from '../lib/projectSetup';
 import { PeopleInput } from './PeopleInput';
 import { DateTimeInput } from './DateTimeInput';
@@ -40,6 +41,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [importStage, setImportStage] = useState<ProjectImportStage | null>(null);
   const inFlight = useRef(false);
   const [partial, setPartial] = useState<OpenProject | null>(null);
   const [preview, setPreview] = useState<Material | null>(null);
@@ -58,7 +60,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); onBusyChange?.(true); setError('');
     try { await work(); } catch (e) { if ((e as Error).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectSetup.m0782')); }
-    finally { inFlight.current = false; setBusy(false); onBusyChange?.(false); }
+    finally { inFlight.current = false; setBusy(false); setImportStage(null); onBusyChange?.(false); }
   };
   function drop(event: DragEvent, kind: 'audio' | 'manuscript', audioId = '') {
     event.preventDefault(); event.stopPropagation();
@@ -134,6 +136,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
     </div>;
   }
   const save = () => run(async () => {
+    setImportStage('preparing');
     if (!title.trim()) throw new Error(msg('ProjectSetup.m0808'));
     if (items.some(i=>i.storage==='reference'&&!i.referenceable)) throw new Error(msg('ProjectSetup.m0806'));
     const destination = project || partial ? parent : parent ?? await chooseDirectory('save-project');
@@ -142,7 +145,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
     const target = project ?? partial ?? await createProject(destination!,title);
     setPartial(target);
     const ordered = sessions.flatMap(s=>items.filter(i=>i.group===s.id));
-    const result = await importProjectMaterials(target,ordered,'copy',undefined,sessions);
+    const result = await importProjectMaterials(target,ordered,'copy',undefined,sessions,setImportStage);
     setPartial(null);onDone(result);
   });
   const edit = (value: string, label: string, commit: (value: string)=>void, placeholder: string, inputType='text'): ReactNode => <InlineEdit doubleClick={Boolean(value)} disabled={busy} value={value} ariaLabel={label} onCommit={commit} placeholder={placeholder} inputType={inputType} />;
@@ -152,7 +155,8 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
   return <section className="project-setup" aria-label={msg('ProjectSetup.m0812')} aria-busy={busy} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={e=>{e.preventDefault();if(e.dataTransfer.types.includes('Files'))setError(msg('ProjectSetup.m0813'));}}>
     <div className="setup-title"><ProjectIcon kind="project" /><h1>{edit(title,msg('ProjectSetup.m0814'),v=>{if(!project&&!partial)setTitle(v);},msg('ProjectSetup.m0815'))}</h1>{project && <span>{msg('ProjectSetup.m0816')}</span>}</div>
     {error && <p className="form-error setup-message" role="alert">{uiMessage(error)}</p>}
-    {busy && <ProcessingNotice>{msg('ProjectSetup.m0817')}</ProcessingNotice>}
+    {busy && importStage && <ProjectImportStatus stage={importStage} />}
+    {busy && !importStage && <ProcessingNotice>{msg('ProjectSetup.m0817')}</ProcessingNotice>}
     <div className="setup-body"><aside className="setup-sidebar" aria-label={msg('ProjectSetup.m0818')}><p className="section-label">{msg('ProjectSetup.m0819')}</p>
       {sessions.map(s=><div className={`setup-session${!adding&&s.id===selected?' is-selected':''}`} key={s.id} {...sortZone(s.id,'sessions')} onFocusCapture={()=>{if(!busy&&!adding&&selected!==s.id){setSelected(s.id);setPlaying(null);}}}><div role="button" tabIndex={0} className="setup-session-select" aria-disabled={busy} aria-pressed={!adding&&s.id===selected} onKeyDown={e=>{if(e.target!==e.currentTarget||busy)return;const next=adjacentSessionRow(e);if(next){if(adding){setAdding(false);setSelected(next.dataset.sessionId!);setPlaying(null);}next.focus();return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(s.id);setAdding(false);setPlaying(null);}}} data-session-id={s.id} onClick={e=>{if(!busy){focusSessionRowFromClick(e);setSelected(s.id);setAdding(false);setPlaying(null);}}}><ProjectIcon kind="mic" /><span><InlineEdit doubleClick disabled={busy} value={s.title} ariaLabel={msg('ProjectSetup.m0820', { v0: s.title })} onCommit={title=>{if(title.trim())patchSession(s.id,{title:title.trim()});}}/><small>{s.metadata?.recorded_at?.slice(0,10) || msg('ProjectSetup.m0821')}</small></span></div>{handle(s.id,'sessions',s.title,sessions)}</div>)}
       {!initial && <button type="button" className="setup-drop setup-new" disabled={busy||adding} onClick={newSession}><ProjectIcon kind="plus" />{msg('ProjectSetup.m0822')}</button>}

@@ -311,6 +311,17 @@ it('groups multiple recordings in one interview and attaches a matching manuscri
   expect(p.data.interviews[0].recordings).toHaveLength(2);
   expect(await source.files.get('上午.txt')!.text()).toBe('转录稿正文');
 });
+it('reports the copy, verification, and save stages while keeping the source audio intact', async () => {
+  const source = directory('source');
+  source.files.set('sample.wav', new File(['synthetic audio'], 'sample.wav'));
+  const materials = await prepareMaterials([{ handle: await source.handle.getFileHandle('sample.wav'), group: 'Sample session' }]);
+  const project = await createProject(directory().handle, 'Sample project');
+  const stages: string[] = [];
+  const saved = await importProjectMaterials(project, materials, 'copy', undefined, undefined, stage => stages.push(stage));
+  expect(stages).toEqual(['copying', 'verifying', 'saving']);
+  expect(saved.data.interviews[0].recordings[0].storage).toBe('copy');
+  expect(await source.files.get('sample.wav')!.text()).toBe('synthetic audio');
+});
 it('keeps the existing project unchanged when a material batch cannot be published', async () => {
   const source=directory(); source.files.set('访谈.txt',new File(['完整正文'],'访谈.txt'));
   const materials=await prepareMaterials([{handle:await source.handle.getFileHandle('访谈.txt')}]);

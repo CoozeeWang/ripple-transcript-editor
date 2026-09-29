@@ -2,6 +2,14 @@
   "audioPlayback": {
     "unsupportedAdts": "“{{v0}}”使用了 Ripple 暂时无法播放的 AAC 编码或帧结构。原文件没有被修改；可先用其他播放器确认内容，再转换为 m4a 或 mp3 后重新关联音频。"
   },
+  "projectImport": {
+    "preparing": "正在准备导入音频…",
+    "copying": "正在复制音频到项目…",
+    "verifying": "正在校验音频副本…",
+    "saving": "正在保存项目…",
+    "audioDone": "音频已加入项目。",
+    "materialsDone": "材料已保存到项目。"
+  },
   "CredentialManager": {
     "m0056": "请选择…",
     "m0057": "手动填写…",
