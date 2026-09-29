@@ -2926,7 +2926,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .date-time-field input { width: 2.4ch; padding: 2px 0; border: 0; outline: none; border-radius: 2px; background: transparent; color: var(--color-text); font-variant-numeric: tabular-nums; text-align: center; }
 .date-time-field input.date-time-year { width: 4.6ch; }
 .date-time-field input:focus { background: var(--color-accent-tint); }
-.inline-date-error { color: var(--color-danger); font-size: .68rem; }
+.inline-date-error, .field > .inline-date-error { color: var(--color-danger); font-size: .68rem; }
 
 .diagnostics-settings { display: grid; gap: var(--settings-section-gap, 16px); font-family: var(--font-sans); text-align: left; }
 .diagnostic-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
