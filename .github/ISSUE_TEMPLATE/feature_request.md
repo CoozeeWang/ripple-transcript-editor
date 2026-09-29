@@ -2,7 +2,7 @@
 name: 需求建议
 about: 记录希望改进的使用流程
 title: ""
-labels: "enhancement"
+labels: ""
 assignees: ""
 ---
 
