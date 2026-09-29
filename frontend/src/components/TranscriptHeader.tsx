@@ -51,7 +51,9 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
                 placeholder={msg('TranscriptHeader.m1071')}
                 ariaLabel={msg('TranscriptHeader.m1072')}
                 inputType="datetime-local"
-                display={(fieldValue) => fieldValue.replace("T", " ")}
+                display={(fieldValue) => /^\d{4}-\d{2}-\d{2}$/.test(fieldValue)
+                  ? <>{fieldValue}<span className="recorded-time-placeholder">HH:MM</span></>
+                  : fieldValue.replace("T", " ")}
                 onCommit={(next) => void patchMetadata({ recorded_at: next ? (next.includes("T") ? `${next}:00` : next) : null })}
               />
               <InlineEdit
