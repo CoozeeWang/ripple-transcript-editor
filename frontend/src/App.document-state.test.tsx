@@ -20,17 +20,44 @@ vi.mock("./hooks/useProviders", () => ({ useProviders: () => ({ providers: [],
 vi.mock("./hooks/usePersistence", () => ({ usePersistence: () => ({ flushPendingSave: fixture.flush }) }));
 vi.mock("./hooks/useOpeningPosition", () => ({ useOpeningPosition: () => {} }));
 
-function load(name: string) {
+function load(name: string, title = name) {
   const transcript = { audio: { filename: name, duration: 2 },
     speakers: [{ id: "speaker_0", name: "说话人 1" }],
     segments: [{ id: "seg_1", speaker_id: "speaker_0", start: 0, end: 2, text: `${name}的内容` }] };
-  const metadata = { id: name, title: name, participants: [], topics: [], notes: "", location: "",
+  const metadata = { id: name, title, participants: [], topics: [], notes: "", location: "",
     recorded_at: null, created_at: "", updated_at: "" };
   act(() => { fixture.folder!.onLoaded({ url: "", manifest: { schemaVersion: 2, audio: name, models: [], activeModelId: "" },
     edited: { kind: "te-edited", audio: name, transcript, metadata } }, name); });
 }
 
+function loadFresh(name: string) {
+  act(() => { fixture.folder!.onLoaded({ url: "", manifest: null, edited: null }, name); });
+}
+
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+
+it("uses the complete recording filename for a new project's manuscript without changing the session", () => {
+  const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
+    recorded_at: null, created_at: "", updated_at: "" };
+  const { rerender } = render(<App recordingLabel="录音_A.m4a" interviewTitle={session.title} interviewMetadata={session} />);
+  loadFresh("stored-a.m4a");
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
+  rerender(<App recordingLabel="录音_B.m4a" interviewTitle={session.title} interviewMetadata={session} />);
+  loadFresh("stored-b.m4a");
+  expect(screen.getByRole("heading", { name: "录音_B.m4a" })).toBeTruthy();
+  expect(session.title).toBe("第一场");
+});
+
+it("keeps a saved recording draft title and an existing manuscript title", () => {
+  const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
+    recorded_at: null, created_at: "", updated_at: "" };
+  const draft = { metadata: { ...session, title: "我改过的标题" }, speakers: [] };
+  render(<App recordingLabel="录音_A.m4a" interviewMetadata={session} recordingDraft={draft} />);
+  loadFresh("stored-a.m4a");
+  expect(screen.getByRole("heading", { name: "我改过的标题" })).toBeTruthy();
+  load("stored-a.m4a", "导入稿标题");
+  expect(screen.getByRole("heading", { name: "导入稿标题" })).toBeTruthy();
+});
 
 it("does not inherit hidden speaker IDs from old global storage or a previous document", () => {
   localStorage.setItem("te-hidden-speakers", JSON.stringify(["speaker_0"]));
