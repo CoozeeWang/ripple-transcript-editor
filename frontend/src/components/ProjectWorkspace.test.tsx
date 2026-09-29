@@ -162,7 +162,50 @@ it('keeps copy and verification visible, blocks another import, and reports succ
   expect(screen.getByText('正在保存项目…')).toBeTruthy();
   await act(async () => finishSave());
   expect(await screen.findByText('音频已加入项目。')).toBeTruthy();
+  expect(screen.getByText('音频已加入项目。').className).toBe('processing-notice');
   expect(screen.queryByText('正在保存项目…')).toBeNull();
+});
+
+it('cancels a copy without a success notice and allows the same audio to be retried', async () => {
+  let signal!: AbortSignal;
+  vi.mocked(store.importProjectMaterials).mockImplementationOnce(async (_project, _materials, _storage, _id, _sessions, onStage, cancelSignal) => {
+    signal = cancelSignal!;
+    onStage?.('copying');
+    return new Promise<store.OpenProject>((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError'))));
+  });
+  const file = new File(['synthetic audio'], 'sample.wav');
+  Object.assign(window, { showOpenFilePicker: vi.fn(async () => [{ name: file.name, kind: 'file', getFile: async () => file }]) });
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  const add = await screen.findByRole('button', { name: '选择或拖入音频，加入这个场次' });
+  fireEvent.click(add);
+  fireEvent.click(await screen.findByRole('button', { name: '加入音频' }));
+  await screen.findByText('正在复制音频到项目…');
+  fireEvent.click(screen.getByRole('button', { name: '取消导入' }));
+  await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
+  expect(signal.aborted).toBe(true);
+  expect(screen.queryByText('音频已加入项目。')).toBeNull();
+  vi.mocked(store.importProjectMaterials).mockResolvedValueOnce(project);
+  fireEvent.click(add);
+  fireEvent.click(await screen.findByRole('button', { name: '加入音频' }));
+  expect(await screen.findByText('音频已加入项目。')).toBeTruthy();
+});
+
+it('removes the short success notice after four seconds', async () => {
+  vi.mocked(store.importProjectMaterials).mockResolvedValue(project);
+  const file = new File(['synthetic audio'], 'sample.wav');
+  Object.assign(window, { showOpenFilePicker: vi.fn(async () => [{ name: file.name, kind: 'file', getFile: async () => file }]) });
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择或拖入音频，加入这个场次' }));
+  const timer = vi.spyOn(window, 'setTimeout');
+  fireEvent.click(await screen.findByRole('button', { name: '加入音频' }));
+  await screen.findByText('音频已加入项目。');
+  const dismiss = timer.mock.calls.find(([, delay]) => delay === 4000)?.[0];
+  expect(typeof dismiss).toBe('function');
+  await act(async () => { if (typeof dismiss === 'function') dismiss(); });
+  expect(screen.queryByText('音频已加入项目。')).toBeNull();
+  timer.mockRestore();
 });
 
 it('keeps a failed copy visible as an error and allows another attempt', async () => {

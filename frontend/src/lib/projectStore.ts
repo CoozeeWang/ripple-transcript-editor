@@ -164,12 +164,14 @@ export async function permit(handle: FileSystemHandle, mode: 'read' | 'readwrite
   const h = handle as FileSystemHandle & { requestPermission?: (options: { mode: string }) => Promise<string> };
   if (h.requestPermission && await h.requestPermission({ mode }) !== 'granted') throw new Error(msg('projectStore.m1399'));
 }
-export async function mediaFingerprint(file: Blob): Promise<string> {
+export async function mediaFingerprint(file: Blob, signal?: AbortSignal): Promise<string> {
   // Hash every byte in bounded chunks, rather than identifying a recording by name or its first few seconds.
   const parts: Uint8Array[] = [];
   for (let offset = 0; offset < file.size; offset += 2 * 1024 * 1024) {
+    if (signal?.aborted) throw new DOMException('Import cancelled', 'AbortError');
     parts.push(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.slice(offset, offset + 2 * 1024 * 1024).arrayBuffer())));
   }
+  if (signal?.aborted) throw new DOMException('Import cancelled', 'AbortError');
   const hashes = new Uint8Array(parts.length * 32);
   parts.forEach((part, i) => hashes.set(part, i * 32));
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', hashes));
@@ -469,10 +471,13 @@ export async function importExistingManuscript(project: OpenProject, interviewId
 export type ProjectImportStage = 'preparing' | 'copying' | 'verifying' | 'saving';
 
 /** Stage all selected materials; publish once so a failure cannot expose half an import. */
-export async function importProjectMaterials(project: OpenProject, materials: ImportMaterial[], storage: 'copy' | 'reference', existingInterviewId?: string, sessions?: ProjectInterview[], onStage?: (stage: ProjectImportStage) => void): Promise<OpenProject> {
+export async function importProjectMaterials(project: OpenProject, materials: ImportMaterial[], storage: 'copy' | 'reference', existingInterviewId?: string, sessions?: ProjectInterview[], onStage?: (stage: ProjectImportStage) => void, signal?: AbortSignal): Promise<OpenProject> {
   if (!materials.length && !sessions?.length) throw new Error(msg('projectStore.m1438'));
   const release = await acquireProjectEditor(project.data.id);
+  const stagedEntries: Array<() => Promise<void>> = [];
+  const checkCancelled = () => { if (signal?.aborted) throw new DOMException('Import cancelled', 'AbortError'); };
   try {
+    checkCancelled();
     const fresh = await openProject(project.directory);
     if (fresh.data.revision !== project.data.revision) throw new Error(msg('projectStore.m1439'));
     const groups = new Map<string, ProjectInterview>();
@@ -508,10 +513,12 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
         if (materials.some(m => m.audioId === item.id)) {
           const stagedName = `import-${crypto.randomUUID()}.transcript`;
           const staged = await directory.getDirectoryHandle(stagedName, { create: true });
+          stagedEntries.push(() => directory.removeEntry(stagedName, { recursive: true }));
           let previous: FileSystemDirectoryHandle | undefined;
           try { previous = await directory.getDirectoryHandle(original.manuscriptDirectory ?? `${stemOf(original.file)}.transcript`); }
           catch (error) { if (!notFound(error)) throw error; }
           if (previous) await copyTree(previous, staged);
+          checkCancelled();
           recording.manuscriptDirectory = stagedName;
         }
         interview.recordings = interview.recordings.map(r => r.id === recording.id ? recording : r);
@@ -521,14 +528,18 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       const id = crypto.randomUUID();
       const file = item.kind === 'audio' ? await item.handle.getFile() : undefined;
       const ext = file?.name.split('.').pop()?.toLowerCase() ?? 'wav';
-      if (file && (item.storage ?? storage) === 'copy') onStage?.('copying');
-      const recording: ProjectRecording = { id, name: item.name, file: `${id}.${ext}`, storage: file ? item.storage ?? storage : 'none', fingerprint: file ? await mediaFingerprint(file) : '' };
+      const recording: ProjectRecording = { id, name: item.name, file: `${id}.${ext}`, storage: file ? item.storage ?? storage : 'none', fingerprint: file ? await mediaFingerprint(file, signal) : '' };
       if (file && recording.storage === 'copy') {
+        onStage?.('copying');
         const media = await directory.getDirectoryHandle('media', { create: true });
         const target = await media.getFileHandle(recording.file, { create: true });
-        await file.stream().pipeTo(await target.createWritable());
+        stagedEntries.push(() => media.removeEntry(recording.file));
+        checkCancelled();
+        await file.stream().pipeTo(await target.createWritable(), { signal });
+        checkCancelled();
         onStage?.('verifying');
-        if (await mediaFingerprint(await target.getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1447'));
+        if (await mediaFingerprint(await target.getFile(), signal) !== recording.fingerprint) throw new Error(msg('projectStore.m1447'));
+        checkCancelled();
       } else if (file) await handleValue(`media:${project.data.id}:${id}`, item.handle);
       interview.recordings.push(recording); records.set(item.id, recording);
     }
@@ -537,16 +548,33 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       const interview = groups.get(sessions ? item.group : existing?.title ?? item.group.trim())!;
       const recording = records.get(item.audioId || item.id)!;
       const view = await recordingDirectory(project, interview.id, recording);
+      if (!recording.manuscriptDirectory) {
+        const directory = await interviewDirectory(project, interview.id);
+        const transcriptName = `${stemOf(recording.file)}.transcript`;
+        stagedEntries.push(() => directory.removeEntry(transcriptName, { recursive: true }));
+      }
       const transcript = { ...item.transcript, audio: { ...item.transcript.audio, filename: recording.storage === 'none' ? '' : recording.name } };
       await createModel(view, recording.file, { engine:item.ripple?.engine||'imported',sourceKind:'import',sourceName:item.name,transcript,original:transcript,originalOnly:!!item.isOriginal,designatedOriginal:!!item.isOriginal,metadata:{...defaultMetadata(stemOf(item.name)),recorded_at:interview.metadata?.recorded_at??null,location:interview.metadata?.location??'',...item.ripple?.metadata} });
+      checkCancelled();
     }
     const updated = new Map([...groups.values()].map(i => [i.id, i]));
+    checkCancelled();
     onStage?.('saving');
-    return await saveProject(project, { ...project.data, interviews: [
+    const saved = await saveProject(project, { ...project.data, interviews: [
       ...project.data.interviews.map(i => updated.get(i.id) ?? i),
       ...[...updated.values()].filter(i => !project.data.interviews.some(old => old.id === i.id)),
     ] });
-  } finally { release(); }
+    return saved;
+  } catch (error) {
+    let cleanupError: unknown;
+    for (const remove of stagedEntries.reverse()) {
+      try { await remove(); } catch (error) { cleanupError ??= error; }
+    }
+    if (cleanupError) throw cleanupError;
+    throw error;
+  } finally {
+    release();
+  }
 }
 
 /** Move a complete manuscript history within an interview; never overwrite another history. */

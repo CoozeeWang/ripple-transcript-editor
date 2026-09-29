@@ -7,6 +7,7 @@
     "copying": "正在复制音频到项目…",
     "verifying": "正在校验音频副本…",
     "saving": "正在保存项目…",
+    "cancel": "取消导入",
     "audioDone": "音频已加入项目。",
     "materialsDone": "材料已保存到项目。"
   },
