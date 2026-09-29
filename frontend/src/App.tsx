@@ -305,7 +305,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setActualDuration(0);
       if (!edited || !manifest) {
         setViewingOriginal(false);
-        setMetadata(projectProps.recordingDraft?.metadata ?? projectProps.interviewMetadata ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name)));
+        const initialMetadata = projectProps.recordingDraft?.metadata
+          ?? projectProps.interviewMetadata
+          ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name));
+        setMetadata(projectProps.recordingDraft || !projectProps.recordingLabel || manifest
+          ? initialMetadata
+          : { ...initialMetadata, title: projectProps.recordingLabel });
         reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] });
         setHasLoadedTranscript(false);
         applyManifestRef.current(null);
