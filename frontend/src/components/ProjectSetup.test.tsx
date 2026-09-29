@@ -71,6 +71,14 @@ it('uses transcript date segmentation and refuses impossible scene dates',()=>{
  fireEvent.change(day,{target:{value:'31'}});scene();expect(screen.getByRole('alert').textContent).toContain('无效');
  fireEvent.change(day,{target:{value:'30'}});fireEvent.click(screen.getByText('确认'));expect(screen.getAllByText('2026-09-30').length).toBeGreaterThan(0);
 });
+it('confirms a scene with a one-digit day as a padded date',()=>{
+ render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();fireEvent.click(screen.getAllByRole('button',{name:'新增场次'})[0]);
+ fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'第二次访谈'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});
+ const year=screen.getByRole('textbox',{name:'场次日期：年'}),month=screen.getByRole('textbox',{name:'场次日期：月'}),day=screen.getByRole('textbox',{name:'场次日期：日'});
+ fireEvent.change(year,{target:{value:'2020'}});fireEvent.change(month,{target:{value:'10'}});fireEvent.change(day,{target:{value:'3'}});
+ fireEvent.click(screen.getByRole('button',{name:'确认'}));
+ expect(screen.queryByRole('alert')).toBeNull();expect(screen.getAllByText('2020-10-03').length).toBeGreaterThan(0);
+});
 it('accepts Word transcripts dropped onto the whole audio card and reports unsupported outside drops',async()=>{
  const fetcher=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({text:'旧版 Word 正文'}),{status:200}));
  render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();drop('选择或拖入音频，加入这个场次',[new File(['a'],'录音.wav')]);fireEvent.click(await screen.findByRole('button',{name:'加入音频'}));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'音频存放方式'})).toBeNull());await screen.findByText('录音.wav');
