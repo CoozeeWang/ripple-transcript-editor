@@ -6,7 +6,7 @@ REPO=$(CDPATH= cd -- "$DESKTOP/.." && pwd)
 STAGED_BACKEND=${1:?Pass the directory printed by desktop/stage-backend.py}
 APP=${2:-"$DESKTOP/dist/Ripple.app"}
 BINARY="$DESKTOP/src-tauri/target/release/ripple-desktop"
-BUILD_NUMBER=${RIPPLE_BUILD_NUMBER:?Set RIPPLE_BUILD_NUMBER to the next positive integer (for example, 8)}
+BUILD_NUMBER=${RIPPLE_BUILD_NUMBER:?Set RIPPLE_BUILD_NUMBER to the next unused positive integer (for example, 9)}
 
 # Validate metadata before changing an existing app bundle.
 VERSION=$(python3 - "$DESKTOP/src-tauri/tauri.conf.json" "$APP" "$BUILD_NUMBER" <<'PY'
@@ -19,8 +19,8 @@ from pathlib import Path
 config_path, app_path, build = sys.argv[1:]
 if not re.fullmatch(r"[1-9][0-9]*", build):
     raise SystemExit("RIPPLE_BUILD_NUMBER must be a positive integer without leading zeroes")
-if int(build) < 8:
-    raise SystemExit("RIPPLE_BUILD_NUMBER must exceed the last fixed build number 7")
+if int(build) < 9:
+    raise SystemExit("RIPPLE_BUILD_NUMBER must exceed the existing internal build number 8")
 version = json.loads(Path(config_path).read_text(encoding="utf-8"))["version"]
 if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}", version):
     raise SystemExit("Tauri version must have two or three numeric components for macOS")

@@ -59,24 +59,24 @@ class PackageMacTest(unittest.TestCase):
         )
 
     def test_metadata_increments_and_matches_source(self):
-        self.assertEqual(self.package("8").returncode, 0)
         self.assertEqual(self.package("9").returncode, 0)
+        self.assertEqual(self.package("10").returncode, 0)
         with (self.app / "Contents/Info.plist").open("rb") as stream:
             metadata = plistlib.load(stream)
         expected_commit = subprocess.check_output(["git", "-C", str(self.root), "rev-parse", "HEAD"], text=True).strip()
-        self.assertEqual(metadata["CFBundleVersion"], "9")
+        self.assertEqual(metadata["CFBundleVersion"], "10")
         self.assertEqual(metadata["CFBundleShortVersionString"], "0.2.3")
         self.assertEqual(metadata["RippleGitCommit"], expected_commit)
         subprocess.run(["plutil", "-lint", str(self.app / "Contents/Info.plist")], check=True, capture_output=True)
 
     def test_missing_invalid_or_reused_build_is_rejected_before_overwrite(self):
-        for build in (None, "0", "07", "7", "8x"):
+        for build in (None, "0", "07", "7", "8", "9x"):
             self.assertNotEqual(self.package(build).returncode, 0)
             self.assertFalse(self.app.exists())
-        self.assertEqual(self.package("8").returncode, 0)
+        self.assertEqual(self.package("9").returncode, 0)
         original = (self.app / "Contents/Info.plist").read_bytes()
+        self.assertNotEqual(self.package("9").returncode, 0)
         self.assertNotEqual(self.package("8").returncode, 0)
-        self.assertNotEqual(self.package("7").returncode, 0)
         self.assertEqual((self.app / "Contents/Info.plist").read_bytes(), original)
 
 
