@@ -12,7 +12,8 @@ Describe what happened in one sentence.
 
 ## Environment
 
-- Ripple version or commit:
+- Ripple app version:
+- Build number or commit (if known):
 - Usage: Browser or Ripple App
 - Interface language: Chinese or English
 - Operating system:
