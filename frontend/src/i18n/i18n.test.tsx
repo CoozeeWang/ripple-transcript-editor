@@ -97,11 +97,8 @@ it('uses reviewed full messages and separate singular/plural counts without chan
 
 it('keeps source metadata lookup independent of reviewed Chinese display text', async () => {
   const { serviceText } = await import('./serviceText');
-  const { apiErrorMessage } = await import('./errors');
   await setInterfaceLanguage('zh-CN');
   expect(serviceText('模型名')).toBe(msg('serviceCatalog.b0219'));
-  expect(apiErrorMessage({detail:'规则最多 30 条，每条 6000 字，合计 12000 字'},422)).toBe(msg('backend.b0014'));
   await setInterfaceLanguage('en');
-  expect(apiErrorMessage({detail:'规则最多 30 条，每条 6000 字，合计 12000 字'},422)).toBe(msg('backend.b0014'));
   expect(builtinText('user-plan','忠实转写')).toBe('忠实转写');
 });

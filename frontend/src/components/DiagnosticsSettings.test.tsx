@@ -22,7 +22,7 @@ it('shows an honest clipboard failure instead of claiming success', async () => 
 });
 it('exports only allowlisted records and environment fields', async () => {
   const id = '12345678-1234-1234-1234-123456789abc';
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ records: [{id, time: new Date().toISOString(), operation:'editing',status:502,raw:'secret-key'}] }))));
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ records: [{id, time: new Date().toISOString(), operation:'engine',status:502,raw:'secret-key'}] }))));
   const create = vi.fn<(blob: Blob) => string>(() => 'blob:diagnostic');
   vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});

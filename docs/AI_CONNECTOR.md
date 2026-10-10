@@ -11,7 +11,7 @@ The simplified connection uses Ripple's connection service and device pairing. I
 3. Enter that code on the Ripple authorization page opened by the AI application, check the requested access, and authorize. The code expires after 10 minutes and works once only.
 4. Select Ripple in the AI application's conversation. The desktop connection becomes enabled after pairing succeeds.
 
-Authorization is remembered across restarts. The connection switch pauses access without removing authorization; **Disconnect and revoke** removes it. Requests only access the currently open interview, not the file system or audio. Text sent to external AI leaves the computer and passes through the connection service. Start with a synthetic interview. Editing-engine API settings remain separate.
+Authorization is remembered across restarts. The connection switch pauses access without removing authorization; **Disconnect and revoke** removes it. Requests only access the currently open interview, not the file system or audio. Text sent to external AI leaves the computer and passes through the connection service. Start with a synthetic interview.
 
 Older internal testing builds used the official OpenAI tunnel and manually configured credentials. Those fields are not part of the new user flow. Existing test connections do not automatically migrate to a new service; adding the deployed Ripple connection and authorizing it is necessary. The already configured ChatGPT test plugin should be retained until public deployment and compatibility testing are complete.
 
@@ -19,14 +19,14 @@ Older internal testing builds used the official OpenAI tunnel and manually confi
 
 Ask in ChatGPT: “I've edited part of v1. Look at my corrections and continue from this paragraph.” Specify the start paragraph or a precise position. If the start is missing or ambiguous, ChatGPT must ask. It reads selected original/current pairs (recorded merged or split source groups include their full comparison context) to discuss consequential style rules; those pairs can include previous AI changes, so their human authorship must be confirmed rather than inferred.
 
-Once the rules and scope are agreed, ChatGPT stages all paragraphs in that range, including unchanged paragraphs, then publishes one new version. Rules are saved for this interview without raw examples. Saving them for other interviews is an explicit action through the existing common-plan settings. Unchanged words retain their original timing, replacements inherit their source range, and inserted words have approximate timing through the same algorithms used for manual editing.
+Once the rules and scope are agreed, ChatGPT stages all paragraphs in that range, including unchanged paragraphs, then publishes one new version. Rules are retained only for the current interview or task, without raw examples or a reusable common-plan library. Unchanged words retain their original timing, replacements inherit their source range, and inserted words have approximate timing through the same algorithms used for manual editing.
 
 ChatGPT normally gives short explanations and a completion summary. Full differences belong in Ripple; it should reproduce full text or a complete changes list only when requested. For analysis, it should cite relevant snippets and timestamps, distinguish evidence from interpretation, and state when it has read only part of the interview. Analysis does not edit the manuscript.
 
 ## Recovery and limits
 
 - Changing the source, selecting another version/interview, or closing the interview invalidates an old snapshot. Read again and agree on the new scope before proceeding.
-- Unfinished batches remain unpublished. Within the same enabled editor session, ChatGPT can inspect task status and continue missing paragraphs. Closing the app or disabling the connection clears transient tasks; confirmed interview rules remain saved. Retry a completed task through its status/result instead of starting another task.
+- Unfinished batches remain unpublished. Within the same enabled editor session, ChatGPT can inspect task status and continue missing paragraphs. Closing the app or disabling the connection clears transient tasks; read the interview again before resuming a later task. Retry a completed task through its status/result instead of starting another task.
 - Repeated publication of a task returns the same result. A timeout means the outcome may be unknown: inspect task status and the Ripple version list before starting another operation.
 - Name conflicts use a new suggested name, never overwrite. If a conflict arises after preparation, refresh the current source and prepare again. No text changes means no new version.
 - The first connector edits text without changing speakers, splitting or merging paragraphs. It accepts up to 32 paragraphs per staging call, paginates text reads, and rejects individual paragraphs longer than 12,000 UTF-16 code units for editing; split those in Ripple first. Read pagination supports longer paragraphs without splitting grapheme clusters.
