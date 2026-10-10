@@ -42,7 +42,7 @@ To transcribe, create or open an interview, choose an audio file, then click **�
 
 ## MCP connection
 
-The personal desktop MCP connection lets external AI clients read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Setup, scope, recovery and platform limits are described in [ChatGPT connection](docs/AI_CONNECTOR.md).
+The personal desktop MCP connection lets external AI clients read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## AI-assisted editing
 
@@ -127,4 +127,4 @@ For contributors, [development workflow](docs/WORKFLOW.md) defines branches, che
 
 Word timing in editable versions keeps provenance back to the model's original transcript. Replacements inherit the replaced source range; insertions use a separate approximate anchor. Comparison selection does not reassign unchanged text to a different source. Segments with replacement, approximate, or unresolved timing show “含近似定位”. This preserves existing audio references; it does not perform acoustic forced alignment. Origin metadata is saved locally and omitted from JSON exports.
 
-For the simplified MCP connection service and deployment boundaries, see [Connection service](docs/CONNECTION_SERVICE.md).
+The public relay is retained as development history and is not the default connection route. Ripple does not require its developer to operate a public server. See [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).

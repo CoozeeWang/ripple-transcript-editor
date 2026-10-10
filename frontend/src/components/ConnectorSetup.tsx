@@ -1,57 +1,51 @@
 import { useEffect, useState } from 'react';
 import { msg } from '../i18n';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
+import { ChatGPTSetup } from './ChatGPTSetup';
 
-interface PairState { paired: boolean; available: boolean; pair_code?: string; expires_at?: number; revoked?: boolean; pairing_pending?: boolean }
-async function invoke<T>(command: string): Promise<T> {
+type Client = 'chatgpt' | 'claude' | 'workbuddy';
+async function invoke<T>(command: string, args?: Record<string, string>): Promise<T> {
   if (!nativeDesktopAvailable()) throw new Error('desktop_required');
-  return (window as unknown as { __TAURI__: { core: { invoke: (name: string) => Promise<T> } } }).__TAURI__.core.invoke(command);
+  return (window as unknown as {__TAURI__: {core: {invoke: (command: string, args?: Record<string, string>) => Promise<T>}}}).__TAURI__.core.invoke(command, args);
 }
-export function ConnectorSetup({ onSaved, onRevoked }: { onSaved?: () => void; onRevoked?: () => void }) {
-  const [saved, setSaved] = useState<PairState>({paired:false,available:false});
+export function ConnectorSetup({onSaved, onRevoked}: {onSaved?: () => void; onRevoked?: () => void}) {
+  const [client, setClient] = useState<Client>('chatgpt');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState(false);
-  const [expired, setExpired] = useState(false);
+  const [exported, setExported] = useState(false);
   useEffect(() => {
     let disposed = false;
-    void invoke<PairState>('connector_pair_status').then(value => { if (!disposed) setSaved(value); })
-      .catch(() => { if (!disposed) setError(true); }).finally(() => { if (!disposed) setBusy(false); });
-    return () => { disposed = true; };
+    void invoke<{client: Client}>('connector_client_status').then(value => {if (!disposed) setClient(value.client);})
+      .catch(() => {if (!disposed) setError(true);}).finally(() => {if (!disposed) setBusy(false);});
+    return () => {disposed = true;};
   }, []);
-  useEffect(() => {
-    if (!saved.pair_code || saved.paired) return;
-    let disposed = false;
-    const timer = setInterval(() => {
-      if (Date.now()/1000 >= (saved.expires_at ?? 0)) { setExpired(true); return; }
-      void invoke<PairState>('connector_pair_status').then(value => {
-        if (!disposed && value.paired && !value.pairing_pending) { setSaved(value); setError(false); onSaved?.(); }
-      }).catch(() => { if (!disposed) setError(true); });
-    }, 2500);
-    return () => { disposed = true; clearInterval(timer); };
-  }, [saved.pair_code, saved.paired, saved.expires_at, onSaved]);
-  async function act(command: string) {
-    setBusy(true); setError(false); setExpired(false);
-    try {
-      const value = await invoke<PairState>(command);
-      setSaved(value); setExpired(false);
-      if (command === 'connector_pair_revoke') onRevoked?.();
-    } catch { setError(true); }
-    finally { setBusy(false); }
+  async function select(value: Client) {
+    setBusy(true); setError(false); setExported(false);
+    try {await invoke('connector_client_select', {client: value}); setClient(value); onSaved?.();}
+    catch {setError(true);} finally {setBusy(false);}
   }
-  return <div className="cred-profile connector-setup-card" aria-busy={busy}>
-    <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.pairTitle')}</span></div>
-    <p className="settings-hint" role="status">{msg(busy ? 'connector.loadingSetup' : saved.paired ? 'connector.paired' : !saved.available && !error ? 'connector.servicePending' : 'connector.pairHint')}</p>
-    {saved.pair_code && !saved.paired && <div className="cred-profile__fields">
-      <div className="cred-field"><span className="cred-field__label">{msg('connector.pairCode')}</span>
-        <span className="cred-field__input"><output className="connector-pair-code">{saved.pair_code.match(/.{1,4}/g)?.join('-')}</output></span>
-        <span className="cred-field__hint">{msg(expired ? 'connector.pairExpired' : 'connector.pairCodeHint')}</span>
-      </div>
-    </div>}
-    <div className="cred-profile__actions">
-      {saved.available && <button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void act('connector_pair_begin')}>{msg(saved.paired ? 'connector.pairAdd' : saved.pair_code ? 'connector.pairAgain' : 'connector.pairStart')}</button>}
-      {(saved.paired || saved.pair_code || saved.revoked) && <button type="button" className="cred-btn" disabled={busy} onClick={() => void act('connector_pair_revoke')}>{msg('connector.pairRevoke')}</button>}
-      {error && <button type="button" className="cred-btn" disabled={busy} onClick={() => void act('connector_pair_status')}>{msg('connector.pairRetry')}</button>}
+  async function exportConfig() {
+    setBusy(true); setError(false); setExported(false);
+    try {setExported(await invoke<boolean>('connector_client_export', {client}));}
+    catch {setError(true);} finally {setBusy(false);}
+  }
+  return <div className="connector-setup" aria-busy={busy}>
+    <div className="cred-profile connector-setup-card">
+      <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.softwareTitle')}</span></div>
+      <div className="cred-profile__fields"><label className="cred-field">
+        <span className="cred-field__label">{msg('connector.software')}</span>
+        <span className="cred-field__input"><select value={client} disabled={busy} onChange={event => void select(event.target.value as Client)}>
+          <option value="chatgpt">ChatGPT</option><option value="claude">{msg('connector.claudeDesktop')}</option><option value="workbuddy">WorkBuddy</option>
+        </select></span><span className="cred-field__hint">{msg('connector.softwareHint')}</span>
+      </label></div>
+      {client === 'chatgpt' ? <p className="settings-hint">{msg('connector.chatgptSteps')}</p> : <>
+        <ol className="settings-hint connector-steps"><li>{msg(`connector.${client}Step1`)}</li><li>{msg(`connector.${client}Step2`)}</li><li>{msg('connector.localStep3')}</li></ol>
+        <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void exportConfig()}>{msg(`connector.${client}Export`)}</button></div>
+        {exported && <p className="settings-hint" role="status">{msg('connector.exported')}</p>}
+      </>}
+      <div className="cred-profile__actions"><button type="button" className="cred-btn" disabled={busy} onClick={onRevoked}>{msg('connector.disconnect')}</button></div>
+      {error && <p className="settings-hint connector-error" role="alert">{msg('connector.localError')}</p>}
     </div>
-    {error && <p className="settings-hint connector-error" role="alert">{msg('connector.pairError')}</p>}
+    {client === 'chatgpt' && !busy && <ChatGPTSetup onSaved={onSaved}/>}
   </div>;
 }

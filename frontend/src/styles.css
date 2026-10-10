@@ -3166,6 +3166,8 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 @media(max-width:919px) { body:has(.project-home:not(.project-home--welcome)) { min-width:540px; } }
 
 .settings-mcp .connector-setup-card > .settings-hint { margin: 8px 0; }
+.settings-mcp .connector-steps { padding-left: 24px; }
+.settings-mcp .connector-steps li + li { margin-top: 8px; }
 .settings-mcp .connector-platform { margin-top: 12px; }
 .settings-mcp .cred-field__hint { font-size: .78rem; }
 @media (max-width: 600px) { .settings-mcp .cred-field__hint { grid-column: 1; margin-top: 0; } }

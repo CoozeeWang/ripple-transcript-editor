@@ -63,10 +63,20 @@ class Broker:
         os.chmod(directory, 0o700)
         self.window_key = _key(directory / "window.key", replace=True)
         self.client_key = _key(directory / "client.key")
+        _key(directory / "claude.key")
+        _key(directory / "workbuddy.key")
 
     def authorize(self, authorization: str | None, role: str):
         self.initialize()
         expected = self.window_key if role == "window" else self.client_key
+        if role != "window":
+            from .connector_local import selected_client
+            try:
+                selected = selected_client(DATA_ROOT)
+                if selected != "chatgpt":
+                    expected = (DATA_ROOT / "connector" / f"{selected}.key").read_text().strip()
+            except (OSError, ValueError, KeyError):
+                raise HTTPException(503, "Connector configuration unavailable") from None
         if not secrets.compare_digest(authorization or "", f"Bearer {expected}"):
             raise HTTPException(401, "Connector authorization required")
 

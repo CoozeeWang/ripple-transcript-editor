@@ -1983,11 +1983,11 @@
   },
   "connector": {
     "title": "MCP 连接",
-    "hint": "让外部 AI 按需读取当前访谈、分析内容，保存新的修改稿，并在当前版本添加批注与高亮。连接只访问当前访谈，不发送音频；发送给外部 AI 的文字会离开本机。",
+    "hint": "让外部 AI 按需读取当前访谈、分析内容，并根据你的要求保存新的修改稿、添加批注与高亮。连接只访问当前访谈，不发送音频；发送给外部 AI 的文字会离开本机。",
     "enable": "启用 MCP 连接",
     "off": "连接已关闭",
     "connecting": "正在连接或恢复本机服务…",
-    "ready": "连接已就绪，可到外部 AI 应用提出需求",
+    "ready": "Ripple 连接程序已就绪；外部 AI 是否接入，请通过实际调用验证。",
     "error": "连接未就绪。请完成 Ripple 配对，或检查网络后重试。",
     "retry": "重新连接",
     "setupTitle": "连接配置",
@@ -2028,6 +2028,21 @@
     "pairRevoke": "撤销连接",
     "pairRetry": "重试",
     "pairError": "无法联系连接服务，请检查网络后重试。",
-    "pairAdd": "连接另一个 AI 应用"
+    "pairAdd": "连接另一个 AI 应用",
+    "softwareTitle": "连接 AI 软件",
+    "software": "AI 软件",
+    "claudeDesktop": "Claude 桌面版",
+    "softwareHint": "每次启用所选软件的连接，各自的配置会保留。无需 Ripple 公共服务器。",
+    "chatgptSteps": "使用你自己的 OpenAI 隧道。首次在连接平台创建隧道、下载连接程序，并填写下方配置；随后在 ChatGPT 中添加 Ripple 并选择该隧道。这是个人连接，不是公开插件。",
+    "claudeStep1": "导出 Ripple 扩展（仅供本机使用）。",
+    "claudeStep2": "在 Claude 桌面版的设置 → 扩展 → 高级设置中安装导出的 .mcpb 文件。",
+    "workbuddyStep1": "导出 Ripple 的 MCP 配置（仅供本机使用）。",
+    "workbuddyStep2": "在 WorkBuddy 中打开“专家·技能·连接器 → 连接器 → 自定义连接器 → 添加 MCP”，把导出文件中的 Ripple 项加入 mcpServers 后保存；保留已有连接。",
+    "localStep3": "保持 Ripple 打开并启用连接，在 AI 对话中选择 Ripple。AI 接收按需读取的文字；连接不发送音频。",
+    "claudeExport": "导出 Claude 扩展",
+    "workbuddyExport": "导出 WorkBuddy 配置",
+    "exported": "已导出。安装后请在 AI 中调用 Ripple 验证；移动 Ripple App 后需要重新导出。",
+    "disconnect": "断开连接",
+    "localError": "连接配置操作失败。请确认正在使用 Ripple 桌面版后重试。"
   }
 }

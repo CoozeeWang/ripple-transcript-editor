@@ -1983,11 +1983,11 @@
   },
   "connector": {
     "title": "MCP connection",
-    "hint": "Let external AI read and analyze the current interview on request, save a new editing version, and add annotations and highlights to the current version. Only the current interview is accessible; no audio is sent. Text sent to external AI leaves this device.",
+    "hint": "Let external AI read and analyze the current interview on request, save a new edited version, and add annotations and highlights. Only the current interview is accessible; audio is not sent. Text sent to external AI leaves this computer.",
     "enable": "Enable MCP connection",
     "off": "Connection disabled",
     "connecting": "Connecting or recovering the local service…",
-    "ready": "Connection ready. Ask for help in your external AI application.",
+    "ready": "Ripple’s connector is ready. Verify access by calling it from the external AI.",
     "error": "Connection is not ready. Pair Ripple or check your network and retry.",
     "retry": "Reconnect",
     "setupTitle": "Connection setup",
@@ -2028,6 +2028,21 @@
     "pairRevoke": "Disconnect and revoke",
     "pairRetry": "Retry",
     "pairError": "Cannot reach the connection service. Check your network and retry.",
-    "pairAdd": "Connect another AI application"
+    "pairAdd": "Connect another AI application",
+    "softwareTitle": "Connect an AI application",
+    "software": "AI application",
+    "claudeDesktop": "Claude Desktop",
+    "softwareHint": "Enable the selected application’s connection. Each configuration is retained. No public Ripple server is required.",
+    "chatgptSteps": "Use your own OpenAI tunnel. Create a tunnel and download its client on the platform, configure it below, then add Ripple in ChatGPT using that tunnel. This is a personal connection, not a public plugin.",
+    "claudeStep1": "Export the Ripple extension for this computer.",
+    "claudeStep2": "In Claude Desktop, open Settings → Extensions → Advanced settings and install the exported .mcpb file.",
+    "workbuddyStep1": "Export Ripple’s MCP configuration for this computer.",
+    "workbuddyStep2": "In WorkBuddy, open Experts · Skills · Connectors → Connectors → Custom connector → Add MCP. Add the exported Ripple entry under mcpServers and save, preserving existing connections.",
+    "localStep3": "Keep Ripple open with the connection enabled, then select Ripple in the AI conversation. Requested text goes to the AI; audio is not sent.",
+    "claudeExport": "Export Claude extension",
+    "workbuddyExport": "Export WorkBuddy configuration",
+    "exported": "Exported. Install it and call Ripple from the AI to verify. Export again if you move the Ripple app.",
+    "disconnect": "Disconnect",
+    "localError": "Connection setup failed. Check that you are using Ripple Desktop and try again."
   }
 }
