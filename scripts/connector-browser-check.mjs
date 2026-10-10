@@ -38,7 +38,11 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   // Native credential/lifecycle calls are a fixture; UI, document state and saving are real.
-  await page.addInitScript(key => { window.__TAURI__ = { core: { invoke: async name => name === 'connector_window_key' ? key : true } }; }, token);
+  await page.addInitScript(key => { window.__connectorInvocations = []; window.__TAURI__ = { core: { invoke: async name => {
+    window.__connectorInvocations.push(name);
+    if (name === 'connector_open_platform' && window.__failPlatform) throw new Error('synthetic_open_failure');
+    return name === 'connector_window_key' ? key : true;
+  } } }; }, token);
   await page.goto(vite.resolvedUrls.local[0]);
   await page.getByText('我觉得先开始。', { exact: true }).waitFor();
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
@@ -93,6 +97,21 @@ try {
     const sizes = await page.locator('.settings-mcp').evaluate(section =>
       [...section.querySelectorAll('.settings-hint, .settings-option, summary, .field > span, .button')].map(element => getComputedStyle(element).fontSize));
     if (new Set(sizes).size !== 1) throw new Error(`MCP text sizes differ: ${sizes.join(',')}`);
+    const groups = await page.locator('.connector-setup-content').evaluate(content => {
+      const rects = [...content.children].map(element => element.getBoundingClientRect());
+      return rects.slice(1).map((rect, index) => rect.top - rects[index].bottom);
+    });
+    if (groups.some(gap => Math.abs(gap - 20) > 1)) throw new Error(`MCP group spacing differs: ${groups}`);
+    const platform = page.locator('.connector-setup a');
+    await platform.press('Enter');
+    if (!await page.evaluate(() => window.__connectorInvocations.includes('connector_open_platform'))) throw new Error('Desktop link did not invoke system browser');
+    await page.evaluate(() => { window.__failPlatform = true; });
+    await platform.click();
+    await page.locator('.connector-error').waitFor();
+    await page.evaluate(() => { window.__failPlatform = false; });
+    await platform.click();
+    if (await page.locator('.connector-error').count()) throw new Error('Retry must clear link error');
+    await page.locator('.connector-setup .field').first().scrollIntoViewIfNeeded();
     if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, `settings-${language}.png`) });
     await page.getByRole('dialog').getByRole('button', { name: language === 'en' ? 'Close' : '关闭', exact: true }).click();
   }

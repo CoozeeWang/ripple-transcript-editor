@@ -204,7 +204,6 @@ export function SettingsModal(props: SettingsModalProps) {
               <label className="settings-option"><input className="ripple-checkbox" type="checkbox"
                 checked={props.connector.enabled} onChange={event => props.connector?.setEnabled(event.target.checked)} />
                 <span>{msg('connector.enable')}</span></label>
-              <p className="settings-hint">{msg('connector.lifecycleHint')}</p>
               <p className="settings-hint" role="status">{msg(`connector.${props.connector.status}`)}</p>
               {props.connector.status === 'error' && <button className="button" type="button"
                 onClick={() => { props.connector?.reconnect?.(); }}>{msg('connector.retry')}</button>}

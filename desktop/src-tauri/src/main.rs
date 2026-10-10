@@ -246,6 +246,19 @@ async fn connector_pick_client(app: tauri::AppHandle) -> Result<String, String> 
     Ok(file.into_path().map_err(|_| "invalid_client_path")?.display().to_string())
 }
 
+/// Open the fixed setup destination in the user's default browser, outside the WebView.
+#[tauri::command]
+fn connector_open_platform() -> Result<(), String> {
+    let url = "https://platform.openai.com/settings/organization/tunnels";
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open").arg(url).status();
+    #[cfg(target_os = "windows")]
+    let status = Command::new("cmd").args(["/C", "start", "", url]).status();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let status = Command::new("xdg-open").arg(url).status();
+    match status { Ok(result) if result.success() => Ok(()), _ => Err("open_platform_failed".into()) }
+}
+
 #[tauri::command]
 fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
@@ -352,7 +365,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_setup, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

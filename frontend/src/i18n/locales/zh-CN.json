@@ -1983,7 +1983,7 @@
   },
   "connector": {
     "title": "MCP 连接",
-    "hint": "让外部 AI 按需读取当前访谈、分析内容，并根据你的要求保存新的修改稿。",
+    "hint": "让外部 AI 按需读取当前访谈、分析内容，并根据你的要求保存新的修改稿。 连接只访问当前访谈，不发送音频；发送给外部 AI 的文字会离开本机。",
     "enable": "启用 MCP 连接",
     "off": "连接已关闭",
     "connecting": "正在连接或恢复本机服务…",
@@ -2004,8 +2004,8 @@
     "setup_error": "配置未完成。请检查连接程序、连接标识和连接密钥。",
     "builtinTitle": "Ripple 内置编辑",
     "builtinHint": "在 Ripple 内发起 AI 编辑时使用的模型与凭据。MCP 连接由外部 AI 应用使用自己的模型。",
-    "lifecycleHint": "开启后重启自动恢复，可随时关闭。连接只访问当前访谈，不发送音频；发送给外部 AI 的文字会离开本机。",
     "clientHint": "从上述平台下载的程序，用于连接本机 Ripple 与外部 AI。",
-    "tunnelHint": "创建隧道后，在平台连接详情中复制 Tunnel ID。它用于识别要连接的服务。"
+    "tunnelHint": "创建隧道后，在平台连接详情中复制 Tunnel ID。它用于识别要连接的服务。",
+    "platformError": "无法打开浏览器。请复制地址到浏览器打开：https://platform.openai.com/settings/organization/tunnels"
   }
 }

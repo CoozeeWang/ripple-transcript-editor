@@ -2707,8 +2707,11 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .settings-mcp h3 { margin: 0; font-size: .84rem; }
 .settings-mcp .settings-hint, .settings-mcp .field > span,
 .settings-mcp .button, .settings-mcp summary { font-size: inherit; font-weight: 400; }
-.settings-mcp .connector-setup { display: grid; gap: 12px; }
-.settings-mcp .connector-setup:not([open]) { display: block; }
+.settings-mcp .connector-setup-content { display: grid; gap: 20px; padding-top: 12px; }
+.settings-mcp .connector-setup-group, .settings-mcp .connector-setup .field { display: grid; gap: 8px; margin: 0; }
+.settings-mcp .connector-setup a { color: var(--color-accent); width: fit-content; text-underline-offset: 3px; }
+.settings-mcp .connector-setup a:focus-visible, .settings-mcp summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+.settings-mcp .connector-error { color: var(--color-danger); }
 .settings-mcp summary { cursor: pointer; }
 .settings-mcp .connector-setup .button { width: fit-content; }
 

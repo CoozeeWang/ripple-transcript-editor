@@ -1983,7 +1983,7 @@
   },
   "connector": {
     "title": "MCP connection",
-    "hint": "Let an external AI read the current interview, analyze its content and save a new edited version on request.",
+    "hint": "Let an external AI read the current interview, analyze its content and save a new edited version on request. Only the current interview is accessible; audio is not sent. Text sent to an external AI leaves this device.",
     "enable": "Enable MCP connection",
     "off": "Connection disabled",
     "connecting": "Connecting or recovering the local service…",
@@ -2004,8 +2004,8 @@
     "setup_error": "Setup incomplete. Check the connection program, identifier and key.",
     "builtinTitle": "Ripple built-in editing",
     "builtinHint": "Models and credentials for editing started in Ripple. MCP clients use their own models.",
-    "lifecycleHint": "Reconnects on restart once enabled. Disable at any time. Only the current interview is accessible; audio is not sent. Text sent to an external AI leaves this device.",
     "clientHint": "Download this program from the platform above to connect local Ripple to an external AI.",
-    "tunnelHint": "Copy the Tunnel ID from the platform after creating a tunnel. It identifies the service to connect."
+    "tunnelHint": "Copy the Tunnel ID from the platform after creating a tunnel. It identifies the service to connect.",
+    "platformError": "Could not open the browser. Open this address manually: https://platform.openai.com/settings/organization/tunnels"
   }
 }
