@@ -219,6 +219,19 @@ fn fs_remove(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, 
     } else { fs::remove_file(path).map_err(|e| e.to_string()) }
 }
 
+// Only debug builds under the managed dev identity may use source-backed services.
+fn development(app: &tauri::AppHandle) -> bool {
+    cfg!(debug_assertions) && app.config().identifier == "studio.ripple.app.dev"
+}
+
+fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if development(app) {
+        let path = PathBuf::from(std::env::var("RIPPLE_DATA_DIR").map_err(|_| "Use start-dev.command")?);
+        if !path.is_absolute() { return Err("Development data path must be absolute".into()); }
+        Ok(path)
+    } else { app.path().app_local_data_dir().map_err(|e| e.to_string()) }
+}
+
 fn health_ok() -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else { return false };
@@ -236,7 +249,7 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
     let python = stage.join("python/bin/python3.12");
     if !python.is_file() { return Err("App 缺少随附后台".into()); }
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let log = OpenOptions::new().create(true).append(true).open(data.join("backend.log")).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
@@ -261,12 +274,28 @@ fn stop_backend(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    let mut context = tauri::generate_context!();
+    #[cfg(target_os = "macos")]
+    if cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.dev" {
+        for window in &mut context.config_mut().app.windows { window.create = false; }
+    }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
         .manage(Grants(Mutex::new(Vec::new())))
         .manage(Writes(Mutex::new(HashMap::new())))
         .setup(|app| {
-            let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(Backend(Mutex::new(Some(child))));
+            if development(app.handle()) {
+                if std::env::var("RIPPLE_DESKTOP_DEV").as_deref() != Ok("1") { return Err("Use start-dev.command".into()); }
+                app.manage(Backend(Mutex::new(None)));
+                #[cfg(target_os = "macos")]
+                {
+                    let config = &app.config().app.windows[0];
+                    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+                        .data_store_identifier(*b"ripple-dev-00001").build()?;
+                }
+            } else {
+                let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
+                app.manage(Backend(Mutex::new(Some(child))));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
@@ -279,7 +308,7 @@ fn main() {
                 window.app_handle().exit(0);
             }
         })
-        .build(tauri::generate_context!()).expect("Ripple failed to start")
+        .build(context).expect("Ripple failed to start")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 stop_backend(app);
