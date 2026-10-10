@@ -1,3 +1,4 @@
+mod project_icon;
 mod grants;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
@@ -101,6 +102,15 @@ async fn fs_reauthorize(app: tauri::AppHandle, state: tauri::State<'_, Grants>, 
     if expected.canonicalize().map_err(|e| e.to_string())? != selected { return Err("选择的不是原文件或原文件夹".into()); }
     state.remember(Grant::selected(root, selected, parts, is_directory, is_directory)?)?;
     Ok(())
+}
+
+#[tauri::command]
+async fn project_set_icon(app: tauri::AppHandle, state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> Result<bool, String> {
+    let path = grant_path(&state, &root, &parts, true)?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || { let _ = sender.send(project_icon::apply(&path)); }).map_err(|_|"project_icon_failed")?;
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().map_err(|_|"project_icon_failed")?)
+        .await.map_err(|_|"project_icon_failed".to_string())?
 }
 
 #[tauri::command]
@@ -300,7 +310,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, fs_stat,
+        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready])

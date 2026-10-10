@@ -211,6 +211,7 @@ export function ProjectWorkspace() {
       </nav>
     </header>}
     {audioStorage.dialog}<section className="project-home__content" aria-busy={busy}>
+      {project?.finderIconWarning && <p role="status" className="settings-hint">{msg('ProjectWorkspace.finderIconWarning')}</p>}
       {recentRecovery && <div className="project-error-notice recent-project-recovery" role="status">
         <p>{msg(recentRecovery.reason==='missing'?'ProjectWorkspace.recentMissing':recentRecovery.reason==='permission'?'ProjectWorkspace.recentPermission':'ProjectWorkspace.recentUnreadable',{title:recentRecovery.title})}</p>
         <button type="button" disabled={busy} onClick={()=>chooseProject(undefined,recentRecovery.id)}>{msg('ProjectWorkspace.recentRecover')}</button>

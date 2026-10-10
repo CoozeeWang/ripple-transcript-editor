@@ -236,3 +236,10 @@ export async function nativeAccessStatus(handle: FileSystemDirectoryHandle): Pro
   const query = handle as FileSystemDirectoryHandle & {queryPermission?: (options:{mode:string})=>Promise<string>};
   return await query.queryPermission?.({mode:'readwrite'}) === 'granted' ? 'granted' : 'permission';
 }
+
+/** Best-effort Finder decoration; browser/fixture storage is left unchanged. */
+export async function decorateNativeProject(directory: FileSystemDirectoryHandle): Promise<boolean> {
+  if (!(directory instanceof NativeDirectoryHandle) || !productionDesktop) return true;
+  try { return await invoke<boolean>('project_set_icon',{root:directory.root,parts:directory.parts}); }
+  catch { return false; }
+}

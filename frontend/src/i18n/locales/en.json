@@ -223,7 +223,8 @@
     "recentPermission": "Access to “{{title}}” needs permission. Select its original project folder again.",
     "recentUnreadable": "Cannot read “{{title}}”. Check that its folder is accessible, or select the original project again.",
     "recentRecover": "Select original project",
-    "recentDismiss": "Cancel recovery"
+    "recentDismiss": "Cancel recovery",
+    "finderIconWarning": "The project is ready to use, but its Finder icon could not be set. Check that the project folder is writable, then reopen it."
   },
   "SettingsModal": {
     "m0972": "Settings",
