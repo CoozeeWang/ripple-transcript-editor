@@ -70,6 +70,8 @@ Ripple 使用暖纸白表面与蓝青品牌色，深色播放器是独立功能�
 
 实现入口见[片段组件](../frontend/src/components/SegmentItem.tsx)、[播放跟随](../frontend/src/lib/playbackHighlight.ts)、[版本比较](../frontend/src/hooks/useVersionComparison.ts)和[项目存储](../frontend/src/lib/projectStore.ts)。涉及状态重叠时，应检查播放、查找、批注、手工高亮和比较同时出现的场景。
 
+外部文件拖放在所有页面均不得导航或替换应用界面；只有有效且可用的导入区域执行导入。禁用区域和区域外落点不导入，内部排序继续使用自己的拖放处理。应用入口安装[全局文件拖放保护](../frontend/src/lib/fileDropGuard.ts)。
+
 ## 保存、删除与导出
 
 | ID | 规则 | 检查方式 |
