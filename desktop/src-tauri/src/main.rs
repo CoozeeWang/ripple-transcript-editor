@@ -270,6 +270,11 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
     let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
     let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
+    let tunnel = config.get("tunnel_id").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
+    // Regenerate the command against this bundle after an install or app update.
+    // Keep the existing protected runtime key; do not retain a temporary build path.
+    connector_setup(app.clone(), client.to_string(), tunnel.to_string(), String::new())?;
+    let _ = fs::remove_file(data.join("health.url"));
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
     let child = Command::new(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
