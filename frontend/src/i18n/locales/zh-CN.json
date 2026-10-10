@@ -211,7 +211,8 @@
     "recentPermission": "项目“{{title}}”的访问权限需要恢复。请重新选择原项目文件夹。",
     "recentUnreadable": "无法读取项目“{{title}}”。请检查文件夹是否可访问，或重新选择原项目。",
     "recentRecover": "重新选择原项目",
-    "recentDismiss": "取消恢复"
+    "recentDismiss": "取消恢复",
+    "finderIconWarning": "项目已可正常使用，但 Finder 图标未能设置。请检查项目文件夹是否可写，再重新打开项目。"
   },
   "SettingsModal": {
     "m0972": "设置",

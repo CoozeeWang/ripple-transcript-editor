@@ -15,7 +15,9 @@ Choose a build number higher than every previous internal build; `8` was used by
 
 The main window sets `dragDropEnabled: false` so file drops reach the editor's HTML drop zones. Tauri's native drop interception must not consume these events: the app uses the same target validation and import flow as its browser version. When WebKit supplies a dropped File without a persistent file handle, audio can be copied into the project; external-reference storage still requires the file picker. This also leaves the editor's internal drag sorting available.
 
-The desktop and web icons use `Icon/Ripple_logo_1024.png` as the transparent master. `desktop/make-icon.swift` centers the mark with an 80 px inset on the 1024 px Mac icon canvas, giving roughly 820 px of visible artwork; then use macOS `sips` and `iconutil` to build `desktop/src-tauri/icons/icon.icns` from standard iconset sizes. Both generated icon assets are stored in `src-tauri/icons` so regular packaging does not need to regenerate them.
+The desktop and web app icon uses `Icon/Ripple_app_paper_v2.png`; the macOS project-folder icon uses `Icon/Ripple_project_paper_v2.png`. Run `desktop/generate-icons.sh` to regenerate ICNS assets and the app PNG. The masters already contain transparent margins, which are preserved without adding extra inset. The legacy `make-icon.swift` is retained for reproducing older icon builds.
+
+On macOS, creating or opening a valid `.ripple` project automatically sets its Finder custom icon using NSWorkspace. The icon is embedded in the native executable. Projects remain ordinary folders, so native selection and cross-platform project contents keep their existing structure. If decoration fails, the project remains usable with a visible notice. Portable project copies receive their own icon; no icon change is attempted for browser storage or on Windows. macOS may create a hidden `Icon` metadata file and resource forks; those are system decoration, not interview content. Finder appearance and metadata preservation when copied between filesystems still require native acceptance.
 
 ## Native development on macOS
 

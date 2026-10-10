@@ -2,7 +2,7 @@ import { msg } from '../i18n';
 import type { ImportMaterial } from './materialImport';
 import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
-import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable } from './desktopFs';
+import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decorateNativeProject } from './desktopFs';
 
 export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
@@ -21,7 +21,7 @@ export interface RippleProject {
   kind: 'ripple-project'; schemaVersion: 1; id: string; title: string; description: string;
   revision: number; interviews: ProjectInterview[]; trash?: ProjectTrashItem[];
 }
-export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject }
+export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject; finderIconWarning?: boolean }
 const INDEX = 'ripple-project.json';
 const safeName = (s: unknown): s is string => typeof s === 'string' && !!s && s !== '.' && s !== '..' && !/[\\/]/.test(s);
 const id = (s: unknown): s is string => typeof s === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(s);
@@ -83,7 +83,9 @@ export async function openProject(directory: FileSystemDirectoryHandle): Promise
   const raw = await readText(directory, INDEX);
   if (raw === null) throw new Error(msg('projectStore.m1393'));
   // Do not silently open an older backup: it could hide newly created interviews.
-  return { directory, data: parseProject(raw) };
+  const data = parseProject(raw);
+  const finderIconWarning = !await decorateNativeProject(directory);
+  return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
 }
 export async function acquireProjectEditor(projectId: string): Promise<() => void> {
   if (typeof navigator === 'undefined' || !navigator.locks) return () => {};
@@ -125,7 +127,8 @@ export async function createProject(parent: FileSystemDirectoryHandle, title: st
   const directory = await parent.getDirectoryHandle(folder, { create: true });
   const data: RippleProject = { kind: 'ripple-project', schemaVersion: 1, id: crypto.randomUUID(), title: name, description: '', revision: 0, interviews: [] };
   await writeText(directory, INDEX, JSON.stringify(data, null, 2));
-  return { directory, data };
+  const finderIconWarning = !await decorateNativeProject(directory);
+  return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
 }
 
 // Browser handles are machine-local. Project metadata remains portable; external media can be relinked.
@@ -374,7 +377,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
     const data: RippleProject = { ...source.data, id: created.data.id, title: title.trim(), revision: 0, trash: [] };
     await writeText(created.directory, INDEX, JSON.stringify(data, null, 2));
     await created.directory.removeEntry('COPY-INCOMPLETE.txt');
-    return { directory: created.directory, data };
+    return { directory: created.directory, data, ...(created.finderIconWarning ? {finderIconWarning:true} : {}) };
   }); } finally { release(); }
 }
 
