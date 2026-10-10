@@ -285,6 +285,48 @@ async fn connector_client_export(app: tauri::AppHandle, client: String) -> Resul
 }
 
 
+fn open_install_target(target: &str, application: Option<&str>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let status = {
+        let mut command = Command::new("open");
+        if let Some(name) = application { command.args(["-a", name]); }
+        if !target.is_empty() { command.arg(target); }
+        command.status()
+    };
+    #[cfg(target_os = "windows")]
+    let status = { let _ = application; Command::new("explorer").arg(target).status() };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let status = { let _ = application; Command::new("xdg-open").arg(target).status() };
+    match status { Ok(result) if result.success() => Ok(()), _ => Err("open_install_failed".into()) }
+}
+
+#[tauri::command]
+async fn connector_client_add(app: tauri::AppHandle, client: String, language: String) -> Result<String, String> {
+    if !matches!(client.as_str(), "chatgpt" | "claude" | "workbuddy") { return Err("invalid_client".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        if client == "chatgpt" {
+            open_install_target("https://chatgpt.com/plugins", None)?;
+            return Ok("chatgpt".into());
+        }
+        if client == "claude" {
+            let target = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector/Ripple.mcpb");
+            if !local_command(&app, "export", "claude")?.arg("--target").arg(&target).status().map_err(|_| "export_failed")?.success() { return Err("export_failed".into()); }
+            open_install_target(&target.to_string_lossy(), Some("Claude"))?;
+            return Ok("claude".into());
+        }
+        let text = if language.starts_with("zh") {
+            "将 Ripple 添加到 WorkBuddy？已有配置会先备份，其他连接保留；已有的 Ripple 项会更新。完成后请在 WorkBuddy 中启用，必要时重启。"
+        } else {
+            "Add Ripple to WorkBuddy? Existing configuration will be backed up; other connections will be kept and an existing Ripple entry will be updated. Enable it in WorkBuddy afterwards, restarting if needed."
+        };
+        if !app.dialog().message(text).title("Ripple").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show() { return Ok("cancelled".into()); }
+        let target = app.path().home_dir().map_err(|_| "home_unavailable")?.join(".workbuddy/mcp.json");
+        if !local_command(&app, "install-workbuddy", "workbuddy")?.arg("--target").arg(target).status().map_err(|_| "install_failed")?.success() { return Err("install_failed".into()); }
+        Ok("workbuddy".into())
+    }).await.map_err(|_| "install_failed".to_string())?
+}
+
+
 #[tauri::command]
 async fn connector_pick_client(app: tauri::AppHandle) -> Result<String, String> {
     let file = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
@@ -431,7 +473,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

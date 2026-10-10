@@ -17,6 +17,8 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [linkError, setLinkError] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   useEffect(() => {
     let disposed = false;
     void invoke<SavedSetup>('connector_setup_status').then(value => {
@@ -68,7 +70,14 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
             setClient(saved.client_path); setTunnel(saved.tunnel_id); setKey(''); setEditing(false); setStatus('idle'); setLinkError(false);
           }}>{msg('connector.cancelSetup')}</button>}
         </> : <button type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
+        {tunnel && <button type="button" className="cred-btn" onClick={async () => {
+          setCopyError(false); setCopied(false);
+          try { await navigator.clipboard.writeText(tunnel); setCopied(true); }
+          catch { setCopyError(true); }
+        }}>{msg('connector.copyTunnel')}</button>}
       </div>
+      {copied && <p className="settings-hint" role="status">{msg('connector.tunnelCopied')}</p>}
+      {copyError && <p className="settings-hint connector-error" role="alert">{msg('connector.copyFailed')}</p>}
       {status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{msg(`connector.setup_${status}`)}</p>}
       </>}
     </div>

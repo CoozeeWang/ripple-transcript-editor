@@ -74,3 +74,92 @@ def test_missing_runtime_creates_no_export(tmp_path):
     with pytest.raises(ValueError):
         export_installation(tmp_path, tmp_path / "missing", "claude", target)
     assert not target.exists()
+
+
+def test_workbuddy_install_preserves_other_connections_and_exact_backup(tmp_path):
+    from app.connector_local import install_workbuddy
+    resources = tmp_path / "Synthetic App 空格/backend"
+    python = resources / "python/bin/python3.12"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    target = tmp_path / "synthetic-home/.workbuddy/mcp.json"
+    target.parent.mkdir(parents=True)
+    raw = b'{"mcpServers":{"Other":{"command":"synthetic"}},"setting":true}\n'
+    target.write_bytes(raw)
+    assert install_workbuddy(tmp_path / "data", resources, target)
+    value = json.loads(target.read_bytes())
+    assert value['mcpServers']['Other'] == {'command': 'synthetic'}
+    assert value['setting'] is True
+    backups = list(target.parent.glob('mcp.json.ripple-backup-*'))
+    assert len(backups) == 1 and backups[0].read_bytes() == raw
+    assert backups[0].stat().st_mode & 0o777 == 0o600
+    assert not install_workbuddy(tmp_path / "data", resources, target)
+    assert len(list(target.parent.glob('mcp.json.ripple-backup-*'))) == 1
+
+
+@pytest.mark.parametrize('raw', [b'not json', b'[]', b'{"mcpServers":[]}',
+                              b'{"mcpServers":{},"mcpServers":{}}'])
+def test_workbuddy_invalid_config_is_untouched(tmp_path, raw):
+    from app.connector_local import install_workbuddy
+    resources = tmp_path / "runtime"
+    python = resources / "python/bin/python3.12"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    target = tmp_path / "config/mcp.json"
+    target.parent.mkdir()
+    target.write_bytes(raw)
+    with pytest.raises((ValueError, TypeError)):
+        install_workbuddy(tmp_path, resources, target)
+    assert target.read_bytes() == raw
+    assert not list(target.parent.glob('mcp.json.ripple-backup-*'))
+    assert not (target.parent / '.ripple-install.lock').exists()
+
+
+def test_workbuddy_symlink_and_concurrent_install_refused(tmp_path):
+    from app.connector_local import install_workbuddy
+    resources = tmp_path / "runtime"
+    python = resources / "python/bin/python3.12"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    other = tmp_path / "other.json"
+    other.write_text('{}')
+    target = tmp_path / "config/mcp.json"
+    target.parent.mkdir()
+    target.symlink_to(other)
+    with pytest.raises(ValueError):
+        install_workbuddy(tmp_path, resources, target)
+    assert other.read_text() == '{}'
+    target.unlink()
+    lock = target.parent / '.ripple-install.lock'
+    lock.write_text('')
+    with pytest.raises(FileExistsError):
+        install_workbuddy(tmp_path, resources, target)
+    assert lock.exists() and not target.exists()
+
+
+def test_workbuddy_first_install_creates_config_without_backup(tmp_path):
+    from app.connector_local import install_workbuddy
+    resources = tmp_path / 'runtime'
+    python = resources / 'python/bin/python3.12'
+    python.parent.mkdir(parents=True)
+    python.touch()
+    target = tmp_path / 'new-home/.workbuddy/mcp.json'
+    assert install_workbuddy(tmp_path, resources, target)
+    assert set(json.loads(target.read_bytes())['mcpServers']) == {'Ripple'}
+    assert not list(target.parent.glob('mcp.json.ripple-backup-*'))
+
+
+def test_workbuddy_refresh_updates_only_existing_ripple_entry(tmp_path):
+    from app.connector_local import install_workbuddy
+    resources = tmp_path / 'new runtime'
+    python = resources / 'python/bin/python3.12'
+    python.parent.mkdir(parents=True)
+    python.touch()
+    target = tmp_path / 'config/mcp.json'
+    target.parent.mkdir()
+    old = {'mcpServers': {'Ripple': {'command': 'old-app'}, 'Other': {'env': {}}}}
+    target.write_text(json.dumps(old))
+    assert install_workbuddy(tmp_path, resources, target)
+    current = json.loads(target.read_bytes())
+    assert current['mcpServers']['Ripple']['command'] == str(python)
+    assert current['mcpServers']['Other'] == old['mcpServers']['Other']

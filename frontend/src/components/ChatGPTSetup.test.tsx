@@ -16,3 +16,15 @@ it('keeps acquisition guidance and native platform link visible for a configured
   fireEvent.click(ui.getByRole('link', { name: 'OpenAI 连接平台与程序下载' }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('connector_open_platform', undefined));
 });
+it('copies only the tunnel identifier, never the stored runtime key', async () => {
+ const invoke=vi.fn(async()=>({client_path:'/synthetic/tunnel-client',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}));
+ (window as unknown as {__TAURI__: unknown}).__TAURI__={core:{invoke}};
+ const writeText=vi.fn(async()=>{});
+ Object.defineProperty(navigator,'clipboard',{value:{writeText},configurable:true});
+ const ui=render(<ChatGPTSetup/>);
+ fireEvent.click(ui.getByText('连接配置'));
+ await waitFor(()=>expect(ui.getByText('复制隧道标识')).toBeTruthy());
+ fireEvent.click(ui.getByText('复制隧道标识'));
+ await waitFor(()=>expect(writeText).toHaveBeenCalledWith('tunnel_synthetic'));
+ expect(ui.getByText(/隧道标识已复制/)).toBeTruthy();
+});

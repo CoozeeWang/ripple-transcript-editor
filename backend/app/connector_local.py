@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import stat
 import tempfile
 import zipfile
 from pathlib import Path
@@ -74,9 +75,79 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         bundle.writestr("server/index.js", script)
 
 
+def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
+    """Merge only Ripple into a fixed native-selected config, backing up exact bytes."""
+    config = {"type": "stdio", **installation(data, resources, "workbuddy")}
+    if not Path(config["command"]).is_file():
+        raise ValueError("Missing bundled runtime")
+    parent = target.parent
+    if parent.is_symlink():
+        raise ValueError("Invalid config directory")
+    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock = parent / ".ripple-install.lock"
+    lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    temp_name = None
+    try:
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("Duplicate configuration key")
+                result[key] = value
+            return result
+
+        raw = None
+        if target.is_symlink():
+            raise ValueError("Invalid config file")
+        if target.exists():
+            fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                         | getattr(os, "O_NONBLOCK", 0))
+            with os.fdopen(fd, "rb") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise ValueError("Invalid config file")
+                raw = stream.read(1024 * 1024 + 1)
+            if len(raw) > 1024 * 1024:
+                raise ValueError("Config too large")
+            current = json.loads(raw, object_pairs_hook=unique_object)
+        else:
+            current = {}
+        if not isinstance(current, dict):
+            raise TypeError("Invalid configuration")
+        servers = current.get("mcpServers", {})
+        if not isinstance(servers, dict):
+            raise TypeError("Invalid server configuration")
+        if servers.get("Ripple") == config:
+            return False
+        current["mcpServers"] = {**servers, "Ripple": config}
+        payload = json.dumps(current, ensure_ascii=False, indent=2).encode() + b"\n"
+        fd, temp_name = tempfile.mkstemp(prefix=".ripple-config-", dir=parent)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        # Recheck before replacing, including edits by the host application.
+        if (target.is_symlink() or target.exists() != (raw is not None)
+                or (target.exists() and target.read_bytes() != raw)):
+            raise ValueError("Config changed during installation")
+        if raw is not None:
+            backup_fd, _backup_name = tempfile.mkstemp(prefix="mcp.json.ripple-backup-", dir=parent)
+            with os.fdopen(backup_fd, "wb") as backup:
+                backup.write(raw)
+                backup.flush()
+                os.fsync(backup.fileno())
+        os.replace(temp_name, target)
+        temp_name = None
+        return True
+    finally:
+        os.close(lock_fd)
+        lock.unlink()
+        if temp_name is not None:
+            Path(temp_name).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("status", "select", "export"))
+    parser.add_argument("action", choices=("status", "select", "export", "install-workbuddy"))
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--resources", type=Path)
     parser.add_argument("--client", choices=CLIENTS)
@@ -86,4 +157,6 @@ if __name__ == "__main__":
         select_client(args.data, args.client)
     elif args.action == "export":
         export_installation(args.data, args.resources, args.client, args.target)
+    elif args.action == "install-workbuddy":
+        install_workbuddy(args.data, args.resources, args.target)
     print(json.dumps({"client": selected_client(args.data)}))

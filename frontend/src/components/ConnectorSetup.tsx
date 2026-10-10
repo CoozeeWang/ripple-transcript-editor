@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { msg } from '../i18n';
+import { interfaceLanguage, msg } from '../i18n';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
 import { ChatGPTSetup } from './ChatGPTSetup';
 
@@ -12,7 +12,7 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   const [client, setClient] = useState<Client>('chatgpt');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState(false);
-  const [exported, setExported] = useState(false);
+  const [exported, setExported] = useState('');
   useEffect(() => {
     let disposed = false;
     void invoke<{client: Client}>('connector_client_status').then(value => {if (!disposed) setClient(value.client);})
@@ -20,13 +20,13 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
     return () => {disposed = true;};
   }, []);
   async function select(value: Client) {
-    setBusy(true); setError(false); setExported(false);
+    setBusy(true); setError(false); setExported('');
     try {await invoke('connector_client_select', {client: value}); setClient(value); onSaved?.();}
     catch {setError(true);} finally {setBusy(false);}
   }
-  async function exportConfig() {
-    setBusy(true); setError(false); setExported(false);
-    try {setExported(await invoke<boolean>('connector_client_export', {client}));}
+  async function addClient() {
+    setBusy(true); setError(false); setExported('');
+    try {const result = await invoke<string>('connector_client_add', {client, language: interfaceLanguage()}); setExported(result === 'cancelled' ? '' : result);}
     catch {setError(true);} finally {setBusy(false);}
   }
   return <div className="connector-setup" aria-busy={busy}>
@@ -39,10 +39,10 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
       </label></div>
       {client === 'chatgpt' ? <p className="settings-hint">{msg('connector.chatgptSteps')}</p> : <>
         <ol className="settings-hint connector-steps"><li>{msg(`connector.${client}Step1`)}</li><li>{msg(`connector.${client}Step2`)}</li><li>{msg('connector.localStep3')}</li></ol>
-        <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void exportConfig()}>{msg(`connector.${client}Export`)}</button></div>
-        {exported && <p className="settings-hint" role="status">{msg('connector.exported')}</p>}
       </>}
-      {error && <p className="settings-hint connector-error" role="alert">{msg('connector.localError')}</p>}
+      <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button></div>
+      {exported && <p className="settings-hint" role="status">{msg(`connector.added_${exported}`)}</p>}
+      {error && <p className="settings-hint connector-error" role="alert">{msg(`connector.addError_${client}`)}</p>}
     </div>
     {client === 'chatgpt' && !busy && <ChatGPTSetup onSaved={onSaved}/>}
   </div>;

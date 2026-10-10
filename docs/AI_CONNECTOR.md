@@ -50,3 +50,14 @@ Annotations and highlights are added to the current editable version, without cr
 Use `prepare_interview_marks` with explicit segment IDs or `whole_interview: true` and the user's instructions. Stage every scoped segment through `stage_interview_marks`, including empty marks for reviewed segments. Each highlight contains a verified text quotation and UTF-16 start/end offsets (end exclusive) at grapheme boundaries. After agreement, `apply_interview_marks` saves once to the current version and opens the relevant sidebar. It returns counts and a saved status, without listing the manuscript. Existing identical notes or highlight ranges are retained once.
 
 Use `interview_marks_status` to recover uncertain outcomes. A failed save keeps applied marks in Ripple for manual saving; repeating the same task does not repeat the write. Cancel draft tasks with `cancel_interview_marks`. Changed source text or a switched version invalidates an outstanding task.
+
+
+## Add a local AI client
+
+In Settings → AI-assisted editing → MCP connection, select the AI software:
+
+- **Add to WorkBuddy**: confirm adding Ripple. Existing configuration is backed up and other connections are retained. Enable Ripple in WorkBuddy’s Connectors; restart WorkBuddy if needed. An invalid configuration is left untouched. Backups are saved next to the WorkBuddy configuration with a `mcp.json.ripple-backup-` prefix.
+- **Add to Claude**: Ripple opens its generated MCPB in Claude Desktop. Confirm installation there. Claude Desktop must be installed.
+- **Open ChatGPT to add**: opens ChatGPT Plugins. Complete the existing tunnel setup first, copy the Tunnel ID, then choose “Add custom MCP server” and “Tunnel” in ChatGPT. Existing connections do not need to be added again.
+
+Keep Ripple open with MCP enabled. Adding configuration or opening an installer does not verify a successful AI tool call. After moving the Ripple App, add it again to update local paths. These buttons are currently delivered and tested as a macOS internal build; Windows client installation remains pending native validation.
