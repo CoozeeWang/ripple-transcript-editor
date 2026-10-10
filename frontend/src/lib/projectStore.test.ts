@@ -1,6 +1,6 @@
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
+import { readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
 import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
@@ -748,4 +748,20 @@ it('removes a designated imported version without needing a hidden original copy
  const remaining=await removeModelOriginal(root.handle,'a.wav',created.model.id);
  expect(remaining?.models).toHaveLength(0);
  expect(root.dirs.get('a.transcript')!.files.has(created.model.edits[0].file)).toBe(false);
+});
+
+it('keeps permission loss, missing files and changed content distinct for reference audio', async () => {
+  const {p,source,recording,interview} = await fixture('reference');
+  const key = `media:${p.data.id}:${recording.id}`;
+  const original = handles.get(key) as FileSystemFileHandle;
+  handles.set(key, {...original,getFile:async()=>{throw new DOMException('denied','NotAllowedError');}});
+  await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'permission'});
+  handles.set(key,original);
+  source.files.delete('interview.wav');
+  await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'missing'});
+  source.files.set('interview.wav',new File(['changed'],'interview.wav'));
+  await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'changed'});
+  source.files.set('interview.wav',new File(['original audio'],'interview.wav'));
+  expect(await (await readProjectMedia(p,interview.id,recording)).text()).toBe('original audio');
+  expect(mediaFailure(new Error('IO error')).reason).toBe('unreadable');
 });
