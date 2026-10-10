@@ -62,6 +62,10 @@ The product is named **Ripple**. Startup scripts resolve paths relative to the c
 
 ## Development
 
+### Ripple Dev (native macOS window)
+
+Double-click `start-dev.command` to open **Ripple Dev** directly from the current checkout. Frontend changes refresh automatically, Python changes reload the backend, and Rust changes rebuild the native window. No repeated packaging or installation is needed. Development settings and backend data are isolated from the installed app. Close the installed Ripple first, and keep the launcher terminal open. See [native development setup and limits](desktop/README.md#native-development-on-macos).
+
 ### One-click start (macOS / Windows)
 
 Double-click `start.command` on macOS (or `start.bat` on Windows). It starts both local services and opens the editor in a dedicated Chrome app window, using an isolated profile so it won't touch your regular Chrome.

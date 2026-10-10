@@ -220,6 +220,19 @@ fn fs_remove(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, 
     } else { fs::remove_file(path).map_err(|e| e.to_string()) }
 }
 
+// Only debug builds under the managed dev identity may use source-backed services.
+fn development(app: &tauri::AppHandle) -> bool {
+    cfg!(debug_assertions) && app.config().identifier == "studio.ripple.app.dev"
+}
+
+fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if development(app) {
+        let path = PathBuf::from(std::env::var("RIPPLE_DATA_DIR").map_err(|_| "Use start-dev.command")?);
+        if !path.is_absolute() { return Err("Development data path must be absolute".into()); }
+        Ok(path)
+    } else { app.path().app_local_data_dir().map_err(|e| e.to_string()) }
+}
+
 fn health_ok() -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else { return false };
@@ -234,13 +247,13 @@ fn backend_ready() -> bool { health_ok() }
 
 #[tauri::command]
 fn connector_window_key(app: tauri::AppHandle) -> Result<String, String> {
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::read_to_string(data.join("connector/window.key")).map_err(|_| "连接后台尚未就绪".to_string())
 }
 
 #[tauri::command]
 fn connector_client_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?;
+    let data = app_data(&app).map_err(|_| "data_unavailable")?;
     let path = data.join("connector/client-mode.json");
     if !path.exists() { return Ok(serde_json::json!({"client":"chatgpt"})); }
     let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).map_err(|_| "client_unavailable")?).map_err(|_| "client_unavailable")?;
@@ -257,7 +270,7 @@ fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<C
     let mut command = Command::new(resources.join("python/bin/python3.12"));
     command.env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.connector_local", action, "--client", client, "--resources"]).arg(resources)
-        .arg("--data").arg(app.path().app_local_data_dir().map_err(|_| "data_unavailable")?)
+        .arg("--data").arg(app_data(&app).map_err(|_| "data_unavailable")?)
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     Ok(command)
 }
@@ -309,7 +322,7 @@ async fn connector_client_add(app: tauri::AppHandle, client: String, language: S
             return Ok("chatgpt".into());
         }
         if client == "claude" {
-            let target = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector/Ripple.mcpb");
+            let target = app_data(&app).map_err(|_| "data_unavailable")?.join("connector/Ripple.mcpb");
             if !local_command(&app, "export", "claude")?.arg("--target").arg(&target).status().map_err(|_| "export_failed")?.success() { return Err("export_failed".into()); }
             open_install_target(&target.to_string_lossy(), Some("Claude"))?;
             return Ok("claude".into());
@@ -350,7 +363,7 @@ fn connector_open_platform() -> Result<(), String> {
 /// Return only saved non-secret configuration and key presence; never read the key.
 #[tauri::command]
 fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector");
+    let data = app_data(&app).map_err(|_| "data_unavailable")?.join("connector");
     let config: serde_json::Value = match fs::read_to_string(data.join("setup.json")) {
         Ok(text) => serde_json::from_str(&text).map_err(|_| "invalid_saved_setup")?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
@@ -366,7 +379,7 @@ fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, St
 #[tauri::command]
 fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
-    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?;
+    let data = app_data(&app).map_err(|_| "data_unavailable")?;
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
     let mut child = Command::new(resources.join("python/bin/python3.12"))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
@@ -384,7 +397,7 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
         if child.try_wait().map_err(|_| "connector_failed")?.is_none() { return Ok(()); }
     }
     if connector_client_status(app.clone())?.get("client").and_then(|v|v.as_str()) != Some("chatgpt") { return Ok(()); }
-    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector");
+    let data = app_data(&app).map_err(|_| "data_unavailable")?.join("connector");
     let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
     let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
     let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
@@ -397,7 +410,7 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
     let child = Command::new(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("RIPPLE_DATA_DIR", app.path().app_local_data_dir().map_err(|_| "data_unavailable")?)
+        .env("RIPPLE_DATA_DIR", app_data(&app).map_err(|_| "data_unavailable")?)
         .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
     *guard = Some(child);
     Ok(())
@@ -412,7 +425,7 @@ fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let Ok(mut guard) = state.0.lock() else { return false };
     let Some(child) = guard.as_mut() else { return false };
     if !matches!(child.try_wait(), Ok(None)) { return false; }
-    let Ok(data) = app.path().app_local_data_dir() else { return false };
+    let Ok(data) = app_data(&app) else { return false };
     let Ok(url) = fs::read_to_string(data.join("connector/health.url")) else { return false };
     let Some(raw) = url.trim().strip_prefix("http://127.0.0.1:") else { return false };
     let Ok(port) = raw.trim_end_matches('/').parse::<u16>() else { return false };
@@ -435,7 +448,7 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
     let python = stage.join("python/bin/python3.12");
     if !python.is_file() { return Err("App 缺少随附后台".into()); }
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let log = OpenOptions::new().create(true).append(true).open(data.join("backend.log")).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
@@ -461,13 +474,29 @@ fn stop_backend(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    let mut context = tauri::generate_context!();
+    #[cfg(target_os = "macos")]
+    if cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.dev" {
+        for window in &mut context.config_mut().app.windows { window.create = false; }
+    }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
         .manage(Grants(Mutex::new(Vec::new())))
         .manage(Writes(Mutex::new(HashMap::new())))
         .manage(ConnectorTunnel(Mutex::new(None)))
         .setup(|app| {
-            let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(Backend(Mutex::new(Some(child))));
+            if development(app.handle()) {
+                if std::env::var("RIPPLE_DESKTOP_DEV").as_deref() != Ok("1") { return Err("Use start-dev.command".into()); }
+                app.manage(Backend(Mutex::new(None)));
+                #[cfg(target_os = "macos")]
+                {
+                    let config = &app.config().app.windows[0];
+                    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+                        .data_store_identifier(*b"ripple-dev-00001").build()?;
+                }
+            } else {
+                let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
+                app.manage(Backend(Mutex::new(Some(child))));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
@@ -480,7 +509,7 @@ fn main() {
                 window.app_handle().exit(0);
             }
         })
-        .build(tauri::generate_context!()).expect("Ripple failed to start")
+        .build(context).expect("Ripple failed to start")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 stop_backend(app);
