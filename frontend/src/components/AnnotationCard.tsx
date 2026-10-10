@@ -38,9 +38,10 @@ export function AnnotationCard({ annotation, onCommit, onDelete, onJump, meta, i
         if (event.key === "F2") { event.preventDefault(); setDraft(annotation.text); setEditing(true); }
       }}
     >
-      {meta && (
+      {(meta || annotation.source === "ai") && (
         <div className="annotation-card-meta">
-          <span>{meta}</span>
+          {meta && <span>{meta}</span>}
+          {annotation.source === "ai" && <span className="annotation-ai-label">{msg("connector.aiAnnotation")}</span>}
         </div>
       )}
       {editing ? <textarea

@@ -40,6 +40,7 @@ try {
   // Native credential/lifecycle calls are a fixture; UI, document state and saving are real.
   await page.addInitScript(key => { window.__connectorInvocations = []; window.__TAURI__ = { core: { invoke: async name => {
     window.__connectorInvocations.push(name);
+    if (name === 'connector_setup_status') return { client_path: '/synthetic/tunnel-client', tunnel_id: 'tunnel_synthetic', has_key: true, configured: true };
     if (name === 'connector_open_platform' && window.__failPlatform) throw new Error('synthetic_open_failure');
     return name === 'connector_window_key' ? key : true;
   } } }; }, token);
@@ -58,9 +59,25 @@ try {
     const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models[0];
     const original = await f.readModelEdit(model.id, model.edits[0].id);
     const current = await f.readModelEdit(model.id, model.activeEditId);
-    return { count: model.edits.length, source: original.transcript.segments.map(s => s.text), result: current.transcript.segments.map(s => s.text) };
+    return { count: model.edits.length, source: original.transcript.segments.map(s => s.text), result: current.transcript.segments.map(s => s.text), notes: current.transcript.segments.flatMap(s => s.annotations ?? []), marks: current.transcript.segments.flatMap(s => s.highlights ?? []), words: current.transcript.segments[1].words };
   });
   if (state.count !== 2 || state.source[1] !== '嗯，我觉得可能还有问题。' || state.result[1] !== '我觉得可能还有问题。' || state.result[2] !== state.source[2]) throw new Error('Version preservation failed');
+  if (state.notes.filter(note => note.source === 'ai').length !== 1 || !state.notes.some(note => note.id === 'manual') || state.marks.filter(mark => mark.source === 'ai').length !== 1 || !state.words.length) throw new Error('AI marks or human marks/timing not preserved');
+  await page.getByText('AI 批注', { exact: true }).waitFor();
+  const savedMarks = async () => page.evaluate(async () => {
+    const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models[0];
+    const edit = await f.readModelEdit(model.id, model.activeEditId);
+    return { versions: model.edits.length, ai: edit.transcript.segments.flatMap(s => s.annotations ?? []).filter(n => n.source === 'ai').length, human: edit.transcript.segments.flatMap(s => s.annotations ?? []).filter(n => n.id === 'manual').length };
+  });
+  await page.locator('.annotation-card').first().focus();
+  await page.keyboard.press('Meta+z');
+  await page.waitForTimeout(1200);
+  const undone = await savedMarks();
+  if (undone.versions !== 2 || undone.ai !== 0 || undone.human !== 1) throw new Error(`Mark batch undo failed: ${JSON.stringify(undone)}`);
+  await page.keyboard.press('Meta+Shift+z');
+  await page.waitForTimeout(1200);
+  if ((await savedMarks()).ai !== 1) throw new Error('Mark redo did not persist');
+
   if (!(await page.getByText('显示修改痕迹', { exact: true }).isVisible())) throw new Error('Comparison was not displayed');
   // A higher z-index cannot escape the title area's scrolling clip. Check the
   // complete tooltip box in both languages and in a short, narrow window.
@@ -94,14 +111,11 @@ try {
     await page.getByRole('button', { name: language === 'en' ? 'Settings' : '设置', exact: true }).click();
     await page.getByRole('tab', { name: language === 'en' ? 'AI-assisted editing' : 'AI 辅助编辑', exact: true }).click();
     await page.locator('.connector-setup summary').click();
-    const sizes = await page.locator('.settings-mcp').evaluate(section =>
-      [...section.querySelectorAll('.settings-hint, .settings-option, summary, .field > span, .button')].map(element => getComputedStyle(element).fontSize));
-    if (new Set(sizes).size !== 1) throw new Error(`MCP text sizes differ: ${sizes.join(',')}`);
-    const groups = await page.locator('.connector-setup-content').evaluate(content => {
-      const rects = [...content.children].map(element => element.getBoundingClientRect());
-      return rects.slice(1).map((rect, index) => rect.top - rects[index].bottom);
-    });
-    if (groups.some(gap => Math.abs(gap - 20) > 1)) throw new Error(`MCP group spacing differs: ${groups}`);
+    await page.getByRole('button', { name: language === 'en' ? 'Edit configuration' : '修改配置', exact: true }).click();
+    const layout = await page.locator('.connector-setup .cred-field').first().evaluate(field => ({ columns: getComputedStyle(field).gridTemplateColumns, gap: getComputedStyle(field).columnGap }));
+    if (!layout.columns.startsWith('130px ') || layout.gap !== '10px') throw new Error(`MCP fields differ from transcription engine: ${JSON.stringify(layout)}`);
+    const inputs = page.locator('.connector-setup input');
+    if (await inputs.nth(0).inputValue() !== 'tunnel-client' || await inputs.nth(1).inputValue() !== 'tunnel_synthetic' || await inputs.nth(2).inputValue() !== '') throw new Error('Saved non-secret configuration not displayed safely');
     const platform = page.locator('.connector-setup a');
     await platform.press('Enter');
     if (!await page.evaluate(() => window.__connectorInvocations.includes('connector_open_platform'))) throw new Error('Desktop link did not invoke system browser');
@@ -111,7 +125,7 @@ try {
     await page.evaluate(() => { window.__failPlatform = false; });
     await platform.click();
     if (await page.locator('.connector-error').count()) throw new Error('Retry must clear link error');
-    await page.locator('.connector-setup .field').first().scrollIntoViewIfNeeded();
+    await page.locator('.connector-setup .cred-field').first().scrollIntoViewIfNeeded();
     if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, `settings-${language}.png`) });
     await page.getByRole('dialog').getByRole('button', { name: language === 'en' ? 'Close' : '关闭', exact: true }).click();
   }

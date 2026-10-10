@@ -11,7 +11,7 @@ async def main():
         async with ClientSession(read,write) as client:
             await client.initialize()
             tools=(await client.list_tools()).tools
-            assert len(tools)==8
+            assert len(tools)==13
             async def call(name,args):
                 result=await client.call_tool(name,args)
                 assert not result.is_error, str(result.content)
@@ -27,5 +27,18 @@ async def main():
             assert result['saved'] and result['comparison_requested']
             again=await call('publish_continuation',{'task_id':plan['task_id'],'confirmed_summary':plan['summary']})
             assert result==again
+            read=await call('read_current_interview',{})
+            page=await call('read_interview_page',{'snapshot':read['snapshot']})
+            marks=await call('prepare_interview_marks',{'snapshot':read['snapshot'],'whole_interview':True,'instructions':'添加合成分析批注，高亮可能'})
+            await call('stage_interview_marks',{'task_id':marks['task_id'],'marks':[
+                {'segment_id':segment['id'],'before':segment['text'],
+                 'annotation':'合成 AI 分析' if segment['id']=='s2' else None,
+                 'highlights':[{'start':3,'end':5,'text':'可能'}] if segment['id']=='s2' else []}
+                for segment in page['segments']]})
+            marked=await call('apply_interview_marks',{'task_id':marks['task_id'],'confirmed_summary':marks['summary']})
+            assert marked['saved'] and not marked['new_version_created']
+            assert marked['added_annotations']==1 and marked['added_highlights']==1
+            assert marked['version_id']==result['version_id']
+            assert await call('apply_interview_marks',{'task_id':marks['task_id'],'confirmed_summary':marks['summary']})==marked
             print('PASS: real MCP SDK -> HTTP broker -> actual App/useVersions/localStore -> new version and comparison requested; browser filesystem fixture; no real model call.')
 asyncio.run(main())

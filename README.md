@@ -42,7 +42,7 @@ To transcribe, create or open an interview, choose an audio file, then click **è
 
 ## MCP connection
 
-The personal desktop connector lets ChatGPT read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. Setup, scope, recovery and platform limits are described in [ChatGPT connection](docs/AI_CONNECTOR.md).
+The personal desktop MCP connection lets external AI clients read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Setup, scope, recovery and platform limits are described in [ChatGPT connection](docs/AI_CONNECTOR.md).
 
 ## AI-assisted editing
 

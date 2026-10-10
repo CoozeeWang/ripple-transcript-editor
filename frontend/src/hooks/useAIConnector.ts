@@ -20,7 +20,11 @@ export function useAIConnector(host: ConnectorHost) {
     let token = '';
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     const controller = new AIConnector({ current: () => latest.current.current(),
-      publish: (...args) => latest.current.publish(...args) });
+      publish: (...args) => latest.current.publish(...args),
+      applyMarks: (...args) => {
+        if (!latest.current.applyMarks) throw new Error("marks_unavailable");
+        return latest.current.applyMarks(...args);
+      } });
     async function request(path: string, body?: unknown, signal?: AbortSignal) {
       const response = await fetch(`/api/connector/${path}`, { method: body === undefined ? 'GET' : 'POST',
         headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },

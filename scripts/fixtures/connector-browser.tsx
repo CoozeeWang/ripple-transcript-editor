@@ -37,7 +37,7 @@ for(const [offset,text] of [[0,'RIFF'],[8,'WAVE'],[12,'fmt '],[36,'data']] as [n
 view.setUint32(4,wav.length-8,true);view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,8000,true);view.setUint32(28,16000,true);view.setUint16(32,2,true);view.setUint16(34,16,true);view.setUint32(40,wav.length-44,true);
 root.files.set('synthetic.wav',new File([wav],'synthetic.wav'));
 const raw={audio:{filename:'synthetic.wav',duration:30},speakers:[{id:'speaker',name:'Synthetic speaker'}],segments:[
-{id:'s1',speaker_id:'speaker',start:0,end:10,text:'嗯，我觉得先开始。'},
+{id:'s1',speaker_id:'speaker',start:0,end:10,text:'嗯，我觉得先开始。',annotations:[{id:'manual',text:'合成人工批注',createdAt:'2026-01-01'}],highlights:[{id:'manual',start:0,end:1}]},
 {id:'s2',speaker_id:'speaker',start:10,end:20,text:'嗯，我觉得可能还有问题。',words:[...'嗯，我觉得可能还有问题。'].map((text,i)=>({text,start:10+i/2,end:10+(i+1)/2}))},
 {id:'s3',speaker_id:'speaker',start:20,end:30,text:'这是很重要、很重要的。'}]};
 const made=await createModel(root.handle,'synthetic.wav',{engine:'synthetic',sourceKind:'transcription',sourceName:'Synthetic',transcript:raw,original:raw,editLabel:'v1'});

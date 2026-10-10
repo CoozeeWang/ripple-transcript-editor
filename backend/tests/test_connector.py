@@ -90,7 +90,7 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     key_file.write_text('synthetic-not-real-credential-' * 3)
     server = create_server('http://127.0.0.1:18701', key_file)
     tools = asyncio.run(server.list_tools())
-    assert len(tools) == 8
+    assert len(tools) == 13
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
@@ -112,3 +112,17 @@ def test_disabling_clears_replay_results_and_new_window_cannot_replay_old_reads(
         with pytest.raises(HTTPException):
             await b.call('synthetic-read', 'read_page', {})
     asyncio.run(run())
+
+
+def test_mark_schema_and_current_version_instructions(tmp_path):
+    from app.connector_mcp import create_server, INSTRUCTIONS, Mark
+    from pydantic import ValidationError
+    key = tmp_path / 'credential'
+    key.write_text('x' * 48)
+    tools = asyncio.run(create_server('http://127.0.0.1:18701', key).list_tools())
+    apply = next(tool for tool in tools if tool.name == 'apply_interview_marks')
+    assert apply.annotations.idempotent_hint is True
+    assert apply.annotations.destructive_hint is False
+    assert 'current editable version' in INSTRUCTIONS
+    with pytest.raises(ValidationError):
+        Mark(segment_id='a', before='Synthetic', after='forbidden')

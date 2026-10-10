@@ -1,7 +1,10 @@
+import { AIMarkTasks } from './aiMarkTasks';
+import type { AIMark } from './aiMarks';
 import { nextAIEditName, type AISuggestion } from './aiEditing';
 import type { Transcript } from '../types';
 
 export interface ConnectorDocument {
+  editable?: boolean;
   identity: string;
   transcript: Transcript;
   title: string;
@@ -13,6 +16,7 @@ export interface ConnectorDocument {
 }
 export interface ConnectorHost {
   current: () => Promise<ConnectorDocument>;
+  applyMarks?: (baseline: Transcript, marks: AIMark[], taskId: string) => Promise<Record<string, unknown>>;
   publish: (baseline: Transcript, suggestions: AISuggestion[], name: string) => Promise<Record<string, unknown>>;
 }
 type Snapshot = ConnectorDocument & { id: string; revision: string };
@@ -36,7 +40,8 @@ function boundary(text: string, offset: number): boolean {
 export class AIConnector {
   private snapshots = new Map<string, Snapshot>();
   private tasks = new Map<string, Task>();
-  constructor(private host: ConnectorHost) {}
+  private markTasks: AIMarkTasks;
+  constructor(private host: ConnectorHost) { this.markTasks = new AIMarkTasks(host, id => this.valid(id)); }
   private async valid(id: unknown): Promise<Snapshot> {
     const snapshot = this.snapshots.get(String(id));
     if (!snapshot) fail('snapshot_expired_read_current_again');
@@ -51,6 +56,7 @@ export class AIConnector {
     return task;
   }
   async handle(operation: string, a: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (['prepare_marks', 'stage_marks', 'apply_marks', 'marks_status', 'cancel_marks'].includes(operation)) return this.markTasks.handle(operation, a);
     if (operation === 'read_current') {
       const doc = await this.host.current();
       if (!doc.transcript.segments.length) fail('no_transcript');

@@ -16,7 +16,7 @@ INSTRUCTIONS = (
     "Call read_current_interview, then read pages and selected original/current examples as needed. "
     "Never assume the continuation start: ask the user if missing or ambiguous. "
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
-    "Always save a new version; never overwrite an existing version. "
+    "Text edits always save a new version. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
     "Infer preferences only from examples confirmed as human edits; original/current differences may include AI edits. "
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in this interview/task unless the user explicitly saves a reusable plan in Ripple. "
     "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
@@ -34,6 +34,20 @@ class Change(BaseModel):
     segment_id: str
     before: str
     after: str
+
+
+class MarkHighlight(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    start: int
+    end: int
+    text: str
+
+class Mark(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    segment_id: str
+    before: str
+    annotation: str | None = None
+    highlights: list[MarkHighlight] = []
 
 
 def create_server(url: str, credential_file: Path):
@@ -113,6 +127,34 @@ def create_server(url: str, credential_file: Path):
     async def cancel_continuation(task_id: str) -> dict[str, Any]:
         """Cancel an unpublished task. A write already publishing cannot be cancelled retroactively."""
         return await call("cancel", {"task_id": task_id})
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def prepare_interview_marks(snapshot: str, instructions: str, segment_ids: list[str] | None = None, whole_interview: bool = False) -> dict[str, Any]:
+        """Prepare annotations/highlights for explicitly requested segments or whole interview. No text changes or new versions. Missing scope requires clarification."""
+        args: dict[str, Any] = {"snapshot": snapshot, "instructions": instructions, "whole_interview": whole_interview}
+        if segment_ids is not None:
+            args["segment_ids"] = segment_ids
+        return await call("prepare_marks", args)
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def stage_interview_marks(task_id: str, marks: list[Mark]) -> dict[str, Any]:
+        """Stage up to 32 segments, including empty marks for reviewed segments. before must match full current text. Highlight start/end are UTF-16 offsets, end exclusive, on grapheme boundaries; text must match that range. Existing marks are preserved."""
+        return await call("stage_marks", {"task_id": task_id, "marks": [mark.model_dump() for mark in marks]})
+
+    @mcp.tool(structured_output=True, annotations=write)
+    async def apply_interview_marks(task_id: str, confirmed_summary: str) -> dict[str, Any]:
+        """Add staged marks ONCE to the current Ripple version after agreement, save, and open its sidebar. No text/timestamp changes or new version. AI annotations are identified; human marks are retained. Check saved/error before claiming success; failed saves must be recovered in Ripple."""
+        return await call("apply_marks", {"task_id": task_id, "confirmed_summary": confirmed_summary})
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def interview_marks_status(task_id: str) -> dict[str, Any]:
+        """Recover mark task state, remaining segments and saved/failed result before retrying uncertain writes."""
+        return await call("marks_status", {"task_id": task_id})
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def cancel_interview_marks(task_id: str) -> dict[str, Any]:
+        """Cancel a draft annotation/highlight task; cannot undo a write already being applied."""
+        return await call("cancel_marks", {"task_id": task_id})
 
     return mcp
 

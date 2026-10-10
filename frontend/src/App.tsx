@@ -1,3 +1,5 @@
+import { flushSync } from "react-dom";
+import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
 import { originalVersionLabel } from './lib/transcriptLabels';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
@@ -557,9 +559,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
 
   const connectorContext = useRef({ dir: dirHandle, context: aiContext, generation: 0 });
-  if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
-    connectorContext.current = { dir: dirHandle, context: aiContext, generation: connectorContext.current.generation + 1 };
-  }
+  useLayoutEffect(() => {
+    if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
+      connectorContext.current = { dir: dirHandle, context: aiContext, generation: connectorContext.current.generation + 1 };
+    }
+  }, [dirHandle, aiContext]);
   const connector = useAIConnector({
     current: async () => {
       const identity = connectorContext.current.generation;
@@ -569,12 +573,34 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if (connectorContext.current.generation !== identity || dirHandleRef.current !== dir || !latestExport.current.transcript) throw new Error('interview_changed');
       const rules = await readConnectorRules(dir, audio);
       if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
-      return { identity: String(identity), transcript: latestExport.current.transcript, rules,
+      return { identity: String(identity), editable: !viewingOriginal, transcript: latestExport.current.transcript, rules,
         remember: async confirmedRules => writeConnectorRules(dir, audio, confirmedRules),
         title: latestExport.current.metadata?.title ?? '',
         label: viewingOriginal ? originalVersionLabel(model) : model.edits.find(e => e.id === model.activeEditId)?.label ?? 'v1',
         names: models.flatMap(m => m.edits.map((e, i) => e.label ?? defaultEditLabel(i))),
         original: async () => (await readModelOriginal(dir, audio, model.id))?.transcript ?? null };
+    },
+    applyMarks: async (baseline, marks, taskId) => {
+      if (viewingOriginal || versionBusy || !activeModel?.activeEditId || JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+      const versionId = activeModel.activeEditId;
+      const version = activeModel.edits.find(edit => edit.id === versionId)?.label ?? 'v1';
+      const result = applyAIMarks(baseline, marks, taskId);
+      if (result.transcript !== baseline) {
+        let applied = false;
+        flushSync(() => {
+          mutateTranscript(current => {
+            if (JSON.stringify(current) !== JSON.stringify(baseline)) return current;
+            applied = true; return result.transcript;
+          }, `ai-marks:${taskId}`);
+          setAnnotationPanelCollapsed(false);
+          setAnnotationView('all');
+          setPanelTab(result.added_annotations ? 'annotation' : 'highlight');
+        });
+        if (!applied) throw new Error('source_changed_read_current_again');
+        try { await flushPendingSave(); }
+        catch { throw new Error('mark_save_failed_changes_retained_in_ripple'); }
+      }
+      return { saved: true, version, version_id: versionId, added_annotations: result.added_annotations, added_highlights: result.added_highlights };
     },
     publish: async (baseline, suggestions, name) => {
       const sourceModel = activeModelId, sourceEdit = viewingOriginal ? 'original' : activeModel?.activeEditId;

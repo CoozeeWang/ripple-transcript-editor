@@ -40,3 +40,13 @@ The bundled Python interpreter exposes `python -m app.connector_mcp --credential
 For source runs, set `RIPPLE_DATA_DIR` to an absolute directory outside the repository. The desktop backend generates owner-only connector credentials there. The native window retrieves its role key through a Tauri command; public HTTP routes never return credentials. Tunnel configuration contains a file reference to its key, not the key itself. Never enable raw tunnel HTTP logs containing manuscript text.
 
 Automated source, browser fixtures, native builds, actual ChatGPT conversations, and installed-app acceptance are separate evidence. A successful MCP handshake is not an editing-quality or desktop acceptance result. Windows, ChatGPT desktop, and a second AI application require their own validation before compatibility is promised.
+
+## Annotations and highlights
+
+Annotations and highlights are added to the current editable version, without creating another version or changing text, speakers, word timestamps, or existing human marks. AI-created annotations display an **AI annotation** label and support ordinary editing/deletion. The batch is undoable in Ripple. The original read-only transcript cannot receive marks.
+
+Use `prepare_interview_marks` with explicit segment IDs or `whole_interview: true` and the user's instructions. Stage every scoped segment through `stage_interview_marks`, including empty marks for reviewed segments. Each highlight contains a verified text quotation and UTF-16 start/end offsets (end exclusive) at grapheme boundaries. After agreement, `apply_interview_marks` saves once to the current version and opens the relevant sidebar. It returns counts and a saved status, without listing the manuscript. Existing identical notes or highlight ranges are retained once.
+
+Use `interview_marks_status` to recover uncertain outcomes. A failed save keeps applied marks in Ripple for manual saving; repeating the same task does not repeat the write. Cancel draft tasks with `cancel_interview_marks`. Changed source text or a switched version invalidates an outstanding task.
+
+The connection configuration card follows the transcription-engine credentials layout. Saved configuration is shown before editing; **Edit configuration** changes the program or tunnel, while a blank key retains the saved key. Secret contents are never returned by the configuration-status command. These fields configure the OpenAI tunnel transport, rather than universal MCP requirements.
