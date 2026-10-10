@@ -259,6 +259,22 @@ fn connector_open_platform() -> Result<(), String> {
     match status { Ok(result) if result.success() => Ok(()), _ => Err("open_platform_failed".into()) }
 }
 
+/// Return only saved non-secret configuration and key presence; never read the key.
+#[tauri::command]
+fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector");
+    let config: serde_json::Value = match fs::read_to_string(data.join("setup.json")) {
+        Ok(text) => serde_json::from_str(&text).map_err(|_| "invalid_saved_setup")?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+        Err(_) => return Err("setup_unavailable".into()),
+    };
+    let client = config.get("client_path").and_then(|v| v.as_str()).unwrap_or("");
+    let tunnel = config.get("tunnel_id").and_then(|v| v.as_str()).unwrap_or("");
+    let has_key = data.join("runtime.key").is_file();
+    Ok(serde_json::json!({"client_path": client, "tunnel_id": tunnel, "has_key": has_key,
+        "configured": std::path::Path::new(client).is_file() && tunnel.starts_with("tunnel_") && has_key}))
+}
+
 #[tauri::command]
 fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
@@ -365,7 +381,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

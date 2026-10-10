@@ -1983,7 +1983,7 @@
   },
   "connector": {
     "title": "MCP connection",
-    "hint": "Let an external AI read the current interview, analyze its content and save a new edited version on request. Only the current interview is accessible; audio is not sent. Text sent to an external AI leaves this device.",
+    "hint": "Let external AI read and analyze the current interview on request, save a new editing version, and add annotations and highlights to the current version. Only the current interview is accessible; no audio is sent. Text sent to external AI leaves this device.",
     "enable": "Enable MCP connection",
     "off": "Connection disabled",
     "connecting": "Connecting or recovering the local service…",
@@ -1995,8 +1995,8 @@
     "platform": "Open connection platform and program download",
     "selectClient": "Select connection program (tunnel-client)",
     "clientSelected": "Connection program selected",
-    "tunnelId": "Connection identifier (Tunnel ID)",
-    "runtimeKey": "Connection key (Runtime API key)",
+    "tunnelId": "Tunnel ID",
+    "runtimeKey": "Runtime key",
     "keyHint": "Obtain this key from the platform to authorize the program to use the tunnel. It is not a model API key. Stored locally, outside interviews and exports. Leave blank to retain the existing key.",
     "saveSetup": "Save connection setup",
     "setup_saving": "Saving setup…",
@@ -2006,6 +2006,15 @@
     "builtinHint": "Models and credentials for editing started in Ripple. MCP clients use their own models.",
     "clientHint": "Download this program from the platform above to connect local Ripple to an external AI.",
     "tunnelHint": "Copy the Tunnel ID from the platform after creating a tunnel. It identifies the service to connect.",
-    "platformError": "Could not open the browser. Open this address manually: https://platform.openai.com/settings/organization/tunnels"
+    "platformError": "Could not open the browser. Open this address manually: https://platform.openai.com/settings/organization/tunnels",
+    "connectionProfile": "OpenAI tunnel",
+    "loadingSetup": "Loading saved configuration…",
+    "configured": "Connection configuration is saved on this device. You can edit it without entering the saved key again.",
+    "clientLabel": "Client",
+    "chooseClient": "Choose client",
+    "keySaved": "Saved (hidden)",
+    "editSetup": "Edit configuration",
+    "cancelSetup": "Cancel",
+    "aiAnnotation": "AI annotation"
   }
 }

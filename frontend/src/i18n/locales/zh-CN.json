@@ -1983,7 +1983,7 @@
   },
   "connector": {
     "title": "MCP 连接",
-    "hint": "让外部 AI 按需读取当前访谈、分析内容，并根据你的要求保存新的修改稿。 连接只访问当前访谈，不发送音频；发送给外部 AI 的文字会离开本机。",
+    "hint": "让外部 AI 按需读取当前访谈、分析内容，保存新的修改稿，并在当前版本添加批注与高亮。连接只访问当前访谈，不发送音频；发送给外部 AI 的文字会离开本机。",
     "enable": "启用 MCP 连接",
     "off": "连接已关闭",
     "connecting": "正在连接或恢复本机服务…",
@@ -1995,8 +1995,8 @@
     "platform": "打开连接平台与程序下载页",
     "selectClient": "选择连接程序（tunnel-client）",
     "clientSelected": "已选择连接程序",
-    "tunnelId": "连接标识（Tunnel ID）",
-    "runtimeKey": "连接密钥（Runtime API key）",
+    "tunnelId": "隧道标识",
+    "runtimeKey": "连接密钥",
     "keyHint": "从平台获取，用于允许连接程序使用该隧道，不是模型 API 密钥。仅存本机，不进入访谈或导出；留空保留已有密钥。",
     "saveSetup": "保存连接配置",
     "setup_saving": "正在保存配置…",
@@ -2004,8 +2004,17 @@
     "setup_error": "配置未完成。请检查连接程序、连接标识和连接密钥。",
     "builtinTitle": "Ripple 内置编辑",
     "builtinHint": "在 Ripple 内发起 AI 编辑时使用的模型与凭据。MCP 连接由外部 AI 应用使用自己的模型。",
-    "clientHint": "从上述平台下载的程序，用于连接本机 Ripple 与外部 AI。",
+    "clientHint": "从连接平台下载的程序，用于连接本机 Ripple 与外部 AI。",
     "tunnelHint": "创建隧道后，在平台连接详情中复制 Tunnel ID。它用于识别要连接的服务。",
-    "platformError": "无法打开浏览器。请复制地址到浏览器打开：https://platform.openai.com/settings/organization/tunnels"
+    "platformError": "无法打开浏览器。请复制地址到浏览器打开：https://platform.openai.com/settings/organization/tunnels",
+    "connectionProfile": "OpenAI 隧道",
+    "loadingSetup": "正在读取已保存的配置…",
+    "configured": "已保存连接配置，无需重复填写。修改配置时可保留已保存的密钥。",
+    "clientLabel": "连接程序",
+    "chooseClient": "选择程序",
+    "keySaved": "已保存（不显示）",
+    "editSetup": "修改配置",
+    "cancelSetup": "取消",
+    "aiAnnotation": "AI 批注"
   }
 }

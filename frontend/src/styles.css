@@ -2707,13 +2707,11 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .settings-mcp h3 { margin: 0; font-size: .84rem; }
 .settings-mcp .settings-hint, .settings-mcp .field > span,
 .settings-mcp .button, .settings-mcp summary { font-size: inherit; font-weight: 400; }
-.settings-mcp .connector-setup-content { display: grid; gap: 20px; padding-top: 12px; }
-.settings-mcp .connector-setup-group, .settings-mcp .connector-setup .field { display: grid; gap: 8px; margin: 0; }
 .settings-mcp .connector-setup a { color: var(--color-accent); width: fit-content; text-underline-offset: 3px; }
 .settings-mcp .connector-setup a:focus-visible, .settings-mcp summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .settings-mcp .connector-error { color: var(--color-danger); }
 .settings-mcp summary { cursor: pointer; }
-.settings-mcp .connector-setup .button { width: fit-content; }
+
 
 /* ---- 转录引擎密钥管理（CredentialManager） ---- */
 .cred-manager { display: grid; gap: 18px; }
@@ -3166,3 +3164,12 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 @media(max-width:679px) { :root { --chrome-action-gap:6px; } }
 @media(max-height:600px) { :root { --chrome-inline:12px; --chrome-block:6px; --chrome-height:48px; } }
 @media(max-width:919px) { body:has(.project-home:not(.project-home--welcome)) { min-width:540px; } }
+
+.settings-mcp .connector-setup-card > .settings-hint { margin: 8px 0; }
+.settings-mcp .connector-platform { margin-top: 12px; }
+.settings-mcp .cred-field__hint { font-size: .78rem; }
+@media (max-width: 600px) { .settings-mcp .cred-field__hint { grid-column: 1; margin-top: 0; } }
+
+.annotation-ai-label { color: var(--color-accent); font-size: .78rem; font-weight: 500; margin-left: auto; }
+
+.settings-mcp .cred-profile__name { font-size: .84rem; }
