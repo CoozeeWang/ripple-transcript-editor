@@ -24,6 +24,7 @@ it('offers a single pairing flow without executable, endpoint, tunnel or secret 
 it('shows paired state and disables access only after revocation succeeds',async()=>{
  const {ui,invoke,onRevoked}=fixture(true);
  await waitFor(()=>expect(ui.getByText('撤销连接')).toBeTruthy());
+ expect(ui.getByText('连接另一个 AI 应用')).toBeTruthy();
  fireEvent.click(ui.getByText('撤销连接'));
  await waitFor(()=>expect(onRevoked).toHaveBeenCalledOnce());
  expect(invoke).toHaveBeenCalledWith('connector_pair_revoke');

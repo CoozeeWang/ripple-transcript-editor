@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { msg } from '../i18n';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
 
-interface PairState { paired: boolean; available: boolean; pair_code?: string; expires_at?: number; revoked?: boolean }
+interface PairState { paired: boolean; available: boolean; pair_code?: string; expires_at?: number; revoked?: boolean; pairing_pending?: boolean }
 async function invoke<T>(command: string): Promise<T> {
   if (!nativeDesktopAvailable()) throw new Error('desktop_required');
   return (window as unknown as { __TAURI__: { core: { invoke: (name: string) => Promise<T> } } }).__TAURI__.core.invoke(command);
@@ -24,7 +24,7 @@ export function ConnectorSetup({ onSaved, onRevoked }: { onSaved?: () => void; o
     const timer = setInterval(() => {
       if (Date.now()/1000 >= (saved.expires_at ?? 0)) { setExpired(true); return; }
       void invoke<PairState>('connector_pair_status').then(value => {
-        if (!disposed && value.paired) { setSaved(value); onSaved?.(); }
+        if (!disposed && value.paired && !value.pairing_pending) { setSaved(value); setError(false); onSaved?.(); }
       }).catch(() => { if (!disposed) setError(true); });
     }, 2500);
     return () => { disposed = true; clearInterval(timer); };
@@ -33,7 +33,7 @@ export function ConnectorSetup({ onSaved, onRevoked }: { onSaved?: () => void; o
     setBusy(true); setError(false); setExpired(false);
     try {
       const value = await invoke<PairState>(command);
-      setSaved(value);
+      setSaved(value); setExpired(false);
       if (command === 'connector_pair_revoke') onRevoked?.();
     } catch { setError(true); }
     finally { setBusy(false); }
@@ -48,7 +48,7 @@ export function ConnectorSetup({ onSaved, onRevoked }: { onSaved?: () => void; o
       </div>
     </div>}
     <div className="cred-profile__actions">
-      {saved.available && !saved.paired && <button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void act('connector_pair_begin')}>{msg(saved.pair_code ? 'connector.pairAgain' : 'connector.pairStart')}</button>}
+      {saved.available && <button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void act('connector_pair_begin')}>{msg(saved.paired ? 'connector.pairAdd' : saved.pair_code ? 'connector.pairAgain' : 'connector.pairStart')}</button>}
       {(saved.paired || saved.pair_code || saved.revoked) && <button type="button" className="cred-btn" disabled={busy} onClick={() => void act('connector_pair_revoke')}>{msg('connector.pairRevoke')}</button>}
       {error && <button type="button" className="cred-btn" disabled={busy} onClick={() => void act('connector_pair_status')}>{msg('connector.pairRetry')}</button>}
     </div>

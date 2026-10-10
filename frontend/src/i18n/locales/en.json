@@ -1988,7 +1988,7 @@
     "off": "Connection disabled",
     "connecting": "Connecting or recovering the local service…",
     "ready": "Connection ready. Ask for help in your external AI application.",
-    "error": "Connection unavailable. Use Ripple desktop and check your connector configuration.",
+    "error": "Connection is not ready. Pair Ripple or check your network and retry.",
     "retry": "Reconnect",
     "setupTitle": "Connection setup",
     "setupHint": "Add Ripple as an MCP service in your AI application. The current setup uses an OpenAI tunnel; connection methods for other clients require separate verification.",
@@ -2027,6 +2027,7 @@
     "pairStart": "Show pairing code",
     "pairRevoke": "Disconnect and revoke",
     "pairRetry": "Retry",
-    "pairError": "Cannot reach the connection service. Check your network and retry."
+    "pairError": "Cannot reach the connection service. Check your network and retry.",
+    "pairAdd": "Connect another AI application"
   }
 }

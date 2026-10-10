@@ -55,10 +55,23 @@ def authorize(client, device):
     url = response.headers["location"]
     consent = client.get(url)
     assert consent.status_code == 200
+    # no-referrer turns a real browser's form Origin into null. Keep same-origin
+    # validation while hiding the referring URL from the external callback.
+    assert consent.headers["Referrer-Policy"] == "same-origin"
+    assert "http://127.0.0.1:18802" in consent.headers["Content-Security-Policy"]
+    assert "form-action 'self'" in consent.headers["Content-Security-Policy"]
     csrf = re.search('name="csrf" value="([^"]+)"', consent.text)[1]
     tx = parse_qs(urlparse(url).query)["transaction"][0]
+    assert (
+        client.post(
+            "/pair/approve",
+            headers={"Origin": "https://untrusted.invalid"},
+            data={"transaction": tx, "csrf": csrf, "code": device["pair_code"]},
+        ).status_code
+        == 403
+    )
     response = client.post(
-        "/consent",
+        "/pair/approve",
         data={"transaction": tx, "csrf": csrf, "code": device["pair_code"]},
         follow_redirects=False,
     )
@@ -94,7 +107,7 @@ def test_pairing_pkce_single_use_refresh_revoke_restart(tmp_path):
         tokens = token.json()
         assert exchange(client, cid, code).status_code == 400
         assert client.post(
-            "/consent", data={"transaction": tx, "csrf": csrf, "code": device["pair_code"]}
+            "/pair/approve", data={"transaction": tx, "csrf": csrf, "code": device["pair_code"]}
         ).status_code in (400, 403)
         assert client.get("/devices/status", headers=headers).json()["paired"] is True
         rotated = client.post(
@@ -142,7 +155,7 @@ def test_csrf_redirect_expiration_and_https(tmp_path):
         validate_url("http://example.invalid")
     app = create_service(BASE, tmp_path)
     with TestClient(app, base_url=BASE) as client:
-        assert client.post("/consent", data={"code": "wrong"}).status_code == 403
+        assert client.post("/pair/approve", data={"code": "wrong"}).status_code == 403
         assert client.post(
             "/register",
             json={
@@ -224,3 +237,21 @@ async def test_authenticated_mcp_tools_route_only_to_paired_device(tmp_path):
             "/devices", headers={"Authorization": "Bearer " + device["device_token"]}
         )
         assert (await client.post("/mcp", headers=headers, json=body)).status_code == 401
+
+
+def test_add_another_client_preserves_existing_authorization(tmp_path):
+    app = create_service(BASE, tmp_path)
+    with TestClient(app, base_url=BASE) as client:
+        device = client.post("/devices").json()
+        headers = {"Authorization": "Bearer " + device["device_token"]}
+        cid, code, _, _ = authorize(client, device)
+        first = exchange(client, cid, code).json()
+        assert client.get("/devices/status", headers=headers).json()["pairing_pending"] is False
+        new_pair = client.post("/devices/pair", headers=headers).json()
+        assert client.get("/devices/status", headers=headers).json()["pairing_pending"] is True
+        second_device = dict(device, **new_pair)
+        cid2, code2, _, _ = authorize(client, second_device)
+        assert cid != cid2
+        assert exchange(client, cid2, code2).status_code == 200
+        assert client.get("/devices/status", headers=headers).json()["pairing_pending"] is False
+        assert asyncio.run(app.state.provider.load_access_token(first["access_token"]))

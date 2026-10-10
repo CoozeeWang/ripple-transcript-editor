@@ -1988,7 +1988,7 @@
     "off": "连接已关闭",
     "connecting": "正在连接或恢复本机服务…",
     "ready": "连接已就绪，可到外部 AI 应用提出需求",
-    "error": "连接不可用。请使用 Ripple 桌面版，并检查连接服务配置。",
+    "error": "连接未就绪。请完成 Ripple 配对，或检查网络后重试。",
     "retry": "重新连接",
     "setupTitle": "连接配置",
     "setupHint": "在 AI 应用中添加 Ripple 的 MCP 服务。以下是当前使用的 OpenAI 隧道配置，其他客户端的连接方式需另行验证。",
@@ -2027,6 +2027,7 @@
     "pairStart": "显示配对码",
     "pairRevoke": "撤销连接",
     "pairRetry": "重试",
-    "pairError": "无法联系连接服务，请检查网络后重试。"
+    "pairError": "无法联系连接服务，请检查网络后重试。",
+    "pairAdd": "连接另一个 AI 应用"
   }
 }

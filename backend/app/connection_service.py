@@ -158,7 +158,7 @@ class Provider:
             {"client_id": client.client_id, "params": params.model_dump(mode="json")},
             time.time() + 300,
         )
-        return self.base + "/consent?transaction=" + tx
+        return self.base + "/pair?transaction=" + tx
 
     async def load_authorization_code(self, client, code):
         data = self.store.get("code", digest(code))
@@ -170,7 +170,12 @@ class Provider:
         if not self.store.get("device", subject):
             raise TokenError("invalid_grant", "Device disconnected")
         access, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        common = {"client_id": client_id, "scopes": scopes, "resource": resource, "subject": subject}
+        common = {
+            "client_id": client_id,
+            "scopes": scopes,
+            "resource": resource,
+            "subject": subject,
+        }
         self.store.put(
             "access",
             digest(access),
@@ -339,7 +344,7 @@ def create_service(base_url, data_dir):
         if request.method == "POST":
             key = request.client.host if request.client else "unknown"
             now = time.monotonic()
-            if request.url.path in ("/devices", "/register", "/consent"):
+            if request.url.path in ("/devices", "/register", "/pair/approve"):
                 if len(attempts) >= 10000:
                     attempts.clear()
                 count, start = attempts.get(key, (0, now))
@@ -356,9 +361,12 @@ def create_service(base_url, data_dir):
         response = await next_handler(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
+        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            (
+                "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
+            ),
         )
         return response
 
@@ -397,7 +405,14 @@ def create_service(base_url, data_dir):
     @app.get("/devices/status")
     async def status(request: Request):
         device = device_auth(request)
-        return {"paired": store.get("device", device)["paired"]}
+        pending = (
+            store.db.execute(
+                "SELECT count(*) FROM records WHERE kind='pair' AND expires>? AND json_extract(body,'$.subject')=?",
+                (time.time(), device),
+            ).fetchone()[0]
+            > 0
+        )
+        return {"paired": store.get("device", device)["paired"], "pairing_pending": pending}
 
     @app.delete("/devices")
     async def revoke(request: Request):
@@ -432,7 +447,7 @@ def create_service(base_url, data_dir):
         relay.reply(device, data.get("request_id"), data["result"])
         return {"accepted": True}
 
-    @app.get("/consent", response_class=HTMLResponse)
+    @app.get("/pair", response_class=HTMLResponse)
     async def consent(transaction: str):
         tx = store.get("transaction", digest(transaction))
         if not tx:
@@ -445,7 +460,13 @@ def create_service(base_url, data_dir):
 <h1>Connect Ripple / 连接 Ripple</h1><p>{html.escape(client.client_name or "AI application")} requests access to your currently open interview: read and analyze text, save edited versions, add annotations and highlights.</p>
 <p>此 AI 应用将可读取和分析当前访谈、保存新修改稿、添加批注与高亮。仅在 Ripple 开启连接时可访问；不传输音频。文字会离开本机。</p>
 <p>Open Ripple → Settings → AI Assisted Editing → Connect. Enter its pairing code here.<br>打开 Ripple → 设置 → AI 辅助编辑 → 连接，在此输入配对码。</p>
-<form method="post" action="/consent"><input type="hidden" name="transaction" value="{html.escape(transaction)}"><input type="hidden" name="csrf" value="{csrf}"><label>Pairing code / 配对码 <input name="code" required maxlength="20" autocomplete="off"></label><button>Authorize / 授权连接</button></form></html>''')
+<form method="post" action="/pair/approve"><input type="hidden" name="transaction" value="{html.escape(transaction)}"><input type="hidden" name="csrf" value="{csrf}"><label>Pairing code / 配对码 <input name="code" required maxlength="20" autocomplete="off"></label><button>Authorize / 授权连接</button></form></html>''')
+        callback = urlparse(tx["params"]["redirect_uri"])
+        callback_origin = f"{callback.scheme}://{callback.netloc}"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; "
+            f"form-action 'self' {callback_origin}"
+        )
         response.set_cookie(
             "ripple_csrf",
             csrf,
@@ -456,7 +477,7 @@ def create_service(base_url, data_dir):
         )
         return response
 
-    @app.post("/consent")
+    @app.post("/pair/approve")
     async def approve(request: Request):
         form = await request.form()
         txid, csrf = str(form.get("transaction", "")), str(form.get("csrf", ""))
