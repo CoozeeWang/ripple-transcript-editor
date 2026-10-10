@@ -30,7 +30,14 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
     <summary>{msg('connector.setupTitle')}</summary>
     <div className="cred-profile connector-setup-card" aria-busy={loading}>
       <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.connectionProfile')}</span></div>
-      <p className="settings-hint" role="status">{msg(loading ? 'connector.loadingSetup' : saved.configured ? 'connector.configured' : 'connector.setupHint')}</p>
+      <p className="settings-hint">{msg('connector.setupHint')}</p>
+      <p className="settings-hint connector-platform"><a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noreferrer" onClick={event => {
+        if (!nativeDesktopAvailable()) return;
+        event.preventDefault(); setLinkError(false);
+        void invoke('connector_open_platform').catch(() => setLinkError(true));
+      }}>{msg('connector.platform')}</a></p>
+      {linkError && <p className="settings-hint connector-error" role="alert">{msg('connector.platformError')}</p>}
+      <p className="settings-hint" role="status">{loading ? msg('connector.loadingSetup') : saved.configured ? msg('connector.configured') : ''}</p>
       {!loading && <>
       <div className="cred-profile__fields">
         <label className="cred-field"><span className="cred-field__label">{msg('connector.clientLabel')}</span>
@@ -38,23 +45,17 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
             {editing && <button type="button" className="cred-btn" disabled={status === 'saving'} onClick={() => {
               void invoke<string>('connector_pick_client').then(setClient).catch(() => setStatus('error'));
             }}>{msg('connector.chooseClient')}</button>}</span>
-          {editing && <span className="cred-field__hint">{msg('connector.clientHint')}</span>}
+          {<span className="cred-field__hint">{msg('connector.clientHint')}</span>}
         </label>
         <label className="cred-field"><span className="cred-field__label">{msg('connector.tunnelId')}</span>
           <span className="cred-field__input"><input value={tunnel} readOnly={!editing} disabled={status === 'saving'} onChange={event => setTunnel(event.target.value)} autoComplete="off" /></span>
-          {editing && <span className="cred-field__hint">{msg('connector.tunnelHint')}</span>}
+          {<span className="cred-field__hint">{msg('connector.tunnelHint')}</span>}
         </label>
         <label className="cred-field"><span className="cred-field__label">{msg('connector.runtimeKey')}</span>
           <span className="cred-field__input"><input type="password" value={key} readOnly={!editing} disabled={status === 'saving'} placeholder={saved.has_key ? msg('connector.keySaved') : ''} onChange={event => setKey(event.target.value)} autoComplete="off" /></span>
-          {editing && <span className="cred-field__hint">{msg('connector.keyHint')}</span>}
+          {<span className="cred-field__hint">{msg('connector.keyHint')}</span>}
         </label>
       </div>
-      {<p className="settings-hint connector-platform"><a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noreferrer" onClick={event => {
-        if (!nativeDesktopAvailable()) return;
-        event.preventDefault(); setLinkError(false);
-        void invoke('connector_open_platform').catch(() => setLinkError(true));
-      }}>{msg('connector.platform')}</a></p>}
-      {linkError && <p className="settings-hint connector-error" role="alert">{msg('connector.platformError')}</p>}
       <div className="cred-profile__actions">
         {editing ? <>
           <button type="button" className="cred-btn cred-btn--primary" disabled={!client || !tunnel.trim() || (!saved.has_key && !key.trim()) || status === 'saving'} onClick={() => {

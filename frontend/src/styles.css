@@ -3171,7 +3171,8 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 .settings-mcp .connector-client-selection { display: grid; gap: 8px; }
 .settings-mcp .connector-client-selection > .cred-profile__fields { margin: 0; }
 .settings-mcp .connector-setup-card { margin: 8px 0 0; }
-.settings-mcp .cred-field__input input, .settings-mcp .cred-field__input select { font-size: .84rem; }
+.settings-mcp .cred-field__input input { font-size: .84rem; }
+.settings-mcp .cred-field__input select { font-size: .78rem; }
 .settings-mcp .cred-field__hint { margin-top: -6px; }
 .settings-mcp .connector-client-selection .cred-profile__actions { margin-top: 0; }
 .settings-mcp .connector-steps { padding-left: 24px; }
