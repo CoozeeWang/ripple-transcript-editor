@@ -1,5 +1,5 @@
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
-import { nativeDesktopAvailable } from '../lib/desktopFs';
+import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
 import { LanguageControl } from './LanguageControl';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory, pickerLocation, OPEN_LAST_PROJECT, restoredInterview, rememberInterview, canRestoreProject } from '../lib/projectPreferences';
@@ -42,6 +42,7 @@ export function ProjectWorkspace() {
   const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string } | null>(null);
   const [association, setAssociation] = useState<{ source: string; modelId: string; name: string; anchor:DOMRect } | null>(null);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [recentRecovery, setRecentRecovery] = useState<{id:string;title:string;reason:'missing'|'permission'|'unreadable'} | null>(null);
   const recentRef = useRef<HTMLDivElement>(null);
   useDismissable(recentRef, recentOpen, () => setRecentOpen(false));
   const [settings, setSettings] = useState(false);
@@ -95,6 +96,7 @@ export function ProjectWorkspace() {
             return;
           }
           const next = await openProject(items[0].directory);
+          if (next.data.id !== items[0].id) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
           if (!cancelled) { setInterviewId(restoredInterview(next)); setProject(next); current.current = next; }
         }
       } catch { if (!cancelled) setError(msg('ProjectWorkspace.m0900')); }
@@ -120,16 +122,26 @@ export function ProjectWorkspace() {
   const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => {
     let handle = directory;
     if (handle && expectedId && nativeDesktopAvailable()) {
-      const saved = handle as FileSystemDirectoryHandle & { queryPermission?: (options: { mode: string }) => Promise<string> };
-      let permission = 'prompt';
-      try { permission = await saved.queryPermission?.({ mode: 'readwrite' }) ?? 'prompt'; } catch { /* Re-select below. */ }
-      if (permission !== 'granted') handle = await chooseDirectory('open-project');
+      const status = await nativeAccessStatus(handle);
+      if (status !== 'granted') {
+        setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,reason:status});
+        return;
+      }
     }
     handle ??= await chooseDirectory('open-project');
     await permit(handle, 'readwrite');
-    const next = await openProject(handle);
+    let next: OpenProject;
+    try { next = await openProject(handle); }
+    catch (error) {
+      if (directory && expectedId) {
+        setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,
+          reason:(error as {name?:string})?.name==='NotFoundError'?'missing':'unreadable'});
+        return;
+      }
+      throw error;
+    }
     if (expectedId && next.data.id !== expectedId) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
-    setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
+    setRecentRecovery(null); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
   const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string) => {
@@ -199,6 +211,11 @@ export function ProjectWorkspace() {
       </nav>
     </header>}
     {audioStorage.dialog}<section className="project-home__content" aria-busy={busy}>
+      {recentRecovery && <div className="project-error-notice recent-project-recovery" role="status">
+        <p>{msg(recentRecovery.reason==='missing'?'ProjectWorkspace.recentMissing':recentRecovery.reason==='permission'?'ProjectWorkspace.recentPermission':'ProjectWorkspace.recentUnreadable',{title:recentRecovery.title})}</p>
+        <button type="button" disabled={busy} onClick={()=>chooseProject(undefined,recentRecovery.id)}>{msg('ProjectWorkspace.recentRecover')}</button>
+        <button type="button" disabled={busy} onClick={()=>setRecentRecovery(null)}>{msg('ProjectWorkspace.recentDismiss')}</button>
+      </div>}
       {error && !welcoming && <div ref={errorNotice} className="project-error-notice" role="alert" aria-atomic="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
         <p>{uiMessage(error)}</p>

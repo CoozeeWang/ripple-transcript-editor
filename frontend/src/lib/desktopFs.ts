@@ -8,6 +8,7 @@ function invoke<T>(command: string, args: Record<string, unknown>): Promise<T> {
   const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
   if (!tauri?.core) throw new Error('Native file bridge unavailable');
   return tauri.core.invoke(command, args).catch(error => {
+    if (error === 'selection_cancelled') throw new DOMException('Selection cancelled', 'AbortError');
     if (error === 'permission_required') throw new DOMException('File access needs permission', 'NotAllowedError');
     if (error === 'file_missing') throw new DOMException('Selected file is missing', 'NotFoundError');
     throw error;
@@ -225,4 +226,13 @@ export function decodeNativeHandles<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, decodeNativeHandles(item)])) as T;
   }
   return value;
+}
+
+/** Query only an existing native capability; this never opens a picker. */
+export async function nativeAccessStatus(handle: FileSystemDirectoryHandle): Promise<'granted' | 'missing' | 'permission'> {
+  if (handle instanceof NativeHandle && productionDesktop) {
+    return invoke('fs_access_status', { root: handle.root, parts: handle.parts });
+  }
+  const query = handle as FileSystemDirectoryHandle & {queryPermission?: (options:{mode:string})=>Promise<string>};
+  return await query.queryPermission?.({mode:'readwrite'}) === 'granted' ? 'granted' : 'permission';
 }

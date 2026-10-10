@@ -67,7 +67,7 @@ it('removes a recent entry without attempting to open its missing directory', as
   expect(store.openProject).not.toHaveBeenCalled();
 });
 
-it('reselects a recent desktop project after its process grant expires', async () => {
+it('offers explicit recovery only when a recent desktop project loses access', async () => {
   const queryPermission = vi.fn(async () => 'prompt');
   const stale = { name: '测试.ripple', queryPermission } as unknown as FileSystemDirectoryHandle;
   const selected = { name: '测试.ripple' } as FileSystemDirectoryHandle;
@@ -79,6 +79,8 @@ it('reselects a recent desktop project after its process grant expires', async (
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
   fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
+  expect(state.picker).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', {name:'重新选择原项目'}));
   await screen.findByRole('heading', { name: '测试项目' });
   expect(queryPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
   expect(state.picker).toHaveBeenCalledOnce();
@@ -95,6 +97,7 @@ it('does not replace a recent entry with a different project', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
   fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
+  fireEvent.click(await screen.findByRole('button', {name:'重新选择原项目'}));
   await screen.findByText('选中的不是这个最近项目。请重新选择原项目文件夹。');
   expect(store.rememberProject).not.toHaveBeenCalled();
   expect(screen.queryByRole('heading', { name: '测试项目' })).toBeNull();
@@ -422,4 +425,27 @@ it('lets first-time users select English from welcome without opening or writing
     expect(store.openProject).not.toHaveBeenCalled();
     expect(store.createProject).not.toHaveBeenCalled();
   } finally { cleanup(); await setInterfaceLanguage('zh-CN'); }
+});
+
+it('directly opens a restored recent desktop project without invoking a picker', async () => {
+ const saved={name:'synthetic.ripple',queryPermission:vi.fn(async()=> 'granted')} as unknown as FileSystemDirectoryHandle;
+ Object.assign(window,{__TAURI__:{core:{}}});
+ vi.mocked(store.recentProjects).mockResolvedValueOnce([{id:'p',title:'测试项目',directory:saved}]).mockResolvedValue([]);
+ vi.mocked(store.openProject).mockResolvedValue({...project,directory:saved});
+ render(<ProjectWorkspace/>); fireEvent.click(screen.getByRole('button',{name:'最近项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'测试项目'}));
+ await screen.findByRole('heading',{name:'测试项目'}); expect(state.picker).not.toHaveBeenCalled();
+});
+it('keeps the welcome page and recent entry when recovery is cancelled', async () => {
+ const saved={name:'synthetic.ripple',queryPermission:vi.fn(async()=> 'prompt')} as unknown as FileSystemDirectoryHandle;
+ Object.assign(window,{__TAURI__:{core:{}}});
+ vi.mocked(store.recentProjects).mockResolvedValueOnce([{id:'p',title:'测试项目',directory:saved}]);
+ state.picker.mockRejectedValueOnce(new DOMException('cancelled','AbortError'));
+ render(<ProjectWorkspace/>); fireEvent.click(screen.getByRole('button',{name:'最近项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'测试项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'重新选择原项目'}));
+ await waitFor(()=>expect(state.picker).toHaveBeenCalledOnce());
+ expect(store.openProject).not.toHaveBeenCalled(); expect(store.rememberProject).not.toHaveBeenCalled();
+ expect(screen.queryByRole('heading',{name:'测试项目'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'取消恢复'})); expect(screen.queryByText(/访问权限需要恢复/)).toBeNull();
 });

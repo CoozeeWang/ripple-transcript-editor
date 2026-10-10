@@ -218,7 +218,12 @@
     "m0940": " revisions. Version names, comparison links, and interview details will be kept. Existing interview details will not be overwritten.",
     "m0941": "Import all versions",
     "m0942": "Not now",
-    "recentProjectMismatch": "This isn't the selected recent project. Choose its original project folder."
+    "recentProjectMismatch": "This isn't the selected recent project. Choose its original project folder.",
+    "recentMissing": "Cannot find “{{title}}”. Select its original project folder again. Cancelling will not open another project.",
+    "recentPermission": "Access to “{{title}}” needs permission. Select its original project folder again.",
+    "recentUnreadable": "Cannot read “{{title}}”. Check that its folder is accessible, or select the original project again.",
+    "recentRecover": "Select original project",
+    "recentDismiss": "Cancel recovery"
   },
   "SettingsModal": {
     "m0972": "Settings",

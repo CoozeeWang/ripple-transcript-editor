@@ -276,3 +276,7 @@ body:has(.project-home--welcome) { min-width: 0; }
 .project-error-notice { display:flex; align-items:flex-start; gap:8px; margin:0 0 12px; padding:8px 12px; border:1px solid var(--color-danger-border); border-radius:8px; background:var(--color-danger-bg); color:var(--color-text); scroll-margin-block:12px; }
 .project-error-notice > svg { flex:0 0 16px; width:16px; height:16px; color:var(--color-danger); margin-top:2px; }
 .project-error-notice p { min-width:0; margin:0; font:400 13px/1.5 var(--font-sans); overflow-wrap:anywhere; }
+
+.recent-project-recovery { flex-wrap: wrap; }
+.recent-project-recovery p { flex: 1 1 240px; }
+.recent-project-recovery button { flex: 0 0 auto; }

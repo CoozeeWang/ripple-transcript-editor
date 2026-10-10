@@ -56,7 +56,7 @@ fn add_grant(state: &Grants, path: PathBuf, directory: bool, writable: bool) -> 
 #[tauri::command]
 async fn pick_directory(app: tauri::AppHandle, state: tauri::State<'_, Grants>) -> Result<SelectedPath, String> {
     let selected = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
-        .await.map_err(|e| e.to_string())?.ok_or("已取消选择")?;
+        .await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
     add_grant(&state, selected.into_path().map_err(|e| e.to_string())?, true, true)
 }
 
@@ -66,13 +66,22 @@ async fn pick_files(app: tauri::AppHandle, state: tauri::State<'_, Grants>, mult
         if multiple { app.dialog().file().blocking_pick_files().unwrap_or_default() }
         else { app.dialog().file().blocking_pick_file().into_iter().collect() }
     }).await.map_err(|e| e.to_string())?;
-    if selected.is_empty() { return Err("已取消选择".into()); }
+    if selected.is_empty() { return Err("selection_cancelled".into()); }
     selected.into_iter().map(|file| add_grant(&state, file.into_path().map_err(|e| e.to_string())?, false, false)).collect()
 }
 
 #[tauri::command]
 fn fs_permission(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, write: bool) -> bool {
     grant_path(&state, &root, &parts, write).is_ok()
+}
+
+#[tauri::command]
+fn fs_access_status(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> &'static str {
+    match grant_path(&state, &root, &parts, true).and_then(|path| fs::metadata(path).map_err(io_error)) {
+        Ok(_) => "granted",
+        Err(error) if error == "file_missing" => "missing",
+        Err(_) => "permission",
+    }
 }
 
 #[tauri::command]
@@ -87,7 +96,7 @@ async fn fs_reauthorize(app: tauri::AppHandle, state: tauri::State<'_, Grants>, 
     let selected = tauri::async_runtime::spawn_blocking(move || {
         if is_directory { app.dialog().file().blocking_pick_folder() }
         else { app.dialog().file().blocking_pick_file() }
-    }).await.map_err(|e| e.to_string())?.ok_or("已取消选择")?;
+    }).await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
     let selected = selected.into_path().map_err(|e| e.to_string())?.canonicalize().map_err(|e| e.to_string())?;
     if expected.canonicalize().map_err(|e| e.to_string())? != selected { return Err("选择的不是原文件或原文件夹".into()); }
     state.remember(Grant::selected(root, selected, parts, is_directory, is_directory)?)?;
@@ -291,7 +300,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
+        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready])
