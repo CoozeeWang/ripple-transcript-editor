@@ -1980,5 +1980,27 @@
   },
   "audioReferenceSelection": {
     "mismatch": "The selected audio doesn’t match the dropped files. Please select them again."
+  },
+  "connector": {
+    "title": "ChatGPT connection",
+    "hint": "When enabled, your configured AI connection can read the current interview on request and create new editing versions. Text sent to external AI leaves this device; audio is not sent.",
+    "enable": "Allow access to the current interview",
+    "off": "Connection disabled",
+    "connecting": "Connecting to the local service…",
+    "ready": "Connection enabled. Ask for help in ChatGPT.",
+    "error": "Connection unavailable. Use Ripple desktop and check your connector configuration.",
+    "retry": "Disable, then enable again",
+    "setupTitle": "First-time connection setup",
+    "setupHint": "Use the official OpenAI tunnel-client and your existing tunnel. Once configured, Ripple starts and stops it with the connection toggle. Add the connection in ChatGPT as well.",
+    "platform": "Open OpenAI tunnel settings and client download",
+    "selectClient": "Select official tunnel-client",
+    "clientSelected": "Connection program selected",
+    "tunnelId": "Tunnel ID",
+    "runtimeKey": "Runtime API key",
+    "keyHint": "The key stays in protected local configuration, outside interviews and exports. Leave blank to retain the existing key.",
+    "saveSetup": "Save connection setup",
+    "setup_saving": "Saving setup…",
+    "setup_saved": "Setup saved. You can enable the connection.",
+    "setup_error": "Setup incomplete. Check the client executable, tunnel ID and runtime key."
   }
 }

@@ -40,6 +40,10 @@ To transcribe, create or open an interview, choose an audio file, then click **�
 | `Cmd + Z` | Undo |
 | `Cmd + Shift + Z` | Redo |
 
+## ChatGPT connection
+
+The personal desktop connector lets ChatGPT read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. Setup, scope, recovery and platform limits are described in [ChatGPT connection](docs/AI_CONNECTOR.md).
+
 ## AI-assisted editing
 
 Open **设置 → 编辑引擎** to configure a text model separately from transcription. The first version supports Chat Completions-compatible endpoints with JSON-object output; use the provider's base URL (without `/chat/completions`), model ID, and API key. Local HTTP services are supported on loopback addresses. The launcher checks for the editing configuration route for multi-engine configuration before reusing an existing backend and refreshes older services. `node scripts/launcher.mjs refresh-backend` can refresh the backend while keeping the editor window open.

@@ -1980,5 +1980,27 @@
   },
   "audioReferenceSelection": {
     "mismatch": "所选音频与拖入的文件不一致，请重新选择。"
+  },
+  "connector": {
+    "title": "ChatGPT 连接",
+    "hint": "开启后，已配置的 AI 连接可以按请求读取当前访谈，并生成新修改稿。发送给外部 AI 的文字会离开本机；不发送音频。",
+    "enable": "允许访问当前访谈",
+    "off": "连接已关闭",
+    "connecting": "正在连接本机服务…",
+    "ready": "连接已开启，请到 ChatGPT 提出需求",
+    "error": "连接不可用。请使用 Ripple 桌面版，并检查连接服务配置。",
+    "retry": "关闭连接后重新开启",
+    "setupTitle": "首次连接配置",
+    "setupHint": "使用 OpenAI 官方 tunnel-client 和已建立的隧道。配置一次后，Ripple 随连接开关启动和停止服务。ChatGPT 中也需添加该连接。",
+    "platform": "打开 OpenAI 隧道设置及客户端下载入口",
+    "selectClient": "选择官方 tunnel-client",
+    "clientSelected": "已选择连接程序",
+    "tunnelId": "隧道 ID",
+    "runtimeKey": "连接运行密钥",
+    "keyHint": "密钥只保存在本机受限配置中，不进入访谈或导出。已有配置时可留空。",
+    "saveSetup": "保存连接配置",
+    "setup_saving": "正在保存配置…",
+    "setup_saved": "配置已保存，可开启连接。",
+    "setup_error": "配置未完成。请核对所选连接程序、隧道 ID 和运行密钥。"
   }
 }

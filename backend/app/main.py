@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import asyncio
 import mimetypes
 import tempfile
@@ -11,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import diagnostics, manuscripts, progress, transcription_jobs
+from . import connector, diagnostics, manuscripts, progress, transcription_jobs
 from .ai_editing import router as ai_editing_router
 from .ai_engines import router as ai_engines_router
 from .models import (
@@ -55,7 +56,14 @@ from .storage import (
     update_metadata,
 )
 
-app = FastAPI(title="Ripple", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app):
+    if connector.DATA_ROOT != connector.CODE_ROOT:
+        connector.broker.initialize()
+    yield
+
+
+app = FastAPI(title="Ripple", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
@@ -66,6 +74,7 @@ app.include_router(ai_editing_router)
 app.include_router(ai_engines_router)
 app.include_router(diagnostics.router)
 app.include_router(manuscripts.router)
+app.include_router(connector.router)
 
 
 @app.middleware("http")

@@ -2036,3 +2036,24 @@ export async function aiEditingDocumentId(dir: FileSystemDirectoryHandle, audio:
 export const saveInterviewDetails: typeof saveInterviewDetailsUnlocked = (...args) => inDirectory(args[0], () => saveInterviewDetailsUnlocked(...args));
 
 export const setModelOriginal: typeof setModelOriginalUnlocked = (...args) => inDirectory(args[0], () => setModelOriginalUnlocked(...args));
+
+/** Confirmed connector rules belong only to this interview, without raw examples. */
+export async function readConnectorRules(dir: FileSystemDirectoryHandle, audio: string): Promise<string[]> {
+  const container = await resolveTranscriptDir(dir, audio, false);
+  if (!container) return [];
+  try {
+    const file = await container.getFileHandle('ai-connector-rules.json');
+    const value = JSON.parse(await (await file.getFile()).text());
+    return Array.isArray(value.rules) ? value.rules.filter((rule: unknown) => typeof rule === 'string') : [];
+  } catch (error) {
+    if ((error as { name?: string }).name === 'NotFoundError') return [];
+    throw error;
+  }
+}
+export async function writeConnectorRules(dir: FileSystemDirectoryHandle, audio: string, rules: string[]): Promise<void> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) throw new Error('connector_document_unavailable');
+    await writeFileJson(container, 'ai-connector-rules.json', { rules, scope: 'current-interview' });
+  });
+}

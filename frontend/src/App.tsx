@@ -1,3 +1,4 @@
+import { useAIConnector } from "./hooks/useAIConnector";
 import { originalVersionLabel } from './lib/transcriptLabels';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
@@ -43,6 +44,7 @@ import { usePersistence } from "./hooks/usePersistence";
 import { useEditor } from "./hooks/useEditor";
 import { usePlayback } from "./hooks/usePlayback";
 import {
+  readConnectorRules, writeConnectorRules,
   aiEditingDocumentId,
   readAIReviewDraft,
   writeAIReviewDraft,
@@ -554,10 +556,41 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     } catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0011')); }
   };
 
+  const connectorContext = useRef({ dir: dirHandle, context: aiContext, generation: 0 });
+  if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
+    connectorContext.current = { dir: dirHandle, context: aiContext, generation: connectorContext.current.generation + 1 };
+  }
+  const connector = useAIConnector({
+    current: async () => {
+      const identity = connectorContext.current.generation;
+      const dir = dirHandle, audio = selectedAudio, model = activeModel;
+      if (!dir || !audio || !model || !hasLoadedTranscript || versionBusy || transcribing) throw new Error('no_editable_interview');
+      await flushPendingSave();
+      if (connectorContext.current.generation !== identity || dirHandleRef.current !== dir || !latestExport.current.transcript) throw new Error('interview_changed');
+      const rules = await readConnectorRules(dir, audio);
+      if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      return { identity: String(identity), transcript: latestExport.current.transcript, rules,
+        remember: async confirmedRules => writeConnectorRules(dir, audio, confirmedRules),
+        title: latestExport.current.metadata?.title ?? '',
+        label: viewingOriginal ? originalVersionLabel(model) : model.edits.find(e => e.id === model.activeEditId)?.label ?? 'v1',
+        names: models.flatMap(m => m.edits.map((e, i) => e.label ?? defaultEditLabel(i))),
+        original: async () => (await readModelOriginal(dir, audio, model.id))?.transcript ?? null };
+    },
+    publish: async (baseline, suggestions, name) => {
+      const sourceModel = activeModelId, sourceEdit = viewingOriginal ? 'original' : activeModel?.activeEditId;
+      if (!sourceModel || !sourceEdit) throw new Error('interview_changed');
+      const result = await createAIEdit(baseline, suggestions, name);
+      if (!result) throw new Error('save_result_unavailable_check_versions');
+      comparison.activate(result.model.id, result.edit.id, `${sourceModel}:${sourceEdit}`);
+      return { version: result.edit.label, version_id: result.edit.id, comparison_requested: true };
+    },
+  });
+
   // 设置弹层：必须在「空状态提前 return」与「完整 UI return」两处都渲染，
   // 否则空状态下点击「偏好设置」会因提前 return 而永不显示。
   const settingsModal = settingsOpen ? (
     <SettingsModal
+      connector={connector}
       settingsTab={settingsTab}
       setSettingsTab={setSettingsTab}
       settingsRef={settingsRef}

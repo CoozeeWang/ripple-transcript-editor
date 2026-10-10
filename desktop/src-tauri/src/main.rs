@@ -15,6 +15,7 @@ const PORT: u16 = 18701;
 static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct Backend(Mutex<Option<Child>>);
+struct ConnectorTunnel(Mutex<Option<Child>>);
 struct WriteSession { target: PathBuf, temporary: tempfile::NamedTempFile }
 struct Writes(Mutex<HashMap<u64, WriteSession>>);
 #[derive(Clone)]
@@ -231,6 +232,78 @@ fn health_ok() -> bool {
 #[tauri::command]
 fn backend_ready() -> bool { health_ok() }
 
+#[tauri::command]
+fn connector_window_key(app: tauri::AppHandle) -> Result<String, String> {
+    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    fs::read_to_string(data.join("connector/window.key")).map_err(|_| "连接后台尚未就绪".to_string())
+}
+
+
+#[tauri::command]
+async fn connector_pick_client(app: tauri::AppHandle) -> Result<String, String> {
+    let file = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
+        .await.map_err(|_| "client_selection_failed".to_string())?.ok_or("client_selection_cancelled")?;
+    Ok(file.into_path().map_err(|_| "invalid_client_path")?.display().to_string())
+}
+
+#[tauri::command]
+fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
+    let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
+    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?;
+    let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
+    let mut child = Command::new(resources.join("python/bin/python3.12"))
+        .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
+        .args(["-m", "app.connector_setup"]).arg(&data).arg(&resources)
+        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "setup_failed")?;
+    let payload = serde_json::json!({"client_path":client_path,"tunnel_id":tunnel_id,"runtime_key":runtime_key});
+    child.stdin.take().ok_or("setup_failed")?.write_all(payload.to_string().as_bytes()).map_err(|_| "setup_failed")?;
+    if child.wait().map_err(|_| "setup_failed")?.success() { Ok(()) } else { Err("setup_failed_check_fields".into()) }
+}
+
+#[tauri::command]
+fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|_| "connector_busy")?;
+    if let Some(child) = guard.as_mut() {
+        if child.try_wait().map_err(|_| "connector_failed")?.is_none() { return Ok(()); }
+    }
+    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector");
+    let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
+    let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
+    let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
+    let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
+    let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
+    let child = Command::new(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
+        .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("RIPPLE_DATA_DIR", app.path().app_local_data_dir().map_err(|_| "data_unavailable")?)
+        .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
+    *guard = Some(child);
+    Ok(())
+}
+
+
+#[tauri::command]
+fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> bool {
+    let Ok(mut guard) = state.0.lock() else { return false };
+    let Some(child) = guard.as_mut() else { return false };
+    if !matches!(child.try_wait(), Ok(None)) { return false; }
+    let Ok(data) = app.path().app_local_data_dir() else { return false };
+    let Ok(url) = fs::read_to_string(data.join("connector/health.url")) else { return false };
+    let Some(raw) = url.trim().strip_prefix("http://127.0.0.1:") else { return false };
+    let Ok(port) = raw.trim_end_matches('/').parse::<u16>() else { return false };
+    let Ok(mut stream) = TcpStream::connect_timeout(&SocketAddr::from(([127,0,0,1],port)), Duration::from_millis(300)) else { return false };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    if stream.write_all(b"GET /readyz HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() { return false; }
+    let mut response = String::new();
+    stream.read_to_string(&mut response).is_ok() && (response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200"))
+}
+
+#[tauri::command]
+fn connector_tunnel_stop(state: tauri::State<'_, ConnectorTunnel>) {
+    if let Ok(mut guard) = state.0.lock() {
+        if let Some(mut child) = guard.take() { let _ = child.kill(); let _ = child.wait(); }
+    }
+}
+
 fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     if TcpStream::connect(("127.0.0.1", PORT)).is_ok() { return Err(format!("端口 {PORT} 已被占用；请先关闭占用它的程序")); }
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
@@ -253,6 +326,7 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
 }
 
 fn stop_backend(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<ConnectorTunnel>() { connector_tunnel_stop(state); }
     if let Some(state) = app.try_state::<Backend>() {
         if let Ok(mut guard) = state.0.lock() {
             if let Some(mut child) = guard.take() { let _ = child.kill(); let _ = child.wait(); }
@@ -264,6 +338,7 @@ fn main() {
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
         .manage(Grants(Mutex::new(Vec::new())))
         .manage(Writes(Mutex::new(HashMap::new())))
+        .manage(ConnectorTunnel(Mutex::new(None)))
         .setup(|app| {
             let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
             app.manage(Backend(Mutex::new(Some(child))));
@@ -272,7 +347,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_setup, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());
