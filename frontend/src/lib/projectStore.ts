@@ -216,7 +216,7 @@ export async function resolveMedia(project: OpenProject, interviewId: string, re
     return (await dir.getDirectoryHandle('media')).getFileHandle(recording.file);
   }
   const handle = await handleValue<FileSystemFileHandle>(`media:${project.data.id}:${recording.id}`);
-  if (!handle) throw new Error(msg('projectStore.m1404'));
+  if (!handle) throw new ProjectMediaUnavailable(msg('projectStore.mediaMissing'), 'missing');
   return handle;
 }
 export async function relinkMedia(project: OpenProject, interviewId: string, recording: ProjectRecording, handle: FileSystemFileHandle): Promise<OpenProject> {
@@ -230,7 +230,34 @@ export async function relinkMedia(project: OpenProject, interviewId: string, rec
   return saveProject(project, { ...project.data, interviews: project.data.interviews.map(i => i.id === interviewId ? { ...i, recordings: i.recordings.map(r => r.id === recording.id ? { ...r, storage: 'reference', fingerprint, ...(r.storage === 'none' ? { file: `${r.id}.${ext}`, name: file.name } : {}) } : r) } : i) });
   });
 }
-export class ProjectMediaUnavailable extends Error {}
+export type MediaFailureReason = 'permission' | 'missing' | 'changed' | 'unreadable';
+export class ProjectMediaUnavailable extends Error {
+  constructor(message: string, readonly reason: MediaFailureReason = 'unreadable') { super(message); }
+}
+export function mediaFailureMessage(reason: MediaFailureReason): string {
+  switch (reason) {
+    case 'permission': return msg('projectStore.mediaPermission');
+    case 'missing': return msg('projectStore.mediaMissing');
+    case 'changed': return msg('projectStore.mediaChanged');
+    default: return msg('projectStore.mediaUnreadable');
+  }
+}
+export function mediaFailure(error: unknown): ProjectMediaUnavailable {
+  if (error instanceof ProjectMediaUnavailable) return error;
+  const name = (error as { name?: string })?.name;
+  const reason = name === 'NotAllowedError' || name === 'SecurityError' ? 'permission'
+    : name === 'NotFoundError' ? 'missing' : 'unreadable';
+  return new ProjectMediaUnavailable(mediaFailureMessage(reason), reason);
+}
+export async function readProjectMedia(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<File> {
+  try {
+    const file = await (await resolveMedia(project, interviewId, recording)).getFile();
+    if (await mediaFingerprint(file) !== recording.fingerprint) {
+      throw new ProjectMediaUnavailable(msg('projectStore.mediaChanged'), 'changed');
+    }
+    return file;
+  } catch (error) { throw mediaFailure(error); }
+}
 export async function recordingDirectory(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<FileSystemDirectoryHandle> {
   const directory = await interviewDirectory(project, interviewId);
   // A single recording view isolates existing editor/version code without duplicating external media.
@@ -239,11 +266,7 @@ export async function recordingDirectory(project: OpenProject, interviewId: stri
     kind: 'file', name: recording.file,
     async getFile() {
       if (recording.storage === 'none') throw new ProjectMediaUnavailable('');
-      try {
-        const file = await (await resolveMedia(project, interviewId, recording)).getFile();
-        if (await mediaFingerprint(file) !== recording.fingerprint) throw new Error(msg('projectStore.m1407'));
-        return file;
-      } catch { throw new ProjectMediaUnavailable(msg('projectStore.m1408')); }
+      return readProjectMedia(project, interviewId, recording);
     },
   };
   return {

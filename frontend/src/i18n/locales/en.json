@@ -682,7 +682,11 @@
     "m1465": "A transcript file is missing from the trash.",
     "m1466": "Audio: {{v0}}  \nSession: {{v1}}  \nThis audio is linked to an external file. The audio file itself isn’t included in the project.  \nLinked transcripts: {{v2}}  \nThe transcripts remain under this audio in the project. Choose “Locate original audio” in Ripple to restore playback.Session: {{v1}}\nThis audio is linked to an external file. The audio file isn’t included.\nLinked transcripts: {{v2}}\nTranscripts remain under their audio in the project. Choose “Locate original audio” in Ripple to restore playback.",
     "m1467": "None",
-    "m1468": "Audio content has changed: {{v0}}. Locate the original audio."
+    "m1468": "Audio content has changed: {{v0}}. Locate the original audio.",
+    "mediaPermission": "Audio access needs permission. Use the folder button on the audio card to select the original file again. Transcripts remain editable.",
+    "mediaMissing": "The original audio cannot be found. Use the folder button on the audio card to locate it. Transcripts remain editable.",
+    "mediaChanged": "The audio content has changed. Relink a file with the original audio content. Transcripts remain editable.",
+    "mediaUnreadable": "Cannot read the audio. Check that the file is accessible, or use the folder button on the audio card to relink it. Transcripts remain editable."
   },
   "App": {
     "m0001": "This audio has no transcript yet. Choose “Start transcription” below.",
