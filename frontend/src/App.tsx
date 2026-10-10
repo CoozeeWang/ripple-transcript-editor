@@ -1030,7 +1030,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           preparing={preparingTranscript}
           comparisonControls={<>
             <button type="button" className={`comparison-toggle${comparison.shown ? " is-active" : ""}`} aria-pressed={comparison.shown}
-              disabled={viewingOriginal || !comparison.options.length || versionBusy} data-tip={msg('App.m0039', { v0: keys("Y",true) })} onClick={comparison.toggle}><span className="comparison-toggle-track" aria-hidden="true" /><span>{msg('App.m0040')}</span></button>
+              disabled={viewingOriginal || !comparison.options.length || versionBusy} data-tip-pos="top" data-tip={msg('App.m0039', { v0: keys("Y",true) })} onClick={comparison.toggle}><span className="comparison-toggle-track" aria-hidden="true" /><span>{msg('App.m0040')}</span></button>
             {comparison.shown && <div className="comparison-source"><span>{msg('App.m0041')}</span>
               <VersionPicker key={`${selectedAudio}:comparison`} models={models} value={comparison.base} variant="comparison"
                 excluded={currentVersionKey} disabled={versionBusy} onSelect={(model,edit)=>comparison.choose(`${model}:${edit}`)} onRename={renameVersion} />
