@@ -5,7 +5,7 @@ import time
 import pytest
 from fastapi import HTTPException
 
-from app.connector import Broker, Window
+from app.connector import LEASE_SECONDS, Broker, Window
 
 
 def test_roles_are_separate_and_no_unknown_key_is_accepted():
@@ -21,7 +21,7 @@ def test_roles_are_separate_and_no_unknown_key_is_accepted():
 
 def test_closed_expired_or_ambiguous_windows_are_rejected():
     b = Broker()
-    for windows in [{}, {'expired': Window(time.monotonic() - 20)},
+    for windows in [{}, {'expired': Window(time.monotonic() - LEASE_SECONDS - 1)},
                     {'one': Window(time.monotonic()), 'two': Window(time.monotonic())}]:
         b.windows = windows
         with pytest.raises(HTTPException):

@@ -1,11 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AIConnector, type ConnectorHost } from '../lib/aiConnector';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
+import { loadBooleanPreference, saveBooleanPreference } from '../lib/preferences';
+
+export const CONNECTOR_ENABLED_KEY = 'ripple-mcp-enabled';
 
 export function useAIConnector(host: ConnectorHost) {
   const latest = useRef(host);
   useLayoutEffect(() => { latest.current = host; });
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, updateEnabled] = useState(() => loadBooleanPreference(CONNECTOR_ENABLED_KEY, false));
+  const [attempt, setAttempt] = useState(0);
+  const setEnabled = (value: boolean) => { saveBooleanPreference(CONNECTOR_ENABLED_KEY, value); updateEnabled(value); };
   const [status, setStatus] = useState<'off' | 'connecting' | 'ready' | 'error'>('off');
   useEffect(() => {
     if (!enabled) return;
@@ -33,14 +38,28 @@ export function useAIConnector(host: ConnectorHost) {
       await tauri.core.invoke('connector_tunnel_start');
       const connectingSince = Date.now();
       heartbeat = setInterval(() => {
-        void request('session', { session, enabled: true }, abort.signal).catch(() => { if (!disposed) { setStatus('error'); abort.abort(); } });
-      }, 2000);
+        void request('session', { session, enabled: true }, abort.signal).catch(() => { if (!disposed) setStatus('connecting'); });
+      }, 5000);
       while (!disposed) {
         const ready = await tauri.core.invoke('connector_tunnel_ready');
         if (disposed) return;
         if (!ready && Date.now() - connectingSince > 90000) throw new Error('tunnel_not_ready');
         setStatus(ready ? 'ready' : 'connecting');
-        const call = await request(`poll?session=${encodeURIComponent(session)}`, undefined, abort.signal);
+        let call;
+        try {
+          // Re-establish an expired lease without changing consent or dropping task state.
+          await request('session', { session, enabled: true }, abort.signal);
+          call = await request(`poll?session=${encodeURIComponent(session)}`, undefined, abort.signal);
+        } catch {
+          if (disposed) return;
+          setStatus('connecting');
+          await new Promise<void>(resolve => {
+            const finish = () => { clearTimeout(timer); abort.signal.removeEventListener('abort', finish); resolve(); };
+            const timer = setTimeout(finish, 1000);
+            abort.signal.addEventListener('abort', finish, { once: true });
+          });
+          continue;
+        }
         if (!call || disposed) continue;
         let result;
         try { result = { ok: true, data: await controller.handle(call.operation, call.arguments) }; }
@@ -61,6 +80,6 @@ export function useAIConnector(host: ConnectorHost) {
         void tauri.core.invoke('connector_tunnel_stop').catch(() => {});
       }
     };
-  }, [enabled]);
-  return { enabled, setEnabled, status: enabled ? status : 'off' as const };
+  }, [enabled, attempt]);
+  return { enabled, setEnabled, reconnect: () => setAttempt(value => value + 1), status: enabled ? status : 'off' as const };
 }

@@ -42,8 +42,10 @@ try {
   await page.goto(vite.resolvedUrls.local[0]);
   await page.getByText('我觉得先开始。', { exact: true }).waitFor();
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
-  await page.getByLabel('允许访问当前访谈').check();
-  await page.getByText('连接已开启，请到 ChatGPT 提出需求').waitFor();
+  if (await page.getByRole('heading', { name: 'MCP 连接', exact: true }).count()) throw new Error('MCP must not be in General settings');
+  await page.getByRole('tab', { name: 'AI 辅助', exact: true }).click();
+  await page.getByLabel('启用 MCP 连接（记住此选择）').check();
+  await page.getByText('连接已就绪，可到外部 AI 应用提出需求').waitFor();
   const result = await promisify(execFile)(python, [join(repo, 'scripts/fixtures/connector-mcp-check.py')],
     { cwd: repo, env: { ...process.env, RIPPLE_CONNECTOR_TEST_DIR: directory, RIPPLE_CONNECTOR_TEST_URL: backendUrl } });
   await page.getByRole('dialog').getByRole('button', { name: /关闭/ }).first().click();
@@ -57,7 +59,8 @@ try {
   if (state.count !== 2 || state.source[1] !== '嗯，我觉得可能还有问题。' || state.result[1] !== '我觉得可能还有问题。' || state.result[2] !== state.source[2]) throw new Error('Version preservation failed');
   if (!(await page.getByText('显示修改痕迹', { exact: true }).isVisible())) throw new Error('Comparison was not displayed');
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
-  await page.getByLabel('允许访问当前访谈').uncheck();
+  await page.getByRole('tab', { name: 'AI 辅助', exact: true }).click();
+  await page.getByLabel('启用 MCP 连接（记住此选择）').uncheck();
   const clientKey = await readFile(join(directory, 'data/connector/client.key'), 'utf8');
   await new Promise(resolve => setTimeout(resolve, 100));
   const denied = await fetch(`${backendUrl}/api/connector/call`, { method: 'POST', headers: { Authorization: `Bearer ${clientKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: 'synthetic-disabled-check', operation: 'read_current', arguments: {} }) });

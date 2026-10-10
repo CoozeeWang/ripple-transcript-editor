@@ -25,6 +25,26 @@ async function prepare(f: ReturnType<typeof fixture>, args: Record<string, unkno
 const change = { segment_id: 'b', before: '嗯，我觉得可能有问题。', after: '我觉得可能有问题。' };
 
 describe('current interview connector', () => {
+  it('reads a merged human example against both original paragraphs without guessing by time', async () => {
+    const f = fixture();
+    f.current = { ...f.current, transcript: { ...f.baseline, segments: [{ ...f.baseline.segments[0],
+      end: 8, mergedFrom: ['a', 'b'], text: '开头不改。\n\n我觉得可能有问题。' }] } };
+    const read = await f.c.handle('read_current', {});
+    const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] });
+    expect(result.examples).toEqual([expect.objectContaining({ before: '开头不改。\n\n嗯，我觉得可能有问题。',
+      after: '开头不改。\n\n我觉得可能有问题。', source_segment_ids: ['a', 'b'], current_segment_ids: ['a'] })]);
+  });
+  it('returns complete recorded source context for a split instead of falsely treating it as missing', async () => {
+    const f = fixture();
+    const word = { text: '字', start: 4, end: 5, origins: [{ model: 'synthetic', segment: 'b', from: 0, to: 1, start: 4, end: 5 }] };
+    f.current = { ...f.current, transcript: { ...f.baseline, segments: [f.baseline.segments[0],
+      { ...f.baseline.segments[1], end: 6, text: '嗯，我觉得', words: [word] },
+      { ...f.baseline.segments[1], id: 'split', start: 6, text: '可能有问题。', words: [word] }] } };
+    const read = await f.c.handle('read_current', {});
+    const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['split'] });
+    expect(result.examples).toEqual([expect.objectContaining({ before: '嗯，我觉得可能有问题。',
+      after: '嗯，我觉得\n\n可能有问题。', current_segment_ids: ['b', 'split'] })]);
+  });
   it('returns compact summaries without full text or word timestamps', async () => {
     const f = fixture();
     const data = await f.c.handle('read_current', {});

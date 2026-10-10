@@ -54,13 +54,14 @@ def create_server(url: str, credential_file: Path):
             except httpx.HTTPError as error:
                 raise ToolError("Ripple connection unavailable. For writes, check task status before retrying.") from error
         if not response.is_success:
-            raise ToolError(f"Ripple connector unavailable ({response.status_code}); enable the current interview connection.")
+            detail = response.json().get("detail", "connection_unavailable") if response.headers.get("content-type", "").startswith("application/json") else "connection_unavailable"
+            raise ToolError(f"Ripple connector unavailable ({response.status_code}): {detail}. Check MCP connection status in Ripple; do not retry an uncertain write without checking task status.")
         result = response.json()
         if not result.get("ok"):
             raise ToolError(result.get("error", "Ripple operation failed"))
         return result["data"]
 
-    read = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+    read = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
     draft = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
     write = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 
@@ -100,7 +101,7 @@ def create_server(url: str, credential_file: Path):
 
     @mcp.tool(structured_output=True, annotations=write)
     async def publish_continuation(task_id: str, confirmed_summary: str) -> dict[str, Any]:
-        """After conversational agreement, save ONE new version and open comparison. Never fabricate consent."""
+        """Save staged text as ONE new local Ripple version after user agreement. Only the current interview is affected. Existing versions are never overwritten or deleted; no messages, audio, or data are sent to other services. Open comparison against the source version."""
         return await call("publish", {"task_id": task_id, "confirmed_summary": confirmed_summary})
 
     @mcp.tool(structured_output=True, annotations=read)

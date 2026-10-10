@@ -96,11 +96,25 @@ export class AIConnector {
       const examples = requested.map(id => {
         const after = s.transcript.segments.find(segment => segment.id === id);
         const before = original.segments.find(segment => segment.id === id);
-        // Do not infer a before/after pair from coincident timestamps after a split/merge.
-        if (!before || !after || before.start !== after.start || before.end !== after.end) return { id, ambiguous: true };
-        if (before.text.length + after.text.length > 12000) return { id, too_large: true };
-        return { id, start: after.start, end: after.end, before: before.text, after: after.text,
-          changed: before.text !== after.text, provenance: 'original_to_current_not_proof_of_human_authorship' };
+        if (!after) return { id, ambiguous: true, reason: 'current_segment_missing' };
+        const originalIds = new Set(original.segments.map(segment => segment.id));
+        const sourceIds = (segment: typeof after) => [...new Set([
+          ...(segment.mergedFrom ?? []), ...(segment.splitFrom ? [segment.splitFrom] : []),
+          ...(segment.words ?? []).flatMap(word => (word.origins ?? []).map(origin => origin.segment)),
+        ])].filter(source => originalIds.has(source));
+        let ids = sourceIds(after);
+        // Legacy unmodified boundaries are safe; never guess a merge by time overlap.
+        if (!ids.length && before && before.start === after.start && before.end === after.end) ids = [id];
+        if (!ids.length) return { id, ambiguous: true, reason: 'source_mapping_unavailable' };
+        const sources = original.segments.filter(segment => ids.includes(segment.id));
+        const group = s.transcript.segments.filter(segment => segment.id === id ||
+          (sourceIds(segment).length > 0 && sourceIds(segment).every(source => ids.includes(source))));
+        const beforeText = sources.map(segment => segment.text).join('\n\n');
+        const afterText = group.map(segment => segment.text).join('\n\n');
+        if (beforeText.length + afterText.length > 12000) return { id, too_large: true };
+        return { id, start: after.start, end: after.end, before: beforeText, after: afterText,
+          source_segment_ids: sources.map(segment => segment.id), current_segment_ids: group.map(segment => segment.id),
+          changed: beforeText !== afterText, provenance: 'recorded_source_group_not_proof_of_human_authorship' };
       });
       return { examples, instruction: 'Confirm these are user edits before inferring personal style; AI edits are not human preferences.' };
     }

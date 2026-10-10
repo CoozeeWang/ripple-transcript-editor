@@ -1,19 +1,19 @@
-# ChatGPT connection
+# MCP connection
 
 Ripple's personal local MCP connection lets ChatGPT read the currently open interview on request, discuss editing rules, and create a new editing version. Ripple opens the result against its source in the normal version comparison. It never offers to overwrite the source version.
 
 ## First-time setup
 
-1. Use a Ripple desktop build that includes the connector. Open **Settings → General → ChatGPT connection → First-time connection setup**.
+1. Use a Ripple desktop build that includes the connector. Open **Settings → AI assistance → MCP connection → First-time connection setup**.
 2. Create or select your private tunnel in [OpenAI tunnel settings](https://platform.openai.com/settings/organization/tunnels), associate the target ChatGPT workspace, and obtain a runtime key with tunnel access. Download the official `tunnel-client` from that page. Account/workspace access and platform permissions must be verified for your account.
 3. Select that executable, enter the tunnel ID and runtime key, and save. The key is kept in protected local application data, outside interview files and exports. Leaving the key blank on a later setup retains the existing key.
-4. Add the tunnel connection in ChatGPT using the platform's custom MCP connection flow. Enable **Allow access to the current interview** in Ripple. Ripple starts the configured client and checks its readiness; disabling the connection or closing Ripple stops it.
+4. Add the tunnel connection in ChatGPT using the platform's custom MCP connection flow. Enable **Enable MCP connection (remember this choice)** in Ripple. Ripple starts the configured client and checks its readiness; disabling the connection or closing Ripple stops it.
 
-The connector is disabled at each application start. Text sent to an external AI leaves the computer; source audio is not sent. A locally hosted bridge does not make ChatGPT analysis offline. Start testing with a synthetic interview. Connection setup does not change the application's separate editing-engine API settings.
+The first use requires explicit enabling. That choice persists: enabled connections recover when Ripple restarts, and explicitly disabled connections stay disabled. Switching the current interview does not require enabling again; requests still only access the currently open interview. Text sent to an external AI leaves the computer; source audio is not sent. A locally hosted bridge does not make ChatGPT analysis offline. Start testing with a synthetic interview. Connection setup does not change the application's separate editing-engine API settings.
 
 ## Editing and analysis
 
-Ask in ChatGPT: “I've edited part of v1. Look at my corrections and continue from this paragraph.” Specify the start paragraph or a precise position. If the start is missing or ambiguous, ChatGPT must ask. It reads selected original/current pairs to discuss consequential style rules; those pairs can include previous AI changes, so their human authorship must be confirmed rather than inferred.
+Ask in ChatGPT: “I've edited part of v1. Look at my corrections and continue from this paragraph.” Specify the start paragraph or a precise position. If the start is missing or ambiguous, ChatGPT must ask. It reads selected original/current pairs (recorded merged or split source groups include their full comparison context) to discuss consequential style rules; those pairs can include previous AI changes, so their human authorship must be confirmed rather than inferred.
 
 Once the rules and scope are agreed, ChatGPT stages all paragraphs in that range, including unchanged paragraphs, then publishes one new version. Rules are saved for this interview without raw examples. Saving them for other interviews is an explicit action through the existing common-plan settings. Unchanged words retain their original timing, replacements inherit their source range, and inserted words have approximate timing through the same algorithms used for manual editing.
 

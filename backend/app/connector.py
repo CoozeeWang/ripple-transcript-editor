@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .runtime_paths import CODE_ROOT, DATA_ROOT
 
 router = APIRouter(prefix="/api/connector", tags=["connector"])
-LEASE_SECONDS = 8
+LEASE_SECONDS = 45
 
 
 def _key(path: Path, replace: bool = False) -> str:
@@ -82,11 +82,15 @@ class Broker:
                 self.pending.pop(request, None)
 
     def current(self):
+        expired = False
         for session, window in list(self.windows.items()):
             if time.monotonic() - window.touched > LEASE_SECONDS:
+                expired = True
                 self.disable(session)
+        if not self.windows:
+            raise HTTPException(409, "connection_expired_wait_for_ripple_recovery" if expired else "no_enabled_ripple_window")
         if len(self.windows) != 1:
-            raise HTTPException(409, "No unique enabled Ripple interview window")
+            raise HTTPException(409, "multiple_enabled_ripple_windows")
         return next(iter(self.windows.items()))
 
     async def dispatch(self, operation: str, arguments: dict):

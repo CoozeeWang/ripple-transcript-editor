@@ -226,7 +226,7 @@
     "m0974": "Settings categories",
     "m0975": "General",
     "m0976": "Transcription engines",
-    "m0977": "Editing engines",
+    "m0977": "AI assistance",
     "m0978": "Editing plans",
     "m0979": "Diagnostics and logs",
     "m0980": "Resume editing",
@@ -1982,14 +1982,14 @@
     "mismatch": "The selected audio doesn’t match the dropped files. Please select them again."
   },
   "connector": {
-    "title": "ChatGPT connection",
-    "hint": "When enabled, your configured AI connection can read the current interview on request and create new editing versions. Text sent to external AI leaves this device; audio is not sent.",
-    "enable": "Allow access to the current interview",
+    "title": "MCP connection",
+    "hint": "After setup and enabling, reconnects on restart. External AI can access the currently open interview on request. Disable at any time. Requested text leaves this device; audio is not sent.",
+    "enable": "Enable MCP connection (remember this choice)",
     "off": "Connection disabled",
-    "connecting": "Connecting to the local service…",
-    "ready": "Connection enabled. Ask for help in ChatGPT.",
+    "connecting": "Connecting or recovering the local service…",
+    "ready": "Connection ready. Ask for help in your external AI application.",
     "error": "Connection unavailable. Use Ripple desktop and check your connector configuration.",
-    "retry": "Disable, then enable again",
+    "retry": "Reconnect",
     "setupTitle": "First-time connection setup",
     "setupHint": "Use the official OpenAI tunnel-client and your existing tunnel. Once configured, Ripple starts and stops it with the connection toggle. Add the connection in ChatGPT as well.",
     "platform": "Open OpenAI tunnel settings and client download",
@@ -2001,6 +2001,8 @@
     "saveSetup": "Save connection setup",
     "setup_saving": "Saving setup…",
     "setup_saved": "Setup saved. You can enable the connection.",
-    "setup_error": "Setup incomplete. Check the client executable, tunnel ID and runtime key."
+    "setup_error": "Setup incomplete. Check the client executable, tunnel ID and runtime key.",
+    "builtinTitle": "Ripple built-in editing",
+    "builtinHint": "Models and credentials for editing started in Ripple. MCP clients use their own models."
   }
 }
