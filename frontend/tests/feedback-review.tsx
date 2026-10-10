@@ -11,7 +11,7 @@ const providers=[provider];
 let scenario='',attempts=0;
 let releaseRead:(()=>void)|undefined;
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
-window.fetch=async(input,init)=>{
+window.fetch=async(input)=>{
  const path=String(input);
  if(path.endsWith('/credentials')){
   attempts++;

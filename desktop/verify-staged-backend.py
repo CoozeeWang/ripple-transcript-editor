@@ -3,11 +3,11 @@
 import json
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from app import diagnostics, main as app_main, settings
+from app import diagnostics, settings
+from app import main as app_main
 from app.main import app
 from app.runtime_paths import CODE_ROOT, DATA_ROOT
+from fastapi.testclient import TestClient
 
 stage = Path(__file__).resolve().parent
 assert CODE_ROOT == stage
