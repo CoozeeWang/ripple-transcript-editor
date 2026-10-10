@@ -20,7 +20,7 @@ _lock = threading.RLock()
 _cache = []
 _storage_available = True
 FAILURE_REASONS = {"permission", "rate_limit", "upstream_http", "output_limit", "connect_timeout", "read_timeout", "write_timeout", "pool_timeout", "timeout", "proxy", "connect", "connection_lost", "write", "network", "format"}
-OPERATIONS = {"transcription", "editing", "engine", "open", "save", "service"}
+OPERATIONS = {"transcription", "engine", "open", "save", "service"}
 
 
 def _clean(rows):
@@ -105,8 +105,6 @@ def request_operation(route: str):
     # Use the matched route template only, never request paths or query strings.
     if "transcribe" in route:
         return "transcription"
-    if route.startswith("/api/ai/"):
-        return "engine" if "/providers" in route or route.endswith("/config") else "editing"
     if "/credentials" in route or "/providers" in route:
         return "engine"
     return "service"

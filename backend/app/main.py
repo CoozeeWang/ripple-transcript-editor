@@ -13,8 +13,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import connector, diagnostics, manuscripts, progress, transcription_jobs
-from .ai_editing import router as ai_editing_router
-from .ai_engines import router as ai_engines_router
 from .models import (
     AudioStatus,
     CredentialUpsert,
@@ -70,8 +68,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-app.include_router(ai_editing_router)
-app.include_router(ai_engines_router)
 app.include_router(diagnostics.router)
 app.include_router(manuscripts.router)
 app.include_router(connector.router)

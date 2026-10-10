@@ -9,13 +9,13 @@ from app.main import app
 
 def test_records_failed_requests_without_request_content():
     client = TestClient(app)
-    response = client.post('/api/ai/edit?private=secret-key', json={'private': '机密访谈全文'})
+    response = client.post('/api/providers/openai_compatible/credentials?private=secret-key', json={'private': '机密访谈全文'})
     assert response.status_code == 422
     result = client.get('/api/diagnostics').json()
-    assert result['records'][0]['operation'] == 'editing'
+    assert result['records'][0]['operation'] == 'engine'
     assert result['records'][0]['status'] == 422
     saved = diagnostics.LOG_PATH.read_text()
-    for secret in ['secret-key', '机密访谈全文', 'private', '/api/ai/edit']:
+    for secret in ['secret-key', '机密访谈全文', 'private', '/api/providers/openai_compatible/credentials']:
         assert secret not in saved
     assert len(client.get('/api/diagnostics').json()['records']) == 1
 

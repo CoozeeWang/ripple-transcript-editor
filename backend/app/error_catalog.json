@@ -1,289 +1,191 @@
 {
   "b0003": {
     "source": "编辑引擎配置已变化，请重新载入设置后再生成",
-    "locations": [
-      "backend/app/ai_editing.py:328"
-    ]
+    "locations": []
   },
   "b0004": {
     "source": "请在设置中添加编辑引擎并设为默认，或在编辑窗口选择一套配置",
-    "locations": [
-      "backend/app/ai_editing.py:330"
-    ]
+    "locations": []
   },
   "b0005": {
     "source": "示范总长度超过 24000 字，请精简示范",
-    "locations": [
-      "backend/app/ai_editing.py:374",
-      "backend/app/ai_editing.py:71"
-    ]
+    "locations": []
   },
   "b0007": {
     "source": "模型遗漏或重复了片段，未应用任何修改，请重试",
-    "locations": [
-      "backend/app/ai_editing.py:398"
-    ]
+    "locations": []
   },
   "b0008": {
     "source": "服务地址须为 HTTPS；本机服务可使用 HTTP。请填写基础地址。",
-    "locations": [
-      "backend/app/ai_editing.py:39"
-    ]
+    "locations": []
   },
   "b0009": {
     "source": "请填写基础地址，不含 /chat/completions",
-    "locations": [
-      "backend/app/ai_editing.py:41"
-    ]
+    "locations": []
   },
   "b0010": {
     "source": "不能包含换行",
-    "locations": [
-      "backend/app/ai_editing.py:48"
-    ]
+    "locations": []
   },
   "b0011": {
     "source": "请填写偏好名称和编辑偏好",
-    "locations": [
-      "backend/app/ai_editing.py:69"
-    ]
+    "locations": []
   },
   "b0013": {
     "source": "请填写方案名称和编辑要求",
-    "locations": [
-      "backend/app/ai_editing.py:83"
-    ]
+    "locations": []
   },
   "b0014": {
     "source": "规则最多 30 条，每条 6000 字，合计 12000 字",
-    "locations": [
-      "backend/app/ai_editing.py:117"
-    ]
+    "locations": []
   },
   "b0015": {
     "source": "片段编号重复",
-    "locations": [
-      "backend/app/ai_editing.py:119"
-    ]
+    "locations": []
   },
   "b0016": {
     "source": "单批文字超过 6000 字，请分段处理",
-    "locations": [
-      "backend/app/ai_editing.py:121"
-    ]
+    "locations": []
   },
   "b0017": {
     "source": "规则不能为空且合计不得超过 6000 字",
-    "locations": [
-      "backend/app/ai_editing.py:152"
-    ]
+    "locations": []
   },
   "b0018": {
     "source": "AI 配置文件无法读取，请恢复备份后重试；现有文件未被覆盖。",
-    "locations": [
-      "backend/app/ai_editing.py:184"
-    ]
+    "locations": []
   },
   "b0019": {
     "source": "服务地址已更改，请重新填写密钥，或明确清除密钥。",
-    "locations": [
-      "backend/app/ai_editing.py:215"
-    ]
+    "locations": []
   },
   "b0020": {
     "source": "请填写模型名称",
-    "locations": [
-      "backend/app/ai_editing.py:220"
-    ]
+    "locations": []
   },
   "b0021": {
     "source": "方案不存在，请重新载入",
-    "locations": [
-      "backend/app/ai_editing.py:252",
-      "backend/app/ai_editing.py:266"
-    ]
+    "locations": []
   },
   "b0023": {
     "source": "偏好不存在，请重新载入",
-    "locations": [
-      "backend/app/ai_editing.py:295"
-    ]
+    "locations": []
   },
   "b0024": {
     "source": "文本模型请求失败（HTTP {{v0}}），请检查地址、模型及 JSON 输出支持",
-    "locations": [
-      "backend/app/ai_editing.py:342"
-    ]
+    "locations": []
   },
   "b0025": {
     "source": "建立模型服务连接超时，请检查网络或代理后继续",
-    "locations": [
-      "backend/app/ai_editing.py:347"
-    ]
+    "locations": []
   },
   "b0026": {
     "source": "等待模型响应数据超时，请稍后继续",
-    "locations": [
-      "backend/app/ai_editing.py:349"
-    ]
+    "locations": []
   },
   "b0027": {
     "source": "发送模型请求数据超时，请检查网络后继续",
-    "locations": [
-      "backend/app/ai_editing.py:351"
-    ]
+    "locations": []
   },
   "b0028": {
     "source": "等待可用模型连接超时，请稍后继续",
-    "locations": [
-      "backend/app/ai_editing.py:353"
-    ]
+    "locations": []
   },
   "b0029": {
     "source": "文本模型响应超时，请稍后继续",
-    "locations": [
-      "backend/app/ai_editing.py:355"
-    ]
+    "locations": []
   },
   "b0030": {
     "source": "模型请求的代理连接失败，请检查代理后继续",
-    "locations": [
-      "backend/app/ai_editing.py:357"
-    ]
+    "locations": []
   },
   "b0031": {
     "source": "模型服务连接建立失败，请检查网络、服务地址或代理后继续",
-    "locations": [
-      "backend/app/ai_editing.py:359"
-    ]
+    "locations": []
   },
   "b0032": {
     "source": "模型响应连接中断或响应协议异常，请稍后继续",
-    "locations": [
-      "backend/app/ai_editing.py:361"
-    ]
+    "locations": []
   },
   "b0033": {
     "source": "模型请求发送失败，请检查网络后继续",
-    "locations": [
-      "backend/app/ai_editing.py:363"
-    ]
+    "locations": []
   },
   "b0034": {
     "source": "无法连接文本模型，请检查服务地址和网络",
-    "locations": [
-      "backend/app/ai_editing.py:365"
-    ]
+    "locations": []
   },
   "b0035": {
     "source": "模型返回的内容不完整或格式不正确，未应用任何修改，请重试",
-    "locations": [
-      "backend/app/ai_editing.py:367"
-    ]
+    "locations": []
   },
   "b0037": {
     "source": "规则存在冲突，请调整后重试：",
-    "locations": [
-      "backend/app/ai_editing.py:395"
-    ]
+    "locations": []
   },
   "b0038": {
     "source": "合并建议必须对应本批相邻、同一说话人且未删除的片段，请重新生成",
-    "locations": [
-      "backend/app/ai_editing.py:408"
-    ]
+    "locations": []
   },
   "b0039": {
     "source": "删除建议包含文字，请重新生成",
-    "locations": [
-      "backend/app/ai_editing.py:404"
-    ]
+    "locations": []
   },
   "b0040": {
     "source": "模型返回空文字但未明确建议删除，未应用修改，请重新生成",
-    "locations": [
-      "backend/app/ai_editing.py:406"
-    ]
+    "locations": []
   },
   "b0041": {
     "source": "密钥无效或已过期",
-    "locations": [
-      "backend/app/ai_editing.py:341"
-    ]
+    "locations": []
   },
   "b0042": {
     "source": "模型访问被拒绝",
-    "locations": [
-      "backend/app/ai_editing.py:341"
-    ]
+    "locations": []
   },
   "b0043": {
     "source": "服务额度不足或请求过于频繁",
-    "locations": [
-      "backend/app/ai_editing.py:341"
-    ]
+    "locations": []
   },
   "b0050": {
     "source": "请填写服务商提供的完整模型名称",
-    "locations": [
-      "backend/app/ai_engines.py:47"
-    ]
+    "locations": []
   },
   "b0051": {
     "source": "请使用所选服务的官方地址；自定义代理请添加到其他编辑引擎。",
-    "locations": [
-      "backend/app/ai_engines.py:54"
-    ]
+    "locations": []
   },
   "b0052": {
     "source": "请填写所选服务开放平台创建的 API 密钥",
-    "locations": [
-      "backend/app/ai_engines.py:56"
-    ]
+    "locations": []
   },
   "b0053": {
     "source": "没有这个编辑引擎",
-    "locations": [
-      "backend/app/ai_engines.py:80",
-      "backend/app/ai_engines.py:256",
-      "backend/app/ai_engines.py:284"
-    ]
+    "locations": []
   },
   "b0054": {
     "source": "这套编辑配置已不存在，请重新载入",
-    "locations": [
-      "backend/app/ai_engines.py:87"
-    ]
+    "locations": []
   },
   "b0058": {
     "source": "模型未返回预期的测试结果",
-    "locations": [
-      "backend/app/ai_engines.py:288"
-    ]
+    "locations": []
   },
   "b0063": {
     "source": "请检查服务地址、模型名称和 API 密钥。地址须为 HTTPS，本机服务可使用 HTTP。",
-    "locations": [
-      "backend/app/ai_engines.py:45"
-    ]
+    "locations": []
   },
   "b0064": {
     "source": "所选编辑配置已被删除，请重新选择引擎",
-    "locations": [
-      "backend/app/ai_engines.py:203"
-    ]
+    "locations": []
   },
   "b0065": {
     "source": "无法读取模型列表，请检查密钥及地址；也可以手动填写模型 ID。",
-    "locations": [
-      "backend/app/ai_engines.py:266"
-    ]
+    "locations": []
   },
   "b0066": {
     "source": "暂时无法读取模型列表；可以使用预设或手动填写模型 ID。",
-    "locations": [
-      "backend/app/ai_engines.py:274"
-    ]
+    "locations": []
   },
   "b0067": {
     "source": "多半是网络波动，与音频本身无关。",
@@ -377,15 +279,11 @@
   },
   "b0097": {
     "source": "模型输出达到长度上限，返回内容被截断，请缩小编辑范围后重试",
-    "locations": [
-      "backend/app/engine_protocols.py:46"
-    ]
+    "locations": []
   },
   "b0098": {
     "source": "模型输出达到长度上限，请缩小编辑范围后重试",
-    "locations": [
-      "backend/app/engine_protocols.py:35"
-    ]
+    "locations": []
   },
   "b0100": {
     "source": "请先上传音频",
@@ -1229,9 +1127,7 @@
   },
   "rule_conflict": {
     "source": "规则存在冲突，请调整后重试：{{v0}}",
-    "locations": [
-      "backend/app/ai_editing.py:395"
-    ]
+    "locations": []
   },
   "interview_missing": {
     "source": "Interview not found",
