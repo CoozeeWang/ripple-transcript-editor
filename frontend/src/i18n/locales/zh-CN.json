@@ -2031,7 +2031,7 @@
     "pairAdd": "连接另一个 AI 应用",
     "softwareTitle": "连接 AI 软件",
     "software": "AI 软件",
-    "claudeDesktop": "Claude 桌面版（实验性 / Beta）",
+    "claudeDesktop": "Claude 桌面版（实验性）",
     "softwareHint": "一次连接一种 AI 软件，切换时保留各自配置。",
     "chatgptSteps": "首次连接请完成下方隧道配置，再点击“前往 ChatGPT 添加”。添加后可在网页端和桌面端调用 Ripple。",
     "claudeStep1": "点击“添加到 Claude”，打开扩展安装界面。",

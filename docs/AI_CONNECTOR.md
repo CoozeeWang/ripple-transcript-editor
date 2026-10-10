@@ -57,7 +57,7 @@ Use `interview_marks_status` to recover uncertain outcomes. A failed save keeps 
 In Settings → AI-assisted editing → MCP connection, select the AI software:
 
 - **Add to WorkBuddy**: confirm adding Ripple. Existing configuration is backed up and other connections are retained. Open “Experts · Skills · Connectors → Connectors → Custom connectors” in WorkBuddy, find Ripple and enable it. If it is missing, restart WorkBuddy and check again. Once enabled, ask directly in a conversation; no selection from the “+” menu is needed. An invalid configuration is left untouched. Backups are saved next to the WorkBuddy configuration with a `mcp.json.ripple-backup-` prefix.
-- **Add to Claude (Experimental / Beta)**: Ripple opens its generated MCPB in Claude Desktop. Confirm installation there. Claude Desktop must be installed.
+- **Add to Claude (Beta)**: Ripple opens its generated MCPB in Claude Desktop. Confirm installation there. Claude Desktop must be installed.
 - **Open ChatGPT to add**: opens ChatGPT Plugins. Complete the existing tunnel setup first, copy the Tunnel ID, then choose “Add custom MCP server” and “Tunnel” in ChatGPT. Existing connections do not need to be added again.
 
 Keep Ripple open with MCP enabled. Adding configuration or opening an installer does not verify a successful AI tool call. After moving the Ripple App, add it again to update local paths. These buttons are currently delivered and tested as a macOS internal build; Windows client installation remains pending native validation.
