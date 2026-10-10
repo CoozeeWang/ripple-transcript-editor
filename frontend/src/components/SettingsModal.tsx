@@ -198,12 +198,13 @@ export function SettingsModal(props: SettingsModalProps) {
         ) : settingsTab === "plans" ? (
           <div className="settings-body" role="tabpanel" id="settings-panel-plans" aria-labelledby="settings-tab-plans"><EditingPlanSettings /></div>
         ) : settingsTab === "ai" ? (
-          <div className="settings-body" role="tabpanel" id="settings-panel-ai" aria-labelledby="settings-tab-ai"><section className="settings-block"><h3>{msg("connector.builtinTitle")}</h3><p className="settings-hint">{msg("connector.builtinHint")}</p><AIModelSettings /></section>
-            {props.connector && <section className="settings-block">
-              <div className="settings-heading"><div><h3>{msg('connector.title')}</h3><p>{msg('connector.hint')}</p></div></div>
+          <div className="settings-body settings-body--ai" role="tabpanel" id="settings-panel-ai" aria-labelledby="settings-tab-ai"><section className="settings-block"><h3>{msg("connector.builtinTitle")}</h3><p className="settings-hint">{msg("connector.builtinHint")}</p><AIModelSettings /></section>
+            {props.connector && <section className="settings-block settings-mcp">
+              <h3>{msg('connector.title')}</h3><p className="settings-hint">{msg('connector.hint')}</p>
               <label className="settings-option"><input className="ripple-checkbox" type="checkbox"
                 checked={props.connector.enabled} onChange={event => props.connector?.setEnabled(event.target.checked)} />
                 <span>{msg('connector.enable')}</span></label>
+              <p className="settings-hint">{msg('connector.lifecycleHint')}</p>
               <p className="settings-hint" role="status">{msg(`connector.${props.connector.status}`)}</p>
               {props.connector.status === 'error' && <button className="button" type="button"
                 onClick={() => { props.connector?.reconnect?.(); }}>{msg('connector.retry')}</button>}

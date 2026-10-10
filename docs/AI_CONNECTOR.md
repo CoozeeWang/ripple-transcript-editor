@@ -2,14 +2,18 @@
 
 Ripple's personal local MCP connection lets ChatGPT read the currently open interview on request, discuss editing rules, and create a new editing version. Ripple opens the result against its source in the normal version comparison. It never offers to overwrite the source version.
 
+The settings describe these capabilities for external AI applications. The currently packaged graphical setup uses the OpenAI tunnel client and has been tested with ChatGPT. MCP is the service protocol; it does not imply that this tunnel setup works with every AI application. The transport and authorization for another client need separate setup and validation.
+
 ## First-time setup
 
-1. Use a Ripple desktop build that includes the connector. Open **Settings → AI assistance → MCP connection → First-time connection setup**.
+1. Use a Ripple desktop build that includes the connector. Open **Settings → AI-assisted editing → MCP connection → Connection setup**.
 2. Create or select your private tunnel in [OpenAI tunnel settings](https://platform.openai.com/settings/organization/tunnels), associate the target ChatGPT workspace, and obtain a runtime key with tunnel access. Download the official `tunnel-client` from that page. Account/workspace access and platform permissions must be verified for your account.
 3. Select that executable, enter the tunnel ID and runtime key, and save. The key is kept in protected local application data, outside interview files and exports. Leaving the key blank on a later setup retains the existing key.
-4. Add the tunnel connection in ChatGPT using the platform's custom MCP connection flow. Enable **Enable MCP connection (remember this choice)** in Ripple. Ripple starts the configured client and checks its readiness; disabling the connection or closing Ripple stops it.
+4. Add the tunnel connection in ChatGPT using the platform's custom MCP connection flow. Enable **Enable MCP connection** in Ripple. Ripple starts the configured client and checks its readiness; disabling the connection or closing Ripple stops it.
 
 The first use requires explicit enabling. That choice persists: enabled connections recover when Ripple restarts, and explicitly disabled connections stay disabled. Switching the current interview does not require enabling again; requests still only access the currently open interview. Text sent to an external AI leaves the computer; source audio is not sent. A locally hosted bridge does not make ChatGPT analysis offline. Start testing with a synthetic interview. Connection setup does not change the application's separate editing-engine API settings.
+
+The connection program (`tunnel-client`) carries requests between Ripple and the connection platform. The connection identifier (`Tunnel ID`) selects the tunnel created on that platform. The connection key (`Runtime API key`) authorizes that program to use the tunnel; it is separate from an editing model's API key. These fields configure the existing transport and do not select which model the external AI application uses.
 
 ## Editing and analysis
 

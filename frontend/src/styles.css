@@ -2701,6 +2701,17 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .settings-folder-name { color: #7c7a70; font-size: 0.8rem; }
 .settings-hint { margin: 0; color: #8a8779; font-size: 0.74rem; line-height: 1.5; }
 
+/* MCP uses the settings control size throughout; only the section title is larger. */
+.settings-body--ai > .settings-block > h3 { margin: 0; font-size: .84rem; }
+.settings-mcp { font-size: .78rem; line-height: 1.5; }
+.settings-mcp h3 { margin: 0; font-size: .84rem; }
+.settings-mcp .settings-hint, .settings-mcp .field > span,
+.settings-mcp .button, .settings-mcp summary { font-size: inherit; font-weight: 400; }
+.settings-mcp .connector-setup { display: grid; gap: 12px; }
+.settings-mcp .connector-setup:not([open]) { display: block; }
+.settings-mcp summary { cursor: pointer; }
+.settings-mcp .connector-setup .button { width: fit-content; }
+
 /* ---- 转录引擎密钥管理（CredentialManager） ---- */
 .cred-manager { display: grid; gap: 18px; }
 .cred-provider {

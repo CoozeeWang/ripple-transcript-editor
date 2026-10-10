@@ -46,7 +46,7 @@ The personal desktop connector lets ChatGPT read the current interview on reques
 
 ## AI-assisted editing
 
-Open **设置 → AI 辅助 → Ripple 内置编辑** to configure a text model separately from transcription. The first version supports Chat Completions-compatible endpoints with JSON-object output; use the provider's base URL (without `/chat/completions`), model ID, and API key. Local HTTP services are supported on loopback addresses. The launcher checks for the editing configuration route for multi-engine configuration before reusing an existing backend and refreshes older services. `node scripts/launcher.mjs refresh-backend` can refresh the backend while keeping the editor window open.
+Open **设置 → AI 辅助编辑 → Ripple 内置编辑** to configure a text model separately from transcription. The first version supports Chat Completions-compatible endpoints with JSON-object output; use the provider's base URL (without `/chat/completions`), model ID, and API key. Local HTTP services are supported on loopback addresses. The launcher checks for the editing configuration route for multi-engine configuration before reusing an existing backend and refreshes older services. `node scripts/launcher.mjs refresh-backend` can refresh the backend while keeping the editor window open.
 
 In an editable transcript, choose **AI 辅助编辑**:
 

@@ -43,8 +43,8 @@ try {
   await page.getByText('我觉得先开始。', { exact: true }).waitFor();
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
   if (await page.getByRole('heading', { name: 'MCP 连接', exact: true }).count()) throw new Error('MCP must not be in General settings');
-  await page.getByRole('tab', { name: 'AI 辅助', exact: true }).click();
-  await page.getByLabel('启用 MCP 连接（记住此选择）').check();
+  await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
+  await page.getByLabel('启用 MCP 连接').check();
   await page.getByText('连接已就绪，可到外部 AI 应用提出需求').waitFor();
   const result = await promisify(execFile)(python, [join(repo, 'scripts/fixtures/connector-mcp-check.py')],
     { cwd: repo, env: { ...process.env, RIPPLE_CONNECTOR_TEST_DIR: directory, RIPPLE_CONNECTOR_TEST_URL: backendUrl } });
@@ -58,9 +58,48 @@ try {
   });
   if (state.count !== 2 || state.source[1] !== '嗯，我觉得可能还有问题。' || state.result[1] !== '我觉得可能还有问题。' || state.result[2] !== state.source[2]) throw new Error('Version preservation failed');
   if (!(await page.getByText('显示修改痕迹', { exact: true }).isVisible())) throw new Error('Comparison was not displayed');
+  // A higher z-index cannot escape the title area's scrolling clip. Check the
+  // complete tooltip box in both languages and in a short, narrow window.
+  for (const language of ['zh-CN', 'en']) {
+    await page.locator('.language-control select').selectOption(language);
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 850, height: 520 }]) {
+      await page.setViewportSize(viewport);
+      const toggle = page.locator('.comparison-toggle');
+      await page.keyboard.press('Tab');
+      await toggle.focus();
+      await page.waitForTimeout(300);
+      const contained = await toggle.evaluate(button => {
+        const box = button.getBoundingClientRect();
+        const clip = button.closest('.transcript-header-fixed').getBoundingClientRect();
+        const tip = getComputedStyle(button, '::after');
+        const height = parseFloat(tip.height) + (tip.boxSizing === 'border-box' ? 0 : parseFloat(tip.paddingTop) + parseFloat(tip.paddingBottom));
+        const bottom = box.top - 8;
+        return { ok: tip.opacity === '1' && bottom - height >= clip.top && bottom <= clip.bottom, opacity: tip.opacity, top: bottom - height, bottom, clipTop: clip.top, clipBottom: clip.bottom, height };
+      });
+      if (!contained.ok) throw new Error(`Tooltip clipped: ${language} ${viewport.width}x${viewport.height} ${JSON.stringify(contained)}`);
+      if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) {
+        await mkdir(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, { recursive: true });
+        await page.screenshot({ path: join(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, `tooltip-${language}-${viewport.width}.png`) });
+      }
+    }
+  }
+  await page.locator('.language-control select').selectOption('zh-CN');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const language of ['zh-CN', 'en']) {
+    await page.locator('.language-control select').selectOption(language);
+    await page.getByRole('button', { name: language === 'en' ? 'Settings' : '设置', exact: true }).click();
+    await page.getByRole('tab', { name: language === 'en' ? 'AI-assisted editing' : 'AI 辅助编辑', exact: true }).click();
+    await page.locator('.connector-setup summary').click();
+    const sizes = await page.locator('.settings-mcp').evaluate(section =>
+      [...section.querySelectorAll('.settings-hint, .settings-option, summary, .field > span, .button')].map(element => getComputedStyle(element).fontSize));
+    if (new Set(sizes).size !== 1) throw new Error(`MCP text sizes differ: ${sizes.join(',')}`);
+    if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, `settings-${language}.png`) });
+    await page.getByRole('dialog').getByRole('button', { name: language === 'en' ? 'Close' : '关闭', exact: true }).click();
+  }
+  await page.locator('.language-control select').selectOption('zh-CN');
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
-  await page.getByRole('tab', { name: 'AI 辅助', exact: true }).click();
-  await page.getByLabel('启用 MCP 连接（记住此选择）').uncheck();
+  await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
+  await page.getByLabel('启用 MCP 连接').uncheck();
   const clientKey = await readFile(join(directory, 'data/connector/client.key'), 'utf8');
   await new Promise(resolve => setTimeout(resolve, 100));
   const denied = await fetch(`${backendUrl}/api/connector/call`, { method: 'POST', headers: { Authorization: `Bearer ${clientKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: 'synthetic-disabled-check', operation: 'read_current', arguments: {} }) });
