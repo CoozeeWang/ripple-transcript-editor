@@ -38,7 +38,7 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
         </select></span><span className="cred-field__hint">{msg('connector.softwareHint')}</span>
       </label></div>
       {client === 'chatgpt' ? <p className="settings-hint">{msg('connector.chatgptSteps')}</p> : <>
-        <ol className="settings-hint connector-steps"><li>{msg(`connector.${client}Step1`)}</li><li>{msg(`connector.${client}Step2`)}</li><li>{msg('connector.localStep3')}</li></ol>
+        <ol className="settings-hint connector-steps"><li>{msg(`connector.${client}Step1`)}</li><li>{msg(`connector.${client}Step2`)}</li><li>{msg(client === 'workbuddy' ? 'connector.workbuddyStep3' : 'connector.localStep3')}</li></ol>
       </>}
       <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button></div>
       {exported && <p className="settings-hint" role="status">{msg(`connector.added_${exported}`)}</p>}
