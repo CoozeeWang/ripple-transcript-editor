@@ -3173,3 +3173,5 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 .annotation-ai-label { color: var(--color-accent); font-size: .78rem; font-weight: 500; margin-left: auto; }
 
 .settings-mcp .cred-profile__name { font-size: .84rem; }
+
+.settings-mcp .connector-pair-code { font-size: .84rem; font-family: var(--font-mono, monospace); letter-spacing: .06em; overflow-wrap: anywhere; }

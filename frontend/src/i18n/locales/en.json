@@ -2015,6 +2015,18 @@
     "keySaved": "Saved (hidden)",
     "editSetup": "Edit configuration",
     "cancelSetup": "Cancel",
-    "aiAnnotation": "AI annotation"
+    "aiAnnotation": "AI annotation",
+    "pairTitle": "Connect Ripple",
+    "paired": "Authorized. Select Ripple in your AI application to work with the current interview.",
+    "pairHint": "Add Ripple in your AI application. Select “Show pairing code” and enter the code on the Ripple authorization page opened by that application.",
+    "servicePending": "The connection service has not been deployed. This build cannot connect to external AI yet.",
+    "pairCode": "Pairing code",
+    "pairCodeHint": "Valid for 10 minutes, once only. Do not share this code with others.",
+    "pairExpired": "Code expired. Generate a new code.",
+    "pairAgain": "Generate a new code",
+    "pairStart": "Show pairing code",
+    "pairRevoke": "Disconnect and revoke",
+    "pairRetry": "Retry",
+    "pairError": "Cannot reach the connection service. Check your network and retry."
   }
 }

@@ -2015,6 +2015,18 @@
     "keySaved": "已保存（不显示）",
     "editSetup": "修改配置",
     "cancelSetup": "取消",
-    "aiAnnotation": "AI 批注"
+    "aiAnnotation": "AI 批注",
+    "pairTitle": "连接 Ripple",
+    "paired": "已授权连接。你可以在 AI 应用中选择 Ripple，使用当前访谈。",
+    "pairHint": "在 AI 应用中添加 Ripple。点击“显示配对码”，将配对码输入 AI 应用打开的 Ripple 授权页面。",
+    "servicePending": "连接服务尚未部署，此构建暂不能连接外部 AI。",
+    "pairCode": "配对码",
+    "pairCodeHint": "10 分钟内有效，仅可使用一次。请勿把配对码交给他人。",
+    "pairExpired": "配对码已过期，请重新生成。",
+    "pairAgain": "重新生成配对码",
+    "pairStart": "显示配对码",
+    "pairRevoke": "撤销连接",
+    "pairRetry": "重试",
+    "pairError": "无法联系连接服务，请检查网络后重试。"
   }
 }

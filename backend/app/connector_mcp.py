@@ -75,6 +75,11 @@ def create_server(url: str, credential_file: Path):
             raise ToolError(result.get("error", "Ripple operation failed"))
         return result["data"]
 
+    return register_tools(mcp, call)
+
+
+def register_tools(mcp, call):
+    """Register the same tool contract for local stdio and authenticated relay."""
     read = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
     draft = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
     write = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)

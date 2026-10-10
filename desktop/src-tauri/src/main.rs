@@ -239,54 +239,40 @@ fn connector_window_key(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 
-#[tauri::command]
-async fn connector_pick_client(app: tauri::AppHandle) -> Result<String, String> {
-    let file = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
-        .await.map_err(|_| "client_selection_failed".to_string())?.ok_or("client_selection_cancelled")?;
-    Ok(file.into_path().map_err(|_| "invalid_client_path")?.display().to_string())
-}
-
-/// Open the fixed setup destination in the user's default browser, outside the WebView.
-#[tauri::command]
-fn connector_open_platform() -> Result<(), String> {
-    let url = "https://platform.openai.com/settings/organization/tunnels";
-    #[cfg(target_os = "macos")]
-    let status = Command::new("open").arg(url).status();
-    #[cfg(target_os = "windows")]
-    let status = Command::new("cmd").args(["/C", "start", "", url]).status();
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let status = Command::new("xdg-open").arg(url).status();
-    match status { Ok(result) if result.success() => Ok(()), _ => Err("open_platform_failed".into()) }
-}
-
-/// Return only saved non-secret configuration and key presence; never read the key.
-#[tauri::command]
-fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector");
-    let config: serde_json::Value = match fs::read_to_string(data.join("setup.json")) {
-        Ok(text) => serde_json::from_str(&text).map_err(|_| "invalid_saved_setup")?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
-        Err(_) => return Err("setup_unavailable".into()),
-    };
-    let client = config.get("client_path").and_then(|v| v.as_str()).unwrap_or("");
-    let tunnel = config.get("tunnel_id").and_then(|v| v.as_str()).unwrap_or("");
-    let has_key = data.join("runtime.key").is_file();
-    Ok(serde_json::json!({"client_path": client, "tunnel_id": tunnel, "has_key": has_key,
-        "configured": std::path::Path::new(client).is_file() && tunnel.starts_with("tunnel_") && has_key}))
-}
-
-#[tauri::command]
-fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
+fn relay_command(app: &tauri::AppHandle, action: &str) -> Result<Command, String> {
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?;
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let mut child = Command::new(resources.join("python/bin/python3.12"))
-        .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
-        .args(["-m", "app.connector_setup"]).arg(&data).arg(&resources)
-        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "setup_failed")?;
-    let payload = serde_json::json!({"client_path":client_path,"tunnel_id":tunnel_id,"runtime_key":runtime_key});
-    child.stdin.take().ok_or("setup_failed")?.write_all(payload.to_string().as_bytes()).map_err(|_| "setup_failed")?;
-    if child.wait().map_err(|_| "setup_failed")?.success() { Ok(()) } else { Err("setup_failed_check_fields".into()) }
+    let mut command = Command::new(resources.join("python/bin/python3.12"));
+    command.env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
+        .args(["-m", "app.connector_relay", action, "--data"]).arg(data)
+        .stderr(Stdio::null()).stdin(Stdio::null());
+    if let Some(base) = option_env!("RIPPLE_CONNECTION_URL") {
+        command.args(["--base", base]);
+    }
+    Ok(command)
+}
+
+async fn relay_setup(app: tauri::AppHandle, action: &'static str) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = relay_command(&app, action)?.output().map_err(|_| "connection_unavailable")?;
+        if !output.status.success() { return Err("connection_unavailable".into()); }
+        serde_json::from_slice(&output.stdout).map_err(|_| "connection_unavailable".into())
+    }).await.map_err(|_| "connection_unavailable".to_string())?
+}
+
+#[tauri::command]
+async fn connector_pair_begin(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    relay_setup(app, "pair").await
+}
+#[tauri::command]
+async fn connector_pair_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    relay_setup(app, "status").await
+}
+#[tauri::command]
+async fn connector_pair_revoke(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> Result<serde_json::Value, String> {
+    connector_tunnel_stop(state);
+    relay_setup(app, "revoke").await
 }
 
 #[tauri::command]
@@ -295,25 +281,14 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     if let Some(child) = guard.as_mut() {
         if child.try_wait().map_err(|_| "connector_failed")?.is_none() { return Ok(()); }
     }
-    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?.join("connector");
-    let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
-    let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
-    let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
-    let tunnel = config.get("tunnel_id").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
-    // Regenerate the command against this bundle after an install or app update.
-    // Keep the existing protected runtime key; do not retain a temporary build path.
-    connector_setup(app.clone(), client.to_string(), tunnel.to_string(), String::new())?;
-    let _ = fs::remove_file(data.join("health.url"));
-    let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
-    let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let child = Command::new(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
-        .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("RIPPLE_DATA_DIR", app.path().app_local_data_dir().map_err(|_| "data_unavailable")?)
-        .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
+    if option_env!("RIPPLE_CONNECTION_URL").is_none() { return Err("connection_service_unavailable".into()); }
+    let data = app.path().app_local_data_dir().map_err(|_| "data_unavailable")?;
+    if !data.join("connector/relay.json").is_file() { return Err("pairing_required".into()); }
+    let _ = fs::remove_file(data.join("connector/relay-status.json"));
+    let child = relay_command(&app, "run")?.stdout(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
     *guard = Some(child);
     Ok(())
 }
-
 
 #[tauri::command]
 fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> bool {
@@ -321,14 +296,11 @@ fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let Some(child) = guard.as_mut() else { return false };
     if !matches!(child.try_wait(), Ok(None)) { return false; }
     let Ok(data) = app.path().app_local_data_dir() else { return false };
-    let Ok(url) = fs::read_to_string(data.join("connector/health.url")) else { return false };
-    let Some(raw) = url.trim().strip_prefix("http://127.0.0.1:") else { return false };
-    let Ok(port) = raw.trim_end_matches('/').parse::<u16>() else { return false };
-    let Ok(mut stream) = TcpStream::connect_timeout(&SocketAddr::from(([127,0,0,1],port)), Duration::from_millis(300)) else { return false };
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-    if stream.write_all(b"GET /readyz HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() { return false; }
-    let mut response = String::new();
-    stream.read_to_string(&mut response).is_ok() && (response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200"))
+    let Ok(raw) = fs::read_to_string(data.join("connector/relay-status.json")) else { return false };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else { return false };
+    let Some(ready_at) = value.get("ready_at").and_then(|v|v.as_f64()) else { return false };
+    let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else { return false };
+    now.as_secs_f64() - ready_at < 45.0
 }
 
 #[tauri::command]
@@ -381,7 +353,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pair_begin, connector_pair_status, connector_pair_revoke, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

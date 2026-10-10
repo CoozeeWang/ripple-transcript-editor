@@ -40,14 +40,12 @@ export function useAIConnector(host: ConnectorHost) {
       if (disposed) return;
       await request('session', { session, enabled: true }, abort.signal);
       await tauri.core.invoke('connector_tunnel_start');
-      const connectingSince = Date.now();
       heartbeat = setInterval(() => {
         void request('session', { session, enabled: true }, abort.signal).catch(() => { if (!disposed) setStatus('connecting'); });
       }, 5000);
       while (!disposed) {
         const ready = await tauri.core.invoke('connector_tunnel_ready');
         if (disposed) return;
-        if (!ready && Date.now() - connectingSince > 90000) throw new Error('tunnel_not_ready');
         setStatus(ready ? 'ready' : 'connecting');
         let call;
         try {
