@@ -1725,7 +1725,7 @@
     "softwareTitle": "Connect an AI application",
     "software": "AI application",
     "claudeDesktop": "Claude Desktop (Beta)",
-    "softwareHint": "Connect one AI application at a time. Each application’s configuration is retained when switching.",
+    "softwareHint": "Only the selected AI application can connect to Ripple. Other applications cannot use Ripple until selected; their configurations are retained.",
     "chatgptSteps": "For the first connection, complete the tunnel setup below, then click “Open ChatGPT to add”. Once added, invoke Ripple from the web or desktop app.",
     "claudeStep1": "Click “Add to Claude” to open the extension installer.",
     "claudeStep2": "Confirm installation in Claude. No configuration editing is needed.",
