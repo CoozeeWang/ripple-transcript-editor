@@ -16,7 +16,7 @@ it.each([['permission_required','NotAllowedError'],['file_missing','NotFoundErro
  await expect(new NativeFileHandle('/synthetic/audio.wav',[]).getFile()).rejects.toMatchObject({name});
 });
 it('cancelled permission recovery stays denied without reading the file', async () => {
- bridge(); invoke.mockResolvedValueOnce(false).mockRejectedValueOnce('已取消选择');
+ bridge(); invoke.mockResolvedValueOnce(false).mockRejectedValueOnce('selection_cancelled');
  expect(await new NativeFileHandle('/synthetic/audio.wav',[]).requestPermission()).toBe('denied');
  expect(invoke.mock.calls.map(call=>call[0])).toEqual(['fs_permission','fs_reauthorize']);
 });
