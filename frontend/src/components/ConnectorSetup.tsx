@@ -8,7 +8,7 @@ async function invoke<T>(command: string, args?: Record<string, string>): Promis
   if (!nativeDesktopAvailable()) throw new Error('desktop_required');
   return (window as unknown as {__TAURI__: {core: {invoke: (command: string, args?: Record<string, string>) => Promise<T>}}}).__TAURI__.core.invoke(command, args);
 }
-export function ConnectorSetup({onSaved, onRevoked}: {onSaved?: () => void; onRevoked?: () => void}) {
+export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   const [client, setClient] = useState<Client>('chatgpt');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState(false);
@@ -30,12 +30,11 @@ export function ConnectorSetup({onSaved, onRevoked}: {onSaved?: () => void; onRe
     catch {setError(true);} finally {setBusy(false);}
   }
   return <div className="connector-setup" aria-busy={busy}>
-    <div className="cred-profile connector-setup-card">
-      <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.softwareTitle')}</span></div>
+    <div className="connector-client-selection">
       <div className="cred-profile__fields"><label className="cred-field">
         <span className="cred-field__label">{msg('connector.software')}</span>
         <span className="cred-field__input"><select value={client} disabled={busy} onChange={event => void select(event.target.value as Client)}>
-          <option value="chatgpt">ChatGPT</option><option value="claude">{msg('connector.claudeDesktop')}</option><option value="workbuddy">WorkBuddy</option>
+          <option value="chatgpt">{msg('connector.chatgptWeb')}</option><option value="claude">{msg('connector.claudeDesktop')}</option><option value="workbuddy">WorkBuddy</option>
         </select></span><span className="cred-field__hint">{msg('connector.softwareHint')}</span>
       </label></div>
       {client === 'chatgpt' ? <p className="settings-hint">{msg('connector.chatgptSteps')}</p> : <>
@@ -43,7 +42,6 @@ export function ConnectorSetup({onSaved, onRevoked}: {onSaved?: () => void; onRe
         <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void exportConfig()}>{msg(`connector.${client}Export`)}</button></div>
         {exported && <p className="settings-hint" role="status">{msg('connector.exported')}</p>}
       </>}
-      <div className="cred-profile__actions"><button type="button" className="cred-btn" disabled={busy} onClick={onRevoked}>{msg('connector.disconnect')}</button></div>
       {error && <p className="settings-hint connector-error" role="alert">{msg('connector.localError')}</p>}
     </div>
     {client === 'chatgpt' && !busy && <ChatGPTSetup onSaved={onSaved}/>}

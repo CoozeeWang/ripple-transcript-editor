@@ -3166,6 +3166,14 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 @media(max-width:919px) { body:has(.project-home:not(.project-home--welcome)) { min-width:540px; } }
 
 .settings-mcp .connector-setup-card > .settings-hint { margin: 8px 0; }
+.settings-mcp { display: grid; gap: 12px; }
+.settings-mcp .connector-setup { display: grid; gap: 12px; }
+.settings-mcp .connector-client-selection { display: grid; gap: 8px; }
+.settings-mcp .connector-client-selection > .cred-profile__fields { margin: 0; }
+.settings-mcp .connector-setup-card { margin: 8px 0 0; }
+.settings-mcp .cred-field__input input, .settings-mcp .cred-field__input select { font-size: .84rem; }
+.settings-mcp .cred-field__hint { margin-top: -6px; }
+.settings-mcp .connector-client-selection .cred-profile__actions { margin-top: 0; }
 .settings-mcp .connector-steps { padding-left: 24px; }
 .settings-mcp .connector-steps li + li { margin-top: 8px; }
 .settings-mcp .connector-platform { margin-top: 12px; }

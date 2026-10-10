@@ -1,10 +1,12 @@
 # Local AI connections
 
-Open Settings → AI-assisted editing → MCP connection. Choose ChatGPT, Claude Desktop or WorkBuddy, follow that client's instructions, and explicitly enable access to the current interview. One client is active at a time. Selection and access preference survive restart; each client's saved setup is retained when switching. Disconnect turns off the editor session; it does not uninstall an extension or delete a third-party account.
+Open Settings → AI-assisted editing → MCP connection. Choose ChatGPT, Claude Desktop or WorkBuddy, follow that client's instructions, and explicitly enable access to the current interview. One client is active at a time. Selection and access preference survive restart; each client's saved setup is retained when switching. Uncheck Enable MCP connection to disconnect the editor session. This retains configuration and does not uninstall an extension or delete a third-party account.
 
 Ripple does not operate or require a shared public connection server. Local connection does not mean an offline model: requested interview text is still sent to the chosen AI service. Audio is not sent. Model API configurations under Ripple built-in editing are a separate feature, not evidence of desktop-client compatibility.
 
-## ChatGPT
+## ChatGPT web
+
+Ripple’s current acceptance covers ChatGPT web. Desktop availability and invocation must be verified separately, even when using the same personal tunnel.
 
 Use your own OpenAI Secure MCP Tunnel. Create it on the OpenAI connection platform, download the official tunnel-client, then select the executable and enter the Tunnel ID and Runtime API key in Ripple. The ID identifies the tunnel; the runtime key authorizes that transport and is not a model API key. Existing configuration is reused, including its protected key. Add Ripple in ChatGPT using that tunnel. This is a personal/private connection, not a publicly distributed ChatGPT plugin. See [personal tunnel setup](AI_CONNECTOR.md) and [OpenAI's tunnel documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
 

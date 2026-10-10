@@ -49,7 +49,7 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
           {editing && <span className="cred-field__hint">{msg('connector.keyHint')}</span>}
         </label>
       </div>
-      {editing && <p className="settings-hint connector-platform"><a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noreferrer" onClick={event => {
+      {<p className="settings-hint connector-platform"><a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noreferrer" onClick={event => {
         if (!nativeDesktopAvailable()) return;
         event.preventDefault(); setLinkError(false);
         void invoke('connector_open_platform').catch(() => setLinkError(true));

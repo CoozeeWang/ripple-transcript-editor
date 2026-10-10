@@ -7,9 +7,9 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 function fixture(client = 'claude') {
  const invoke=vi.fn(async(command:string)=>command==='connector_client_status'?{client}:command==='connector_client_export'?true:undefined);
  (window as unknown as {__TAURI__: unknown}).__TAURI__={core:{invoke}};
- const onSaved=vi.fn(),onRevoked=vi.fn();
- const ui=render(<ConnectorSetup onSaved={onSaved} onRevoked={onRevoked}/>);
- return {ui,invoke,onSaved,onRevoked};
+ const onSaved=vi.fn();
+ const ui=render(<ConnectorSetup onSaved={onSaved}/>);
+ return {ui,invoke,onSaved};
 }
 it('restores the chosen client and exports without claiming AI connection',async()=>{
  const {ui,invoke}=fixture();
@@ -19,14 +19,14 @@ it('restores the chosen client and exports without claiming AI connection',async
  expect(invoke).toHaveBeenCalledWith('connector_client_export',{client:'claude'});
  expect(invoke.mock.calls.flat()).not.toContain('connector_pair_begin');
 });
-it('switches only after saving succeeds, retains separate instructions and disconnects',async()=>{
- const {ui,invoke,onSaved,onRevoked}=fixture();
+it('switches only after saving succeeds, retains separate instructions without a duplicate disconnect control',async()=>{
+ const {ui,invoke,onSaved}=fixture();
  await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
  fireEvent.change(ui.getByRole('combobox'),{target:{value:'workbuddy'}});
  await waitFor(()=>expect(ui.getByText('导出 WorkBuddy 配置')).toBeTruthy());
  expect(invoke).toHaveBeenCalledWith('connector_client_select',{client:'workbuddy'});
  expect(onSaved).toHaveBeenCalledOnce();
- fireEvent.click(ui.getByText('断开连接')); expect(onRevoked).toHaveBeenCalledOnce();
+ expect(ui.queryByText('断开连接')).toBeNull();
 });
 it('cancelled export is not reported as success',async()=>{
  const {ui,invoke}=fixture();
