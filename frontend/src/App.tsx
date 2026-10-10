@@ -10,7 +10,6 @@ import { useStableCallbacks } from "./hooks/useStableCallbacks";
 import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReviews } from "./lib/comparisonReview";
 import { useVersionComparison } from "./hooks/useVersionComparison";
 import { comparisonRows } from "./lib/comparisonSegments";
-import { nextAIEditName } from "./lib/aiEditing";
 import { useOpeningPosition } from "./hooks/useOpeningPosition";
 import { openingSegmentId } from "./lib/editPosition";
 import type { ParagraphEditorElement } from "./lib/paragraphEditor";
@@ -47,9 +46,6 @@ import { useEditor } from "./hooks/useEditor";
 import { usePlayback } from "./hooks/usePlayback";
 import {
   readConnectorRules, writeConnectorRules,
-  aiEditingDocumentId,
-  readAIReviewDraft,
-  writeAIReviewDraft,
   AUDIO_EXT_LABEL,
   defaultEditLabel,
   defaultMetadata,
@@ -82,7 +78,6 @@ import { SpeakerPanel } from "./components/SpeakerPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { DeleteDialog, MatchDialog, MergeDialog, NamingModal } from "./components/Dialogs";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { AIEditingDialog } from "./components/AIEditingDialog";
 import { readModelOriginal } from "./localStore";
 
 type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
@@ -152,11 +147,7 @@ function App(projectProps: ProjectEditorProps = {}) {
   const [settingsOpen, setSettingsOpen] = useState(Boolean(projectProps.openSettingsInitially));
   // 设置弹窗不持久化：每次打开都回到「通用」，因为改播放速度这类
   // 高频操作都在这一页，而「引擎与密钥」是低频的、体积又大的一页。
-  const [settingsTab, setSettingsTab] = useState<"prefs" | "engines" | "ai" | "plans" | "diagnostics">("prefs");
-  const [aiSession, setAISession] = useState<{
-    transcript: Transcript; source: string; selectedId: string;
-    dir: FileSystemDirectoryHandle; context: string; loadOriginal: () => Promise<Transcript | null>;
-  } | null>(null);
+  const [settingsTab, setSettingsTab] = useState<"prefs" | "engines" | "ai" | "diagnostics">("prefs");
   const { openSettingsInitially, onReturnToProjects } = projectProps;
   useEffect(() => {
     if (openSettingsInitially && !settingsOpen) onReturnToProjects?.();
@@ -540,24 +531,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   useLayoutEffect(() => { beforeChangeRef.current = flushPendingSave; }, [flushPendingSave]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
-  const latestAIContext = useRef(aiContext);
-  useLayoutEffect(() => { latestAIContext.current = aiContext; }, [aiContext]);
-  if (aiSession && (aiSession.dir !== dirHandle || aiSession.context !== aiContext)) setAISession(null);
-  const openAIEditing = async () => {
-    const dir = dirHandle;
-    const audio = selectedAudio;
-    const model = activeModel;
-    if (!dir || !audio || !model || versionBusy) return;
-    try {
-      await flushPendingSave();
-      const current = latestExport.current.transcript;
-      if (!current?.segments.length || dirHandleRef.current !== dir || latestAIContext.current !== aiContext) return;
-      audioRef.current?.pause();
-      setAISession({ transcript: current, source: audio, selectedId: effectiveSelectedSegmentId, dir,
-        context: aiContext, loadOriginal: async () => (await readModelOriginal(dir, audio, model.id))?.transcript ?? null });
-    } catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0011')); }
-  };
-
   const connectorContext = useRef({ dir: dirHandle, context: aiContext, generation: 0 });
   useLayoutEffect(() => {
     if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
@@ -735,7 +708,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
 
   useShortcuts({
-    disabled: Boolean(aiSession) || renaming || versionBusy || saveStatus === "loading",
+    disabled: renaming || versionBusy || saveStatus === "loading",
     transcript,
     viewingOriginal,
     removeSegment,
@@ -868,12 +841,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
 
   const returnToProjects = async (exportFiles = false) => {
-    if (renaming || versionBusy || aiSession || (saveStatus === "loading" && transcript) || !canChangeDocumentRef.current()) return;
+    if (renaming || versionBusy || (saveStatus === "loading" && transcript) || !canChangeDocumentRef.current()) return;
     try { await flushPendingSave(); if (exportFiles) projectProps.onExportProjectFiles?.(); else projectProps.onReturnToProjects?.(); }
     catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0018')); }
   };
   const projectNav = projectProps.onReturnToProjects && <div className="project-editor-nav">
-    <button type="button" className="cred-btn" disabled={renaming || versionBusy || Boolean(aiSession) || transcribing}
+    <button type="button" className="cred-btn" disabled={renaming || versionBusy || transcribing}
       aria-label={projectProps.projectLabel ? msg('App.m0019', { v0: projectProps.projectLabel }) : msg('App.m0020')}
       title={msg('App.m0021')} onClick={() => void returnToProjects()}>{projectProps.projectLabel || msg('App.m0022')}</button>
   </div>;
@@ -927,22 +900,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   return (
     <div className="app-shell">
       {transcript.timeAligned === false && <p className="project-timing-notice">{msg('App.m0029')}</p>}
-      {aiSession && aiSession.dir === dirHandle && aiSession.context === aiContext && (
-        <AIEditingDialog transcript={aiSession.transcript} source={aiSession.source}
-          sourceLabel={viewingOriginal ? (activeModel ? originalVersionLabel(activeModel) : msg('App.m0031')) : activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))}
-          suggestedName={nextAIEditName(activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0)), activeModel?.edits.map((e,i) => e.label ?? defaultEditLabel(i)) ?? [])}
-          loadDocumentId={() => aiEditingDocumentId(aiSession.dir, aiSession.source)}
-          loadDraft={() => readAIReviewDraft(aiSession.dir, aiSession.source, viewingOriginal ? `original:${activeModelId}` : activeEditKey)}
-          saveDraft={draft => writeAIReviewDraft(aiSession.dir, aiSession.source, viewingOriginal ? `original:${activeModelId}` : activeEditKey, draft)}
-          selectedId={aiSession.selectedId} loadOriginal={aiSession.loadOriginal}
-          onClose={() => setAISession(null)}
-          onSettings={() => { setAISession(null); setSettingsTab("ai"); setSettingsOpen(true); }}
-          onApply={async (suggestions, label) => {
-            const sourceModel=activeModelId, sourceEdit=viewingOriginal ? "original" : activeModel?.activeEditId;
-            const result=await createAIEdit(aiSession.transcript, suggestions, label);
-            if(result && sourceModel && sourceEdit) comparison.activate(result.model.id,result.edit.id,`${sourceModel}:${sourceEdit}`);
-          }} />
-      )}
       {legacyEntries.length > 0 && dirHandle && (
         <div className="legacy-banner" role="status">
           <div className="legacy-banner__text">
@@ -959,12 +916,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       )}
       <div inert={renaming || versionBusy || saveStatus === "loading"}><Topbar
         taskOnly={preparingTranscript}
-        openAIEditing={hasLoadedTranscript && transcript.segments.length && !versionBusy ? () => void openAIEditing() : undefined}
         audioFilename={audioFilename || transcript.audio.filename}
         projectMode={Boolean(projectProps.projectDirectory)}
         projectLabel={projectProps.projectLabel}
         onReturnToProjects={projectProps.onReturnToProjects ? () => void returnToProjects() : undefined}
-        navigationDisabled={renaming || versionBusy || Boolean(aiSession) || transcribing}
+        navigationDisabled={renaming || versionBusy || transcribing}
         dirHandle={dirHandle}
         handleOpenFolder={handleOpenFolder}
         folderShortcutHint={folderShortcutHint}

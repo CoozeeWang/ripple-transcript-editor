@@ -1,7 +1,7 @@
 import { msg } from '../i18n';
 import { recordProblem } from "../lib/diagnostics";
 import { flushEditorDrafts } from "../lib/editorDrafts";
-import { applyAISuggestions, type AISuggestion } from "../lib/aiEditing";
+import { applyAISuggestions, type AISuggestion } from "../lib/aiVersionEdits";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useDismissable } from "../useDismissable";
 import type {

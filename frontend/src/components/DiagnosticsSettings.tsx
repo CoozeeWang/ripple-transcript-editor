@@ -1,5 +1,4 @@
 import { msg, uiMessage, useInterfaceLanguage, interfaceLanguage } from '../i18n';
-import { readEditingTimings, EDITING_TIMINGS_EVENT, editingTimingsPersistent } from "../lib/editingTimings";
 import { useEffect, useState } from "react";
 import { diagnosticEnvironment, diagnosticsPersistent, DIAGNOSTICS_EVENT, operations, reasons,
   problemSummary, readProblems, type Problem } from "../lib/diagnostics";
@@ -27,7 +26,6 @@ function statusDescription(status: number) {
 export function DiagnosticsSettings() {
   useInterfaceLanguage();
   const [transcriptionTimings, setTranscriptionTimings] = useState(readTranscriptionTimings);
-  const [timings, setTimings] = useState(readEditingTimings);
   const [local, setLocal] = useState<Problem[]>(readProblems);
   const [service, setService] = useState<ServiceProblem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,12 +33,11 @@ export function DiagnosticsSettings() {
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
-    const update = () => { setLocal(readProblems()); setTimings(readEditingTimings()); setTranscriptionTimings(readTranscriptionTimings()); };
+    const update = () => { setLocal(readProblems()); setTranscriptionTimings(readTranscriptionTimings()); };
     window.addEventListener(TRANSCRIPTION_TIMINGS_EVENT, update);
-    window.addEventListener(EDITING_TIMINGS_EVENT, update);
     window.addEventListener(DIAGNOSTICS_EVENT, update);
     window.addEventListener("storage", update);
-    return () => { window.removeEventListener(TRANSCRIPTION_TIMINGS_EVENT, update); window.removeEventListener(EDITING_TIMINGS_EVENT, update); window.removeEventListener(DIAGNOSTICS_EVENT, update); window.removeEventListener("storage", update); };
+    return () => { window.removeEventListener(TRANSCRIPTION_TIMINGS_EVENT, update); window.removeEventListener(DIAGNOSTICS_EVENT, update); window.removeEventListener("storage", update); };
   }, []);
   useEffect(() => {
     let stale = false;
@@ -62,12 +59,6 @@ export function DiagnosticsSettings() {
     ...local.map(p => ({ id: p.id, time: p.time, title: problemSummary(p), source: msg('DiagnosticsSettings.m0402'), local: p, status: 0 })),
     ...service.map(p => ({ id: p.id, time: p.time, title: `${serviceLabels()[p.operation]}：${p.reason ? reasons[p.reason] : statusDescription(p.status)}`, source: msg('DiagnosticsSettings.m0403'), local: null, status: p.status })),
   ].sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
-  const latestRun = timings.at(-1)?.run;
-  const latestTimings = timings.filter(t => t.run === latestRun);
-  const total = latestTimings.find(t => t.phase === "total");
-  const completedBatches = latestTimings.filter(t => t.phase === "request" && t.status === "ok").length;
-  const duration = total ? (total.ms < 60000 ? msg('DiagnosticsSettings.m0404', { v0: (total.ms / 1000).toFixed(1) }) : msg('DiagnosticsSettings.m0405', { v0: Math.floor(total.ms / 60000), v1: Math.floor(total.ms % 60000 / 1000) })) : "";
-  const phaseLabels = {prepare:msg('DiagnosticsSettings.m0406'), request:msg('DiagnosticsSettings.m0407'), checkpoint:msg('DiagnosticsSettings.m0408'), final_checkpoint:msg('DiagnosticsSettings.m0409'), publish:msg('DiagnosticsSettings.m0410'), total:msg('DiagnosticsSettings.m0411')};
   const lastTranscription = transcriptionTimings.at(-1);
   const transcriptionPhaseLabels = {preparing:msg('DiagnosticsSettings.m0412'), uploading:msg('DiagnosticsSettings.m0413'),sending:msg('DiagnosticsSettings.m0414'),processing:msg('DiagnosticsSettings.m0415'),saving:msg('DiagnosticsSettings.m0416')};
   return <div className="diagnostics-settings">
@@ -76,7 +67,7 @@ export function DiagnosticsSettings() {
         <button type="button" className="cred-btn diagnostic-export diagnostic-icon" aria-label={msg('DiagnosticsSettings.m0418')} title={msg('DiagnosticsSettings.m0419')} disabled={loading} onClick={() => {
           try {
             const report = { ...diagnosticEnvironment(), serviceState, localStorageAvailable: diagnosticsPersistent(),
-              local: readProblems(), service, transcriptionTimings: readTranscriptionTimings(), editingTimings: readEditingTimings(), editingTimingsStorageAvailable: editingTimingsPersistent() };
+              local: readProblems(), service, transcriptionTimings: readTranscriptionTimings() };
             const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
             const link = document.createElement("a"); link.href = url;
             link.download = msg('DiagnosticsSettings.m0420', { v0: new Date().toISOString().slice(0, 10) });
@@ -92,7 +83,7 @@ export function DiagnosticsSettings() {
         <h3>{msg('DiagnosticsSettings.m0422')}</h3>
       <div className="diagnostic-actions">
         <button type="button" className="cred-btn diagnostic-refresh" aria-label={msg('DiagnosticsSettings.m0423')} title={msg('DiagnosticsSettings.m0424')} disabled={loading} onClick={() => {
-          setLocal(readProblems()); setTimings(readEditingTimings()); setTranscriptionTimings(readTranscriptionTimings()); setLoading(true); setRefresh(n => n + 1);
+          setLocal(readProblems()); setTranscriptionTimings(readTranscriptionTimings()); setLoading(true); setRefresh(n => n + 1);
         }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5" /><path d="M20 12a8 8 0 1 0-2.3 5.7M20 7v5" /></svg></button>
       </div>
       </div>
@@ -116,22 +107,6 @@ export function DiagnosticsSettings() {
           <ul className="diagnostic-list">{Object.entries(lastTranscription.stages).map(([phase, ms]) => <li key={phase}><p>{transcriptionPhaseLabels[phase as keyof typeof transcriptionPhaseLabels]} · {(ms / 1000).toFixed(2)} {msg('DiagnosticsSettings.m0441')}</p></li>)}</ul>
         </details>
       </>}
-    </section>
-    <section className="settings-block">
-      <div className="settings-heading"><div><h3>{msg('DiagnosticsSettings.m0442')}</h3></div></div>
-      {!latestTimings.length ? <p className="settings-hint">{msg('DiagnosticsSettings.m0443')}</p> : <>
-        <p className="settings-hint">{total ? `${total.status === "ok" ? msg('DiagnosticsSettings.m0444') : total.status === "cancelled" ? msg('DiagnosticsSettings.m0445') : msg('DiagnosticsSettings.m0446')} · ${duration}` : msg('DiagnosticsSettings.m0447')} · {msg('DiagnosticsSettings.m0448', { count: completedBatches })}</p>
-        <details className="diagnostic-timing-details" key={latestRun}>
-        <summary>{msg('DiagnosticsSettings.m0449')}</summary>
-        <p className="settings-hint">{new Date(latestTimings[0].time).toLocaleString(interfaceLanguage())} · {msg('review.editingCounts', { segmentCount: latestTimings[0].segments, characterCount: latestTimings[0].characters })}</p>
-        <p className="settings-hint">{msg('DiagnosticsSettings.m0452')}</p>
-        <ul className="diagnostic-list">{latestTimings.map((t, i) => <li key={i}>
-          <p>{phaseLabels[t.phase]}{t.phase === "request" ? msg('DiagnosticsSettings.m0453', { v0: t.batch }) : t.phase === "checkpoint" ? msg('DiagnosticsSettings.m0454', { v0: t.batch }) : ""} · {(t.ms / 1000).toFixed(2)} {msg('DiagnosticsSettings.m0455')}{t.status === "failed" ? msg('DiagnosticsSettings.m0456') : t.status === "cancelled" ? msg('DiagnosticsSettings.m0457') : ""}</p>
-          {t.phase === "request" && <small>{msg('review.editingCounts', { segmentCount: t.segments, characterCount: t.characters })}</small>}
-        </li>)}</ul>
-        </details>
-      </>}
-      {!editingTimingsPersistent() && <p className="form-error">{msg('DiagnosticsSettings.m0460')}</p>}
     </section>
   </div>;
 }

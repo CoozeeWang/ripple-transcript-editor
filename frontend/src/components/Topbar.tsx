@@ -48,7 +48,6 @@ export interface TopbarProps {
   exportProjectFiles?: () => void;
   handleSave: () => void;
   openSettings: () => void;
-  openAIEditing?: () => void;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -279,11 +278,6 @@ export function Topbar(props: TopbarProps) {
       </div>}
       <div className="toolbar">
         {!props.taskOnly && <>
-        {props.openAIEditing && <button type="button" className="button button--secondary button--icon button--ai" onClick={props.openAIEditing} data-tip={msg('Topbar.m1049')} aria-label={msg('Topbar.m1050')}>
-          <svg className="toolbar-button-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 2 15 9 22 12 15 15 12 22 9 15 2 12 9 9Z" />
-          </svg>
-        </button>}
         {!viewingOriginal ? (
         <div className="history-controls" aria-label={msg('Topbar.m1051')}>
           <button

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AIConnector, type ConnectorDocument } from './aiConnector';
-import { applyAISuggestions } from './aiEditing';
+import { applyAISuggestions } from './aiVersionEdits';
 import type { Transcript } from '../types';
 
 function fixture() {

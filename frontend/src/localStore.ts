@@ -1989,50 +1989,6 @@ export const writeEdited: typeof writeEditedUnlocked = (...args) => inDirectory(
 export const renameAudio: typeof renameAudioUnlocked = (...args) => inDirectory(args[0], () => renameAudioUnlocked(...args));
 export const migrateAllLegacy: typeof migrateAllLegacyUnlocked = (...args) => inDirectory(args[0], () => migrateAllLegacyUnlocked(...args));
 
-/** AI review drafts are separate from the manifest and never become editable versions implicitly. */
-export async function readAIReviewDraft(dir: FileSystemDirectoryHandle, audio: string, key: string): Promise<import("./components/AIEditingDialog").AIReviewDraft | null> {
-  const container = await resolveTranscriptDir(dir, audio, false);
-  if (!container) return null;
-  try {
-    const drafts = await container.getDirectoryHandle("ai-review");
-    const file = await drafts.getFileHandle(`${encodeURIComponent(key)}.json`);
-    return JSON.parse(await (await file.getFile()).text());
-  } catch (error) {
-    if ((error as {name?:string}).name === "NotFoundError") return null;
-    throw error;
-  }
-}
-
-export async function writeAIReviewDraft(dir: FileSystemDirectoryHandle, audio: string, key: string, draft: import("./components/AIEditingDialog").AIReviewDraft | null): Promise<void> {
-  const container = await resolveTranscriptDir(dir, audio, false);
-  if (!container) throw new Error(msg('localStore.m1554'));
-  const drafts = await container.getDirectoryHandle("ai-review", {create:true});
-  const name = `${encodeURIComponent(key)}.json`;
-  if (draft) await writeFileJson(drafts, name, draft);
-  else {
-    try { await drafts.removeEntry(name); }
-    catch (error) { if ((error as {name?:string}).name !== "NotFoundError") throw error; }
-  }
-}
-
-/** Stable across audio renames and modification versions, separate for each transcript container. */
-export async function aiEditingDocumentId(dir: FileSystemDirectoryHandle, audio: string): Promise<string> {
-  const container = await resolveTranscriptDir(dir, audio, false);
-  if (!container) throw new Error(msg('localStore.m1555'));
-  const name = "ai-preferences-id.json";
-  try {
-    const file = await container.getFileHandle(name);
-    const value = JSON.parse(await (await file.getFile()).text());
-    if (typeof value.id !== "string" || !value.id) throw new Error(msg('localStore.m1556'));
-    return value.id;
-  } catch (error) {
-    if ((error as {name?:string}).name !== "NotFoundError") throw error;
-  }
-  const id = crypto.randomUUID();
-  await writeFileJson(container, name, {id});
-  return id;
-}
-
 export const saveInterviewDetails: typeof saveInterviewDetailsUnlocked = (...args) => inDirectory(args[0], () => saveInterviewDetailsUnlocked(...args));
 
 export const setModelOriginal: typeof setModelOriginalUnlocked = (...args) => inDirectory(args[0], () => setModelOriginalUnlocked(...args));

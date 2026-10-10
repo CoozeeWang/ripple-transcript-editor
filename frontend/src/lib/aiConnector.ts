@@ -1,6 +1,6 @@
 import { AIMarkTasks } from './aiMarkTasks';
 import type { AIMark } from './aiMarks';
-import { nextAIEditName, type AISuggestion } from './aiEditing';
+import { nextAIEditName, type AISuggestion } from './aiVersionEdits';
 import type { Transcript } from '../types';
 
 export interface ConnectorDocument {

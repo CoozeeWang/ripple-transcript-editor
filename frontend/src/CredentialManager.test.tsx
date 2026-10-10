@@ -13,7 +13,7 @@ const fields: CredentialField[] = [
 ];
 function Form() {
   const [values, setValues] = useState({ model: 'preset-one', api_key: 'secret', base_url: 'https://api.test/v1' });
-  return <CredentialFields fields={fields} values={values} visible={{}} servicePath="/api/ai/providers/test"
+  return <CredentialFields fields={fields} values={values} visible={{}}
     onChange={(key, value) => setValues(previous => ({ ...previous, [key]: value }))} onToggle={() => {}} />;
 }
 it('keeps an existing custom model editable without replacing it with a preset', () => {
@@ -28,39 +28,13 @@ it('supports manual model IDs and presets without losing keyboard editing', () =
   fireEvent.change(screen.getByRole('combobox', { name: '模型' }), { target: { value: 'preset-one' } });
   expect(screen.queryByRole('textbox', { name: '模型 ID' })).toBeNull();
 });
-it('reads additional models without changing the selection and keeps the key hidden', async () => {
-  const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ models: ['new-model'] })));
-  vi.stubGlobal('fetch', fetcher);
-  render(<Form />);
-  fireEvent.click(screen.getByRole('button', { name: "读取模型" }));
-  await screen.findByRole('option', { name: 'new-model' });
-  expect((screen.getByRole('combobox', { name: '模型' }) as HTMLSelectElement).value).toBe('preset-one');
-  expect((screen.getByLabelText('API 密钥') as HTMLInputElement).type).toBe('password');
-  expect(fetcher.mock.calls[0][0]).toBe('/api/ai/providers/test/models');
-});
-it('failed model discovery leaves manual entry available', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ detail: '服务不支持列表' }), { status: 502 })));
-  render(<Form />);
-  fireEvent.click(screen.getByRole('button', { name: "读取模型" }));
-  await screen.findByRole('alert');
-  fireEvent.change(screen.getByRole('combobox', { name: '模型' }), { target: { value: '__custom__' } });
-  expect(screen.getByRole('textbox', { name: '模型 ID' })).toBeTruthy();
-});
-it('clears a successful test when the model changes', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }))));
-  render(<Form />);
-  fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
-  await screen.findByText(/连接与 JSON 输出测试通过/);
-  fireEvent.change(screen.getByRole('combobox', { name: '模型' }), { target: { value: '__custom__' } });
-  await waitFor(() => expect(screen.queryByText(/连接与 JSON 输出测试通过/)).toBeNull());
-});
 it('switching service replaces defaults and clears the previous secret', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url === '/api/ai/providers') return new Response(JSON.stringify([{ id: 'one', name: 'One' }, { id: 'two', name: 'Two' }]));
+    if (url === '/api/providers') return new Response(JSON.stringify([{ id: 'one', name: 'One' }, { id: 'two', name: 'Two' }]));
     const id = url.includes('/one/') ? 'one' : 'two';
     return new Response(JSON.stringify({ provider_id: id, provider_name: id, profiles: [], fields: fields.map(f => f.key === 'base_url' ? { ...f, default_value: `https://${id}.test/v1` } : f) }));
   }));
-  render(<CredentialManager kind="editing" />);
+  render(<CredentialManager />);
   fireEvent.click(await screen.findByRole('button', { name: '+ 添加配置' }));
   fireEvent.change(screen.getByRole('combobox', { name: '服务商' }), { target: { value: 'one' } });
   fireEvent.change(screen.getByLabelText('API 密钥'), { target: { value: 'first-key' } });

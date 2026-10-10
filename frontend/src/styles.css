@@ -511,8 +511,6 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .toolbar-button-icon { display: block; width: 13px; height: 13px; flex: none; }
 .button input { display: none; }
 .button--secondary { border-color: var(--color-border-2); background: var(--color-surface); }
-.button.button--ai { background: var(--color-accent-tint); border-color: var(--color-accent-border); color: var(--color-text-3); }
-.button.button--ai:hover { background: #d7e7e9; }
 .button--primary { color: var(--color-surface); background: var(--color-accent); }
 .button--danger { color: var(--color-danger); border-color: var(--color-danger-border); background: var(--color-danger-bg); }
 .button--danger:hover { background: #fbe9e9; }
@@ -1396,15 +1394,13 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .annotation-add textarea:focus { border-color: var(--color-border-active); }
 .annotation-add button { align-self: flex-end; }
-.annotation-add button:disabled,
-.ai-dialog .button--primary:disabled {
+.annotation-add button:disabled {
   opacity: 1;
   background: #c1d9dd;
   color: #39636a;
   border-color: #b5cdd1;
 }
-.annotation-add button:not(:disabled):hover,
-.ai-dialog .button--primary:not(:disabled):hover { background: var(--color-accent-hover); }
+.annotation-add button:not(:disabled):hover { background: var(--color-accent-hover); }
 
 .segment-index {
   display: flex;
@@ -3134,8 +3130,6 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 .toolbar .button,
 .dialog-actions .button,
 .project-actions .button,
-.ai-actions .button,
-.plan-library-actions .button,
 .cred-profile__actions .button { flex-shrink: 0; white-space: nowrap; }
 .dialog-actions, .modal-actions { flex-wrap: wrap; }
 .settings-tabs { flex-wrap: wrap; }
