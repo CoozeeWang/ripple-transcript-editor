@@ -240,7 +240,7 @@ body:has(.project-home--welcome) { min-width: 0; }
 .project-trash-row small { display:block;margin-top:4px;font-size:12px;color:var(--color-text-3); }
 .trash-material-name { overflow-wrap:anywhere; }
 .trash-delete-options { display:grid;gap:12px;margin:20px 0;font-size:14px; }
-.trash-delete-options label { display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:10px; }
+.trash-delete-options label { display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:10px; }
 .trash-delete-options label span { overflow-wrap:anywhere; }
 .project-trash-undo { position:fixed;top:88px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);padding:8px 16px;background:var(--color-surface-dialog);border:1px solid var(--color-border);border-radius:8px;font:400 13px/1.5 var(--font-sans);box-shadow:0 4px 16px #0000000d; }
 
@@ -268,7 +268,7 @@ body:has(.project-home--welcome) { min-width: 0; }
 .trash-delete-options input[type="radio"] {
   appearance:none; -webkit-appearance:none;
   width:16px; height:16px; min-width:16px; box-sizing:border-box;
-  padding:0; margin:3px 0 0; flex:none; border:1px solid var(--color-border-2);
+  padding:0; margin:0; flex:none; border:1px solid var(--color-border-2);
   border-radius:50%; background:var(--color-surface); box-shadow:none;
 }
 .trash-delete-options input[type="radio"]:checked {
