@@ -51,7 +51,7 @@ export function FieldInput({
           {field.allow_custom !== false && <option value="__custom__">{msg('CredentialManager.m0057')}</option>}
         </select>}
         {(!useSelect || custom) && <input
-          aria-label={useSelect ? `${serviceText(field.label)} ID` : field.label}
+          aria-label={useSelect ? `${serviceText(field.label)} ID` : serviceText(field.label)}
           type={!field.secret && value !== MASK || visible ? "text" : "password"}
           value={value}
           placeholder={disabled ? undefined : serviceText(field.placeholder ?? "")}
