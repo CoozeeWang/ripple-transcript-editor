@@ -3128,8 +3128,8 @@ input.ripple-checkbox[type="checkbox"]:disabled { cursor: default; opacity: .45;
 }
 
 /* English tab names need more space than the original Chinese labels. */
-html[lang="en"] .annotation-panel .panel-tabs { min-width: 0; flex: 1; }
-html[lang="en"] .annotation-panel .panel-tabs > button { min-width: 0; flex: 1; flex-wrap: nowrap; padding-inline: 2px; font-size: 11px; letter-spacing: 0; text-transform: none; }
+html[lang="en"] .annotation-panel .panel-tabs { min-width: 0; flex: 1; flex-wrap: wrap; height: auto; }
+html[lang="en"] .annotation-panel .panel-tabs > button { min-width: max-content; min-height: 24px; flex: 1 0 auto; flex-wrap: nowrap; padding-inline: 2px; font-size: 11px; letter-spacing: 0; text-transform: none; }
 html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 18px; padding-inline: 2px; }
 
 /* Actions size to their labels; action groups wrap whole controls, not words. */
