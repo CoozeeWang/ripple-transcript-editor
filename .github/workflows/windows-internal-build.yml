@@ -42,7 +42,8 @@ jobs:
           npm --prefix desktop ci
           if ($LASTEXITCODE) { throw 'Desktop dependencies failed' }
       - name: Backend tests on Windows NTFS
-        run: uv run --project backend --locked pytest -q
+        working-directory: backend
+        run: uv run --locked pytest -q
       - name: Backend staging tests
         run: uv run --project backend --locked python -m unittest discover -s desktop/tests -p test_stage_backend.py -v
       - name: Build frontend
