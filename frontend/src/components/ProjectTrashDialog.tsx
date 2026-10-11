@@ -9,21 +9,22 @@ export function DeleteMaterialDialog({ name, audio, hasDocuments, referenced, bu
  name:string; audio:boolean; hasDocuments:boolean; referenced:boolean; busy:boolean; error?:string; onCancel:()=>void; onDelete:(keepDocuments:boolean)=>void;
 }) {
   useInterfaceLanguage();
- const ref=useRef<HTMLDialogElement>(null);const [keep,setKeep]=useState(true);const optionGroup=useId();
+ const ref=useRef<HTMLDialogElement>(null);const cancelRef=useRef<HTMLButtonElement>(null);const [keep,setKeep]=useState(true);const optionGroup=useId();
  useEffect(() => {
     const modal = ref.current;
     const previous = document.activeElement;
     modal?.showModal();
+    cancelRef.current?.focus();
     return () => {
       if (modal?.open) modal.close();
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, []);
  return createPortal(<dialog ref={ref} className="material-preview-dialog audio-project-dialog" aria-label={msg('ProjectTrashDialog.m0873')} onKeyDown={trapDialogFocus} onCancel={e=>{e.preventDefault();if(!busy)onCancel();}}>
-  <div className="dialog-header"><h2>{msg('ProjectTrashDialog.m0874')}{audio?msg('ProjectTrashDialog.m0875'):msg('ProjectTrashDialog.m0876')}</h2></div>
-  <p className="trash-material-name">{name}</p><p className="settings-hint">{msg('ProjectTrashDialog.m0877')}{!audio&&msg('ProjectTrashDialog.m0878')}{referenced&&msg('ProjectTrashDialog.m0879')}</p>
-  {audio&&hasDocuments&&<div className="trash-delete-options"><label><input type="radio" name={optionGroup} tabIndex={keep ? 0 : -1} checked={keep} disabled={busy} onChange={()=>setKeep(true)}/>{msg('ProjectTrashDialog.m0880')}</label><label><input type="radio" name={optionGroup} tabIndex={keep ? -1 : 0} checked={!keep} disabled={busy} onChange={()=>setKeep(false)}/>{msg('ProjectTrashDialog.m0881')}</label></div>}
-  {error&&<p className="form-error" role="alert">{uiMessage(error)}</p>}<div className="project-actions audio-project-footer"><button className="button button--secondary" disabled={busy} onClick={onCancel}>{msg('ProjectTrashDialog.m0882')}</button><button className="button button--danger" disabled={busy} onClick={()=>onDelete(keep)}>{msg('ProjectTrashDialog.m0883')}</button></div>
+  <div className="dialog-header"><h2>{msg('ProjectTrashDialog.m0874')}{interfaceLanguage()==='en'?' ':''}{audio?msg('ProjectTrashDialog.m0875'):msg('ProjectTrashDialog.m0876')}</h2></div>
+  <p className="trash-material-name">{name}</p><p className="settings-hint">{msg('ProjectTrashDialog.m0877')}{interfaceLanguage()==='en'?' ':''}{!audio&&msg('ProjectTrashDialog.m0878')}{referenced&&msg('ProjectTrashDialog.m0879')}</p>
+  {audio&&hasDocuments&&<div className="trash-delete-options"><label><input type="radio" name={optionGroup} tabIndex={keep ? 0 : -1} checked={keep} disabled={busy} onChange={()=>setKeep(true)}/><span>{msg('ProjectTrashDialog.m0880')}</span></label><label><input type="radio" name={optionGroup} tabIndex={keep ? -1 : 0} checked={!keep} disabled={busy} onChange={()=>setKeep(false)}/><span>{msg('ProjectTrashDialog.m0881')}</span></label></div>}
+  {error&&<p className="form-error" role="alert">{uiMessage(error)}</p>}<div className="project-actions audio-project-footer"><button ref={cancelRef} className="button button--secondary" disabled={busy} onClick={onCancel}>{msg('ProjectTrashDialog.m0882')}</button><button className="button button--danger" disabled={busy} onClick={()=>onDelete(keep)}>{msg('ProjectTrashDialog.m0883')}</button></div>
  </dialog>,document.body);
 }
 export function ProjectTrashDialog({project,busy,error,onClose,onRestore,onClear}:{project:OpenProject;busy:boolean;error?:string;onClose:()=>void;onRestore:(id:string)=>void;onClear:()=>void}){

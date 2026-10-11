@@ -218,7 +218,13 @@
     "m0940": " revisions. Version names, comparison links, and interview details will be kept. Existing interview details will not be overwritten.",
     "m0941": "Import all versions",
     "m0942": "Not now",
-    "recentProjectMismatch": "This isn't the selected recent project. Choose its original project folder."
+    "recentProjectMismatch": "This isn't the selected recent project. Choose its original project folder.",
+    "recentMissing": "Cannot find “{{title}}”. Select its original project folder again. Cancelling will not open another project.",
+    "recentPermission": "Access to “{{title}}” needs permission. Select its original project folder again.",
+    "recentUnreadable": "Cannot read “{{title}}”. Check that its folder is accessible, or select the original project again.",
+    "recentRecover": "Select original project",
+    "recentDismiss": "Cancel recovery",
+    "finderIconWarning": "The project is ready to use, but its Finder icon could not be set. Check that the project folder is writable, then reopen it."
   },
   "SettingsModal": {
     "m0972": "Settings",
@@ -695,7 +701,11 @@
     "m1465": "A transcript file is missing from the trash.",
     "m1466": "Audio: {{v0}}  \nSession: {{v1}}  \nThis audio is linked to an external file. The audio file itself isn’t included in the project.  \nLinked transcripts: {{v2}}  \nThe transcripts remain under this audio in the project. Choose “Locate original audio” in Ripple to restore playback.Session: {{v1}}\nThis audio is linked to an external file. The audio file isn’t included.\nLinked transcripts: {{v2}}\nTranscripts remain under their audio in the project. Choose “Locate original audio” in Ripple to restore playback.",
     "m1467": "None",
-    "m1468": "Audio content has changed: {{v0}}. Locate the original audio."
+    "m1468": "Audio content has changed: {{v0}}. Locate the original audio.",
+    "mediaPermission": "Audio access needs permission. Use the folder button on the audio card to select the original file again. Transcripts remain editable.",
+    "mediaMissing": "The original audio cannot be found. Use the folder button on the audio card to locate it. Transcripts remain editable.",
+    "mediaChanged": "The audio content has changed. Relink a file with the original audio content. Transcripts remain editable.",
+    "mediaUnreadable": "Cannot read the audio. Check that the file is accessible, or use the folder button on the audio card to relink it. Transcripts remain editable."
   },
   "App": {
     "m0001": "This audio has no transcript yet. Choose “Start transcription” below.",

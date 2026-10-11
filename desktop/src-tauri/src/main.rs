@@ -1,3 +1,9 @@
+#[cfg(all(not(debug_assertions), not(feature = "custom-protocol")))]
+compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
+
+mod project_icon;
+mod grants;
+use grants::{Grant, Grants, io_error};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -17,20 +23,17 @@ static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 struct Backend(Mutex<Option<Child>>);
 struct WriteSession { target: PathBuf, temporary: tempfile::NamedTempFile }
 struct Writes(Mutex<HashMap<u64, WriteSession>>);
-#[derive(Clone)]
-struct Grant { root: String, path: PathBuf, base_parts: Vec<String>, directory: bool, writable: bool }
-struct Grants(Mutex<Vec<Grant>>);
-
 #[derive(Serialize)]
 struct NativeEntry { name: String, kind: &'static str }
 #[derive(Serialize)]
 struct SelectedPath { root: String, kind: &'static str }
 
 fn grant_path(state: &Grants, root: &str, parts: &[String], write: bool) -> Result<PathBuf, String> {
-    let grants = state.0.lock().map_err(|_| "文件授权不可用")?;
+    let grants = state.entries.lock().map_err(|_| "permission_required")?;
     let grant = grants.iter().filter(|g| g.root == root && parts.starts_with(&g.base_parts))
-        .max_by_key(|g| g.base_parts.len()).ok_or("请重新选择这个文件或文件夹")?;
-    if write && !grant.writable { return Err("此文件只有读取权限".into()); }
+        .max_by_key(|g| g.base_parts.len()).ok_or("permission_required")?;
+    grant.validate()?;
+    if write && !grant.writable { return Err("permission_required".into()); }
     let remaining = &parts[grant.base_parts.len()..];
     if !grant.directory && !remaining.is_empty() { return Err("不能访问所选文件之外的内容".into()); }
     let mut path = grant.path.clone();
@@ -50,17 +53,14 @@ fn grant_path(state: &Grants, root: &str, parts: &[String], write: bool) -> Resu
 fn add_grant(state: &Grants, path: PathBuf, directory: bool, writable: bool) -> Result<SelectedPath, String> {
     let path = path.canonicalize().map_err(|e| e.to_string())?;
     let root = path.display().to_string();
-    let mut grants = state.0.lock().map_err(|_| "文件授权不可用")?;
-    if !grants.iter().any(|g| g.root == root && g.base_parts.is_empty()) {
-        grants.push(Grant { root: root.clone(), path, base_parts: Vec::new(), directory, writable });
-    }
+    state.remember(Grant::selected(root.clone(), path, Vec::new(), directory, writable)?)?;
     Ok(SelectedPath { root, kind: if directory { "directory" } else { "file" } })
 }
 
 #[tauri::command]
 async fn pick_directory(app: tauri::AppHandle, state: tauri::State<'_, Grants>) -> Result<SelectedPath, String> {
     let selected = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
-        .await.map_err(|e| e.to_string())?.ok_or("已取消选择")?;
+        .await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
     add_grant(&state, selected.into_path().map_err(|e| e.to_string())?, true, true)
 }
 
@@ -70,13 +70,22 @@ async fn pick_files(app: tauri::AppHandle, state: tauri::State<'_, Grants>, mult
         if multiple { app.dialog().file().blocking_pick_files().unwrap_or_default() }
         else { app.dialog().file().blocking_pick_file().into_iter().collect() }
     }).await.map_err(|e| e.to_string())?;
-    if selected.is_empty() { return Err("已取消选择".into()); }
+    if selected.is_empty() { return Err("selection_cancelled".into()); }
     selected.into_iter().map(|file| add_grant(&state, file.into_path().map_err(|e| e.to_string())?, false, false)).collect()
 }
 
 #[tauri::command]
-fn fs_permission(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> bool {
-    state.0.lock().map(|grants| grants.iter().any(|g| g.root == root && parts.starts_with(&g.base_parts))).unwrap_or(false)
+fn fs_permission(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, write: bool) -> bool {
+    grant_path(&state, &root, &parts, write).is_ok()
+}
+
+#[tauri::command]
+fn fs_access_status(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> &'static str {
+    match grant_path(&state, &root, &parts, true).and_then(|path| fs::metadata(path).map_err(io_error)) {
+        Ok(_) => "granted",
+        Err(error) if error == "file_missing" => "missing",
+        Err(_) => "permission",
+    }
 }
 
 #[tauri::command]
@@ -91,14 +100,20 @@ async fn fs_reauthorize(app: tauri::AppHandle, state: tauri::State<'_, Grants>, 
     let selected = tauri::async_runtime::spawn_blocking(move || {
         if is_directory { app.dialog().file().blocking_pick_folder() }
         else { app.dialog().file().blocking_pick_file() }
-    }).await.map_err(|e| e.to_string())?.ok_or("已取消选择")?;
+    }).await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
     let selected = selected.into_path().map_err(|e| e.to_string())?.canonicalize().map_err(|e| e.to_string())?;
     if expected.canonicalize().map_err(|e| e.to_string())? != selected { return Err("选择的不是原文件或原文件夹".into()); }
-    let mut grants = state.0.lock().map_err(|_| "文件授权不可用")?;
-    if !grants.iter().any(|g| g.root == root && g.base_parts == parts) {
-        grants.push(Grant { root, path: selected, base_parts: parts, directory: is_directory, writable: is_directory });
-    }
+    state.remember(Grant::selected(root, selected, parts, is_directory, is_directory)?)?;
     Ok(())
+}
+
+#[tauri::command]
+async fn project_set_icon(app: tauri::AppHandle, state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> Result<bool, String> {
+    let path = grant_path(&state, &root, &parts, true)?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || { let _ = sender.send(project_icon::apply(&path)); }).map_err(|_|"project_icon_failed")?;
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().map_err(|_|"project_icon_failed")?)
+        .await.map_err(|_|"project_icon_failed".to_string())?
 }
 
 #[tauri::command]
@@ -134,7 +149,7 @@ fn fs_read(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) ->
 #[tauri::command]
 fn fs_size(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> Result<u64, String> {
     let path = grant_path(&state, &root, &parts, false)?;
-    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+    let metadata = fs::metadata(path).map_err(io_error)?;
     if !metadata.is_file() { return Err("不是普通文件".into()); }
     Ok(metadata.len())
 }
@@ -143,10 +158,10 @@ fn fs_size(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) ->
 fn fs_read_chunk(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, offset: u64, length: usize) -> Result<Vec<u8>, String> {
     if length > 4 * 1024 * 1024 { return Err("读取块过大".into()); }
     let path = grant_path(&state, &root, &parts, false)?;
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+    let mut file = File::open(path).map_err(io_error)?;
+    file.seek(SeekFrom::Start(offset)).map_err(io_error)?;
     let mut bytes = vec![0; length];
-    let read = file.read(&mut bytes).map_err(|e| e.to_string())?;
+    let read = file.read(&mut bytes).map_err(io_error)?;
     bytes.truncate(read);
     Ok(bytes)
 }
@@ -219,6 +234,19 @@ fn fs_remove(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, 
     } else { fs::remove_file(path).map_err(|e| e.to_string()) }
 }
 
+// Only debug builds under the managed dev identity may use source-backed services.
+fn development(app: &tauri::AppHandle) -> bool {
+    cfg!(debug_assertions) && app.config().identifier == "studio.ripple.app.dev"
+}
+
+fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if development(app) {
+        let path = PathBuf::from(std::env::var("RIPPLE_DATA_DIR").map_err(|_| "Use start-dev.command")?);
+        if !path.is_absolute() { return Err("Development data path must be absolute".into()); }
+        Ok(path)
+    } else { app.path().app_local_data_dir().map_err(|e| e.to_string()) }
+}
+
 fn health_ok() -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else { return false };
@@ -236,7 +264,7 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
     let python = stage.join("python/bin/python3.12");
     if !python.is_file() { return Err("App 缺少随附后台".into()); }
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let log = OpenOptions::new().create(true).append(true).open(data.join("backend.log")).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
@@ -261,15 +289,38 @@ fn stop_backend(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--ripple-build-info") {
+        println!("{}", serde_json::json!({
+            "custom_protocol": cfg!(feature = "custom-protocol"),
+            "debug": cfg!(debug_assertions),
+        }));
+        return;
+    }
+    let mut context = tauri::generate_context!();
+    #[cfg(target_os = "macos")]
+    if cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.dev" {
+        for window in &mut context.config_mut().app.windows { window.create = false; }
+    }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
-        .manage(Grants(Mutex::new(Vec::new())))
         .manage(Writes(Mutex::new(HashMap::new())))
         .setup(|app| {
-            let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(Backend(Mutex::new(Some(child))));
+            app.manage(Grants::load(app_data(app.handle())?.join("file-permissions-v1.json")).map_err(std::io::Error::other)?);
+            if development(app.handle()) {
+                if std::env::var("RIPPLE_DESKTOP_DEV").as_deref() != Ok("1") { return Err("Use start-dev.command".into()); }
+                app.manage(Backend(Mutex::new(None)));
+                #[cfg(target_os = "macos")]
+                {
+                    let config = &app.config().app.windows[0];
+                    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+                        .data_store_identifier(*b"ripple-dev-00001").build()?;
+                }
+            } else {
+                let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
+                app.manage(Backend(Mutex::new(Some(child))));
+            }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_reauthorize, fs_stat,
+        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready])
@@ -279,7 +330,7 @@ fn main() {
                 window.app_handle().exit(0);
             }
         })
-        .build(tauri::generate_context!()).expect("Ripple failed to start")
+        .build(context).expect("Ripple failed to start")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 stop_backend(app);

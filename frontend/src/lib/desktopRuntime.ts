@@ -1,6 +1,7 @@
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
 
-const API_ROOT = 'http://127.0.0.1:18701';
+// Development uses Vite's same-origin API proxy; release uses the bundled service.
+const API_ROOT = import.meta.env.DEV ? '' : 'http://127.0.0.1:18701';
 
 function apiUrl(url: string): string {
   return url.startsWith('/api/') ? `${API_ROOT}${url}` : url;

@@ -7,7 +7,12 @@ type Descriptor = { __rippleNativeHandle: true; root: string; parts: string[]; k
 function invoke<T>(command: string, args: Record<string, unknown>): Promise<T> {
   const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
   if (!tauri?.core) throw new Error('Native file bridge unavailable');
-  return tauri.core.invoke(command, args);
+  return tauri.core.invoke(command, args).catch(error => {
+    if (error === 'selection_cancelled') throw new DOMException('Selection cancelled', 'AbortError');
+    if (error === 'permission_required') throw new DOMException('File access needs permission', 'NotAllowedError');
+    if (error === 'file_missing') throw new DOMException('Selected file is missing', 'NotFoundError');
+    throw error;
+  });
 }
 
 export function nativeDesktopAvailable(): boolean {
@@ -32,17 +37,17 @@ abstract class NativeHandle {
   async isSameEntry(other: FileSystemHandle): Promise<boolean> {
     return other instanceof NativeHandle && this.root === other.root && this.parts.join('\0') === other.parts.join('\0');
   }
-  async queryPermission(): Promise<PermissionState> {
-    if (productionDesktop) return await invoke<boolean>('fs_permission', { root: this.root, parts: this.parts }) ? 'granted' : 'prompt';
+  async queryPermission(options?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState> {
+    if (productionDesktop) return await invoke<boolean>('fs_permission', { root: this.root, parts: this.parts, write: options?.mode === 'readwrite' }) ? 'granted' : 'prompt';
     return selectedRoots.has(this.root) ? 'granted' : 'prompt';
   }
-  async requestPermission(): Promise<PermissionState> {
-    if (await this.queryPermission() === 'granted') return 'granted';
+  async requestPermission(options?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState> {
+    if (await this.queryPermission(options) === 'granted') return 'granted';
     try {
       if (productionDesktop) await invoke('fs_reauthorize', { root: this.root, parts: this.parts, kind: this.kind });
       else await chooseNativeFixtureDirectory();
     } catch { return 'denied'; }
-    return await this.queryPermission() === 'granted' ? 'granted' : 'denied';
+    return await this.queryPermission(options) === 'granted' ? 'granted' : 'denied';
   }
   descriptor(): Descriptor { return { __rippleNativeHandle: true, root: this.root, parts: this.parts, kind: this.kind }; }
 }
@@ -221,4 +226,20 @@ export function decodeNativeHandles<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, decodeNativeHandles(item)])) as T;
   }
   return value;
+}
+
+/** Query only an existing native capability; this never opens a picker. */
+export async function nativeAccessStatus(handle: FileSystemDirectoryHandle): Promise<'granted' | 'missing' | 'permission'> {
+  if (handle instanceof NativeHandle && productionDesktop) {
+    return invoke('fs_access_status', { root: handle.root, parts: handle.parts });
+  }
+  const query = handle as FileSystemDirectoryHandle & {queryPermission?: (options:{mode:string})=>Promise<string>};
+  return await query.queryPermission?.({mode:'readwrite'}) === 'granted' ? 'granted' : 'permission';
+}
+
+/** Best-effort Finder decoration; browser/fixture storage is left unchanged. */
+export async function decorateNativeProject(directory: FileSystemDirectoryHandle): Promise<boolean> {
+  if (!(directory instanceof NativeDirectoryHandle) || !productionDesktop) return true;
+  try { return await invoke<boolean>('project_set_icon',{root:directory.root,parts:directory.parts}); }
+  catch { return false; }
 }

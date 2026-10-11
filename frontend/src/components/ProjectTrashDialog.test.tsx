@@ -50,3 +50,11 @@ it('returns focus to the material or trash entry when the dialog closes',()=>{
   trash.unmount();expect(document.activeElement).toBe(opener);
  } finally {opener.remove();}
 });
+
+it('starts deletion on cancel and restores the triggering focus',()=>{
+ const trigger=document.createElement('button');document.body.append(trigger);trigger.focus();
+ const ui=render(<DeleteMaterialDialog name="synthetic.wav" audio hasDocuments referenced={false} busy={false} onCancel={()=>{}} onDelete={()=>{}}/>);
+ expect(document.activeElement).toBe(screen.getByRole('button',{name:'取消'}));
+ expect(screen.getAllByRole('radio').map(r=>r.tabIndex)).toEqual([0,-1]);
+ ui.unmount();expect(document.activeElement).toBe(trigger);trigger.remove();
+});

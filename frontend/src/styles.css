@@ -106,8 +106,8 @@ button, input, select, textarea { font: inherit; }
 button:not(:disabled), select:not(:disabled), label.button { cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.45; }
 
-/* 全局焦点环：先覆盖所有可交互元素，后面如有元素自带更具体的 focus 样式可叠加。 */
-:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+/* 普通控件使用细键盘焦点线；专用状态样式在下方替换，不叠框。 */
+:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
 .segment .segment-text-editor:focus-visible { outline: none; }
 
 .sr-only {
@@ -154,7 +154,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 
 .brand { gap: 10px; min-width: 170px; }
 button.brand { padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: 6px; }
-button.brand:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 4px; }
+button.brand:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 4px; }
 button.brand:disabled { opacity: .5; cursor: default; }
 
 .brand-mark {
@@ -238,7 +238,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .version-picker--current .version-picker-trigger { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-surface); }
 .version-picker--current.version-picker--original .version-picker-trigger { background: var(--color-original-badge); border-color: var(--color-original-badge); }
 .version-picker-trigger:hover { filter: brightness(0.96); }
-.version-picker-trigger:focus-visible, .version-picker-menu button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.version-picker-trigger:focus-visible, .version-picker-menu button:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 .version-picker-trigger:disabled { opacity: .55; cursor: default; }
 .version-picker-menu { position: fixed; inset: auto; margin: 0; z-index: 95; width: min(360px, calc(100vw - 120px)); max-height: 50vh; overflow: auto; padding: 6px; border: 1px solid var(--color-border-2); border-radius: 8px; background: var(--color-surface, #fffdf9); box-shadow: 0 6px 18px #28241e1a; font-size: 0.76rem; font-weight: 400; }
 
@@ -644,7 +644,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .find-bar__field input:focus {
   border-color: var(--color-accent-soft);
-  box-shadow: 0 0 0 2px rgba(50, 120, 132, 0.12);
+  box-shadow: 0 0 0 1px rgba(50, 120, 132, 0.12);
 }
 .find-bar > button {
   flex: 0 0 auto;
@@ -1211,7 +1211,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .panel-tabs > button:focus-visible {
   border-radius: 6px 6px 0 0;
-  outline: 2px solid var(--color-accent-soft);
+  outline: 1px solid var(--color-focus);
   outline-offset: -2px;
 }
 .panel-tabs > button.is-active .panel-tabs__count {
@@ -2226,7 +2226,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .field textarea { resize: vertical; line-height: 1.55; }
 .field input:focus, .field textarea:focus, .field select:focus, .participant-row input:focus, .participant-row select:focus {
   border-color: var(--color-accent-soft);
-  box-shadow: 0 0 0 2px rgba(50, 120, 132, 0.12);
+  box-shadow: 0 0 0 1px rgba(50, 120, 132, 0.12);
 }
 
 .participant-fieldset { min-width: 0; padding: 0; border: 0; }
@@ -2367,7 +2367,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
   line-height: 1.4;
 }
 .settings-body .cred-btn:focus-visible, .settings-body .cred-add-btn:focus-visible, .settings-body .cred-eye:focus-visible {
-  outline: 2px solid var(--color-focus);
+  outline: 1px solid var(--color-focus);
   outline-offset: 2px;
 }
 .settings-body .cred-eye, .settings-body .diagnostic-refresh { width: 32px; height: 32px; padding: 0; flex: none; }
@@ -2382,7 +2382,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
   line-height: 1.5;
 }
 .settings-body .field input, .settings-body .field select, .settings-body .cred-field__input input { height: 36px; }
-.settings-body .cred-field__input input:focus, .settings-body .cred-field__input select:focus { outline: 0; border-color: var(--color-accent-soft); box-shadow: 0 0 0 2px rgba(50, 120, 132, .12); }
+.settings-body .cred-field__input input:focus, .settings-body .cred-field__input select:focus { outline: 0; border-color: var(--color-accent-soft); box-shadow: 0 0 0 1px rgba(50, 120, 132, .12); }
 .settings-body .cred-field__label, .settings-body .settings-option { font-size: .78rem; }
 .settings-body .cred-provider { padding: var(--settings-section-padding); border-radius: 12px; border-color: var(--color-border-dialog); background: rgba(255, 255, 255, .55); }
 .settings-body .cred-provider__head h3 { font-size: .84rem; }
@@ -2423,7 +2423,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .settings-tab:focus-visible {
   border-radius: 6px 6px 0 0;
-  outline: 2px solid var(--color-accent-soft);
+  outline: 1px solid var(--color-focus);
   outline-offset: -2px;
 }
 .settings-block {
@@ -2469,7 +2469,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
   background: var(--color-surface);
   font-size: 0.76rem;
 }
-.api-key-row input:focus { border-color: var(--color-accent-soft); box-shadow: 0 0 0 2px rgba(50, 120, 132, 0.12); }
+.api-key-row input:focus { border-color: var(--color-accent-soft); box-shadow: 0 0 0 1px rgba(50, 120, 132, 0.12); }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .option-list { display: grid; gap: 8px; }
 .option-list label {
@@ -2841,7 +2841,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .version-badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .comparison-toggle { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: var(--color-text-3); font-size: 0.76rem; font-weight: 400; white-space: nowrap; }
 .comparison-toggle:hover:not(:disabled) { color: var(--color-text-1); }
-.comparison-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.comparison-toggle:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 .comparison-toggle-track { position: relative; width: 24px; height: 14px; flex: none; border-radius: 7px; background: #b9bdbb; }
 .comparison-toggle-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; transition: transform .12s; }
 .comparison-toggle.is-active { color: var(--color-accent); }
@@ -2859,7 +2859,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .comparison-deleted-segment .button { justify-self: start; padding: 4px 8px; font-size: 12px; }
 
 .comparison-text [data-comparison-change] { cursor: pointer; border-radius: 2px; }
-.comparison-text [data-comparison-change]:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.comparison-text [data-comparison-change]:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 .comparison-break { color: #386347; background: #e2eddb; user-select: none; }
 .comparison-change-menu { position: fixed; z-index: 1000; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-dialog); box-shadow: 0 4px 16px #0002; }
 .comparison-change-menu button { padding: 6px 14px; border: 0; border-radius: 4px; background: transparent; color: #386347; cursor: pointer; font: inherit; font-size: 13px; }
@@ -2902,7 +2902,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .transcription-card-actions { display: flex; gap: 16px; margin-left: auto; }
 .transcription-card-actions button { min-height: 28px; padding: 4px 12px; border: 1px solid var(--color-border-2); border-radius: 6px; color: var(--color-text-2); background: var(--color-surface); font-size: .74rem; font-weight: 400; }
 .transcription-card-actions button:hover { color: var(--color-accent); border-color: var(--color-accent-border); background: var(--color-accent-tint); }
-.transcription-card-actions button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 4px; }
+.transcription-card-actions button:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 4px; }
 .transcription-card--compact { width: 100%; margin: 8px 0 24px; padding-top: 20px; }
 .transcription-card--compact .transcription-steps { margin-top: 18px; margin-bottom: 16px; }
 .transcription-card-error { color: var(--color-warning); font-size: .84rem; line-height: 1.7; overflow-wrap: anywhere; }
@@ -2936,7 +2936,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .diagnostic-refresh { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; }
 .diagnostic-empty { margin: 0; }
 .diagnostic-timing-details summary { cursor: pointer; color: var(--color-text-3); font-size: .78rem; width: fit-content; }
-.diagnostic-timing-details summary:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 4px; }
+.diagnostic-timing-details summary:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 4px; border-radius: 4px; }
 .diagnostic-timing-details[open] summary { margin-bottom: 12px; }
 .diagnostic-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .diagnostic-list li { padding: 12px 0; border-top: 1px solid var(--color-border-3); }
@@ -2967,7 +2967,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .speaker-palette-grid { display: grid; grid-template-columns: repeat(5, 18px); gap: 8px; }
 .speaker-preset-palette .speaker-palette-swatch, .speaker-preset-palette .speaker-palette-add { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid #0000000d; border-radius: 4px; padding: 0; cursor: pointer; }
 .speaker-palette-swatch[aria-pressed="true"] { outline: 1px solid var(--color-text-2); outline-offset: 2px; }
-.speaker-preset-palette .speaker-palette-swatch:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.speaker-preset-palette .speaker-palette-swatch:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 .speaker-palette-add { background: transparent; color: var(--color-text-3); box-sizing: border-box; }
 .speaker-palette-add svg { display: block; flex: none; }
 .speaker-palette-text { padding: 0; border: 0; background: transparent; color: var(--color-text-3); font: inherit; cursor: pointer; }
@@ -3006,7 +3006,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .topbar-project svg { flex-shrink: 0; width: 18px; height: 18px; }
 .topbar-project span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-project:hover:not(:disabled) { color: var(--color-text); }
-.topbar-project:focus-visible { outline: 2px solid var(--color-text); outline-offset: 4px; }
+.topbar-project:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 4px; }
 .topbar-project:disabled { opacity: .5; cursor: default; }
 
 #settings-panel-prefs .settings-heading > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
@@ -3034,7 +3034,7 @@ input.ripple-checkbox[type="checkbox"] {
   accent-color: var(--color-accent);
   cursor: pointer;
 }
-input.ripple-checkbox[type="checkbox"]:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+input.ripple-checkbox[type="checkbox"]:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 input.ripple-checkbox[type="checkbox"]:disabled { cursor: default; opacity: .45; }
 
 /* The native Chrome app can be resized below 920px. Size the editor from the
@@ -3065,7 +3065,7 @@ input.ripple-checkbox[type="checkbox"]:disabled { cursor: default; opacity: .45;
 .segment-speaker > span { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .segment-speaker > select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
 .segment-speaker::after { content: ""; position: static; flex: none; width: 5px; height: 5px; margin-left: 8px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-1px) rotate(45deg); pointer-events: none; }
-.segment-speaker:has(select:focus-visible):not([data-focus-source="pointer"]) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.segment-speaker:has(select:focus-visible):not([data-focus-source="pointer"]) { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 
 @media (max-width: 679px) {
   .speaker-add { padding-inline: 2px; white-space: nowrap; }
@@ -3152,3 +3152,27 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 @media(max-width:679px) { :root { --chrome-action-gap:6px; } }
 @media(max-height:600px) { :root { --chrome-inline:12px; --chrome-block:6px; --chrome-height:48px; } }
 @media(max-width:919px) { body:has(.project-home:not(.project-home--welcome)) { min-width:540px; } }
+/* Mutually exclusive choices use one integrated keyboard marker. */
+.panel-tabs > button.is-active:focus-visible,
+.settings-tab--active:focus-visible { outline: none; }
+.panel-tabs > button.is-active:focus-visible::after {
+  height: 0; border-bottom: 1px dashed var(--color-focus); background: transparent;
+}
+.settings-tab--active:focus-visible { border-bottom: 1px dashed var(--color-focus); }
+.version-picker-option[aria-pressed="true"]:focus-visible {
+  outline: none; box-shadow: inset 0 -1px var(--color-focus);
+}
+/* Native radios must not inherit text-field padding or rectangular focus. */
+input[type="radio"] { box-sizing: border-box; padding: 0; border-radius: 50%; }
+
+input[type="radio"]:focus-visible { outline: none; }
+label:has(> input[type="radio"]:focus-visible),
+label:has(> input[type="radio"]:focus-visible) > span {
+  text-decoration: underline dashed var(--color-focus); text-underline-offset: 4px;
+}
+/* Text fields already have a border or underline to show editing focus. */
+.field input:not([type="radio"]):not([type="checkbox"]):focus-visible,
+.field textarea:focus-visible, .participant-row input:focus-visible,
+.cred-field__input input:focus-visible, .api-key-row input:focus-visible {
+  outline: none; border-color: var(--color-focus); box-shadow: none;
+}
