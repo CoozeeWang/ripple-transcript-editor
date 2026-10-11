@@ -15,9 +15,17 @@ Choose a build number higher than every previous internal build; `8` was used by
 
 The main window sets `dragDropEnabled: false` so file drops reach the editor's HTML drop zones. Tauri's native drop interception must not consume these events: the app uses the same target validation and import flow as its browser version. When WebKit supplies a dropped File without a persistent file handle, audio can be copied into the project; external-reference storage still requires the file picker. This also leaves the editor's internal drag sorting available.
 
-The desktop and web app icon uses `Icon/Ripple_app_paper_v2.png`; the macOS project-folder icon uses `Icon/Ripple_project_paper_v2.png`. Run `desktop/generate-icons.sh` to regenerate ICNS assets and the app PNG. The system ICNS adds a centered transparent inset; the web PNG and project icon retain their original margins. See `pad-system-icon.swift` for the fixed system geometry. The legacy `make-icon.swift` is retained for reproducing older icon builds.
+The desktop and web app icon uses `Icon/Ripple_app_paper_v2.png`; the macOS project-folder icon uses `Icon/Ripple_project_paper_v2.png`. Run `desktop/generate-icons.sh` to regenerate ICNS assets and the app PNG. The system ICNS uses a centered 840 × 840 visible body on a 1024 canvas, with width and height normalized separately and the raster measured at alpha > 16/255. The web PNG and project icon retain their original proportions and margins. See `pad-system-icon.swift` for the fixed system geometry. The legacy `make-icon.swift` is retained for reproducing older icon builds.
+
+Check every built ICNS representation and the unchanged in-app PNG:
+
+```sh
+swift desktop/tests/test-system-icon.swift desktop/src-tauri/icons/icon.icns Icon/Ripple_app_paper_v2.png desktop/src-tauri/icons/icon.png
+```
 
 Daily builds must use `--release --features custom-protocol`. Release optimization alone does not disable Tauri's development behavior: without this feature, Tauri replaces the Dock icon with its embedded PNG. The compiler rejects that combination, and the packaging script checks `--ripple-build-info` before writing the bundle. Production Dock and Launchpad icons both use the bundle ICNS; do not compensate for different icon sources by repeatedly changing artwork size.
+
+macOS can also retain an old image under a pinned Dock entry's cache identity. If a verified bundle update still shows stale artwork, quit Ripple and refresh only its entry with `swift desktop/refresh-mac-icon.swift /Applications/Ripple.app /absolute/private/tile-backup.plist`, then restart Dock with `killall Dock`. Use a new backup filename. The script preserves the position and other application entries, and refuses ambiguous matches or a running Ripple. Do not reset the entire Dock or Launchpad layout. Compare actual native Dock and Launchpad displays before delivering an icon change; resource tests alone do not establish native appearance.
 
 On macOS, creating or opening a valid `.ripple` project automatically sets its Finder custom icon using NSWorkspace. The icon is embedded in the native executable. Projects remain ordinary folders, so native selection and cross-platform project contents keep their existing structure. If decoration fails, the project remains usable with a visible notice. Portable project copies receive their own icon; no icon change is attempted for browser storage or on Windows. macOS may create a hidden `Icon` metadata file and resource forks; those are system decoration, not interview content. Finder appearance and metadata preservation when copied between filesystems still require native acceptance.
 
