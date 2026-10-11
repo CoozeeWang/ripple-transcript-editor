@@ -71,6 +71,7 @@ it('uses reviewed full messages and separate singular/plural counts without chan
   expect(msg('review.sessionCount', { count: 1 })).toBe('1 session');
   expect(msg('review.sessionCount', { count: 2 })).toBe('2 sessions');
   expect(msg('review.emptyTrash', { count: 1 })).toContain('1 item from');
+  expect(msg('review.emptyTrash', { count: 1 })).toContain('restore it.');
   expect(msg('review.emptyTrash', { count: 2 })).toContain('2 items from');
   expect(msg('review.importSummary', {
     originals: msg('review.originalCount', { count: 1 }),

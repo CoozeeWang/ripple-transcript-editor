@@ -1539,7 +1539,7 @@
     "importSummary": "{{originals}} · {{revisions}}. {{details}}",
     "projectFolder": "A “{{projectName}}.ripple” folder will be created here to store session details and transcripts.",
     "emptyTrash": "Permanently delete {{count}} items from this project’s trash? Ripple can’t restore them. Original external audio files won’t change.",
-    "emptyTrash_one": "Permanently delete {{count}} item from this project’s trash? Ripple can’t restore them. Original external audio files won’t change.",
+    "emptyTrash_one": "Permanently delete {{count}} item from this project’s trash? Ripple can’t restore it. Original external audio files won’t change.",
     "emptyTrash_other": "Permanently delete {{count}} items from this project’s trash? Ripple can’t restore them. Original external audio files won’t change.",
     "legacyMigration": "Legacy transcript files found: {{count}} (.edited.json / .transcript.json in the root folder). Migration moves them into <audio>.transcript/ folders and deletes the old files.",
     "highlightHint": "No highlights yet. Select text and press {{shortcut}} to highlight it.",
