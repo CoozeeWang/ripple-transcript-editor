@@ -254,12 +254,12 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
 
       <div className="segment-actions">
         <div className="segment-index">
-          <span>{String(index + 1).padStart(2, "0")}</span>
           {(segment.annotations?.length ?? 0) > 0 && (
             <span className="annotation-badge" data-tip={msg('SegmentItem.m0951', { v0: segment.annotations!.length })}>
               {segment.annotations!.length}
             </span>
           )}
+          <span className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
         </div>
         <div className="segment-actions__icons">
           {!viewingOriginal ? (

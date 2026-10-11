@@ -1416,6 +1416,10 @@ button.brand:disabled { opacity: .5; cursor: default; }
   line-height: 1;
   padding: 1px 7px 1px 0;
 }
+.segment-number {
+  flex-shrink: 0;
+  text-align: left;
+}
 .annotation-badge {
   display: inline-grid;
   place-items: center;
