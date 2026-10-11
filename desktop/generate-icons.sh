@@ -18,5 +18,6 @@ make_icon() {
 }
 # Paper masters already include their intended transparent margins.
 cp "$REPO/Icon/Ripple_app_paper_v2.png" "$DESKTOP/src-tauri/icons/icon.png"
-make_icon "$REPO/Icon/Ripple_app_paper_v2.png" "$DESKTOP/src-tauri/icons/icon.icns"
+swift -module-cache-path "$WORK/module-cache" "$DESKTOP/pad-system-icon.swift" "$REPO/Icon/Ripple_app_paper_v2.png" "$WORK/system-icon.png"
+make_icon "$WORK/system-icon.png" "$DESKTOP/src-tauri/icons/icon.icns"
 make_icon "$REPO/Icon/Ripple_project_paper_v2.png" "$DESKTOP/src-tauri/icons/project.icns"

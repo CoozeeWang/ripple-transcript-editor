@@ -79,6 +79,16 @@ class PackageMacTest(unittest.TestCase):
         self.assertNotEqual(self.package("8").returncode, 0)
         self.assertEqual((self.app / "Contents/Info.plist").read_bytes(), original)
 
+    def test_changed_icon_gets_a_new_bundle_resource_reference(self):
+        self.assertEqual(self.package("9").returncode, 0)
+        before = plistlib.loads((self.app / "Contents/Info.plist").read_bytes())
+        icon = self.root / "desktop/src-tauri/icons/icon.icns"
+        icon.write_bytes(b"updated synthetic icon")
+        self.assertEqual(self.package("10").returncode, 0)
+        after = plistlib.loads((self.app / "Contents/Info.plist").read_bytes())
+        self.assertNotEqual(before["CFBundleIconFile"], after["CFBundleIconFile"])
+        self.assertEqual((self.app / "Contents/Resources" / after["CFBundleIconFile"]).read_bytes(), icon.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()
