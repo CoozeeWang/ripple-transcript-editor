@@ -1761,5 +1761,8 @@
     "tunnelCopied": "隧道标识已复制。请粘贴到 ChatGPT 的 Tunnel 配置。",
     "copyFailed": "复制失败，请手动复制上方隧道标识。",
     "workbuddyStep3": "保持 Ripple 打开并启用 MCP 连接。启用后可直接在 WorkBuddy 对话中提出要求，无需从“＋”菜单选择 Ripple。"
+  },
+  "desktopRuntime": {
+    "backendUnavailable": "Ripple 后台未能启动。请重新打开 Ripple，或查看应用日志。"
   }
 }

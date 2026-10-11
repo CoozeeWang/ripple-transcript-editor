@@ -1,3 +1,4 @@
+import { msg } from '../i18n';
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
 
 // Development uses Vite's same-origin API proxy; release uses the bundled service.
@@ -27,5 +28,5 @@ export async function installDesktopRuntime(): Promise<void> {
     if (await invoke('backend_ready')) return;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error('Ripple 后台未能启动，请查看应用日志。');
+  throw new Error(msg('desktopRuntime.backendUnavailable'));
 }

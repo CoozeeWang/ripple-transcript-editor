@@ -1761,5 +1761,8 @@
     "tunnelCopied": "Tunnel ID copied. Paste it into ChatGPT’s Tunnel configuration.",
     "copyFailed": "Could not copy. Copy the Tunnel ID above manually.",
     "workbuddyStep3": "Keep Ripple open with MCP enabled. Once enabled, ask directly in a WorkBuddy conversation; you do not need to select Ripple from the “+” menu."
+  },
+  "desktopRuntime": {
+    "backendUnavailable": "Ripple’s local service could not start. Restart Ripple or check the application logs."
   }
 }
