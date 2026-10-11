@@ -13,6 +13,8 @@ Both have transparent exteriors, clean contours, no presentation background, and
 
 Current masters: `Ripple_app_paper_v2.png` and `Ripple_project_paper_v2.png`. Their existing transparent margins are preserved.
 
+Only the macOS system ICNS rendition normalizes the rectangular application tile to a centered 840 × 840 visible body on its 1024 × 1024 canvas, measured at alpha > 16/255. Width and height are scaled independently; the original artwork and in-app image retain their proportions. The generator measures the resulting raster and compensates for interpolation. This project target is based on peer application resources, not an Apple-mandated body size. All ICNS sizes are checked by `desktop/tests/test-system-icon.swift`.
+
 `frontend/public/ripple-icon.svg` embeds the app PNG without cropping or stretching. Run `desktop/generate-icons.sh` on macOS to regenerate `desktop/src-tauri/icons/icon.png`, `icon.icns` and `project.icns` from the masters. The native project icon is embedded in the executable and applied with NSWorkspace; missing write access does not block opening the project.
 
 `Ripple_logo_1024.png` is the earlier artwork retained for reference.
