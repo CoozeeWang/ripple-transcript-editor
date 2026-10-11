@@ -1,11 +1,13 @@
 """Public synthetic paths and credentials only."""
 import json
+import os
 import zipfile
 
 import pytest
 from fastapi import HTTPException
 
 from app import connector
+from app.bundled_runtime import bundled_python
 from app.connector_local import export_installation, select_client, selected_client
 
 
@@ -22,8 +24,8 @@ def test_selected_client_credentials_isolate_calls(tmp_path, monkeypatch):
     monkeypatch.setattr(connector, "DATA_ROOT", tmp_path)
     broker = connector.Broker()
     broker.initialize()
-    claude = (tmp_path / "connector/claude.key").read_text()
-    workbuddy = (tmp_path / "connector/workbuddy.key").read_text()
+    claude = (tmp_path / "connector/claude.key").read_text(encoding="utf-8")
+    workbuddy = (tmp_path / "connector/workbuddy.key").read_text(encoding="utf-8")
     select_client(tmp_path, "claude")
     broker.authorize("Bearer " + claude, "client")
     for other in (broker.client_key, workbuddy):
@@ -39,7 +41,7 @@ def test_selected_client_credentials_isolate_calls(tmp_path, monkeypatch):
 
 def test_exports_use_bundled_runtime_and_exclude_secret_values(tmp_path):
     resources = tmp_path / "Synthetic App 空格" / "backend"
-    python = resources / "python/bin/python3.12"
+    python = bundled_python(resources)
     python.parent.mkdir(parents=True)
     python.touch()
     data = tmp_path / "synthetic-data"
@@ -52,21 +54,21 @@ def test_exports_use_bundled_runtime_and_exclude_secret_values(tmp_path):
         assert package.testzip() is None
         manifest = json.loads(package.read("manifest.json"))
         assert manifest["server"]["type"] == "node"
-        assert manifest["compatibility"]["platforms"] == ["darwin"]
+        assert manifest["compatibility"]["platforms"] == ["win32" if os.name == "nt" else "darwin"]
         script = package.read("server/index.js").decode()
         assert secret not in script
         assert json.dumps(str(python)) in script
         assert "claude.key" in script
     other = tmp_path / "Ripple-WorkBuddy.json"
     export_installation(data, resources, "workbuddy", other)
-    config = json.loads(other.read_text())["mcpServers"]["Ripple"]
+    config = json.loads(other.read_text(encoding="utf-8"))["mcpServers"]["Ripple"]
     assert config["type"] == "stdio"
     assert config["command"] == str(python)
     assert config["args"][-1].endswith("workbuddy.key")
-    assert secret not in other.read_text()
+    assert secret not in other.read_text(encoding="utf-8")
     # Repeat export remains one valid artifact and does not alter stored credentials.
     export_installation(data, resources, "claude", target)
-    assert (data / "connector/claude.key").read_text() == secret
+    assert (data / "connector/claude.key").read_text(encoding="utf-8") == secret
 
 
 def test_missing_runtime_creates_no_export(tmp_path):
@@ -79,7 +81,7 @@ def test_missing_runtime_creates_no_export(tmp_path):
 def test_workbuddy_install_preserves_other_connections_and_exact_backup(tmp_path):
     from app.connector_local import install_workbuddy
     resources = tmp_path / "Synthetic App 空格/backend"
-    python = resources / "python/bin/python3.12"
+    python = bundled_python(resources)
     python.parent.mkdir(parents=True)
     python.touch()
     target = tmp_path / "synthetic-home/.workbuddy/mcp.json"
@@ -92,7 +94,8 @@ def test_workbuddy_install_preserves_other_connections_and_exact_backup(tmp_path
     assert value['setting'] is True
     backups = list(target.parent.glob('mcp.json.ripple-backup-*'))
     assert len(backups) == 1 and backups[0].read_bytes() == raw
-    assert backups[0].stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert backups[0].stat().st_mode & 0o777 == 0o600
     assert not install_workbuddy(tmp_path / "data", resources, target)
     assert len(list(target.parent.glob('mcp.json.ripple-backup-*'))) == 1
 
@@ -102,7 +105,7 @@ def test_workbuddy_install_preserves_other_connections_and_exact_backup(tmp_path
 def test_workbuddy_invalid_config_is_untouched(tmp_path, raw):
     from app.connector_local import install_workbuddy
     resources = tmp_path / "runtime"
-    python = resources / "python/bin/python3.12"
+    python = bundled_python(resources)
     python.parent.mkdir(parents=True)
     python.touch()
     target = tmp_path / "config/mcp.json"
@@ -118,7 +121,7 @@ def test_workbuddy_invalid_config_is_untouched(tmp_path, raw):
 def test_workbuddy_symlink_and_concurrent_install_refused(tmp_path):
     from app.connector_local import install_workbuddy
     resources = tmp_path / "runtime"
-    python = resources / "python/bin/python3.12"
+    python = bundled_python(resources)
     python.parent.mkdir(parents=True)
     python.touch()
     other = tmp_path / "other.json"
@@ -128,7 +131,7 @@ def test_workbuddy_symlink_and_concurrent_install_refused(tmp_path):
     target.symlink_to(other)
     with pytest.raises(ValueError):
         install_workbuddy(tmp_path, resources, target)
-    assert other.read_text() == '{}'
+    assert other.read_text(encoding="utf-8") == '{}'
     target.unlink()
     lock = target.parent / '.ripple-install.lock'
     lock.write_text('')
@@ -140,7 +143,7 @@ def test_workbuddy_symlink_and_concurrent_install_refused(tmp_path):
 def test_workbuddy_first_install_creates_config_without_backup(tmp_path):
     from app.connector_local import install_workbuddy
     resources = tmp_path / 'runtime'
-    python = resources / 'python/bin/python3.12'
+    python = bundled_python(resources)
     python.parent.mkdir(parents=True)
     python.touch()
     target = tmp_path / 'new-home/.workbuddy/mcp.json'
@@ -152,7 +155,7 @@ def test_workbuddy_first_install_creates_config_without_backup(tmp_path):
 def test_workbuddy_refresh_updates_only_existing_ripple_entry(tmp_path):
     from app.connector_local import install_workbuddy
     resources = tmp_path / 'new runtime'
-    python = resources / 'python/bin/python3.12'
+    python = bundled_python(resources)
     python.parent.mkdir(parents=True)
     python.touch()
     target = tmp_path / 'config/mcp.json'

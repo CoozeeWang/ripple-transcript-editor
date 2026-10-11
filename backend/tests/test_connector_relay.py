@@ -49,7 +49,8 @@ async def test_configuration_hides_credentials_and_persists_restart(tmp_path, mo
     result = await relay.configure(tmp_path, "http://127.0.0.1:18801", "pair")
     assert "device_token" not in result
     assert device_token not in json.dumps(result)
-    assert os.stat(tmp_path / "connector/relay.json").st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert os.stat(tmp_path / "connector/relay.json").st_mode & 0o777 == 0o600
     paired = True
     assert (await relay.configure(tmp_path, "http://127.0.0.1:18801", "status"))["paired"]
     assert relay.saved(tmp_path)["device_token"] == device_token

@@ -2,6 +2,7 @@
 compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
 
 mod project_icon;
+mod backend_runtime;
 mod native_menu;
 mod grants;
 mod pdf_print;
@@ -284,7 +285,7 @@ fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<C
     if !matches!(client, "chatgpt" | "claude" | "workbuddy") { return Err("invalid_client".into()); }
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let mut command = Command::new(resources.join("python/bin/python3.12"));
+    let mut command = backend_runtime::background_command(backend_runtime::python(&resources));
     command.env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.connector_local", action, "--client", client, "--resources"]).arg(resources)
         .arg("--data").arg(app_data(&app).map_err(|_| "data_unavailable")?)
@@ -399,7 +400,7 @@ fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let data = app_data(&app).map_err(|_| "data_unavailable")?;
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let mut child = Command::new(resources.join("python/bin/python3.12"))
+    let mut child = backend_runtime::background_command(backend_runtime::python(&resources))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.connector_setup"]).arg(&data).arg(&resources)
         .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "setup_failed")?;
@@ -426,7 +427,7 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let _ = fs::remove_file(data.join("health.url"));
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let child = Command::new(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
+    let child = backend_runtime::background_command(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .env("RIPPLE_DATA_DIR", app_data(&app).map_err(|_| "data_unavailable")?)
         .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
@@ -464,7 +465,7 @@ fn connector_tunnel_stop(state: tauri::State<'_, ConnectorTunnel>) {
 fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     if TcpStream::connect(("127.0.0.1", PORT)).is_ok() { return Err(format!("端口 {PORT} 已被占用；请先关闭占用它的程序")); }
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
-    let python = stage.join("python/bin/python3.12");
+    let python = backend_runtime::python(&stage);
     if !python.is_file() { return Err("App 缺少随附后台".into()); }
     let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
@@ -472,10 +473,12 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let python_path = std::env::join_paths([stage.join("backend"), stage.join("site-packages")]).map_err(|e| e.to_string())?;
     // Finder launches apps with a smaller PATH than an interactive shell.
-    let mut executable_paths = vec![PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")];
+    let mut executable_paths = Vec::new();
+    #[cfg(target_os = "macos")]
+    executable_paths.extend([PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")]);
     executable_paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
     let executable_path = std::env::join_paths(executable_paths).map_err(|e| e.to_string())?;
-    Command::new(python).current_dir(&stage).env("PYTHONPATH", python_path)
+    backend_runtime::background_command(python).current_dir(&stage).env("PYTHONPATH", python_path)
         .env("PATH", executable_path)
         .env("RIPPLE_DATA_DIR", &data).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.desktop_runner", "--host", "127.0.0.1", "--port", &PORT.to_string()])
@@ -493,10 +496,19 @@ fn stop_backend(app: &tauri::AppHandle) {
 
 fn main() {
     if std::env::args().any(|arg| arg == "--ripple-build-info") {
-        println!("{}", serde_json::json!({
+        let info = serde_json::json!({
             "custom_protocol": cfg!(feature = "custom-protocol"),
             "debug": cfg!(debug_assertions),
-        }));
+        });
+        #[cfg(windows)]
+        let info = {
+            let mut info = info;
+            info["version"] = option_env!("RIPPLE_APP_VERSION").into();
+            info["build"] = option_env!("RIPPLE_BUILD_NUMBER").into();
+            info["commit"] = option_env!("RIPPLE_SOURCE_COMMIT").into();
+            info
+        };
+        println!("{}", info);
         return;
     }
     let mut context = tauri::generate_context!();
