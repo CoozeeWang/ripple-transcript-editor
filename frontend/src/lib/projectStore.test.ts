@@ -1,6 +1,7 @@
+import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
+import { referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
 import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
@@ -764,4 +765,17 @@ it('keeps permission loss, missing files and changed content distinct for refere
   source.files.set('interview.wav',new File(['original audio'],'interview.wav'));
   expect(await (await readProjectMedia(p,interview.id,recording)).text()).toBe('original audio');
   expect(mediaFailure(new Error('IO error')).reason).toBe('unreadable');
+});
+
+it('writes one complete English reference note without duplicating session and manuscript information', async () => {
+  const {recording, interview}=await fixture('reference');
+  await setInterfaceLanguage('en');
+  try {
+    const note=referenceAudioNotice(recording, interview.title, ['Synthetic transcript']);
+    expect(note.match(/Session:/g)).toHaveLength(1);
+    expect(note.match(/Linked transcripts:/g)).toHaveLength(1);
+    expect(note).toContain('references an external file');
+    expect(note).toContain('Synthetic transcript');
+    expect(note).toContain('Locate original audio');
+  } finally { await setInterfaceLanguage('zh-CN'); }
 });
