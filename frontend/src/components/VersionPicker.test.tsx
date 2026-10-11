@@ -167,3 +167,15 @@ it('keeps a mouse selection alive when WebKit would blur the focused row without
  if(option.isConnected)fireEvent.click(option,{detail:1});
  expect(select).toHaveBeenCalledWith('m1','original');
 });
+
+it.each(['current', 'comparison'] as const)('marks the selected %s row independently of keyboard focus', variant => {
+ render(<VersionPicker models={models} value="m1:e1" variant={variant} onSelect={vi.fn()} onRename={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button', { name: variant==='current' ? '当前版本：v1' : '对照版本：v1' }));
+ const selected=screen.getByRole('button', { name:'v1', pressed:true });
+ const other=screen.getByRole('button', { name:'校订稿', pressed:false });
+ other.focus();
+ expect(document.activeElement).toBe(other);
+ expect(selected.querySelector('.version-picker-selection')?.getAttribute('aria-hidden')).toBe('true');
+ expect(selected.querySelector('.version-picker-selection')?.textContent).toBe('✓');
+ expect(other.querySelector('.version-picker-selection')).toBeNull();
+});
