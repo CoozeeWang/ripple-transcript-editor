@@ -40,6 +40,7 @@ try {
   // Native credential/lifecycle calls are a fixture; UI, document state and saving are real.
   await page.addInitScript(key => { window.__connectorInvocations = []; window.__TAURI__ = { core: { invoke: async name => {
     window.__connectorInvocations.push(name);
+    if (name === 'connector_client_status') return { client: 'chatgpt' };
     if (name === 'connector_setup_status') return { client_path: '/synthetic/tunnel-client', tunnel_id: 'tunnel_synthetic', has_key: true, configured: true };
     if (name === 'connector_open_platform' && window.__failPlatform) throw new Error('synthetic_open_failure');
     return name === 'connector_window_key' ? key : true;
@@ -50,7 +51,7 @@ try {
   if (await page.getByRole('heading', { name: 'MCP 连接', exact: true }).count()) throw new Error('MCP must not be in General settings');
   await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
   await page.getByLabel('启用 MCP 连接').check();
-  await page.getByText('连接已就绪，可到外部 AI 应用提出需求').waitFor();
+  await page.getByText('本机连接已就绪，请在 AI 软件中调用 Ripple。').waitFor();
   const result = await promisify(execFile)(python, [join(repo, 'scripts/fixtures/connector-mcp-check.py')],
     { cwd: repo, env: { ...process.env, RIPPLE_CONNECTOR_TEST_DIR: directory, RIPPLE_CONNECTOR_TEST_URL: backendUrl } });
   await page.getByRole('dialog').getByRole('button', { name: /关闭/ }).first().click();
