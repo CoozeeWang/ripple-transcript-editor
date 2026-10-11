@@ -21,7 +21,7 @@ function Form() {
 }
 it('switches service field accessible names while preserving a typed credential', async () => {
   const onChange = vi.fn();
-  render(<FieldInput field={{ key: 'token', label: 'API Key（可选）', secret: true, required: true }} value="synthetic-key" visible={false} onToggle={() => {}} onChange={onChange} />);
+  render(<FieldInput field={{ key: 'token', label: 'API Key（可选）', placeholder: '', secret: true, required: true }} value="synthetic-key" visible={false} onToggle={() => {}} onChange={onChange} />);
   const input = screen.getByLabelText('API Key（可选）');
   await act(() => setInterfaceLanguage('en'));
   expect(screen.getByLabelText('API key (optional)')).toBe(input);
