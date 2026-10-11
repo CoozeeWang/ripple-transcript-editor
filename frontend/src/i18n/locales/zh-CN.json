@@ -1498,8 +1498,8 @@
     "b0300": "等待领取结果的转录任务过多。请先领取已有结果，再开始新的转录。",
     "b0301": "转录任务尚未完成，请稍后重试。",
     "rule_conflict": "规则存在冲突，请调整后重试：{{v0}}",
-    "interview_missing": "Interview not found",
-    "audio_missing": "Audio not found",
+    "interview_missing": "找不到访谈。请重新打开项目后重试。",
+    "audio_missing": "找不到音频。请重新选择原音频后重试。",
     "internal_error": "服务未能完成操作，请稍后重试或查看诊断信息。",
     "validation_error": "输入内容过长或格式不正确，请检查后重试。"
   },

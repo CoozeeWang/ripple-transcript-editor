@@ -1498,8 +1498,8 @@
     "b0300": "Too many transcription results are waiting to be retrieved. Retrieve existing results before starting another transcription.",
     "b0301": "The transcription task isn’t complete yet. Try again later.",
     "rule_conflict": "Rules conflict. Adjust them and retry: {{v0}}",
-    "interview_missing": "Interview not found",
-    "audio_missing": "Audio not found",
+    "interview_missing": "Interview not found. Reopen the project and retry.",
+    "audio_missing": "Audio not found. Select the original audio and retry.",
     "internal_error": "The service could not complete the operation. Retry or check diagnostics.",
     "validation_error": "Input is too long or invalid. Check it and retry."
   },

@@ -36,3 +36,11 @@ it('updates export format labels after switching an already loaded interface', a
   expect(exportFormats().find(([,format]) => format === 'txt')?.[0]).toContain('Plain text');
   expect(exportFormats().find(([,format]) => format === 'pdf')?.[0]).toBe('PDF');
 });
+
+it('localizes missing interview and audio errors from current and legacy service responses',async()=>{
+ await setInterfaceLanguage('zh-CN');
+ expect(apiErrorMessage({message_code:'ripple_interview_missing'},404)).toBe('找不到访谈。请重新打开项目后重试。');
+ expect(apiErrorMessage({detail:'Audio not found'},404)).toBe('找不到音频。请重新选择原音频后重试。');
+ await setInterfaceLanguage('en');
+ expect(apiErrorMessage({message_code:'ripple_audio_missing'},404)).toContain('Select the original audio and retry.');
+});
