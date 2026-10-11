@@ -240,7 +240,8 @@ body:has(.project-home--welcome) { min-width: 0; }
 .project-trash-row small { display:block;margin-top:4px;font-size:12px;color:var(--color-text-3); }
 .trash-material-name { overflow-wrap:anywhere; }
 .trash-delete-options { display:grid;gap:12px;margin:20px 0;font-size:14px; }
-.trash-delete-options label { display:flex;align-items:center;gap:8px; }
+.trash-delete-options label { display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:10px; }
+.trash-delete-options label span { overflow-wrap:anywhere; }
 .project-trash-undo { position:fixed;top:88px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);padding:8px 16px;background:var(--color-surface-dialog);border:1px solid var(--color-border);border-radius:8px;font:400 13px/1.5 var(--font-sans);box-shadow:0 4px 16px #0000000d; }
 
 .project-title-heading { display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;flex:1;min-width:0; }
@@ -260,9 +261,9 @@ body:has(.project-home--welcome) { min-width: 0; }
 .associate-audio-list svg { flex:none;color:var(--color-brand);width:16px;height:16px; }
 .associate-audio-list span { overflow-wrap:anywhere; }
 
-.project-export-dialog input[type="radio"] { width:16px; height:16px; margin:0; flex:none; accent-color:var(--color-brand); }
+.project-export-dialog input[type="radio"] { width:16px; height:16px; box-sizing:border-box; padding:0; margin:0; flex:none; accent-color:var(--color-brand); }
 
-.trash-delete-options input[type="radio"] { width:16px; height:16px; margin:0; flex:none; accent-color:var(--color-brand); }
+.trash-delete-options input[type="radio"] { width:16px; height:16px; box-sizing:border-box; padding:0; margin:0; flex:none; accent-color:var(--color-brand); }
 
 /* Keep format labels readable; give selectors their own row on narrow dialogs. */
 :lang(en) .export-entry-options select { width: 164px; }
@@ -277,6 +278,6 @@ body:has(.project-home--welcome) { min-width: 0; }
 .project-error-notice > svg { flex:0 0 16px; width:16px; height:16px; color:var(--color-danger); margin-top:2px; }
 .project-error-notice p { min-width:0; margin:0; font:400 13px/1.5 var(--font-sans); overflow-wrap:anywhere; }
 
-.recent-project-recovery { flex-wrap: wrap; }
-.recent-project-recovery p { flex: 1 1 240px; }
-.recent-project-recovery button { flex: 0 0 auto; }
+.recent-project-recovery { flex-direction:column; gap:12px; padding:12px 16px; }
+.recent-project-recovery__actions { display:flex; flex-wrap:wrap; gap:8px; }
+.recent-project-recovery__actions .button { flex:0 1 auto; min-width:0; font:400 .86rem/1.5 var(--font-sans); white-space:normal; }

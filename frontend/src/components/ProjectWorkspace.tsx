@@ -214,8 +214,10 @@ export function ProjectWorkspace() {
       {project?.finderIconWarning && <p role="status" className="settings-hint">{msg('ProjectWorkspace.finderIconWarning')}</p>}
       {recentRecovery && <div className="project-error-notice recent-project-recovery" role="status">
         <p>{msg(recentRecovery.reason==='missing'?'ProjectWorkspace.recentMissing':recentRecovery.reason==='permission'?'ProjectWorkspace.recentPermission':'ProjectWorkspace.recentUnreadable',{title:recentRecovery.title})}</p>
-        <button type="button" disabled={busy} onClick={()=>chooseProject(undefined,recentRecovery.id)}>{msg('ProjectWorkspace.recentRecover')}</button>
-        <button type="button" disabled={busy} onClick={()=>setRecentRecovery(null)}>{msg('ProjectWorkspace.recentDismiss')}</button>
+        <div className="recent-project-recovery__actions">
+          <button type="button" className="button button--secondary" disabled={busy} onClick={()=>chooseProject(undefined,recentRecovery.id)}>{msg('ProjectWorkspace.recentRecover')}</button>
+          <button type="button" className="button button--secondary" disabled={busy} onClick={()=>setRecentRecovery(null)}>{msg('ProjectWorkspace.recentDismiss')}</button>
+        </div>
       </div>}
       {error && !welcoming && <div ref={errorNotice} className="project-error-notice" role="alert" aria-atomic="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
