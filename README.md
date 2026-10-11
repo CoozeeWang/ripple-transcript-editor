@@ -40,28 +40,13 @@ To transcribe, create or open an interview, choose an audio file, then click **�
 | `Cmd + Z` | Undo |
 | `Cmd + Shift + Z` | Redo |
 
+## MCP connection
+
+The personal desktop MCP connection lets external AI clients read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
+
 ## AI-assisted editing
 
-Open **设置 → 编辑引擎** to configure a text model separately from transcription. The first version supports Chat Completions-compatible endpoints with JSON-object output; use the provider's base URL (without `/chat/completions`), model ID, and API key. Local HTTP services are supported on loopback addresses. The launcher checks for the editing configuration route for multi-engine configuration before reusing an existing backend and refreshes older services. `node scripts/launcher.mjs refresh-backend` can refresh the backend while keeping the editor window open.
-
-In an editable transcript, choose **AI 辅助编辑**:
-
-1. **选择编辑方案** offers three alternatives, in order: **常用方案**, **从已有修订中生成方案**, and **自定义方案**. Choose a preset or saved plan directly; no testing or model-tuning step is required. To generate a new plan, select a range you have corrected, compare it with the original transcript, and review the generated rules. Rules can be unchecked, edited, or supplemented. Custom plans use the same rule editor. Confirm a named plan for this document only, or explicitly save it as a reusable common plan. Generated plans save reusable rules only, excluding source examples and model summaries. Existing common plans are updated only through an explicit update action.
-2. On the same page, **选择编辑范围** offers **全文 / 指定范围**. The footer identifies the active plan next to **开始 AI 辅助编辑**. Only this action sends the text for editing. Generating a plan also calls the selected model; writing or selecting rules does not.
-
-Completed AI output is saved as a new editing version and opens directly in the normal main editor. It defaults to single-column insertion/deletion marks against the version used for this AI run. The source remains intact. The version badge row lets users select another comparison version and toggle marks with **显示修改痕迹**, **⌘⇧Y** on macOS, or **Ctrl+Shift+Y** elsewhere. Ordinary editing also supports this comparison mode. Editing, saving, and undo use the normal manuscript workflow; individual review confirmations are not required. Comparison decorations never become saved text. Click a marked text change to accept it (keep the current wording and hide that mark) or reject it (restore that portion of the comparison version). Each action is undoable; confirmations are saved with the editing version, scoped to its comparison source, and excluded from exports. No per-segment approval is required.
-
-Generation drafts are checkpointed under the transcript container's `ai-review/` directory, outside the version manifest. Reopening AI editing on the same source restores plan selection, unfinished rules, or recoverable generated output. Legacy review decisions remain recoverable; legacy trial candidates migrate into plan rule review without restarting tests. Incomplete generation cannot be published. A changed source blocks publication from an older snapshot. A failed version save keeps completed output available to retry without another model request; a successful save clears the draft.
-
-Editing runs at most two batches concurrently, with up to 32 segments and 6000 characters per batch. Checkpoints retain source order; cancellation or a failed batch stops further requests. Reported rule conflicts stop generation. Explicit deletion and same-speaker merging are applied to the new version. Merging preserves paragraph boundaries, word timestamps, annotations, and highlights. Deletion removes the selected segment and its annotations/highlights, without silently merging neighbours. Merges stay within a request batch and cannot target a deleted segment.
-
-Each engine has named credential profiles, with independent editing/transcription defaults and show/hide controls. The old single editing configuration migrates automatically. The editing dialog can choose a saved profile for each run and displays its requested model name.
-
-Configuration and named preferences (including interview excerpts) live in the local data directory's `ai-editing.json`. API keys are omitted from lists and returned only when you explicitly reveal or edit a saved credential profile. Text requests contain only the selected text, speaker names, preference description, and examples; no audio is sent. Cancelling stops later batches and retains completed batches in the review draft; the remote provider may continue processing a request already sent.
-
-Limits: at most 20 examples / 24,000 combined characters per preference; each edit request contains up to 32 segments / 6,000 characters. Longer selections use at most two concurrent batches. A single segment over 6,000 characters must be split first. Preference changes require user confirmation; native non-compatible provider protocols and model retraining are outside this version. Model output is validated structurally; factual fidelity and editing taste still require human review.
-
-The isolated visual fixture at `/tests/ai-editor.html` uses synthetic data and in-memory responses. Automated tests mock model calls; a live provider and real editing quality must be evaluated after configuring your text model. Protocol reference: [JSON output](https://api-docs.deepseek.com/guides/json_mode/).
+Ripple has no built-in AI editing model, saved editing plans, or editing credential store. In **Settings → AI-assisted editing**, configure an external AI application through the MCP connection. The application can read and analyse the current interview on request, publish a new editable version for normal comparison, and add AI-labelled annotations or highlights to the current editable version. It never overwrites the source version. Rules agreed through MCP apply only to the current interview or task. See [MCP connection](docs/AI_CONNECTOR.md) and [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## Naming and compatibility
 
@@ -126,3 +111,5 @@ See [product documentation](docs/README.md) for the current development and acce
 For contributors, [development workflow](docs/WORKFLOW.md) defines branches, checks, review and delivery. [Ripple Stylebook](docs/STYLEBOOK.md) records current interface rules; read the relevant sections when changing visible behavior. Private planning and acceptance records remain outside this public source repository.
 
 Word timing in editable versions keeps provenance back to the model's original transcript. Replacements inherit the replaced source range; insertions use a separate approximate anchor. Comparison selection does not reassign unchanged text to a different source. Segments with replacement, approximate, or unresolved timing show “含近似定位”. This preserves existing audio references; it does not perform acoustic forced alignment. Origin metadata is saved locally and omitted from JSON exports.
+
+The public relay is retained as development history and is not the default connection route. Ripple does not require its developer to operate a public server. See [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).

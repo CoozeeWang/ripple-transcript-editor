@@ -7,7 +7,7 @@ export const MAX_PROBLEMS = 100;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const operations = {
   get open() { return msg('diagnostics.m1250'); }, get save() { return msg('diagnostics.m1251'); }, get rename() { return msg('diagnostics.m1252'); }, get transcription() { return msg('diagnostics.m1253'); },
-  get editing() { return msg('diagnostics.m1254'); }, get version() { return msg('diagnostics.m1255'); }, get import() { return msg('diagnostics.m1256'); }, get export() { return msg('diagnostics.m1257'); },
+  get version() { return msg('diagnostics.m1255'); }, get import() { return msg('diagnostics.m1256'); }, get export() { return msg('diagnostics.m1257'); },
   get engine() { return msg('diagnostics.m1258'); }, get runtime() { return msg('diagnostics.m1259'); }, get comparison() { return msg('diagnostics.m1260'); },
 } as const;
 export type Operation = keyof typeof operations;
@@ -30,15 +30,6 @@ function reasonOf(error: unknown): Reason {
   const value = error as { name?: unknown; code?: unknown; message?: unknown } | null;
   // Inspect only to classify. Never retain exception messages, stacks or upstream bodies.
   const text = [value?.name, value?.code, value?.message].filter(v => typeof v === "string").join(" ");
-  const classified: [RegExp, Reason][] = [
-    [/建立模型服务连接超时/, "connect_timeout"], [/等待模型响应数据超时/, "read_timeout"],
-    [/发送模型请求数据超时/, "write_timeout"], [/等待可用模型连接超时/, "pool_timeout"],
-    [/代理连接失败/, "proxy"], [/模型服务连接建立失败/, "connect"],
-    [/模型响应连接中断/, "connection_lost"], [/模型请求发送失败/, "write"],
-    [/模型输出达到长度上限/, "output_limit"], [/文本模型请求失败/, "upstream_http"],
-  ];
-  const specific = classified.find(([pattern])=>pattern.test(text));
-  if (specific) return specific[1];
   if (/NotAllowed|SecurityError|permission|权限|密钥|401|403/i.test(text)) return "permission";
   if (/timeout|timed out|超时/i.test(text)) return "timeout";
   if (/QuotaExceeded|ENOSPC|空间不足|写入/i.test(text)) return "storage";

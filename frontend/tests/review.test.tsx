@@ -1,5 +1,5 @@
 import {useTranscriptHistory} from "../src/useTranscriptHistory";
-import {applyAISuggestions} from "../src/lib/aiEditing";
+import {applyAISuggestions} from "../src/lib/aiVersionEdits";
 import { writeEditorText } from "../src/lib/paragraphEditor";
 /* eslint-disable @typescript-eslint/no-explicit-any -- In-memory filesystem test doubles implement only the APIs exercised below. */
 // @vitest-environment jsdom
@@ -13,7 +13,7 @@ import { useVersions } from '../src/hooks/useVersions';
 import { useFindReplace } from '../src/hooks/useFindReplace';
 import { useShortcuts } from '../src/hooks/useShortcuts';
 import { splitSegmentAt, mergeSegmentWithNext } from '../src/lib/segmentOps';
-import { markReviewed, isReviewed } from '../src/lib/aiEditing';
+import { markReviewed, isReviewed } from '../src/lib/revisions';
 import { saveInterviewDetails, readModelEdit, listAudioFiles, readEdited, readManifest, saveActiveEdit, persistActiveModel, renameAudio, createEdit, createModel, renameEditLabel, removeEdit, removeModelOriginal } from '../src/localStore';
 
 // Regression contracts use an in-memory filesystem; no real user data is accessed.

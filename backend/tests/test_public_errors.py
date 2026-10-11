@@ -17,7 +17,7 @@ def test_unknown_details_do_not_become_localization_keys():
 
 
 def test_api_returns_stable_code_without_exposing_validation_input():
-    response = TestClient(app).post("/api/ai/edit", json={"api_key": "secret-test-value", "segments": "private manuscript"})
+    response = TestClient(app).post("/api/providers/openai_compatible/credentials", json={"name": "fixture", "values": "secret-test-value", "private": "private manuscript"})
     assert response.status_code == 422
     assert response.json()["code"] == "validation_error"
     assert response.json()["message_code"] == "ripple_validation_error"

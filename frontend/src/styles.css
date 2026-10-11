@@ -511,8 +511,6 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .toolbar-button-icon { display: block; width: 13px; height: 13px; flex: none; }
 .button input { display: none; }
 .button--secondary { border-color: var(--color-border-2); background: var(--color-surface); }
-.button.button--ai { background: var(--color-accent-tint); border-color: var(--color-accent-border); color: var(--color-text-3); }
-.button.button--ai:hover { background: #d7e7e9; }
 .button--primary { color: var(--color-surface); background: var(--color-accent); }
 .button--danger { color: var(--color-danger); border-color: var(--color-danger-border); background: var(--color-danger-bg); }
 .button--danger:hover { background: #fbe9e9; }
@@ -1396,15 +1394,13 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .annotation-add textarea:focus { border-color: var(--color-border-active); }
 .annotation-add button { align-self: flex-end; }
-.annotation-add button:disabled,
-.ai-dialog .button--primary:disabled {
+.annotation-add button:disabled {
   opacity: 1;
   background: #c1d9dd;
   color: #39636a;
   border-color: #b5cdd1;
 }
-.annotation-add button:not(:disabled):hover,
-.ai-dialog .button--primary:not(:disabled):hover { background: var(--color-accent-hover); }
+.annotation-add button:not(:disabled):hover { background: var(--color-accent-hover); }
 
 .segment-index {
   display: flex;
@@ -2701,6 +2697,18 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .settings-folder-name { color: #7c7a70; font-size: 0.8rem; }
 .settings-hint { margin: 0; color: #8a8779; font-size: 0.74rem; line-height: 1.5; }
 
+/* MCP uses the settings control size throughout; only the section title is larger. */
+.settings-body--ai > .settings-block > h3 { margin: 0; font-size: .84rem; }
+.settings-mcp { font-size: .78rem; line-height: 1.5; }
+.settings-mcp h3 { margin: 0; font-size: .84rem; }
+.settings-mcp .settings-hint, .settings-mcp .field > span,
+.settings-mcp .button, .settings-mcp summary { font-size: inherit; font-weight: 400; }
+.settings-mcp .connector-setup a { color: var(--color-accent); width: fit-content; text-underline-offset: 3px; }
+.settings-mcp .connector-setup a:focus-visible, .settings-mcp summary:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 3px; }
+.settings-mcp .connector-error { color: var(--color-danger); }
+.settings-mcp summary { cursor: pointer; }
+
+
 /* ---- 转录引擎密钥管理（CredentialManager） ---- */
 .cred-manager { display: grid; gap: 18px; }
 .cred-provider {
@@ -3122,8 +3130,6 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 .toolbar .button,
 .dialog-actions .button,
 .project-actions .button,
-.ai-actions .button,
-.plan-library-actions .button,
 .cred-profile__actions .button { flex-shrink: 0; white-space: nowrap; }
 .dialog-actions, .modal-actions { flex-wrap: wrap; }
 .settings-tabs { flex-wrap: wrap; }
@@ -3152,6 +3158,29 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 @media(max-width:679px) { :root { --chrome-action-gap:6px; } }
 @media(max-height:600px) { :root { --chrome-inline:12px; --chrome-block:6px; --chrome-height:48px; } }
 @media(max-width:919px) { body:has(.project-home:not(.project-home--welcome)) { min-width:540px; } }
+
+.settings-mcp .connector-setup-card > .settings-hint { margin: 8px 0; }
+.settings-mcp { display: grid; gap: 12px; }
+.settings-mcp .connector-setup { display: grid; gap: 12px; }
+.settings-mcp .connector-client-selection { display: grid; gap: 8px; }
+.settings-mcp .connector-client-selection > .cred-profile__fields { margin: 0; }
+.settings-mcp .connector-setup-card { margin: 8px 0 0; }
+.settings-mcp .cred-field__input input { font-size: .84rem; }
+.settings-mcp .cred-field__input select { font-size: .78rem; }
+.settings-mcp .cred-field__hint { margin-top: -6px; }
+.settings-mcp .connector-client-selection .cred-profile__actions { margin-top: 0; }
+.settings-mcp .connector-steps { padding-left: 24px; }
+.settings-mcp .connector-steps li + li { margin-top: 8px; }
+.settings-mcp .connector-platform { margin-top: 12px; }
+.settings-mcp .cred-field__hint { font-size: .78rem; }
+@media (max-width: 600px) { .settings-mcp .cred-field__hint { grid-column: 1; margin-top: 0; } }
+
+.annotation-ai-label { color: var(--color-accent); font-size: .78rem; font-weight: 500; margin-left: auto; }
+
+.settings-mcp .cred-profile__name { font-size: .84rem; }
+
+.settings-mcp .connector-pair-code { font-size: .84rem; font-family: var(--font-mono, monospace); letter-spacing: .06em; overflow-wrap: anywhere; }
+
 /* Mutually exclusive choices use one integrated keyboard marker. */
 .panel-tabs > button.is-active:focus-visible,
 .settings-tab--active:focus-visible { outline: none; }

@@ -1,5 +1,5 @@
-import type { Segment } from "../types";
-import type { AISuggestion } from "./aiEditing";
+import type { Segment, Transcript } from "../types";
+import type { AISuggestion } from "./aiVersionEdits";
 import { mapCharsByDiff } from "./transcriptOps";
 
 export type Choice = "pending" | "accept" | "reject";
@@ -40,15 +40,24 @@ export function resolvedSuggestion(_original: Segment, suggestion: AISuggestion,
   return {...suggestion,action:!text.trim()?"delete":action,text:action === "delete"?"":text};
 }
 
-// Read-only compatibility types for drafts created before testing was retired.
-export type EditingStrength = "light" | "medium" | "strong";
-export interface TrialVariants {
-  proposals: Record<EditingStrength,AISuggestion[]>;
-  edits: Partial<Record<EditingStrength,Record<string,RevisionState>>>;
-  active: Record<string,EditingStrength>;
-  chosen: Record<string,EditingStrength|"original">;
+/** A reviewed segment is tied to its text and source timing, never just its id. */
+export function reviewRevision(segment: Segment): string {
+  return JSON.stringify([segment.text, segment.start, segment.end, segment.speaker_id]);
 }
-export interface TrialState { sourcePlan?:import("./planForms").EditingPlan; ownershipRecorded?:boolean; feedbackNote?:string; ownedPlan?:{id:string;name:string;common:boolean}; candidateChanges?:{index:number;before:string;after:string;reason:string;conflict:boolean;decision?:"keep"|"replace"}[]; optimizationResolved?:boolean; variants?: TrialVariants; history?: {feedbackNote?:string;round:number;suggestions:AISuggestion[];reviews:Record<string,RevisionState>;variants?:TrialVariants}[]; round:number; ids:string[]; suggestions:AISuggestion[]; reviews:Record<string,RevisionState>; candidates:string[]; complete:boolean }
+
+export function isReviewed(segment: Segment, reviews: Record<string, string>): boolean {
+  return reviews[segment.id] === reviewRevision(segment);
+}
+
+export function markReviewed(transcript: Transcript, segments: Segment[], reviewed: boolean): Record<string, string> {
+  const next = Object.fromEntries(transcript.segments.filter(segment => isReviewed(segment, transcript.reviewedSegments ?? {}))
+    .map(segment => [segment.id, reviewRevision(segment)]));
+  for (const segment of segments) {
+    if (reviewed) next[segment.id] = reviewRevision(segment);
+    else delete next[segment.id];
+  }
+  return next;
+}
 
 /** Repair oversized legacy diff runs without changing text or review decisions. */
 export function refineRevisionParts(state: RevisionState): RevisionState {

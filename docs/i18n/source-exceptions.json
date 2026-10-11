@@ -1,65 +1,5 @@
 [
   {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "全文",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "AI 编辑稿",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "本次编辑规则",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "编辑偏好",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "保留原有表达，仅执行明确规则。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "AI 编辑稿",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": " · AI 修改稿 ",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": " · AI 修改稿 ",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": " · AI 辅助 ",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "全文",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIEditingDialog.tsx",
-    "text": "片段{{v0}}–{{v1}}",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "components/AIPlanSections.tsx",
-    "text": "片段{{v0}}–{{v1}}",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
     "file": "components/ProjectBoard.tsx",
     "text": "{{v0}} 副本",
     "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
@@ -87,151 +27,6 @@
   {
     "file": "hooks/useImport.ts",
     "text": "导入 · {{v0}}",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "中文标点",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "中文语句使用中文标点，保留网址、小数和英文词语内部的符号。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "中英文空格",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "中文与英文单词、阿拉伯数字之间各留一个半角空格。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留口语表达",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留说话人的措辞、语气和句式，不改写为书面语。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "精简无意义重复",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "删减明显的口吃和重复起句，保留用于强调或表达情绪的重复。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留不确定性",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留可能、大概、我记得等限定语，不将推测或模糊记忆改为确定陈述。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留有意义的重复",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留表达强调、情绪或思考过程的重复；仅凭文字无法判断时保留，不一概去重。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留自我修正",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留说话人否定、补充或修正自己说法的过程，不只留下最后的结论。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "不擅自改动事实",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "不擅自补全或修改人名、地名、日期和数字，不用常识改写说话人的陈述；有疑问时保留原文并在修改理由中提示人工核对。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留存疑标记",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "保留原稿已有的听不清、存疑及非语言事件标记，不猜填内容，不凭文字虚构停顿、笑声或语气。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：你好,世界 → 你好，世界。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：用了AI处理20段 → 用了 AI 处理 20 段。此项是排版偏好。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘我觉得吧，这事还得看看’保留口语句式。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘我，我当时去了’可整理为‘我当时去了’；拿不准是否有意义时保留。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘大概是八月’不能改成‘是八月’。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘真的，真的很难’保留强调。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘去年……不，是前年’保留修正过程。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘我记得是 1982 年’不能凭常识改为另一年。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "例如：‘后来去了[听不清]’保留标记，不猜地名。",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "{{v0}} · AI 辅助 ",
-    "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
-  },
-  {
-    "file": "lib/aiEditing.ts",
-    "text": "{{v0}} · AI 修改稿 ",
     "reason": "持久化名称／AI 请求原文／内部标记；见分场景检查表"
   },
   {
@@ -428,5 +223,15 @@
     "file": "lib/audioReferenceSelection.ts",
     "text": "已取消选择",
     "reason": "Stable native command cancellation sentinel, not UI copy."
+  },
+  {
+    "file": "lib/aiVersionEdits.ts",
+    "text": "{{v0}} · AI 辅助 ",
+    "reason": "MCP 创建的持久化版本名称"
+  },
+  {
+    "file": "lib/aiVersionEdits.ts",
+    "text": "{{v0}} · AI 修改稿 ",
+    "reason": "MCP 创建的持久化版本名称"
   }
 ]
