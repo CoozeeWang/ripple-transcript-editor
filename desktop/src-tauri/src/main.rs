@@ -349,7 +349,8 @@ async fn connector_client_add(app: tauri::AppHandle, client: String, language: S
         } else {
             "Add Ripple to WorkBuddy? Your existing configuration will be backed up first. Other connections will be kept, and any existing Ripple entry will be updated. Then enable Ripple in WorkBuddy. Restart WorkBuddy if needed."
         };
-        if !app.dialog().message(text).title("Ripple").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show() { return Ok("cancelled".into()); }
+        let (confirm_label, cancel_label) = if language.starts_with("zh") { ("添加", "取消") } else { ("Add", "Cancel") };
+        if !app.dialog().message(text).title("Ripple").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(confirm_label.into(), cancel_label.into())).blocking_show() { return Ok("cancelled".into()); }
         let target = app.path().home_dir().map_err(|_| "home_unavailable")?.join(".workbuddy/mcp.json");
         if !local_command(&app, "install-workbuddy", "workbuddy")?.arg("--target").arg(target).status().map_err(|_| "install_failed")?.success() { return Err("install_failed".into()); }
         Ok("workbuddy".into())
