@@ -21,7 +21,7 @@ it('exports translated labels without changing manuscript content or JSON data',
   const model = buildExportModel(transcript,null);
   expect(renderMarkdown(model)).toContain('Audio: 中文音频.wav');
   expect(renderTxt(model)).toContain('用户原文 <script> & AI generated');
-  expect(renderPdfHtml(model)).toContain('<button onclick="window.print()">PDF</button>');
+  expect(renderPdfHtml(model)).toContain('<button onclick="window.print()">Print</button>');
   expect(renderPdfHtml(model)).toContain('&lt;script&gt;');
   expect(JSON.stringify(transcript)).toBe(before);
   expect(buildJsonPayload(transcript,undefined)).toEqual(json);
