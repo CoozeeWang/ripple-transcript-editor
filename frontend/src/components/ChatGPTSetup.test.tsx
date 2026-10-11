@@ -12,8 +12,8 @@ it('keeps acquisition guidance and native platform link visible for a configured
   fireEvent.click(ui.getByText('连接配置'));
   await waitFor(() => expect(ui.getByText('修改配置')).toBeTruthy());
   expect(ui.getByText(/首次连接：打开下方 OpenAI/)).toBeTruthy();
-  expect(ui.getByLabelText(/^运行密钥（Runtime API key）/).getAttribute('value')).toBe('');
-  fireEvent.click(ui.getByRole('link', { name: 'OpenAI 连接平台与程序下载' }));
+  expect(ui.getByLabelText(/^连接密钥（Runtime API key）/).getAttribute('value')).toBe('');
+  fireEvent.click(ui.getByRole('link', { name: 'OpenAI 隧道设置与程序下载' }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('connector_open_platform', undefined));
 });
 it('copies only the tunnel identifier, never the stored runtime key', async () => {

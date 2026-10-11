@@ -27,5 +27,10 @@ it("routes card title, background, excerpt and keyboard to the highlight jump bu
   fireEvent.click(ui.getByText("定位批注"));
   expect(props.setSelectedSegmentId).toHaveBeenCalledWith("s");
   expect(scroll).toHaveBeenCalledWith({top:0,behavior:"instant"});
+  ui.rerender(<AnnotationPanel {...props} readOnly />);
+  expect((ui.getByRole('button',{name:'取消这一处高亮'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(ui.getByText(/当前转录稿为只读/)).toBeTruthy();
+  fireEvent.click(ui.getByRole('button',{name:'取消这一处高亮'}));
+  expect(remove).toHaveBeenCalledTimes(1);
   frame.mockRestore(); panel.remove();
 });

@@ -121,8 +121,12 @@ export async function collectMaterialFiles(directory: FileSystemDirectoryHandle,
 }
 
 export function manuscriptImportNotice(item: ImportMaterial): string {
-  const notes: string[] = [];
-  if (/\.docx?$/i.test(item.handle.name)) notes.push(msg('materialImport.m1378'));
-  if (item.transcript?.timeAligned === false) notes.push(msg('materialImport.m1379'));
-  return notes.join('');
+  return manuscriptImportNoticeKeys(item).map(key => msg(key)).join('');
+}
+
+export function manuscriptImportNoticeKeys(item: ImportMaterial): string[] {
+  const keys: string[] = [];
+  if (/\.docx?$/i.test(item.handle.name)) keys.push('materialImport.m1378');
+  if (item.transcript?.timeAligned === false) keys.push('materialImport.m1379');
+  return keys;
 }

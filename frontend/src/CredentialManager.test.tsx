@@ -4,8 +4,11 @@ import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import CredentialManager, { CredentialFields, FieldInput } from './CredentialManager';
 import type { CredentialField } from './types';
+import { act } from '@testing-library/react';
+import { setInterfaceLanguage } from './i18n';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(async () => { await setInterfaceLanguage('zh-CN'); });
 const fields: CredentialField[] = [
   { key: 'model', label: '模型', secret: false, required: true, placeholder: '', options: ['preset-one'], default_value: 'preset-one' },
   { key: 'api_key', label: 'API 密钥', secret: true, required: true, placeholder: '' },
@@ -16,6 +19,15 @@ function Form() {
   return <CredentialFields fields={fields} values={values} visible={{}}
     onChange={(key, value) => setValues(previous => ({ ...previous, [key]: value }))} onToggle={() => {}} />;
 }
+it('switches service field accessible names while preserving a typed credential', async () => {
+  const onChange = vi.fn();
+  render(<FieldInput field={{ key: 'token', label: 'API Key（可选）', placeholder: '', secret: true, required: true }} value="synthetic-key" visible={false} onToggle={() => {}} onChange={onChange} />);
+  const input = screen.getByLabelText('API Key（可选）');
+  await act(() => setInterfaceLanguage('en'));
+  expect(screen.getByLabelText('API key (optional)')).toBe(input);
+  expect((input as HTMLInputElement).value).toBe('synthetic-key');
+  expect(onChange).not.toHaveBeenCalled();
+});
 it('keeps an existing custom model editable without replacing it with a preset', () => {
   render(<FieldInput field={fields[0]} value="my-existing-model" visible={false} onToggle={() => {}} onChange={() => {}} />);
   expect((screen.getByRole('textbox', { name: '模型 ID' }) as HTMLInputElement).value).toBe('my-existing-model');

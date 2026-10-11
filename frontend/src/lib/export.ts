@@ -2,6 +2,7 @@ import { msg, interfaceLanguage } from '../i18n';
 import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
 import { sanitizeForFilename } from "../localStore";
+import { showPdfPrintPreview } from './pdfPrint';
 
 // 导出（Markdown / TXT / Word / PDF / JSON）的格式化逻辑。
 // 除 downloadBlob 外全部是无副作用的纯函数，独立成模块以便单元测试。
@@ -176,7 +177,7 @@ export function renderPdfHtml(m: ExportModel): string {
 <meta charset="utf-8" />
 <title>${escapeHtml(m.title)}</title>
 <style>
-  body { font-family: Inter, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color:#262621; max-width: 820px; margin: 0 auto; padding: 24px; line-height: 1.7; }
+  body { font-family: Inter, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color:#262621; max-width: 820px; margin: 0 auto; padding: 24px; line-height: 1.7; overflow-wrap:anywhere; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   h1 { font-size: 22px; margin: 0 0 12px; }
   table.meta { border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
   table.meta th { text-align: left; color:#888; font-weight: 600; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; }
@@ -323,27 +324,13 @@ export async function exportTranscript(
   }
   if (format === "pdf") {
     const html = renderPdfHtml(model).replace(/<title>.*?<\/title>/s, `<title>${escapeHtml(stem)}</title>`);
-    const win = window.open("", "_blank");
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      window.setTimeout(() => {
-        try {
-          win.print();
-        } catch {
-          /* 用户可在新页面手动打印 */
-        }
-      }, 300);
-    } else {
-      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `${stem}.html`);
-    }
+    await showPdfPrintPreview(html, stem);
   }
 }
 
 export const exportFormats = () => [
-  ['Word（.docx）', 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
-  ['JSON（.json）', 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], ['Markdown（.md）', 'md'],
+  [msg('export.formatDocx'), 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
+  [msg('export.formatJson'), 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], [msg('export.formatMarkdown'), 'md'],
 ] as const;
 export type ExportFormat = ReturnType<typeof exportFormats>[number][1];
 export function canExportSubtitles(t: Transcript) {

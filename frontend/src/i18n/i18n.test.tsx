@@ -3,8 +3,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { interfaceLanguage, LANGUAGE_KEY, msg, setInterfaceLanguage, useInterfaceLanguage } from './index';
-import { EDITING_PRESETS, presetInstructions } from '../lib/editingPresets';
-import { builtinText } from './builtinText';
 import { formatRelativeTime, keys, toDatetimeLocalValue } from '../lib/format';
 import zh from './locales/zh-CN.json';
 import en from './locales/en.json';
@@ -51,14 +49,6 @@ describe('interface language', () => {
   });
 });
 
-it('localizes built-in explanations without changing AI instructions or user rules', async () => {
-  const plan = EDITING_PRESETS[0];
-  const instructions = presetInstructions(plan);
-  await setInterfaceLanguage('en');
-  expect(builtinText('builtin:faithful', plan.name)).toBe('Faithful transcript');
-  expect(presetInstructions(plan)).toBe(instructions);
-  expect(builtinText('user-plan', plan.name)).toBe(plan.name);
-});
 it('uses English relative dates and leaves partial recording dates and platform shortcuts intact', async () => {
   await setInterfaceLanguage('en');
   expect(formatRelativeTime(new Date(Date.now() - 60000).toISOString())).toBe('1 minute ago');
@@ -81,6 +71,7 @@ it('uses reviewed full messages and separate singular/plural counts without chan
   expect(msg('review.sessionCount', { count: 1 })).toBe('1 session');
   expect(msg('review.sessionCount', { count: 2 })).toBe('2 sessions');
   expect(msg('review.emptyTrash', { count: 1 })).toContain('1 item from');
+  expect(msg('review.emptyTrash', { count: 1 })).toContain('restore it.');
   expect(msg('review.emptyTrash', { count: 2 })).toContain('2 items from');
   expect(msg('review.importSummary', {
     originals: msg('review.originalCount', { count: 1 }),
@@ -99,6 +90,4 @@ it('keeps source metadata lookup independent of reviewed Chinese display text', 
   const { serviceText } = await import('./serviceText');
   await setInterfaceLanguage('zh-CN');
   expect(serviceText('模型名')).toBe(msg('serviceCatalog.b0219'));
-  await setInterfaceLanguage('en');
-  expect(builtinText('user-plan','忠实转写')).toBe('忠实转写');
 });

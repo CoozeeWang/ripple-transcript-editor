@@ -59,7 +59,7 @@ export function SegmentTextArea({
   onKeyDown: (event: ReactKeyboardEvent<ParagraphEditorElement>) => void;
   onChange: (next: string, edits?:TextEdit[]) => void;
 }) {
-  useInterfaceLanguage();
+  const language = useInterfaceLanguage();
   const ref = useRef<ParagraphEditorElement | null>(null);
   const [activeChange, setActiveChange] = useState<{key:string; before:string; text:string; base:string; left:number; top:number}|null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -244,6 +244,11 @@ export function SegmentTextArea({
         previous.interactive===Boolean(onComparisonDecision)) return;
     paint();
   }, [comparisonBefore, comparisonAccepted, onComparisonDecision]);
+  useLayoutEffect(() => {
+    // Translate display controls without repainting the draft or moving its cursor.
+    ref.current?.querySelectorAll<HTMLElement>('[data-comparison-change][role="button"]')
+      .forEach(node => node.setAttribute('aria-label', msg('comparisonText.m1249')));
+  }, [language]);
   useLayoutEffect(() => {
     const editor = ref.current;
     if (!editor || !highlights?.length) return;

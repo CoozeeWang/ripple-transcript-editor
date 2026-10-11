@@ -1,6 +1,8 @@
+import { setInterfaceLanguage } from "../i18n";
 import { describe, it, expect } from "vitest";
 
 import {
+  exportFormats,
   exportFilenameStem,
   buildExportModel,
   buildJsonPayload,
@@ -197,4 +199,14 @@ describe('subtitle export', () => {
     expect(canExportSubtitles({ ...t, segments: [{ ...t.segments[0], end: 0 }] })).toBe(false);
     expect(canExportSubtitles({ ...t, segments: [] })).toBe(false);
   });
+});
+
+it('uses locale punctuation in format labels while keeping export format IDs stable',async()=>{
+ const chinese=exportFormats();
+ await setInterfaceLanguage('en');
+ try {
+  const english=exportFormats();
+  expect(english.map(item=>item[1])).toEqual(chinese.map(item=>item[1]));
+  expect(english.filter(item=>['docx','json','md'].includes(item[1])).map(item=>item[0])).toEqual(['Word (.docx)','JSON (.json)','Markdown (.md)']);
+ } finally { await setInterfaceLanguage('zh-CN'); }
 });
