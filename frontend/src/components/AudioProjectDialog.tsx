@@ -1,6 +1,7 @@
+import { trapDialogFocus, useModalDialog } from '../lib/dialogFocus';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory } from '../lib/projectPreferences';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { createProject, importProjectMaterials, openProject, permit, type OpenProject, type ProjectRecording } from '../lib/projectStore';
 import { defaultMetadata } from '../localStore';
 import { ProjectIcon } from './ProjectIcon';
@@ -25,7 +26,7 @@ export function AudioProjectDialog({ file, onCancel, onDone }: {
   const partial = useRef<OpenProject | null>(null);
   const completed = useRef<{ project: OpenProject; sessionId: string; recording: ProjectRecording } | null>(null);
   const lock = useRef(false);
-  useEffect(() => { dialog.current?.showModal(); }, []);
+  useModalDialog(dialog);
   const run = async (work: () => Promise<void>) => {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
@@ -54,8 +55,8 @@ export function AudioProjectDialog({ file, onCancel, onDone }: {
     await onDone(result.project, result.sessionId, result.recording);
   });
   const fixed = busy || phase !== 'ready';
-  return <dialog ref={dialog} className="material-preview-dialog audio-project-dialog" aria-labelledby="audio-project-title" onCancel={e => { e.preventDefault(); if (!busy) onCancel(); }}>
-    <div className="dialog-header"><h2 id="audio-project-title">{msg('AudioProjectDialog.m0345')}</h2><button type="button" className="icon-button" aria-label={msg('AudioProjectDialog.m0346')} disabled={busy} onClick={onCancel}>×</button></div>
+  return <dialog ref={dialog} tabIndex={-1} onKeyDown={trapDialogFocus} className="material-preview-dialog audio-project-dialog" aria-labelledby="audio-project-title" onCancel={e => { e.preventDefault(); if (!busy) onCancel(); }}>
+    <div className="dialog-header"><h2 id="audio-project-title">{msg('AudioProjectDialog.m0345')}</h2><button type="button" className="icon-button" data-dialog-initial-focus aria-label={msg('AudioProjectDialog.m0346')} disabled={busy} onClick={onCancel}>×</button></div>
     <p className="audio-project-file"><ProjectIcon kind="audio"/>{file.name}</p>
     <div className="audio-project-options"><label><input type="radio" name="audio-destination" checked={mode === 'new'} disabled={fixed} onChange={() => { setMode('new'); setSessionId(''); }}/>{msg('AudioProjectDialog.m0347')}</label><label><input type="radio" name="audio-destination" checked={mode === 'existing'} disabled={fixed} onChange={() => { setMode('existing'); setSessionId(''); }}/>{msg('AudioProjectDialog.m0348')}</label></div>
     <div className="audio-project-fields">

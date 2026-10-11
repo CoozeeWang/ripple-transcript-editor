@@ -1,3 +1,4 @@
+import { trapDialogFocus, useModalDialog } from '../lib/dialogFocus';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { ProcessingNotice } from './ProcessingNotice';
 import { createPortal } from 'react-dom';
@@ -34,9 +35,9 @@ function MaterialIcon({ kind }: { kind: 'audio' | 'transcript' | 'session' | 'ig
 export function PreviewDialog({ item, onClose }: { item: ImportMaterial; onClose: () => void }) {
   useInterfaceLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { dialog.current?.showModal(); }, []);
-  return createPortal(<dialog ref={dialog} className="material-preview-dialog" aria-label={msg('MaterialImport.m0558', { v0: item.name })} onCancel={onClose}>
-    <header className="dialog-header"><div><p className="section-label">{msg('MaterialImport.m0559')}</p><h2>{item.name}</h2></div><button type="button" aria-label={msg('MaterialImport.m0560')} title={msg('MaterialImport.m0561')} onClick={onClose}>×</button></header>
+  useModalDialog(dialog);
+  return createPortal(<dialog ref={dialog} tabIndex={-1} onKeyDown={trapDialogFocus} className="material-preview-dialog" aria-label={msg('MaterialImport.m0558', { v0: item.name })} onCancel={onClose}>
+    <header className="dialog-header"><div><p className="section-label">{msg('MaterialImport.m0559')}</p><h2>{item.name}</h2></div><button type="button" data-dialog-initial-focus aria-label={msg('MaterialImport.m0560')} title={msg('MaterialImport.m0561')} onClick={onClose}>×</button></header>
     <div className="material-preview-body" tabIndex={0}>{item.transcript?.segments.map(segment => <p key={segment.id}>{segment.text}</p>)}</div>
   </dialog>, document.body);
 }

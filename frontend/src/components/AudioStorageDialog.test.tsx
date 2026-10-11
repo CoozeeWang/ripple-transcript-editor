@@ -45,3 +45,20 @@ it('retains a clear fallback when file selection is unavailable',()=>{
   expect(screen.getByText(/请取消后点击虚线框选择原音频/)).toBeTruthy();
   expect((screen.getByRole('radio',{name:/引用原文件/}) as HTMLInputElement).disabled).toBe(true);
 });
+
+it('starts at Cancel, wraps boundary Tab presses, and restores the opener', () => {
+  const opener = document.createElement('button');
+  document.body.append(opener); opener.focus();
+  const view = render(<AudioStorageDialog names={['Synthetic.wav']} referenceable={false} finish={vi.fn()}/>);
+  const cancel = screen.getByRole('button', { name: '取消' });
+  expect(document.activeElement).toBe(cancel);
+  const visible = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+  const first = screen.getByRole('radio', { name: /复制到项目/ });
+  const last = screen.getByRole('button', { name: '加入音频' });
+  last.focus(); fireEvent.keyDown(last, { key: 'Tab' });
+  expect(document.activeElement).toBe(first);
+  fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+  expect(document.activeElement).toBe(last);
+  view.unmount(); expect(document.activeElement).toBe(opener);
+  visible.mockRestore(); opener.remove();
+});
