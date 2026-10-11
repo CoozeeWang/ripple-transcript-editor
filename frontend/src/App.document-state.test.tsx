@@ -102,3 +102,20 @@ it('waits for successful persistence before leaving the editor for projects', as
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '返回项目' })); });
   expect(leave).toHaveBeenCalledOnce();
 });
+
+it('opens an original with readable markers and disables their modification', () => {
+  Object.assign(HTMLElement.prototype, { scrollIntoView: vi.fn() });
+  render(<App />);
+  const name='Synthetic.wav';
+  const segment={id:'synthetic-segment',speaker_id:'synthetic-speaker',start:0,end:2,text:'Synthetic original text',annotations:[{id:'synthetic-note',text:'Synthetic original annotation',createdAt:'2026-01-01'}],highlights:[{id:'synthetic-highlight',start:0,end:9}]};
+  const transcript={audio:{filename:name,duration:2},speakers:[{id:'synthetic-speaker',name:'Synthetic speaker'}],segments:[segment]};
+  const metadata={id:'synthetic',title:'Synthetic original',participants:[],topics:[],notes:'',location:'',recorded_at:null,created_at:'',updated_at:''};
+  act(()=>fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:name,activeModelId:'m1',models:[{id:'m1',engine:'synthetic',createdAt:'2026-01-01',original:'original.json',edits:[]}]},edited:{kind:'te-edited',audio:name,metadata,transcript}},name));
+  expect(screen.getByText(/原稿只读/)).toBeTruthy();
+  const card=screen.getByText('Synthetic original annotation').closest('.annotation-card')!;
+  expect((card.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.doubleClick(screen.getByText('Synthetic original annotation'));
+  expect(card.querySelector('textarea')).toBeNull();
+  expect((screen.getByRole('textbox',{name:'给当前片段添加批注'}) as HTMLTextAreaElement).disabled).toBe(true);
+  expect(segment.annotations[0].text).toBe('Synthetic original annotation');
+});

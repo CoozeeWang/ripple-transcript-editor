@@ -215,10 +215,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // 故放在 useFolder 之前定义。
   const mutateTranscript = useCallback(
     (updater: (current: Transcript) => Transcript, groupKey?: string) => {
+      if (viewingOriginal) return;
       commit(current => reconcileComparisonReviews(updater(current)), groupKey);
       setSaveStatus("unsaved");
     },
-    [commit],
+    [commit, viewingOriginal],
   );
 
   const {
@@ -1120,6 +1121,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           transcript={transcript}
+          readOnly={viewingOriginal}
           annotationView={annotationView}
           setAnnotationView={setAnnotationView}
           panelTab={panelTab}

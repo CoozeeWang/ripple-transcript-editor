@@ -739,7 +739,8 @@
     "m0320": "Add an annotation to this segment…",
     "m0321": "Add annotation to current segment",
     "m0322": "{{v0}} to add annotation",
-    "m0323": "Add annotation"
+    "m0323": "Add annotation",
+    "readOnly": "Click to go to the segment"
   },
   "AnnotationPanel": {
     "m0324": "Expand annotation panel",
@@ -756,7 +757,8 @@
     "m0337": "· Segment {{segment}}",
     "m0338": "· Occurrences: {{count}}",
     "m0339": "Remove this highlight",
-    "m0340": "Remove highlight"
+    "m0340": "Remove highlight",
+    "readOnly": "This original is read-only. Create a revision before editing annotations or highlights."
   },
   "DateTimeInput": {
     "m0384": "Year",
