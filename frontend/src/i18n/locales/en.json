@@ -881,11 +881,11 @@
     "m0960": "Choose a segment",
     "m0961": "Search {{v0}}",
     "m0962": "Search by segment number, time, or transcript text",
-    "m0963": "Segment ",
+    "m0963": "Segment",
     "m0964": "Time",
     "m0965": "Content preview",
     "m0966": "Segment {{v0}} · {{v1}} · {{v2}}",
-    "m0967": "Segment ",
+    "m0967": "Segment {{v0}}",
     "m0968": "No matching segments"
   },
   "SegmentTextArea": {
