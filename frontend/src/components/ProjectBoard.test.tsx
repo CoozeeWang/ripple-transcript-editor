@@ -77,7 +77,7 @@ it('shows the same folder error in English when the interface is English', async
   await setInterfaceLanguage('en');
   vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockRejectedValue(new DOMException('interviews does not exist','NotFoundError'));
   renderBoard(project);
-  await screen.findByText("Cannot find or access this project's interview folder. Use Open project to select the complete project folder again.");
+  await screen.findByText("Couldn’t find or access this project’s session folder. Choose “Open project”, then select the complete project folder again.");
  } finally { await setInterfaceLanguage('zh-CN'); }
 });
 

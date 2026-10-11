@@ -42,7 +42,7 @@ it('keeps the choice open after cancellation or a mismatched file', async () => 
 });
 it('retains a clear fallback when file selection is unavailable',()=>{
   render(<AudioStorageDialog names={['A.wav']} referenceable={false} finish={vi.fn()}/>);
-  expect(screen.getByText(/请取消后点击虚线框选择原音频/)).toBeTruthy();
+  expect(screen.getByText(/请取消后点击虚线框，选择原音频/)).toBeTruthy();
   expect((screen.getByRole('radio',{name:/引用原文件/}) as HTMLInputElement).disabled).toBe(true);
 });
 

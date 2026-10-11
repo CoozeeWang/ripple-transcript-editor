@@ -774,7 +774,7 @@ it('writes one complete English reference note without duplicating session and m
     const note=referenceAudioNotice(recording, interview.title, ['Synthetic transcript']);
     expect(note.match(/Session:/g)).toHaveLength(1);
     expect(note.match(/Linked transcripts:/g)).toHaveLength(1);
-    expect(note).toContain('references an external file');
+    expect(note).toContain('is linked to an external file');
     expect(note).toContain('Synthetic transcript');
     expect(note).toContain('Locate original audio');
   } finally { await setInterfaceLanguage('zh-CN'); }

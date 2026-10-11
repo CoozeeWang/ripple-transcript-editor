@@ -100,7 +100,7 @@ it('does not replace a recent entry with a different project', async () => {
   fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
   fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
   fireEvent.click(await screen.findByRole('button', {name:'重新选择原项目'}));
-  await screen.findByText('选中的不是这个最近项目。请重新选择原项目文件夹。');
+  await screen.findByText('所选文件夹与这个最近项目不匹配。请重新选择原项目文件夹。');
   expect(store.rememberProject).not.toHaveBeenCalled();
   expect(screen.queryByRole('heading', { name: '测试项目' })).toBeNull();
 });
@@ -456,5 +456,5 @@ it('keeps the welcome page and recent entry when recovery is cancelled', async (
  await waitFor(()=>expect(state.picker).toHaveBeenCalledOnce());
  expect(store.openProject).not.toHaveBeenCalled(); expect(store.rememberProject).not.toHaveBeenCalled();
  expect(screen.queryByRole('heading',{name:'测试项目'})).toBeNull();
- fireEvent.click(screen.getByRole('button',{name:'取消恢复'})); expect(screen.queryByText(/访问权限需要恢复/)).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'取消'})); expect(screen.queryByText(/访问权限需要恢复/)).toBeNull();
 });
