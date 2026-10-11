@@ -19,7 +19,7 @@ export function AudioPreview({ item, onDuration }: { item: ImportMaterial; onDur
     }).catch(error => { if (!disposed) { setFailureMessage(error instanceof Error ? error.message : ''); setFailed(true); } });
     return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [item.handle, item.name]);
-  return failed ? <small>{failureMessage || msg('MaterialImport.m0556')}</small> : <audio aria-label={msg('MaterialImport.m0557', { v0: item.name })} controls controlsList="nodownload noplaybackrate" preload="metadata" src={url || undefined} onLoadedMetadata={e => onDuration(e.currentTarget.duration)} onError={() => setFailed(true)} />;
+  return failed ? <small>{uiMessage(failureMessage) || msg('MaterialImport.m0556')}</small> : <audio aria-label={msg('MaterialImport.m0557', { v0: item.name })} controls controlsList="nodownload noplaybackrate" preload="metadata" src={url || undefined} onLoadedMetadata={e => onDuration(e.currentTarget.duration)} onError={() => setFailed(true)} />;
 }
 function MaterialIcon({ kind }: { kind: 'audio' | 'transcript' | 'session' | 'ignore' | 'add' }) {
   useInterfaceLanguage();

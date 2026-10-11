@@ -10,7 +10,7 @@ import { DeleteMaterialDialog, ProjectTrashDialog } from './ProjectTrashDialog';
 import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
 import { ProjectImportStatus } from './ProjectImportStatus';
-import { manuscriptImportNotice } from '../lib/materialImport';
+import { manuscriptImportNoticeKeys } from '../lib/materialImport';
 import { useEffect, useRef, useState } from 'react';
 import App from '../App';
 import { prepareMaterials } from '../lib/materialImport';
@@ -31,7 +31,7 @@ type Picker = Window & {
   showOpenFilePicker: (options: { multiple: boolean; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
 };
 export function ProjectWorkspace() {
-  useInterfaceLanguage();
+  const language = useInterfaceLanguage();
   const audioStorage = useAudioStorageChoice();
   const [trashOpen,setTrashOpen]=useState(false);
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
@@ -68,7 +68,7 @@ export function ProjectWorkspace() {
   const [editingDescription, setEditingDescription] = useState<string | null>(null);
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [archiving, setArchiving] = useState(false);
-  const [importNotice, setImportNotice] = useState<string[]>([]);
+  const [importNotice, setImportNotice] = useState<{ name: string; keys: string[] }[]>([]);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [importStage, setImportStage] = useState<ProjectImportStage | null>(null);
   const importController = useRef<AbortController | null>(null);
@@ -224,7 +224,7 @@ export function ProjectWorkspace() {
         <p>{uiMessage(error)}</p>
       </div>}
       {busy && showProgress && !importStage && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
-      {successNotice && <ProcessingNotice>{successNotice}</ProcessingNotice>}
+      {successNotice && <ProcessingNotice>{uiMessage(successNotice)}</ProcessingNotice>}
       {!project ? <>
         {creating ? <ProjectSetup onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { void publish(next); setSuccessNotice(next.data.interviews.some(interview => interview.recordings.length > 0) ? msg('projectImport.materialsDone') : null); setCreating(false); setInterviewId(next.data.interviews[0]?.id ?? null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
           <div className="project-welcome__identity">
@@ -279,7 +279,7 @@ export function ProjectWorkspace() {
         </div></div>
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
-        {importNotice.length>0&&<div className="project-import-notices" role="status">{importNotice.map((note,index)=><p key={index}>{note}</p>)}</div>}
+        {importNotice.length>0&&<div className="project-import-notices" role="status">{importNotice.map((note,index)=><p key={index}>{note.name}{language === 'en' ? ': ' : '：'}{note.keys.map(key => msg(key)).join(language === 'en' ? ' ' : '')}</p>)}</div>}
         <ProjectBoard key={project.data.id} project={project} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={setInterviewId}
           save={interviews => { void run(async () => {
             const snapshot = current.current!;
@@ -309,7 +309,7 @@ export function ProjectWorkspace() {
             importController.current = null;
             await publish(imported);
             if (kind === 'audio') setSuccessNotice(msg('projectImport.audioDone'));
-            setImportNotice(materials.flatMap(item => { const note = manuscriptImportNotice(item); return note ? [`${item.name}：${note}`] : []; }));
+            setImportNotice(materials.flatMap(item => { const keys = manuscriptImportNoticeKeys(item); return keys.length ? [{ name: item.name, keys }] : []; }));
           }}
           add={id => setMaterialTarget(id ?? null)} open={(recording, modelId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId); }} run={run}
           legacy={recording => { void run(() => checkManuscripts(interviewId ?? project.data.interviews[0].id, [recording])); }}

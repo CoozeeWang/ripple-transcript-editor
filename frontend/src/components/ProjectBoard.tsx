@@ -1,5 +1,5 @@
 import { IS_MAC } from '../lib/format';
-import { msg, useInterfaceLanguage } from '../i18n';
+import { uiMessage, msg, useInterfaceLanguage } from '../i18n';
 import { OriginalDesignationDialog } from './OriginalDesignationDialog';
 import { AudioStorageIcon } from './AudioStorageIcon';
 import { ProjectFileName } from './ProjectFileName';
@@ -125,5 +125,5 @@ export function ProjectBoard({project,selected,busy,select,save,importDocuments,
  <section className="setup-independent"><h3>{msg('ProjectBoard.m0714')}</h3>{session.recordings.filter(r=>r.storage==='none').map(r=><div key={r.id} className="setup-independent-item" {...zone(r.id,'independent')}>{orderedModels(r.id).map(m=>doc(r,m,true))}{models[r.id]?.length===0&&<p className="settings-hint">{r.name}{msg('ProjectBoard.m0715')}</p>}</div>)}<button className={`setup-drop${documentDrag?' is-over':''}`} disabled={busy} onClick={()=>chooseDocuments()}
  onDragOver={e=>{if(!busy&&e.dataTransfer.types.includes('Files')){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';setDocumentDrag(true);}}}
  onDragLeave={()=>setDocumentDrag(false)} onDrop={e=>{e.preventDefault();e.stopPropagation();setDocumentDrag(false);if(busy||!e.dataTransfer.types.includes('Files'))return;const files=droppedFiles(e.dataTransfer);void run(async()=>{const selected=await files;if(selected.length)await importDocuments(session.id,selected.map(f=>f.handle));});}}><ProjectIcon kind="document"/>{msg('ProjectBoard.m0716')}</button><ManuscriptImportHint/></section>
- </>:<p className="settings-hint">{msg('ProjectBoard.m0717')}</p>}</div></div>{originalTarget&&<OriginalDesignationDialog name={originalTarget.model.label||originalTarget.model.sourceName||originalTarget.model.engine} busy={busy} error={originalError} onCancel={()=>setOriginalTarget(null)} onConfirm={()=>designate(originalTarget.recording,originalTarget.model,true)}/>} {!originalTarget&&originalError&&<p role="alert" className="form-error">{originalError}</p>}</>;
+ </>:<p className="settings-hint">{msg('ProjectBoard.m0717')}</p>}</div></div>{originalTarget&&<OriginalDesignationDialog name={originalTarget.model.label||originalTarget.model.sourceName||originalTarget.model.engine} busy={busy} error={originalError} onCancel={()=>setOriginalTarget(null)} onConfirm={()=>designate(originalTarget.recording,originalTarget.model,true)}/>} {!originalTarget&&originalError&&<p role="alert" className="form-error">{uiMessage(originalError)}</p>}</>;
 }

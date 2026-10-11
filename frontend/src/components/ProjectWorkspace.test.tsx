@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
+import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
 vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onExportProjectFiles?: () => void; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
 vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
@@ -17,6 +18,7 @@ beforeEach(() => {
   vi.mocked(store.openProject).mockResolvedValue(project);
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI__?: unknown }).__TAURI__; });
+afterEach(async () => { await setInterfaceLanguage('zh-CN'); });
 it('opens a project, selects an interview, and releases the editor lock when returning', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
@@ -133,6 +135,10 @@ it('imports documents from the independent drop zone into the selected interview
   fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [file], items: [] } });
   await waitFor(() => expect(store.importProjectMaterials).toHaveBeenCalledWith(project,
     [expect.objectContaining({ kind: 'manuscript', audioId: '', group: 'i' })], 'copy', 'i'));
+  await screen.findByText(`访谈.txt：${msg('materialImport.m1379')}`);
+  await act(() => setInterfaceLanguage('en'));
+  expect(screen.getByText(`访谈.txt: ${msg('materialImport.m1379')}`)).toBeTruthy();
+  expect(store.importProjectMaterials).toHaveBeenCalledOnce();
 });
 
 it('keeps copy and verification visible, blocks another import, and reports success', async () => {
@@ -167,6 +173,9 @@ it('keeps copy and verification visible, blocks another import, and reports succ
   expect(await screen.findByText('音频已加入项目。')).toBeTruthy();
   expect(screen.getByText('音频已加入项目。').className).toBe('processing-notice');
   expect(screen.queryByText('正在保存项目…')).toBeNull();
+  await act(() => setInterfaceLanguage('en'));
+  expect(screen.getByText('Audio added to the project.')).toBeTruthy();
+  expect(screen.queryByText('音频已加入项目。')).toBeNull();
 });
 
 it('cancels a copy without a success notice and allows the same audio to be retried', async () => {
