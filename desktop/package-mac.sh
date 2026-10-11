@@ -37,6 +37,14 @@ COMMIT=$(git -C "$REPO" rev-parse --verify HEAD)
 test -f "$STAGED_BACKEND/python/bin/python3.12"
 test -f "$REPO/frontend/dist/index.html"
 test -f "$BINARY"
+python3 - "$BINARY" <<'PY'
+import json
+import subprocess
+import sys
+info = json.loads(subprocess.check_output([sys.argv[1], "--ripple-build-info"], text=True, timeout=10))
+if info != {"custom_protocol": True, "debug": False}:
+    raise SystemExit("Refusing to package a development binary; build --release --features custom-protocol")
+PY
 test -f "$DESKTOP/src-tauri/icons/icon.icns"
 ICON_NAME=$(python3 - "$DESKTOP/src-tauri/icons/icon.icns" <<'PY'
 import hashlib
