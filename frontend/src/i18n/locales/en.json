@@ -1184,7 +1184,7 @@
   },
   "extra": {
     "defaultProfile": "{{name}} (default)",
-    "print": "PDF",
+    "print": "Print",
     "mergeRename": "“{{source}}” now has the same name as “{{target}}”. Merging moves all segments and annotations from “{{source}}” to “{{target}}” and removes “{{source}}” from the speaker list.",
     "merge": "Merge “{{source}}” into “{{target}}”? All segments and annotations move to “{{target}}”, and “{{source}}” is removed from the speaker list.",
     "reorder": "Drag to reorder ({{key}})",
@@ -1267,7 +1267,9 @@
     "m1335": "This transcript has no valid timestamps and can’t be exported as subtitles.",
     "formatDocx": "Word (.docx)",
     "formatJson": "JSON (.json)",
-    "formatMarkdown": "Markdown (.md)"
+    "formatMarkdown": "Markdown (.md)",
+    "pdfPreviewError": "Couldn’t open print preview. Try exporting again.",
+    "pdfPrintError": "Couldn’t open the print dialog. Click Print to try again."
   },
   "manifestRecovery": {
     "m1357": "The transcript index is damaged or recovery files are incomplete. Keep the entire .transcript folder. Existing transcripts were not overwritten.",

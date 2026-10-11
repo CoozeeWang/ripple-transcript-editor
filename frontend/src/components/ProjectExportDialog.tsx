@@ -7,6 +7,7 @@ import { recordingDirectory, checkedMediaFile, referenceAudioNotice, savePortabl
 import { exportFormats, buildExportModel, canExportSubtitles, downloadBlob, renderPdfHtml, transcriptBlob, type ExportFormat } from '../lib/export';
 import { ProjectIcon } from './ProjectIcon';
 import type { InterviewMetadata, Transcript } from '../types';
+import { reservePdfWindow, showPdfPrintPreview } from '../lib/pdfPrint';
 type Entry = { id: string; session: string; recording: string; document?: string; name: string; versionLabel?: string; current: boolean; reference?: string; audio?: () => Promise<File>; transcript?: Transcript; metadata?: InterviewMetadata; engine?: string };
 function audioExportName(name: string, file: string) {
   const extension = file.match(/\.[^.]+$/)?.[0] ?? '';
@@ -98,9 +99,8 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
       } else {
         if (!chosen.length || invalidSubtitle) throw new Error(msg('ProjectExportDialog.m0725'));
         if (hasPdf) {
-          printWindow = window.open('', '_blank');
-          if (!printWindow) throw new Error(msg('ProjectExportDialog.m0726'));
-          printWindow.document.body.textContent = msg('ProjectExportDialog.m0727');
+          printWindow = reservePdfWindow();
+          if (printWindow) printWindow.document.body.textContent = msg('ProjectExportDialog.m0727');
         }
         const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
@@ -128,11 +128,10 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
             else { zip.file(`${folder}/${name}`, await (await transcriptBlob(format, entry.transcript, entry.metadata ?? null, entry.engine)).arrayBuffer()); count++; }
           }
         }
-        if (pdf.length && printWindow) {
+        if (pdf.length) {
           const first = pdf[0];
           const body = pdf.map(html => `<section class="export-document">${html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || ''}</section>`).join('');
-          printWindow.document.open(); printWindow.document.write(first.replace(/<body[^>]*>[\s\S]*?<\/body>/i, () => `<body>${body}</body>`).replace('</head>', '<style>.export-document + .export-document{break-before:page}</style></head>')); printWindow.document.close(); printWindow.focus();
-          const win = printWindow; window.setTimeout(() => { if (!win.closed) win.print(); }, 300);
+          await showPdfPrintPreview(first.replace(/<body[^>]*>[\s\S]*?<\/body>/i, () => `<body>${body}</body>`).replace('</head>', '<style>.export-document + .export-document{break-before:page}</style></head>'), project.data.title, printWindow);
         }
         if (count) downloadBlob(await zip.generateAsync({ type: 'blob' }), msg('ProjectExportDialog.m0729', { v0: sanitizeForFilename(project.data.title) }));
         setNotice(pdf.length ? msg('ProjectExportDialog.m0730', { v0: count ? msg('ProjectExportDialog.m0731') : '' }) : msg('ProjectExportDialog.m0732'));

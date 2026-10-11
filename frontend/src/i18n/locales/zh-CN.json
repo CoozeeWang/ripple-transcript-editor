@@ -1184,7 +1184,7 @@
   },
   "extra": {
     "defaultProfile": "{{name}}（默认）",
-    "print": "PDF",
+    "print": "打印",
     "mergeRename": "“{{source}}”现在与“{{target}}”重名。合并后，“{{source}}”的全部片段和批注将归入“{{target}}”，“{{source}}”会从说话人列表中移除。",
     "merge": "将“{{source}}”合并到“{{target}}”？合并后，“{{source}}”的全部片段和批注将归入“{{target}}”，“{{source}}”会从说话人列表中移除。",
     "reorder": "拖动调整顺序（{{key}}）",
@@ -1267,7 +1267,9 @@
     "m1335": "此转录稿没有有效时间戳，无法导出字幕。",
     "formatDocx": "Word（.docx）",
     "formatJson": "JSON（.json）",
-    "formatMarkdown": "Markdown（.md）"
+    "formatMarkdown": "Markdown（.md）",
+    "pdfPreviewError": "无法打开打印预览，请重新导出。",
+    "pdfPrintError": "无法打开打印窗口，请点击“打印”重试。"
   },
   "manifestRecovery": {
     "m1357": "转录稿索引损坏或恢复文件不完整。请保留整个 .transcript 文件夹；现有转录稿未被覆盖。",
