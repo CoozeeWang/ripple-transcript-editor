@@ -38,26 +38,33 @@ test -f "$STAGED_BACKEND/python/bin/python3.12"
 test -f "$REPO/frontend/dist/index.html"
 test -f "$BINARY"
 test -f "$DESKTOP/src-tauri/icons/icon.icns"
+ICON_NAME=$(python3 - "$DESKTOP/src-tauri/icons/icon.icns" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+print("Ripple-" + hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest()[:12] + ".icns")
+PY
+)
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/ripple-desktop"
 cp "$DESKTOP/src-tauri/icons/icon.png" "$APP/Contents/Resources/icon.png"
 rm -f "$APP/Contents/Resources/icon.icns" "$APP/Contents/Resources/Ripple.icns" "$APP/Contents/Resources/Ripple-v014.icns"
-cp "$DESKTOP/src-tauri/icons/icon.icns" "$APP/Contents/Resources/Ripple-v015.icns"
+cp "$DESKTOP/src-tauri/icons/icon.icns" "$APP/Contents/Resources/$ICON_NAME"
 rm -rf "$APP/Contents/Resources/backend"
 cp -R "$STAGED_BACKEND" "$APP/Contents/Resources/backend"
 rm -rf "$APP/Contents/Resources/backend/data"
-python3 - "$APP/Contents/Info.plist" "$VERSION" "$BUILD_NUMBER" "$COMMIT" <<'PY'
+python3 - "$APP/Contents/Info.plist" "$VERSION" "$BUILD_NUMBER" "$COMMIT" "$ICON_NAME" <<'PY'
 import plistlib
 import sys
 from pathlib import Path
 
-path, version, build, commit = sys.argv[1:]
+path, version, build, commit, icon_name = sys.argv[1:]
 metadata = {
     "CFBundleName": "Ripple",
     "CFBundleDisplayName": "Ripple",
     "CFBundleIdentifier": "studio.ripple.app",
     "CFBundleExecutable": "ripple-desktop",
-    "CFBundleIconFile": "Ripple-v015.icns",
+    "CFBundleIconFile": icon_name,
     "CFBundlePackageType": "APPL",
     "CFBundleVersion": build,
     "CFBundleShortVersionString": version,
