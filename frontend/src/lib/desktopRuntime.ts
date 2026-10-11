@@ -1,8 +1,11 @@
+import { installNativeMenuLanguage } from './nativeMenu';
 import { msg } from '../i18n';
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
 
 // Development uses Vite's same-origin API proxy; release uses the bundled service.
 const API_ROOT = import.meta.env.DEV ? '' : 'http://127.0.0.1:18701';
+
+let removeMenuLanguage: (() => void) | undefined;
 
 function apiUrl(url: string): string {
   return url.startsWith('/api/') ? `${API_ROOT}${url}` : url;
@@ -23,7 +26,10 @@ export async function installDesktopRuntime(): Promise<void> {
     return Reflect.apply(originalOpen, this, [method, typeof url === 'string' ? apiUrl(url) : url, ...rest]);
   } as typeof XMLHttpRequest.prototype.open;
 
-  const invoke = (window as unknown as { __TAURI__: { core: { invoke: (name: string) => Promise<boolean> } } }).__TAURI__.core.invoke;
+  const invoke = (window as unknown as { __TAURI__: { core: { invoke: (name: string, args?: Record<string, unknown>) => Promise<boolean> } } }).__TAURI__.core.invoke;
+  removeMenuLanguage?.();
+  removeMenuLanguage = installNativeMenuLanguage(invoke);
+  if (import.meta.hot) import.meta.hot.dispose(() => removeMenuLanguage?.());
   for (let attempt = 0; attempt < 100; attempt++) {
     if (await invoke('backend_ready')) return;
     await new Promise(resolve => setTimeout(resolve, 100));

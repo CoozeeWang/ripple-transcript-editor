@@ -1610,5 +1610,29 @@
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple’s local service could not start. Restart Ripple or check the application logs."
+  },
+  "nativeMenu": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "window": "Window",
+    "help": "Help",
+    "about": "About {{name}}",
+    "services": "Services",
+    "hide": "Hide {{name}}",
+    "hideOthers": "Hide Others",
+    "showAll": "Show All",
+    "quit": "Quit {{name}}",
+    "closeWindow": "Close Window",
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
+    "fullscreen": "Toggle Full Screen",
+    "minimize": "Minimize",
+    "zoom": "Zoom",
+    "maximize": "Maximize"
   }
 }

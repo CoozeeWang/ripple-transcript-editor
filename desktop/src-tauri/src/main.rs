@@ -2,6 +2,7 @@
 compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
 
 mod project_icon;
+mod native_menu;
 mod grants;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
@@ -521,7 +522,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+        .invoke_handler(tauri::generate_handler![native_menu::set_menu_language, pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
