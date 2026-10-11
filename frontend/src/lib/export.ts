@@ -342,8 +342,8 @@ export async function exportTranscript(
 }
 
 export const exportFormats = () => [
-  ['Word（.docx）', 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
-  ['JSON（.json）', 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], ['Markdown（.md）', 'md'],
+  [msg('export.formatDocx'), 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
+  [msg('export.formatJson'), 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], [msg('export.formatMarkdown'), 'md'],
 ] as const;
 export type ExportFormat = ReturnType<typeof exportFormats>[number][1];
 export function canExportSubtitles(t: Transcript) {

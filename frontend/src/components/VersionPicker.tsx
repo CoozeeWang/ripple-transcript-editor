@@ -29,7 +29,7 @@ function VersionActionIcon({action}:{action:"rename"|"new"|"copy"|"delete"}) {
 
 /** Both selectors share labels and rename actions; selection always uses stable IDs. */
 export function VersionPicker({models,value,variant,excluded,disabled,onSelect,onRename,onCopy,onDelete}:VersionPickerProps) {
-  useInterfaceLanguage();
+  const language = useInterfaceLanguage();
   const [open,setOpen]=useState(false);
   const root=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null);
   const popupId=useId();
@@ -52,7 +52,7 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
     window.addEventListener('resize',place);
     window.addEventListener('scroll',place,true);
     return ()=>{window.removeEventListener('resize',place);window.removeEventListener('scroll',place,true);};
-  },[open,variant]);
+  },[open,variant,language]);
   const [editing,setEditing]=useState<{model:string;edit:string;label:string}|null>(null);
   const [draft,setDraft]=useState("");
   const [error,setError]=useState("");
@@ -118,7 +118,7 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
       }
     }}
     onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))close();}}>
-    <button ref={trigger} type="button" className="version-picker-trigger" aria-label={`${title}：${selected?.label ?? msg('VersionPicker.m1089')}`}
+    <button ref={trigger} type="button" className="version-picker-trigger" aria-label={`${title}${language === 'en' ? ': ' : '：'}${selected?.label ?? msg('VersionPicker.m1089')}`}
       aria-expanded={open} aria-controls={popupId} disabled={disabled || !groups.length} onClick={()=>{if(open)close();else setOpen(true);}}>
       <span>{selected?.label ?? msg('VersionPicker.m1090')}</span><span aria-hidden="true">▾</span>
     </button>

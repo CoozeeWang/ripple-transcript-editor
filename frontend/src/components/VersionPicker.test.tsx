@@ -2,6 +2,7 @@
 import {useState} from "react";
 import {act,cleanup,fireEvent,render,screen,within} from "@testing-library/react";
 import {afterAll,afterEach,beforeAll,expect,it,vi} from "vitest";
+import {setInterfaceLanguage} from '../i18n';
 import {VersionPicker} from "./VersionPicker";
 import type {TranscriptModel} from "../types";
 import {displayEngineLabel} from "../localStore";
@@ -178,4 +179,17 @@ it.each(['current', 'comparison'] as const)('marks the selected %s row independe
  expect(selected.querySelector('.version-picker-selection')?.getAttribute('aria-hidden')).toBe('true');
  expect(selected.querySelector('.version-picker-selection')?.textContent).toBe('✓');
  expect(other.querySelector('.version-picker-selection')).toBeNull();
+});
+
+it('refreshes open menu and trigger punctuation without changing its selected version',async()=>{
+ const select=vi.fn();
+ render(<VersionPicker models={models} value="m1:e1" variant="current" onSelect={select} onRename={vi.fn()}/>);
+ const trigger=screen.getByRole('button',{name:'当前版本：v1'});fireEvent.click(trigger);
+ try {
+  await act(()=>setInterfaceLanguage('en'));
+  expect(screen.getByRole('button',{name:'Current version: v1'})).toBe(trigger);
+  const menu=screen.getByRole('group',{name:'Current version list'});
+  expect(within(menu).getByRole('button',{name:'v1'}).getAttribute('aria-pressed')).toBe('true');
+  expect(select).not.toHaveBeenCalled();
+ } finally { await act(()=>setInterfaceLanguage('zh-CN')); }
 });

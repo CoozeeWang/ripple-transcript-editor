@@ -1264,7 +1264,10 @@
     "m1332": "PDF",
     "m1333": "Subtitles (.srt)",
     "m1334": "Subtitles (.vtt)",
-    "m1335": "This transcript has no valid timestamps and can’t be exported as subtitles."
+    "m1335": "This transcript has no valid timestamps and can’t be exported as subtitles.",
+    "formatDocx": "Word (.docx)",
+    "formatJson": "JSON (.json)",
+    "formatMarkdown": "Markdown (.md)"
   },
   "manifestRecovery": {
     "m1357": "The transcript index is damaged or recovery files are incomplete. Keep the entire .transcript folder. Existing transcripts were not overwritten.",

@@ -1264,7 +1264,10 @@
     "m1332": "PDF",
     "m1333": "字幕（.srt）",
     "m1334": "字幕（.vtt）",
-    "m1335": "此转录稿没有有效时间戳，无法导出字幕。"
+    "m1335": "此转录稿没有有效时间戳，无法导出字幕。",
+    "formatDocx": "Word（.docx）",
+    "formatJson": "JSON（.json）",
+    "formatMarkdown": "Markdown（.md）"
   },
   "manifestRecovery": {
     "m1357": "转录稿索引损坏或恢复文件不完整。请保留整个 .transcript 文件夹；现有转录稿未被覆盖。",
