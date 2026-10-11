@@ -1,3 +1,6 @@
+#[cfg(all(not(debug_assertions), not(feature = "custom-protocol")))]
+compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
+
 mod project_icon;
 mod grants;
 use grants::{Grant, Grants, io_error};
@@ -286,6 +289,13 @@ fn stop_backend(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--ripple-build-info") {
+        println!("{}", serde_json::json!({
+            "custom_protocol": cfg!(feature = "custom-protocol"),
+            "debug": cfg!(debug_assertions),
+        }));
+        return;
+    }
     let mut context = tauri::generate_context!();
     #[cfg(target_os = "macos")]
     if cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.dev" {
