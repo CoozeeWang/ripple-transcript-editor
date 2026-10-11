@@ -345,9 +345,9 @@ async fn connector_client_add(app: tauri::AppHandle, client: String, language: S
             return Ok("claude".into());
         }
         let text = if language.starts_with("zh") {
-            "将 Ripple 添加到 WorkBuddy？已有配置会先备份，其他连接保留；已有的 Ripple 项会更新。完成后请在 WorkBuddy 中启用，必要时重启。"
+            "将 Ripple 添加到 WorkBuddy？会先备份已有配置，再添加连接；其他连接将保留，已有的 Ripple 配置将更新。完成后请在 WorkBuddy 中启用 Ripple，必要时重启 WorkBuddy。"
         } else {
-            "Add Ripple to WorkBuddy? Existing configuration will be backed up; other connections will be kept and an existing Ripple entry will be updated. Enable it in WorkBuddy afterwards, restarting if needed."
+            "Add Ripple to WorkBuddy? Your existing configuration will be backed up first. Other connections will be kept, and any existing Ripple entry will be updated. Then enable Ripple in WorkBuddy. Restart WorkBuddy if needed."
         };
         if !app.dialog().message(text).title("Ripple").buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel).blocking_show() { return Ok("cancelled".into()); }
         let target = app.path().home_dir().map_err(|_| "home_unavailable")?.join(".workbuddy/mcp.json");

@@ -3166,6 +3166,7 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 @media(max-width:919px) { body:has(.project-home:not(.project-home--welcome)) { min-width:540px; } }
 
 .settings-mcp .connector-setup-card > .settings-hint { margin: 8px 0; }
+.settings-mcp .connector-guidance { white-space: pre-line; overflow-wrap: anywhere; }
 .settings-mcp { display: grid; gap: 12px; }
 .settings-mcp .connector-setup { display: grid; gap: 12px; }
 .settings-mcp .connector-client-selection { display: grid; gap: 8px; }

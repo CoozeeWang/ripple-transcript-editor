@@ -50,7 +50,7 @@ it('failed WorkBuddy install offers a retry and does not report addition', async
  await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
  invoke.mockImplementation(async()=>{throw Error('invalid configuration');});
  fireEvent.click(ui.getByText('添加到 WorkBuddy'));
- await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('添加失败'));
+ await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('无法将 Ripple 添加到 WorkBuddy'));
  expect(ui.queryByRole('status')).toBeNull();
  expect(ui.getByText('添加到 WorkBuddy').hasAttribute('disabled')).toBe(false);
 });

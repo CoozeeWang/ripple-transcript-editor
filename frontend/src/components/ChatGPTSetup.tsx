@@ -32,7 +32,7 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
     <summary>{msg('connector.setupTitle')}</summary>
     <div className="cred-profile connector-setup-card" aria-busy={loading}>
       <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.connectionProfile')}</span></div>
-      <p className="settings-hint">{msg('connector.setupHint')}</p>
+      <p className="settings-hint connector-guidance">{msg('connector.setupHint')}</p>
       <p className="settings-hint connector-platform"><a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noreferrer" onClick={event => {
         if (!nativeDesktopAvailable()) return;
         event.preventDefault(); setLinkError(false);
@@ -55,7 +55,7 @@ export function ChatGPTSetup({ onSaved }: { onSaved?: () => void }) {
         </label>
         <label className="cred-field"><span className="cred-field__label">{msg('connector.runtimeKey')}</span>
           <span className="cred-field__input"><input type="password" value={key} readOnly={!editing} disabled={status === 'saving'} placeholder={saved.has_key ? msg('connector.keySaved') : ''} onChange={event => setKey(event.target.value)} autoComplete="off" /></span>
-          {<span className="cred-field__hint">{msg('connector.keyHint')}</span>}
+          {<span className="cred-field__hint connector-guidance">{msg('connector.keyHint')}</span>}
         </label>
       </div>
       <div className="cred-profile__actions">
