@@ -168,3 +168,15 @@ it('refreshes comparison controls without rewriting the manuscript or cursor', a
  await act(()=>setInterfaceLanguage('zh-CN'));
  expect(change.getAttribute('aria-label')).toBe(msg('comparisonText.m1249'));
 });
+
+it('inserts a real paragraph at the caret and persists it within the same segment',()=>{
+ const {editor,onChange}=setup();editor.focus();editor.setSelectionRange(1,1);
+ fireEvent.keyDown(editor,{key:'Enter'});
+ expect(editor.value).toBe('甲\n\n乙');expect(editor.children).toHaveLength(3);
+ expect(editor.selectionStart).toBe(2);
+ act(()=>flushEditorDrafts());expect(onChange).toHaveBeenCalledWith('甲\n\n乙',expect.anything());
+});
+it('replaces selected body text with a paragraph without relying on execCommand',()=>{
+ const {editor}=setup();editor.focus();editor.setSelectionRange(0,1);
+ fireEvent.keyDown(editor,{key:'Enter'});expect(editor.value).toBe('\n\n乙');
+});

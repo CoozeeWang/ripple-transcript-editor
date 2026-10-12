@@ -145,7 +145,12 @@ export function SegmentTextArea({
         onKeyDown(event as unknown as ReactKeyboardEvent<ParagraphEditorElement>);
         if (!event.defaultPrevented && event.key === "Enter") {
           event.preventDefault();
-          document.execCommand("insertParagraph");
+          const editor=ref.current!;
+          const start=editor.selectionStart,end=editor.selectionEnd;
+          const text=editor.value;
+          recordDraft(text.slice(0,start)+"\n"+text.slice(end),{start,end});
+          paint();editor.setSelectionRange(start+1,start+1);
+          window.dispatchEvent(new Event("te:draft-dirty"));scheduleCommit();
         }
         if ((event.metaKey || event.ctrlKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
           event.preventDefault();
