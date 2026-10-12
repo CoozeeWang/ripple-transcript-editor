@@ -8,7 +8,7 @@ import { registerEditorDraft } from '../lib/editorDrafts';
 import { PeopleInput } from './PeopleInput';
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { AUDIO_EXT, createModel, defaultMetadata, readManifest, readModelEdit, readModelOriginal, renameModelLabel, renameEditLabel, setModelOriginal } from '../localStore';
-import { recordingDirectory, mutateProjectManuscript, readProjectMedia, mediaFailure, mediaFailureMessage, type MediaFailureReason, type OpenProject, type ProjectInterview, type ProjectRecording } from '../lib/projectStore';
+import { recordingDirectory, mutateProjectManuscript, checkProjectMedia, mediaFailure, mediaFailureMessage, type MediaFailureReason, type OpenProject, type ProjectInterview, type ProjectRecording } from '../lib/projectStore';
 import { droppedFiles, reorder } from '../lib/projectSetup';
 import type { TranscriptModel } from '../types';
 import { DateTimeInput } from './DateTimeInput';
@@ -44,7 +44,7 @@ export function ProjectBoard({project,selected,busy,select,save,importDocuments,
  const mediaIdentity=JSON.stringify([session?.id,session?.recordings.filter(r=>r.storage!=='none').map(r=>[r.id,r.file,r.storage,r.fingerprint])]);
  const mediaContext=useRef({project,session});
  useEffect(()=>{mediaContext.current={project,session};},[project,session]);
- useEffect(()=>{let cancelled=false;const {project,session}=mediaContext.current;void Promise.all((session?.recordings??[]).filter(r=>r.storage!=='none').map(async r=>{try{await readProjectMedia(project,session!.id,r);return null;}catch(error){return [r.id,mediaFailure(error).reason] as const;}})).then(ids=>{if(!cancelled)setUnavailable(new Map(ids.filter((item):item is readonly [string,MediaFailureReason]=>item!==null)));});return()=>{cancelled=true;};},[mediaIdentity]);
+ useEffect(()=>{let cancelled=false;const {project,session}=mediaContext.current;void Promise.all((session?.recordings??[]).filter(r=>r.storage!=='none').map(async r=>{try{await checkProjectMedia(project,session!.id,r);return null;}catch(error){return [r.id,mediaFailure(error).reason] as const;}})).then(ids=>{if(!cancelled)setUnavailable(new Map(ids.filter((item):item is readonly [string,MediaFailureReason]=>item!==null)));});return()=>{cancelled=true;};},[mediaIdentity]);
  const [models,setModels]=useState<Record<string,TranscriptModel[]>>({});
  const [readError,setReadError]=useState({sessionId:'',message:''});
  const [originalTarget,setOriginalTarget]=useState<{recording:ProjectRecording;model:TranscriptModel}|null>(null);

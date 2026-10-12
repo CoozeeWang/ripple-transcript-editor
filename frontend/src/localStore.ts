@@ -336,8 +336,11 @@ async function audioFingerprint(dir: FileSystemDirectoryHandle, name: string): P
   const cached = fingerprintCache.get(dir)?.get(name);
   if (cached) return cached;
   const fileHandle = await (dir as unknown as {
-    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
+    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File>; getPlaybackUrl?: () => Promise<string> }>;
   }).getFileHandle(name);
+  // Raw AAC still needs the existing ADTS-to-M4A adapter. Other native media
+  // is streamed by the authorized asset protocol instead of copied into JS.
+  if (fileHandle.getPlaybackUrl && !/\.aac$/i.test(name)) return fileHandle.getPlaybackUrl();
   const file = await fileHandle.getFile();
   const head = await file.slice(0, 65536).arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", head);

@@ -7,7 +7,7 @@ import * as local from '../localStore';
 import type { OpenProject } from '../lib/projectStore';
 import type { TranscriptModel } from '../types';
 vi.mock('../localStore',async original=>({...await original<typeof local>(),readManifest:vi.fn(),readModelEdit:vi.fn(),readModelOriginal:vi.fn(),createModel:vi.fn(),setModelOriginal:vi.fn()}));
-vi.mock('../lib/projectStore',async original=>({...await original<typeof import('../lib/projectStore')>(),mutateProjectManuscript:vi.fn(async(_p,work)=>work()),readProjectMedia:vi.fn(async()=>new File(['synthetic'],'audio.wav')),recordingDirectory:vi.fn(async()=>({}))}));
+vi.mock('../lib/projectStore',async original=>({...await original<typeof import('../lib/projectStore')>(),mutateProjectManuscript:vi.fn(async(_p,work)=>work()),checkProjectMedia:vi.fn(async()=>new File(['synthetic'],'audio.wav')),recordingDirectory:vi.fn(async()=>({}))}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 it.each([false,true])('opens names, removes previews, and copies the current document (original=%s)',async original=>{
  const model={id:'m',label:'采访稿',engine:'test',sourceKind:'import',designatedOriginal:original,edits:original?[]:[{id:'e2'}],activeEditId:original?'':'e2'} as TranscriptModel;
@@ -84,7 +84,7 @@ it('shows the same folder error in English when the interface is English', async
 it('does not tell users to locate an external original for audio copied into the project', async () => {
  const session={id:'s',title:'访谈',recordings:[{id:'r',file:'source.m4a',name:'音频.m4a',storage:'copy'}]};
  const project={data:{id:'p',interviews:[session]}} as OpenProject;
- vi.mocked((await import('../lib/projectStore')).readProjectMedia).mockRejectedValue(new Error('offline'));
+ vi.mocked((await import('../lib/projectStore')).checkProjectMedia).mockRejectedValue(new Error('offline'));
  vi.mocked(local.readManifest).mockResolvedValue(null);
  renderBoard(project);
  await screen.findByText('无法读取项目内的音频。请重新打开这个项目，确认项目文件夹可访问。');
@@ -191,10 +191,22 @@ it('reorders saved-project sessions by dragging the grip onto another session',(
 
 it('updates the reference permission notice when switching interface language', async () => {
  const store=await import('../lib/projectStore'); const {setInterfaceLanguage}=await import('../i18n');
- vi.mocked(store.readProjectMedia).mockRejectedValueOnce(new DOMException('denied','NotAllowedError'));
+ vi.mocked(store.checkProjectMedia).mockRejectedValueOnce(new DOMException('denied','NotAllowedError'));
  const session={id:'s',title:'Synthetic interview',recordings:[{id:'r',file:'source.wav',name:'synthetic.wav',storage:'reference'}]};
  renderBoard({data:{id:'p',interviews:[session]}} as OpenProject);
  await screen.findByText(/音频访问权限需要恢复/);
  try {await act(()=>setInterfaceLanguage('en')); await screen.findByText(/Audio access needs permission/);}
  finally {await act(()=>setInterfaceLanguage('zh-CN'));}
+});
+
+it('does not reread audio after only renaming a session',async()=>{
+ const store=await import('../lib/projectStore');
+ const recording={id:'r',file:'a.wav',name:'Audio',storage:'copy',fingerprint:'synthetic'};
+ const session={id:'s',title:'Session',recordings:[recording]};
+ const project={directory:{name:'synthetic'},data:{id:'p',interviews:[session]}} as unknown as OpenProject;
+ const props={selected:'s',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>work(),legacy:()=>{},relink:()=>{},associate:()=>{}};
+ const ui=render(<ProjectBoard {...props} project={project}/>);
+ await waitFor(()=>expect(store.checkProjectMedia).toHaveBeenCalledTimes(1));
+ ui.rerender(<ProjectBoard {...props} project={{...project,data:{...project.data,interviews:[{...session,title:'Renamed'}]}}}/>);
+ await act(async()=>{});expect(store.checkProjectMedia).toHaveBeenCalledTimes(1);
 });

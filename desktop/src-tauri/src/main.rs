@@ -6,6 +6,7 @@ mod backend_runtime;
 mod native_menu;
 mod grants;
 mod pdf_print;
+mod media;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -173,6 +174,21 @@ fn fs_size(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) ->
     let metadata = fs::metadata(path).map_err(io_error)?;
     if !metadata.is_file() { return Err("不是普通文件".into()); }
     Ok(metadata.len())
+}
+
+#[tauri::command]
+async fn fs_media_check(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, expected: String) -> Result<(), String> {
+    let path = grant_path(&state, &root, &parts, false)?;
+    tauri::async_runtime::spawn_blocking(move || media::check(&path, &expected)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn fs_media_url(app: tauri::AppHandle, state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, expected: String) -> Result<String, String> {
+    let path = grant_path(&state, &root, &parts, false)?;
+    let checked = path.clone();
+    tauri::async_runtime::spawn_blocking(move || media::check(&checked, &expected)).await.map_err(|e| e.to_string())??;
+    app.asset_protocol_scope().allow_file(&path).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
 }
 
 #[tauri::command]
@@ -554,7 +570,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
-            fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
+            fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {

@@ -2,7 +2,7 @@ import { msg } from '../i18n';
 import type { ImportMaterial } from './materialImport';
 import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
-import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decorateNativeProject } from './desktopFs';
+import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decorateNativeProject, NativeFileHandle } from './desktopFs';
 
 export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
@@ -261,6 +261,12 @@ export async function readProjectMedia(project: OpenProject, interviewId: string
     return file;
   } catch (error) { throw mediaFailure(error); }
 }
+export async function checkProjectMedia(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<void> {
+  const handle = await resolveMedia(project, interviewId, recording);
+  if (!(handle instanceof NativeFileHandle)) { await readProjectMedia(project, interviewId, recording); return; }
+  try { await handle.checkMedia(recording.fingerprint); }
+  catch (error) { throw error === 'media_changed' ? new ProjectMediaUnavailable(mediaFailureMessage('changed'), 'changed') : mediaFailure(error); }
+}
 export async function recordingDirectory(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<FileSystemDirectoryHandle> {
   const directory = await interviewDirectory(project, interviewId);
   // A single recording view isolates existing editor/version code without duplicating external media.
@@ -270,6 +276,14 @@ export async function recordingDirectory(project: OpenProject, interviewId: stri
     async getFile() {
       if (recording.storage === 'none') throw new ProjectMediaUnavailable('');
       return readProjectMedia(project, interviewId, recording);
+    },
+    async getPlaybackUrl() {
+      try {
+        if (recording.storage === 'none') throw new ProjectMediaUnavailable('');
+        const handle = await resolveMedia(project, interviewId, recording);
+        if (handle instanceof NativeFileHandle) return await handle.getPlaybackUrl(recording.fingerprint);
+        return URL.createObjectURL(await readProjectMedia(project, interviewId, recording));
+      } catch(error) { throw error === 'media_changed' ? new ProjectMediaUnavailable(mediaFailureMessage('changed'), 'changed') : mediaFailure(error); }
     },
   };
   return {

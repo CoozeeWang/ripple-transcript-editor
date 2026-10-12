@@ -121,6 +121,14 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
 
 export class NativeFileHandle extends NativeHandle {
   readonly kind = 'file';
+  async checkMedia(expected: string): Promise<void> {
+    await invoke('fs_media_check', {root:this.root, parts:this.parts, expected});
+  }
+  async getPlaybackUrl(expected = ''): Promise<string> {
+    const path = await invoke<string>('fs_media_url', {root:this.root, parts:this.parts, expected});
+    const tauri = (window as unknown as {__TAURI__: {core: {convertFileSrc:(path:string)=>string}}}).__TAURI__;
+    return tauri.core.convertFileSrc(path);
+  }
   async getFile(): Promise<File> {
     if (!productionDesktop) {
       const bytes = await invoke<number[]>('fs_read', { root: this.root, parts: this.parts });
