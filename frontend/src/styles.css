@@ -510,7 +510,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .cred-info-icon:hover { color: var(--color-text-strong); }
 .cred-info-tip::after { max-width: min(260px, calc(100vw - 32px)); text-align: left; }
-.toolbar-button-icon { display: block; width: 13px; height: 13px; flex: none; }
+.toolbar-button-icon { display: block; width: 20px; height: 20px; flex: none; }
 .button input { display: none; }
 .button--secondary { border-color: var(--color-border-2); background: var(--color-surface); }
 .button--primary { color: var(--color-surface); background: var(--color-accent); }
@@ -3222,3 +3222,6 @@ label:has(> input[type="radio"]:focus-visible) > span {
 .version-picker-row--original .version-picker-option { padding-left: 20px; }
 .version-picker-row--original:has(.version-picker-engine) {flex-wrap:wrap;}
 .version-picker-row--original > .version-picker-engine {flex-basis:100%;}
+
+.topbar .icon-button > svg, .project-home__header nav .icon-button > svg, .welcome-card--small > svg {width:20px;height:20px;}
+.recent-dock__btn > svg {width:20px;height:20px;}
