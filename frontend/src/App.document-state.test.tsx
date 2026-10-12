@@ -48,15 +48,15 @@ it("uses the complete recording filename for a new project's manuscript without 
   expect(session.title).toBe("第一场");
 });
 
-it("keeps a saved recording draft title and an existing manuscript title", () => {
+it("uses the recording combination name when opening both draft and manuscript versions", () => {
   const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
     recorded_at: null, created_at: "", updated_at: "" };
   const draft = { metadata: { ...session, title: "我改过的标题" }, speakers: [] };
   render(<App recordingLabel="录音_A.m4a" interviewMetadata={session} recordingDraft={draft} />);
   loadFresh("stored-a.m4a");
-  expect(screen.getByRole("heading", { name: "我改过的标题" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
   load("stored-a.m4a", "导入稿标题");
-  expect(screen.getByRole("heading", { name: "导入稿标题" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
 });
 
 it("does not inherit hidden speaker IDs from old global storage or a previous document", () => {

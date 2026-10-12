@@ -15,6 +15,6 @@ it('uses a source filename or custom name for legacy and new imported snapshots'
  expect(model.original).toBe('旧_导入稿.json');
 });
 it('keeps designated and engine originals identifiable',()=>{
- expect(originalVersionLabel({...model,designatedOriginal:true})).toBe('原始转录稿（只读）');
+ expect(originalVersionLabel({...model,designatedOriginal:true})).toBe('河东河西_A_v1（只读）');
  expect(originalVersionLabel({...model,sourceKind:'transcription'})).toBe('原始转录稿（只读）');
 });

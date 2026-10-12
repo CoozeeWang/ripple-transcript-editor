@@ -3217,3 +3217,8 @@ label:has(> input[type="radio"]:focus-visible) > span {
 .notice-dismiss {flex:0 0 auto;margin-left:auto;border:0;background:transparent;color:inherit;padding:0 6px;min-width:28px;min-height:28px;font:400 18px/1 var(--font-sans);cursor:pointer;}
 .notice-dismiss:hover {background:var(--color-surface-warm);border-radius:4px;}
 .notice-dismiss:focus-visible {outline:2px solid var(--color-focus);outline-offset:2px;}
+
+.version-picker-row--original { color: var(--color-text-2); }
+.version-picker-row--original .version-picker-option { padding-left: 20px; }
+.version-picker-row--original:has(.version-picker-engine) {flex-wrap:wrap;}
+.version-picker-row--original > .version-picker-engine {flex-basis:100%;}
