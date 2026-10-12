@@ -1204,7 +1204,7 @@
     "m0729": "{{v0}}_materials.zip",
     "m0730": "The print window is open. Choose “Save as PDF”. {{v0}}",
     "m0731": "Other selected materials will be downloaded in a separate archive.",
-    "m0732": "Download started. Materials are organized into folders by session.",
+    "m0732": "Materials saved by project, session and recording.",
     "m0733": "Couldn’t export",
     "m0734": "Expand",
     "m0735": "Collapse",
@@ -1221,7 +1221,7 @@
     "m0746": "Save a .ripple project folder with all sessions, transcripts and their versions, and audio stored in the project. Trash isn’t included. For linked external audio, only reference notes are included. Locate the original audio after reopening the copy to restore playback.",
     "m0747": "Copy name",
     "m0748": "Choose a location outside the original project. Make sure the audio files are accessible and there’s enough free disk space.",
-    "m0749": "Audio stored in the project keeps its imported format. For linked external audio, only reference notes are exported. Only the current transcript version is exported, and you can choose a format for each transcript. To export another version, switch to it in the editor first. SRT / VTT require valid timestamps.",
+    "m0749": "Audio keeps its imported format, including accessible linked audio. Select the manuscript versions and format for each. SRT / VTT require valid timestamps.",
     "m0750": "This project contains linked external audio. Those audio files won’t be included in the export.",
     "m0751": "Transcripts selected for PDF export open together in the print window, each starting on a new page. Save them as a PDF there. Other materials are downloaded as an archive.",
     "m0754": "Select all",
@@ -1235,7 +1235,8 @@
     "m0762": "Exporting…",
     "m0763": "Choose location and export",
     "m0764": "Export project copy",
-    "m0765": "Export selected materials"
+    "m0765": "Export selected materials",
+    "materialPdfUnavailable": "PDF is available for individual transcripts in the editor. Material archives support the other file formats."
   },
   "export": {
     "m1307": "Transcript",
