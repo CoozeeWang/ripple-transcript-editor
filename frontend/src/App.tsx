@@ -902,7 +902,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           ? msg('App.m0026', { v0: Math.round(transcribeRatio * 100), v1: formatTime(transcribeElapsed) })
           : msg('App.m0027', { v0: activeProviderName || msg('App.m0028'), v1: formatTime(transcribeElapsed) });
 
-  const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0}
+  const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0} onDismiss={()=>{setProcessStatus("ready");setProcessMessage("");}}
             text={processNoticeText} status={activeStatus} phase={transcribePhase} ratio={transcribeRatio}
             engine={transcribeJob?.engine ?? activeProviderName} elapsed={transcribeElapsed}
             hint={transcribeHint} raw={transcribeRaw} cancelTranscription={cancelTranscription}
@@ -994,7 +994,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /></div>}
+      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setLoadError('')}>×</button></div>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -1125,7 +1125,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           <div className={`save-toast save-toast--${saveToast.kind}`} role="status">
             <span className="save-toast__dot" />
             {uiMessage(saveToast.text)}
-            {saveToast.kind === "error" && <CopyProblem operation="save" />}
+            {saveToast.kind === "error" && <><CopyProblem operation="save"/><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setSaveToast(null)}>×</button></>}
           </div>
         )}
 

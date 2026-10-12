@@ -227,7 +227,7 @@ export function ProjectWorkspace() {
       </div>}
       {error && !welcoming && <div ref={errorNotice} className="project-error-notice" role="alert" aria-atomic="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
-        <p>{uiMessage(error)}</p>
+        <p>{uiMessage(error)}</p><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setError('')}>×</button>
       </div>}
       {busy && showProgress && !importStage && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
       {successNotice && <ProcessingNotice>{uiMessage(successNotice)}</ProcessingNotice>}
@@ -259,7 +259,7 @@ export function ProjectWorkspace() {
           </div>
           {error && <div ref={errorNotice} className="project-error-notice project-welcome__error" role="alert" aria-atomic="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
-            <p>{uiMessage(error)}</p>
+            <p>{uiMessage(error)}</p><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setError('')}>×</button>
           </div>}
         </section>}
       </> : <>
@@ -270,7 +270,7 @@ export function ProjectWorkspace() {
           </div><div className="project-title-actions">
           <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ProjectIcon kind="trash"/></button>
           {project.data.interviews.length > 0 && <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
-            <svg className="toolbar-button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            <svg className="toolbar-button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 3v12"/></svg>
           </button>}</div>
         </div>
         {editingDescription === project.data.id ? <form className="project-description-editor" onSubmit={e => { e.preventDefault(); void run(async () => {
@@ -285,8 +285,8 @@ export function ProjectWorkspace() {
         </div></div>
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
-        {importNotice.length>0&&<div className="project-import-notices" role="status">{importNotice.map((note,index)=><p key={index}>{note.name}{language === 'en' ? ': ' : '：'}{note.keys.map(key => msg(key)).join(language === 'en' ? ' ' : '')}</p>)}</div>}
-        <ProjectBoard key={project.data.id} project={project} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={setInterviewId}
+        {importNotice.length>0&&<div className="project-import-notices" role="status"><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setImportNotice([])}>×</button>{importNotice.map((note,index)=><p key={index}>{note.name}{language === 'en' ? ': ' : '：'}{note.keys.map(key => msg(key)).join(language === 'en' ? ' ' : '')}</p>)}</div>}
+        <ProjectBoard key={project.data.id} project={project} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={id=>{setError('');setImportNotice([]);setInterviewId(id);}}
           save={interviews => { void run(async () => {
             const snapshot = current.current!;
             setProject({ ...snapshot, data: { ...snapshot.data, interviews } });

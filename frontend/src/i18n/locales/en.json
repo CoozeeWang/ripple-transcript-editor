@@ -409,7 +409,7 @@
     "m0782": "Couldn’t complete the action. Try again.",
     "m0783": "This area is for audio. Add transcripts under the matching audio or in Standalone transcripts.",
     "m0784": "This area is for transcripts. Add Word, TXT, SRT, VTT, or JSON files.",
-    "m0785": "“{{v0}}” is already in this session.",
+    "m0785": "“{{v0}}” is already in this session. It wasn’t imported again.",
     "m0786": "Audio",
     "m0787": "Transcript",
     "m0788": "Reorder {{v0}}",
@@ -1643,5 +1643,8 @@
     "minimize": "Minimize",
     "zoom": "Zoom",
     "maximize": "Maximize"
+  },
+  "notice": {
+    "dismiss": "Dismiss message"
   }
 }
