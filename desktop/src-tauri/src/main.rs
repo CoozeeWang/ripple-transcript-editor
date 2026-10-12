@@ -1,3 +1,5 @@
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+
 #[cfg(all(not(debug_assertions), not(feature = "custom-protocol")))]
 compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
 
