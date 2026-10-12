@@ -51,7 +51,7 @@ try {
   if (await page.getByRole('heading', { name: 'MCP 连接', exact: true }).count()) throw new Error('MCP must not be in General settings');
   await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
   await page.getByLabel('启用 MCP 连接').check();
-  await page.getByText('本机连接已就绪，请在 AI 软件中调用 Ripple。').waitFor();
+  await page.getByText('本机连接已就绪。请在所选 AI 软件中完成 Ripple 的添加和启用后使用。').waitFor();
   const result = await promisify(execFile)(python, [join(repo, 'scripts/fixtures/connector-mcp-check.py')],
     { cwd: repo, env: { ...process.env, RIPPLE_CONNECTOR_TEST_DIR: directory, RIPPLE_CONNECTOR_TEST_URL: backendUrl } });
   await page.getByRole('dialog').getByRole('button', { name: /关闭/ }).first().click();

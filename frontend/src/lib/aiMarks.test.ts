@@ -7,7 +7,8 @@ function fixture() {
     { id: 'a', speaker_id: 'sp', start: 0, end: 2, text: '河边😀生活。', words: [{ text: '河边', start: 0, end: 1 }],
       annotations: [{ id: 'human', text: '人工批注', createdAt: '2026-01-01' }], highlights: [{ id: 'human', start: 0, end: 2 }] },
     { id: 'b', speaker_id: 'sp', start: 2, end: 3, text: '未添加标记。' } ] };
-  let current: ConnectorDocument = { identity: '1', editable: true, transcript: structuredClone(original), title: 'Synthetic', label: 'v1', names: ['v1'], original: async () => original };
+  let current: ConnectorDocument = { identity: '1', editable: true, transcript: structuredClone(original), title: 'Synthetic', label: 'v1', names: ['v1'],
+    version: { id: 'm1:e1', model_id: 'm1', edit_id: 'e1', name: 'v1', kind: 'edit' }, references: async () => [] };
   const publish = vi.fn();
   const apply = vi.fn(async (source, marks, taskId) => { const result = applyAIMarks(source, marks, taskId); current = { ...current, transcript: result.transcript }; return { saved: true, version: 'v1', added_annotations: result.added_annotations, added_highlights: result.added_highlights }; });
   const c = new AIConnector({ current: async () => current, publish, applyMarks: apply });

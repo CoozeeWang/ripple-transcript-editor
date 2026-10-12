@@ -2,6 +2,20 @@ import { AIMarkTasks } from './aiMarkTasks';
 import type { AIMark } from './aiMarks';
 import { nextAIEditName, type AISuggestion } from './aiVersionEdits';
 import type { Transcript } from '../types';
+import { editingExamples } from './editingExamples';
+
+/** IDs are unique within the current interview, not paths or display names. */
+export interface ConnectorVersion {
+  id: string;
+  model_id: string;
+  edit_id: string;
+  name: string;
+  kind: 'original' | 'edit';
+}
+export interface ConnectorReference {
+  version: ConnectorVersion;
+  load: () => Promise<Transcript | null>;
+}
 
 export interface ConnectorDocument {
   editable?: boolean;
@@ -12,7 +26,8 @@ export interface ConnectorDocument {
   names: string[];
   rules?: string[];
   remember?: (rules: string[]) => Promise<void>;
-  original: () => Promise<Transcript | null>;
+  version: ConnectorVersion;
+  references: () => Promise<ConnectorReference[]>;
 }
 export interface ConnectorHost {
   current: () => Promise<ConnectorDocument>;
@@ -46,7 +61,7 @@ export class AIConnector {
     const snapshot = this.snapshots.get(String(id));
     if (!snapshot) fail('snapshot_expired_read_current_again');
     const current = await this.host.current();
-    if (current.identity !== snapshot.identity || JSON.stringify(current.transcript) !== snapshot.revision)
+    if (current.identity !== snapshot.identity || JSON.stringify(current.version) !== JSON.stringify(snapshot.version) || JSON.stringify(current.transcript) !== snapshot.revision)
       fail('source_changed_read_current_again');
     return snapshot;
   }
@@ -65,8 +80,9 @@ export class AIConnector {
       const snapshot = { ...doc, transcript: structuredClone(doc.transcript), id, revision: JSON.stringify(doc.transcript) };
       this.snapshots.set(id, snapshot);
       return { snapshot: id, title: doc.title, version: doc.label, segment_count: doc.transcript.segments.length,
+        current_version: doc.version,
         duration: doc.transcript.audio.duration, speakers: doc.transcript.speakers, current_interview_rules: doc.rules ?? [],
-        instructions: 'Read pages as needed. Ask for an explicit continuation start. Do not display full text by default.' };
+        instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed. Ask for an explicit continuation start. Do not display full text by default.' };
     }
     if (operation === 'read_page') {
       const s = await this.valid(a.snapshot);
@@ -94,35 +110,32 @@ export class AIConnector {
     }
     if (operation === 'read_examples') {
       const s = await this.valid(a.snapshot);
-      const original = await s.original();
-      await this.valid(a.snapshot);
-      if (!original) return { examples: [], needs_reference: true };
       const requested = a.segment_ids;
       if (!Array.isArray(requested) || requested.length > 20 || requested.some(id => typeof id !== 'string')) fail('select_up_to_20_example_segments');
-      const examples = requested.map(id => {
-        const after = s.transcript.segments.find(segment => segment.id === id);
-        const before = original.segments.find(segment => segment.id === id);
-        if (!after) return { id, ambiguous: true, reason: 'current_segment_missing' };
-        const originalIds = new Set(original.segments.map(segment => segment.id));
-        const sourceIds = (segment: typeof after) => [...new Set([
-          ...(segment.mergedFrom ?? []), ...(segment.splitFrom ? [segment.splitFrom] : []),
-          ...(segment.words ?? []).flatMap(word => (word.origins ?? []).map(origin => origin.segment)),
-        ])].filter(source => originalIds.has(source));
-        let ids = sourceIds(after);
-        // Legacy unmodified boundaries are safe; never guess a merge by time overlap.
-        if (!ids.length && before && before.start === after.start && before.end === after.end) ids = [id];
-        if (!ids.length) return { id, ambiguous: true, reason: 'source_mapping_unavailable' };
-        const sources = original.segments.filter(segment => ids.includes(segment.id));
-        const group = s.transcript.segments.filter(segment => segment.id === id ||
-          (sourceIds(segment).length > 0 && sourceIds(segment).every(source => ids.includes(source))));
-        const beforeText = sources.map(segment => segment.text).join('\n\n');
-        const afterText = group.map(segment => segment.text).join('\n\n');
-        if (beforeText.length + afterText.length > 12000) return { id, too_large: true };
-        return { id, start: after.start, end: after.end, before: beforeText, after: afterText,
-          source_segment_ids: sources.map(segment => segment.id), current_segment_ids: group.map(segment => segment.id),
-          changed: beforeText !== afterText, provenance: 'recorded_source_group_not_proof_of_human_authorship' };
-      });
-      return { examples, instruction: 'Confirm these are user edits before inferring personal style; AI edits are not human preferences.' };
+      const references = (await s.references()).filter(r => r.version.id !== s.version.id);
+      await this.valid(a.snapshot);
+      const context = { snapshot: s.id, current_version: s.version, comparison_versions: references.map(r => r.version), examples: [] };
+      let reference: ConnectorReference | undefined;
+      if (a.comparison_version_id !== undefined) {
+        if (typeof a.comparison_version_id !== 'string') fail('invalid_comparison_version_id');
+        reference = references.find(r => r.version.id === a.comparison_version_id);
+        if (!reference) return { ...context, comparison_status: 'unavailable', reason: 'comparison_version_not_available', needs_reference: true };
+      } else if (references.length === 1 && references[0].version.kind === 'original') reference = references[0];
+      else return { ...context, comparison_status: references.length ? 'selection_required' : 'unavailable',
+        reason: references.length ? 'choose_comparison_version' : 'no_comparison_versions', needs_reference: true,
+        instruction: 'List comparison versions with their IDs and ask which to compare. Do not infer preferences yet.' };
+      let baseline: Transcript | null;
+      try { baseline = await reference.load(); } catch { baseline = null; }
+      await this.valid(a.snapshot);
+      const comparison = { before_version: reference.version, after_version: s.version };
+      if (!baseline) return { ...context, comparison, comparison_status: 'unavailable', reason: 'comparison_version_unreadable', needs_reference: true };
+      const examples = editingExamples(baseline, s.transcript, reference.version, s.version, requested);
+      const reliable = examples.filter(e => 'before' in e).length;
+      return { ...context, comparison, comparison_status: requested.length && !reliable ? 'unreliable' : 'resolved', examples,
+        ...(requested.length && !reliable ? { reason: 'no_reliable_example_pairs' } : {}),
+        changed_examples: examples.filter(e => e.changed === true).length,
+        reliable_examples: reliable,
+        instruction: 'before comes from before_version; after comes from after_version (the continuation target). Unchanged examples only describe these selected segments, not the whole manuscript. Ambiguous examples are not differences. Confirm which changes are human-authored before inferring personal style; AI or mixed edits require user confirmation.' };
     }
     if (operation === 'prepare') {
       const s = await this.valid(a.snapshot);

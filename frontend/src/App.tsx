@@ -1,7 +1,7 @@
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
-import { originalVersionLabel } from './lib/transcriptLabels';
+import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
 import { CopyProblem } from "./components/CopyProblem";
@@ -78,7 +78,6 @@ import { SpeakerPanel } from "./components/SpeakerPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { DeleteDialog, MatchDialog, MergeDialog, NamingModal } from "./components/Dialogs";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { readModelOriginal } from "./localStore";
 
 type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 
@@ -547,12 +546,17 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if (connectorContext.current.generation !== identity || dirHandleRef.current !== dir || !latestExport.current.transcript) throw new Error('interview_changed');
       const rules = await readConnectorRules(dir, audio);
       if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      const manifest = await readManifest(dir, audio);
+      if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      const versionId = `${model.id}:${viewingOriginal || model.designatedOriginal ? 'original' : model.activeEditId}`;
+      const version = connectorVersions(manifest?.models ?? []).find(v => v.id === versionId);
+      if (!version) throw new Error('current_version_unavailable');
       return { identity: String(identity), editable: !viewingOriginal, transcript: latestExport.current.transcript, rules,
         remember: async confirmedRules => writeConnectorRules(dir, audio, confirmedRules),
         title: latestExport.current.metadata?.title ?? '',
-        label: viewingOriginal ? originalVersionLabel(model) : model.edits.find(e => e.id === model.activeEditId)?.label ?? 'v1',
+        label: version.name, version,
         names: models.flatMap(m => m.edits.map((e, i) => e.label ?? defaultEditLabel(i))),
-        original: async () => (await readModelOriginal(dir, audio, model.id))?.transcript ?? null };
+        references: async () => connectorReferences(dir, audio, (await readManifest(dir, audio))?.models ?? []) };
     },
     applyMarks: async (baseline, marks, taskId) => {
       if (viewingOriginal || versionBusy || !activeModel?.activeEditId || JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');

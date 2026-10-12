@@ -98,6 +98,11 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     read = next(tool for tool in tools if tool.name == 'read_current_interview')
     assert read.annotations.read_only_hint
     assert 'save_mode' not in next(tool for tool in tools if tool.name == 'prepare_continuation').input_schema['properties']
+    examples = next(tool for tool in tools if tool.name == 'read_editing_examples')
+    assert 'comparison_version_id' in examples.input_schema['properties']
+    assert 'comparison_version_id' not in examples.input_schema.get('required', [])
+    assert examples.annotations.read_only_hint
+    assert 'sole original' in examples.description
 
 
 def test_disabling_clears_replay_results_and_new_window_cannot_replay_old_reads():
@@ -115,8 +120,9 @@ def test_disabling_clears_replay_results_and_new_window_cannot_replay_old_reads(
 
 
 def test_mark_schema_and_current_version_instructions(tmp_path):
-    from app.connector_mcp import create_server, INSTRUCTIONS, Mark
     from pydantic import ValidationError
+
+    from app.connector_mcp import INSTRUCTIONS, Mark, create_server
     key = tmp_path / 'credential'
     key.write_text('x' * 48)
     tools = asyncio.run(create_server('http://127.0.0.1:18701', key).list_tools())

@@ -9,7 +9,10 @@ function fixture() {
     segments: [{ id: 'a', speaker_id: 'sp', start: 0, end: 4, text: '开头不改。' },
       { id: 'b', speaker_id: 'sp', start: 4, end: 8, text: '嗯，我觉得可能有问题。',
         words: [...'嗯，我觉得可能有问题。'].map((text, i) => ({ text, start: 4 + i / 4, end: 4 + (i + 1) / 4 })) }] };
-  let current: ConnectorDocument = { identity: '1', transcript: baseline, label: 'v1', title: 'Synthetic interview', names: ['v1'], original: async () => baseline };
+  const original = { id: 'm1:original', model_id: 'm1', edit_id: 'original', name: 'Original', kind: 'original' as const };
+  let current: ConnectorDocument = { identity: '1', transcript: baseline, label: 'v1', title: 'Synthetic interview', names: ['v1'],
+    version: { id: 'm1:e1', model_id: 'm1', edit_id: 'e1', name: 'v1', kind: 'edit' },
+    references: async () => [{ version: original, load: async () => baseline }] };
   const publish = vi.fn(async (source: Transcript, changes: Parameters<typeof applyAISuggestions>[2], name: string) => {
     const next = applyAISuggestions(current.transcript, source, changes);
     current = { ...current, identity: '2', transcript: next };
@@ -25,6 +28,70 @@ async function prepare(f: ReturnType<typeof fixture>, args: Record<string, unkno
 const change = { segment_id: 'b', before: '嗯，我觉得可能有问题。', after: '我觉得可能有问题。' };
 
 describe('current interview connector', () => {
+  it('identifies both versions without interpreting unchanged selected samples as a whole-manuscript result', async () => {
+    const f = fixture();
+    f.current = { ...f.current, transcript: { ...f.baseline, segments: [f.baseline.segments[0], { ...f.baseline.segments[1], text: '修改正文。' }] } };
+    const read = await f.c.handle('read_current', {});
+    expect(read.current_version).toEqual(f.current.version);
+    const pairs = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a', 'b'] });
+    expect(pairs.comparison).toEqual({ before_version: expect.objectContaining({ id: 'm1:original', name: 'Original' }), after_version: f.current.version });
+    expect(pairs.examples).toEqual([expect.objectContaining({ changed: false }), expect.objectContaining({ changed: true, before: f.baseline.segments[1].text, after: '修改正文。' })]);
+    expect(pairs.changed_examples).toBe(1);
+  });
+  it('asks when multiple versions exist and loads only the explicitly selected baseline', async () => {
+    const f = fixture(); const original = (await f.current.references())[0];
+    const other = { version: { ...f.current.version, id: 'm1:e2', edit_id: 'e2', name: 'v1' }, load: vi.fn(async () => f.baseline) };
+    const load = vi.fn(original.load);
+    f.current = { ...f.current, references: async () => [{ ...original, load }, other] };
+    const read = await f.c.handle('read_current', {});
+    const discovery = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: [] });
+    expect(discovery.comparison_status).toBe('selection_required'); expect(discovery.comparison_versions).toHaveLength(2);
+    expect(load).not.toHaveBeenCalled(); expect(other.load).not.toHaveBeenCalled();
+    const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['b'], comparison_version_id: 'm1:e2' });
+    expect(result.comparison).toEqual({ before_version: other.version, after_version: f.current.version });
+    expect(other.load).toHaveBeenCalledOnce(); expect(load).not.toHaveBeenCalled();
+  });
+  it('requires a choice for a sole edit and excludes the current version', async () => {
+    const f = fixture();
+    f.current = { ...f.current, references: async () => [
+      { version: f.current.version, load: async () => f.baseline },
+      { version: { ...f.current.version, id: 'm1:e2', edit_id: 'e2' }, load: async () => f.baseline },
+    ] };
+    const read = await f.c.handle('read_current', {});
+    const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: [] });
+    expect(result.comparison_status).toBe('selection_required');
+    expect(result.comparison_versions).toEqual([expect.objectContaining({ id: 'm1:e2' })]);
+  });
+  it('returns explicit reasons for unavailable, self-selected and unreadable versions', async () => {
+    const f = fixture(); const original = (await f.current.references())[0];
+    for (const id of ['m1:e1', 'another-interview:e1']) {
+      const read = await f.c.handle('read_current', {});
+      const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'], comparison_version_id: id });
+      expect(result.reason).toBe('comparison_version_not_available'); expect(result.examples).toEqual([]);
+    }
+    f.current = { ...f.current, references: async () => [{ ...original, load: async () => { throw Error('private path must not leak'); } }] };
+    let read = await f.c.handle('read_current', {});
+    expect((await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] })).reason).toBe('comparison_version_unreadable');
+    f.current = { ...f.current, references: async () => [] };
+    read = await f.c.handle('read_current', {});
+    expect((await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] })).reason).toBe('no_comparison_versions');
+  });
+  it('does not match coincidental segment IDs and timestamps from different models', async () => {
+    const f = fixture(); const original = (await f.current.references())[0];
+    f.current = { ...f.current, references: async () => [{ ...original, version: { ...original.version, id: 'm2:original', model_id: 'm2' } }] };
+    const read = await f.c.handle('read_current', {});
+    const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] });
+    expect(result.comparison_status).toBe('unreliable');
+    expect(result.examples).toEqual([{ id: 'a', ambiguous: true, reason: 'source_mapping_unavailable' }]);
+  });
+  it('rejects results if the interview changes while loading the baseline', async () => {
+    const f = fixture(); const original = (await f.current.references())[0];
+    f.current = { ...f.current, references: async () => [{ ...original, load: async () => {
+      f.current = { ...f.current, identity: 'another-interview' }; return f.baseline;
+    } }] };
+    const read = await f.c.handle('read_current', {});
+    await expect(f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] })).rejects.toThrow('source_changed');
+  });
   it('reads a merged human example against both original paragraphs without guessing by time', async () => {
     const f = fixture();
     f.current = { ...f.current, transcript: { ...f.baseline, segments: [{ ...f.baseline.segments[0],
@@ -36,7 +103,7 @@ describe('current interview connector', () => {
   });
   it('returns complete recorded source context for a split instead of falsely treating it as missing', async () => {
     const f = fixture();
-    const word = { text: '字', start: 4, end: 5, origins: [{ model: 'synthetic', segment: 'b', from: 0, to: 1, start: 4, end: 5 }] };
+    const word = { text: '字', start: 4, end: 5, origins: [{ model: 'm1', segment: 'b', from: 0, to: 1, start: 4, end: 5 }] };
     f.current = { ...f.current, transcript: { ...f.baseline, segments: [f.baseline.segments[0],
       { ...f.baseline.segments[1], end: 6, text: '嗯，我觉得', words: [word] },
       { ...f.baseline.segments[1], id: 'split', start: 6, text: '可能有问题。', words: [word] }] } };

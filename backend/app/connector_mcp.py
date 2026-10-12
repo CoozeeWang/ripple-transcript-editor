@@ -13,11 +13,15 @@ from pydantic import BaseModel, ConfigDict
 
 INSTRUCTIONS = (
     "Ripple is the local editor; this connection only accesses its explicitly enabled current interview. "
-    "Call read_current_interview, then read pages and selected original/current examples as needed. "
+    "Call read_current_interview; its current_version is the continuation target. "
+    "Call read_editing_examples to discover comparison_versions. Only a sole original is selected automatically. "
+    "If selection_required, list version names and IDs and ask the user to choose; pass comparison_version_id. "
+    "Explain the actual before_version and after_version before inferring style. Never treat ambiguous pairs as differences. "
+    "Read pages and selected version comparison examples as needed. "
     "Never assume the continuation start: ask the user if missing or ambiguous. "
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
     "Text edits always save a new version. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
-    "Infer preferences only from examples confirmed as human edits; original/current differences may include AI edits. "
+    "Infer preferences only from examples confirmed as human edits; selected-version differences may include AI edits. "
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
     "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
     "Use status to recover uncertain outcomes; do not start another task to retry an unknown write. "
@@ -95,9 +99,18 @@ def register_tools(mcp, call):
         return await call("read_page", {"snapshot": snapshot, "cursor": cursor, "max_chars": max_chars})
 
     @mcp.tool(structured_output=True, annotations=read)
-    async def read_editing_examples(snapshot: str, segment_ids: list[str]) -> dict[str, Any]:
-        """Read selected original/current pairs. Ask if these are human edits before learning style."""
-        return await call("read_examples", {"snapshot": snapshot, "segment_ids": segment_ids})
+    async def read_editing_examples(snapshot: str, segment_ids: list[str],
+                                   comparison_version_id: str | None = None) -> dict[str, Any]:
+        """Compare selected segments to an explicit version. Use segment_ids=[] to list candidates.
+
+        A sole original is automatic; otherwise ask the user to select comparison_version_id.
+        Returns named before/after version IDs, unchanged/changed pairs or mapping failure reasons.
+        Confirm human authorship (especially mixed/AI edits) before learning personal preferences.
+        """
+        args = {"snapshot": snapshot, "segment_ids": segment_ids}
+        if comparison_version_id is not None:
+            args["comparison_version_id"] = comparison_version_id
+        return await call("read_examples", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
     async def prepare_continuation(snapshot: str, rules: list[str], start_id: str | None = None,
