@@ -191,6 +191,42 @@ try {
   }
   console.log(result.stdout.trim());
   console.log('PASS: source preserved; exactly one new version; comparison visible; disabled connection rejected. Native lifecycle is simulated; no model or real interview used.');
+
+  // Independent fresh synthetic document: speaker A / filler B / speaker A.
+  await page.goto(`${vite.resolvedUrls.local[0]}?delete-between`);
+  await page.getByText('我觉得先开始，把这份合成稿件核对清楚。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /设置|偏好/ }).first().click();
+  await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
+  await page.getByLabel('启用 MCP 连接').check();
+  await page.getByText('本机连接已就绪。请在所选 AI 软件中完成 Ripple 的添加和启用后使用。').waitFor();
+  const deleteBetweenBaseline = await page.evaluate(async () => {
+    const f=window.__fixture, manifest=await f.readManifest(), model=manifest.models.find(m=>m.id===manifest.activeModelId);
+    const source=await f.readModelEdit(model.id,model.edits[0].id), originalModel=manifest.models.find(m=>m.id!==model.id);
+    const original=await f.readModelOriginal(originalModel.id), dir=await f.root.handle.getDirectoryHandle('synthetic.transcript');
+    return { source:JSON.stringify(source.transcript),original:JSON.stringify(original.transcript),
+      snapshot:await (await (await dir.getFileHandle(model.original)).getFile()).text() };
+  });
+  const deleteBetween = await promisify(execFile)(python, [join(repo, 'scripts/fixtures/connector-mcp-check.py')],
+    { cwd: repo, env: { ...process.env, RIPPLE_CONNECTOR_TEST_DIR: directory, RIPPLE_CONNECTOR_TEST_URL: backendUrl, RIPPLE_DELETE_BETWEEN_ONLY: '1' } });
+  const afterDeletion = await page.evaluate(async () => {
+    const f=window.__fixture, manifest=await f.readManifest(), model=manifest.models.find(m=>m.id===manifest.activeModelId);
+    const source=await f.readModelEdit(model.id,model.edits[0].id), current=await f.readModelEdit(model.id,model.activeEditId);
+    const originalModel=manifest.models.find(m=>m.id!==model.id), original=await f.readModelOriginal(originalModel.id);
+    const transcriptDir=await f.root.handle.getDirectoryHandle('synthetic.transcript');
+    const snapshot=await (await (await transcriptDir.getFileHandle(model.original)).getFile()).text();
+    return { versions:model.edits.length,source:source.transcript.segments,result:current.transcript.segments,
+      sourceSerialized:JSON.stringify(source.transcript),originalSerialized:JSON.stringify(original.transcript),snapshotSerialized:snapshot };
+  });
+  if(afterDeletion.versions!==2 || afterDeletion.source.length!==3 || afterDeletion.source[1].text!=='嗯' ||
+    afterDeletion.result.length!==1 || afterDeletion.result[0].mergedFrom.join()!=='s1,s3' ||
+    afterDeletion.result[0].text!==afterDeletion.source[0].text+'\n'+afterDeletion.source[2].text ||
+    !afterDeletion.result[0].annotations.some(n=>n.id==='manual') || !afterDeletion.result[0].highlights.some(h=>h.id==='manual') ||
+    afterDeletion.sourceSerialized!==deleteBetweenBaseline.source || afterDeletion.originalSerialized!==deleteBetweenBaseline.original ||
+    afterDeletion.snapshotSerialized!==deleteBetweenBaseline.snapshot) throw new Error(`Delete-between source/version/mark preservation failed: ${JSON.stringify({versions:afterDeletion.versions,sourceCount:afterDeletion.source.length,resultCount:afterDeletion.result.length,mergedFrom:afterDeletion.result[0]?.mergedFrom,sourceUnchanged:afterDeletion.sourceSerialized===deleteBetweenBaseline.source,originalUnchanged:afterDeletion.originalSerialized===deleteBetweenBaseline.original,snapshotUnchanged:afterDeletion.snapshotSerialized===deleteBetweenBaseline.snapshot})}`);
+  await page.getByLabel('启用 MCP 连接').uncheck();
+  if(errors.length) throw new Error(`Browser errors: ${errors.join('; ')}`);
+  console.log(deleteBetween.stdout.trim());
+  console.log('PASS: fresh same-speaker neighbors merged after deletion; source, original, import snapshot and retained marks preserved.');
 } finally {
   await browser?.close();
   await vite?.close();

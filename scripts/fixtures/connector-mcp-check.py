@@ -16,6 +16,29 @@ async def main():
                 result=await client.call_tool(name,args)
                 assert not result.is_error, str(result.content)
                 return result.structured_content
+            if os.environ.get('RIPPLE_DELETE_BETWEEN_ONLY')=='1':
+                read=await call('read_current_interview',{})
+                page=await call('read_interview_page',{'snapshot':read['snapshot']})
+                assert len(page['segments'])==3 and page['segments'][1]['text']=='嗯'
+                plan=await call('prepare_continuation',{'snapshot':read['snapshot'],'start_id':'s1',
+                    'rules':['Synthetic: delete the filler, then merge the remaining same-speaker neighbors'],
+                    'allowed_actions':['edit','merge_previous','delete']})
+                await call('stage_continuation',{'task_id':plan['task_id'],'changes':[
+                    {'segment_id':'s2','before':'嗯','after':'','action':'delete'}]})
+                await call('stage_continuation',{'task_id':plan['task_id'],'changes':[
+                    {'segment_id':s['id'],'before':s['text'],'after':s['text'],
+                     'action':'merge_previous' if s['id']=='s3' else 'edit'}
+                    for s in reversed(page['segments']) if s['id']!='s2']})
+                args={'task_id':plan['task_id'],'confirmed_summary':plan['summary']}
+                saved=await call('publish_continuation',args)
+                assert saved['saved'] and saved['deleted_segments']==1 and saved['merged_segments']==1
+                assert await call('publish_continuation',args)==saved
+                final=await call('read_current_interview',{})
+                assert final['segment_count']==1
+                final_page=await call('read_interview_page',{'snapshot':final['snapshot']})
+                assert final_page['segments'][0]['text']==page['segments'][0]['text']+'\n'+page['segments'][2]['text']
+                print('PASS: real MCP deletes intervening filler first, merges retained same-speaker neighbors and publishes once.')
+                return
             if os.environ.get('RIPPLE_STRUCTURAL_ONLY')=='1':
                 read=await call('read_current_interview',{})
                 page=await call('read_interview_page',{'snapshot':read['snapshot']})

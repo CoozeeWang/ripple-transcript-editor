@@ -2,7 +2,7 @@
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import App from '__REPO__/frontend/src/App.tsx';
-import {createModel, saveActiveEdit, readManifest, readModelEdit} from '__REPO__/frontend/src/localStore.ts';
+import {createModel, saveActiveEdit, readManifest, readModelEdit, readModelOriginal} from '__REPO__/frontend/src/localStore.ts';
 import '__REPO__/frontend/src/styles.css';
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
 function directory(name = 'root'): TestDirectory {
@@ -40,6 +40,10 @@ const raw={audio:{filename:'synthetic.wav',duration:30},speakers:[{id:'speaker',
 {id:'s1',speaker_id:'speaker',start:0,end:10,text:'嗯，我觉得先开始，把这份合成稿件核对清楚。',annotations:[{id:'manual',text:'合成人工批注',createdAt:'2026-01-01'}],highlights:[{id:'manual',start:0,end:1}]},
 {id:'s2',speaker_id:'speaker',start:10,end:20,text:'嗯，我觉得可能还有问题，需要继续检查这个合成例子。',words:[...'嗯，我觉得可能还有问题，需要继续检查这个合成例子。'].map((text,i)=>({text,start:10+i/2,end:10+(i+1)/2}))},
 {id:'s3',speaker_id:'speaker',start:20,end:30,text:'这是很重要、很重要的。'}]};
+if (new URLSearchParams(location.search).has('delete-between')) {
+  raw.speakers.push({id:'filler-speaker',name:'Synthetic filler speaker'});
+  raw.segments[1]={...raw.segments[1],speaker_id:'filler-speaker',text:'嗯',words:[{text:'嗯',start:10,end:20}]};
+}
 await createModel(root.handle,'synthetic.wav',{engine:'imported',sourceKind:'import',sourceName:'Synthetic original.json',transcript:raw,original:raw,originalOnly:true,designatedOriginal:true});
 const made=await createModel(root.handle,'synthetic.wav',{engine:'imported',sourceKind:'import',sourceName:'Synthetic revision.json',transcript:raw,original:raw,editLabel:'v1'});
 // Reproduce a legacy import snapshot retained by existing projects; never a user version.
@@ -51,5 +55,5 @@ await writeJson('manifest.json',made.manifest);
 const current=structuredClone(made.edited);
 current.transcript.segments[0].text='我觉得先开始，把这份合成稿件核对清楚。';
 await saveActiveEdit(root.handle,'synthetic.wav',made.model.id,made.model.edits[0].id,current);
-(window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit)};
+(window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit),readModelOriginal:(model:string)=>readModelOriginal(root.handle,'synthetic.wav',model)};
 createRoot(document.getElementById('root')!).render(<App projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/>);

@@ -27,7 +27,9 @@ INSTRUCTIONS = (
     "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
     "Use status to recover uncertain outcomes; do not start another task to retry an unknown write. "
     "A rejected stage batch is not accepted: report the exact tool error rather than claiming merges are unsupported. "
-    "For merge_previous_requires_same_speaker, keep the speaker boundary; for merge_previous_preceding_segment_deleted, do not delete the merge target. "
+    "merge_previous finds the nearest retained preceding in-scope segment after explicitly staged deletions, and still requires the same speaker. "
+    "Stage filler deletions first or together with the affected merge; deleting filler alone does not implicitly merge neighbors. "
+    "For merge_previous_requires_same_speaker, keep the remaining speaker boundary. "
     "Keep replies concise: do not list the full transcript or all changes unless requested. "
     "On completion report the saved version, scope and exceptions; complete differences appear in Ripple. "
     "For analysis read enough context, cite relevant real snippets and timestamps, separate quotations from inference; "
@@ -143,7 +145,9 @@ def register_tools(mcp, call):
         """Stage up to 32 changes, including unchanged segments to prove coverage.
 
         action defaults to edit. delete requires after=""; merge_previous uses only this segment's
-        revised text, joined to the preceding in-scope same-speaker segment (do not repeat its text).
+        revised text, joined to the nearest retained preceding in-scope same-speaker segment
+        after staged deletions (do not repeat its text). Stage intervening deletions first or in
+        the same batch as the merge. Deletion alone never automatically merges neighbors.
         before must match full source text. Structural edits require allowed_actions at preparation,
         whole affected segments, and cannot delete all segments. Writes occur only at publication.
         """

@@ -28,11 +28,12 @@ export function applyAISuggestions(current: Transcript, baseline: Transcript, su
     const suggestion = changes.get(original.id);
     if (suggestion?.action === 'delete') segments = segments.filter(segment => segment.id !== original.id);
     if (suggestion?.action === 'merge_previous') {
-      const previous = current.segments[index - 1];
+      let previousIndex = index - 1;
+      while (previousIndex >= 0 && changes.get(current.segments[previousIndex].id)?.action === 'delete') previousIndex--;
+      const previous = current.segments[previousIndex];
       const target = segments.findIndex(segment => segment.id === original.id);
       if (!previous) throw new Error('merge_previous_has_no_preceding_segment');
       if (previous.speaker_id !== original.speaker_id) throw new Error('merge_previous_requires_same_speaker');
-      if (changes.get(previous.id)?.action === 'delete') throw new Error('merge_previous_preceding_segment_deleted');
       if (target < 1 || segments[target - 1].speaker_id !== original.speaker_id) throw new Error('merge_previous_target_unavailable');
       segments = mergeSegmentWithNext(segments, segments[target - 1].id)!;
     }

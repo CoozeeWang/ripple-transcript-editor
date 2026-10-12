@@ -265,9 +265,53 @@ it('rejects mixed speakers, delete/merge conflicts across batches and deletion o
  await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,action:'merge_previous'}]})).rejects.toThrow('merge_previous_requires_same_speaker');
  const g=fixture(),p=await prepare(g,{start_id:'a',allowed_actions:['edit','merge_previous','delete']});
  await g.c.handle('stage',{task_id:p.task_id,changes:[{...change,action:'merge_previous'}]});
- await expect(g.c.handle('stage',{task_id:p.task_id,changes:[{segment_id:'a',before:g.baseline.segments[0].text,after:'',action:'delete'}]})).rejects.toThrow('merge_previous_preceding_segment_deleted');
+ await expect(g.c.handle('stage',{task_id:p.task_id,changes:[{segment_id:'a',before:g.baseline.segments[0].text,after:'',action:'delete'}]})).rejects.toThrow('merge_previous_outside_scope');
  expect((await g.c.handle('status',{task_id:p.task_id})).staged_ids).toEqual(['b']);
  const h=fixture(),q=await prepare(h,{start_id:'a',allowed_actions:['delete']});
  await expect(h.c.handle('stage',{task_id:q.task_id,changes:h.baseline.segments.map(s=>({segment_id:s.id,before:s.text,after:'',action:'delete'}))})).rejects.toThrow('cannot_delete_all_segments');
  expect((await h.c.handle('status',{task_id:q.task_id})).staged_ids).toEqual([]);
+});
+
+function fillerFixture() {
+ const f=fixture();
+ f.current={...f.current,transcript:{...f.baseline,segments:[f.baseline.segments[0],
+  {id:'filler',speaker_id:'other',start:4,end:5,text:'嗯'},
+  {...f.baseline.segments[1],id:'c',start:5,end:8,text:'接着说。'}]}};
+ return f;
+}
+it.each(['one batch','deletion first','same-speaker merge first'])('supports deleting filler and merging retained neighbors in %s',async order=>{
+ const f=fillerFixture();
+ if(order==='same-speaker merge first')f.current={...f.current,transcript:{...f.current.transcript,segments:f.current.transcript.segments.map(s=>({...s,speaker_id:'sp'}))}};
+ const source=structuredClone(f.current.transcript),plan=await prepare(f,{start_id:'a',allowed_actions:['edit','delete','merge_previous']});
+ const deletion={segment_id:'filler',before:'嗯',after:'',action:'delete'};
+ const merge={segment_id:'c',before:'接着说。',after:'接着说。',action:'merge_previous'};
+ if(order==='one batch')await f.c.handle('stage',{task_id:plan.task_id,changes:[merge,deletion]});
+ else {
+  await f.c.handle('stage',{task_id:plan.task_id,changes:[order==='deletion first'?deletion:merge]});
+  await f.c.handle('stage',{task_id:plan.task_id,changes:[order==='deletion first'?merge:deletion]});
+ }
+ await f.c.handle('stage',{task_id:plan.task_id,changes:[{segment_id:'a',before:source.segments[0].text,after:source.segments[0].text}]});
+ const args={task_id:plan.task_id,confirmed_summary:plan.summary},result=await f.c.handle('publish',args);
+ expect(result).toMatchObject({saved:true,merged_segments:1,deleted_segments:1});
+ expect(f.current.transcript.segments).toHaveLength(1);
+ expect(f.current.transcript.segments[0].text).toBe(source.segments[0].text+'\n接着说。');
+ expect(source.segments).toHaveLength(3);
+ expect(await f.c.handle('publish',args)).toEqual(result);expect(f.publish).toHaveBeenCalledOnce();
+});
+it('does not auto-merge for deletion alone, or bypass the range, partial target or remaining speaker boundary',async()=>{
+ const deletion={segment_id:'filler',before:'嗯',after:'',action:'delete'};
+ const merge={segment_id:'c',before:'接着说。',after:'接着说。',action:'merge_previous'};
+ for(const [args,error] of [[{start_id:'filler'},'merge_previous_outside_scope'],[{start_id:'a',start_offset:1},'structural_action_requires_full_segments']] as const){
+  const f=fillerFixture(),plan=await prepare(f,{...args,allowed_actions:['edit','delete','merge_previous']});
+  await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[deletion,merge]})).rejects.toThrow(error);
+  expect((await f.c.handle('status',{task_id:plan.task_id})).staged_ids).toEqual([]);
+ }
+ const g=fillerFixture();g.current={...g.current,transcript:{...g.current.transcript,segments:g.current.transcript.segments.map(s=>s.id==='a'?{...s,speaker_id:'third'}:s)}};
+ const p=await prepare(g,{start_id:'a',allowed_actions:['edit','delete','merge_previous']});
+ await expect(g.c.handle('stage',{task_id:p.task_id,changes:[deletion,merge]})).rejects.toThrow('merge_previous_requires_same_speaker');
+ expect((await g.c.handle('status',{task_id:p.task_id})).staged_ids).toEqual([]);
+ const h=fillerFixture(),q=await prepare(h,{start_id:'a',allowed_actions:['edit','delete']});
+ await h.c.handle('stage',{task_id:q.task_id,changes:h.current.transcript.segments.map(s=>s.id==='filler'?deletion:{segment_id:s.id,before:s.text,after:s.text})});
+ expect(await h.c.handle('publish',{task_id:q.task_id,confirmed_summary:q.summary})).toMatchObject({deleted_segments:1,merged_segments:0});
+ expect(h.current.transcript.segments).toHaveLength(2);
 });

@@ -166,7 +166,7 @@ export class AIConnector {
       this.tasks.set(task.id, task);
       return { task_id: task.id, summary, start_id: ids[0], end_id: ids.at(-1), segment_count: ids.length,
         new_version: name, allowed_actions: allowedActions,
-        instruction: 'Confirm key style, scope and allowed actions in conversation. Stage every in-scope segment, including unchanged ones, then publish once. merge_previous uses this segment’s revised text and joins it to the immediately preceding in-scope same-speaker segment; do not repeat the preceding text. delete requires after="". Structural actions require full segments.' };
+        instruction: 'Confirm key style, scope and allowed actions in conversation. Stage every in-scope segment, including unchanged ones, then publish once. merge_previous uses this segment’s revised text and joins it to the nearest retained preceding in-scope same-speaker segment after staged deletions; do not repeat the preceding text. Stage intervening deletions first or in the same batch as the merge. delete requires after="" and does not automatically merge neighbors. Structural actions require full segments.' };
     }
     if (operation === 'stage') {
       const task = this.task(a.task_id);
@@ -176,6 +176,8 @@ export class AIConnector {
       if (!Array.isArray(a.changes) || a.changes.length > 32 || !a.changes.length) fail('invalid_batch');
       const validated: Change[] = [];
       const seen = new Set<string>();
+      const full = (id: string) => !(id === task.ids[0] && task.startOffset !== 0) &&
+        !(id === task.ids.at(-1) && task.endOffset !== task.snapshot.transcript.segments.find(s => s.id === id)!.text.length);
       for (const item of a.changes) {
         if (typeof item !== 'object' || item === null) fail('invalid_change');
         const change = item as Change;
@@ -187,20 +189,22 @@ export class AIConnector {
         if (!task.allowedActions.includes(action)) fail('action_not_allowed_prepare_again');
         const segment = task.snapshot.transcript.segments.find(s => s.id === change.segment_id)!;
         if (segment.text !== change.before) fail('before_text_mismatch');
-        const full = (id: string) => !(id === task.ids[0] && task.startOffset !== 0) &&
-          !(id === task.ids.at(-1) && task.endOffset !== task.snapshot.transcript.segments.find(s => s.id === id)!.text.length);
         if (action !== 'edit' && !full(change.segment_id)) fail('structural_action_requires_full_segments');
-        if (action === 'merge_previous') {
-          const previous = task.ids[task.ids.indexOf(change.segment_id) - 1];
-          if (!previous) fail('merge_previous_outside_scope');
-          if (!full(previous)) fail('structural_action_requires_full_segments');
-        }
         if (change.segment_id === task.ids[0] && !change.after.startsWith(change.before.slice(0, task.startOffset))) fail('start_prefix_changed');
         if (change.segment_id === task.ids.at(-1) && !change.after.endsWith(change.before.slice(task.endOffset))) fail('end_suffix_changed');
         seen.add(change.segment_id); validated.push({ segment_id: change.segment_id, before: change.before, after: change.after, action });
       }
       const combined = new Map(task.staged);
       for (const change of validated) combined.set(change.segment_id, change);
+      // A merge target is the nearest RETAINED in-scope segment, including
+      // deletions in this batch and earlier batches. Never cross the scope boundary.
+      for (const change of combined.values()) if (change.action === 'merge_previous') {
+        let previousIndex = task.ids.indexOf(change.segment_id) - 1;
+        while (previousIndex >= 0 && combined.get(task.ids[previousIndex])?.action === 'delete') previousIndex--;
+        const previous = task.ids[previousIndex];
+        if (!previous) fail('merge_previous_outside_scope');
+        if (!full(previous)) fail('structural_action_requires_full_segments');
+      }
       // Validate against ALL staged structural operations before accepting any of this batch.
       applyAISuggestions(task.snapshot.transcript, task.snapshot.transcript, [...combined.values()].map(c =>
         ({ id: c.segment_id, text: c.after, action: c.action, reason: '' })));
