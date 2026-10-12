@@ -23,3 +23,16 @@ it('keeps version names per source and includes legacy AI version labels', () =>
   expect(nextAIEditName('修改稿 v1', ['修改稿 v1 · AI 辅助 01', '修改稿 v1 · AI 修改稿 03', '修改稿 v2 · AI 辅助 09']))
     .toBe('修改稿 v1 · AI 辅助 04');
 });
+
+it('merges a chain of 19 adjacent segments in source order without changing the source', () => {
+  const source = { ...baseline, segments: Array.from({ length: 20 }, (_, i) => ({
+    id: `synthetic-${i}`, speaker_id: 'sp', start: i, end: i + 1, text: `Synthetic ${i}`,
+  })) };
+  const next = applyAISuggestions(source, source, source.segments.slice(1).reverse().map(segment => ({
+    id: segment.id, action: 'merge_previous', text: segment.text, reason: 'Synthetic chain',
+  })));
+  expect(next.segments).toHaveLength(1);
+  expect(next.segments[0].text).toBe(source.segments.map(segment => segment.text).join('\n'));
+  expect(next.segments[0].mergedFrom).toEqual(source.segments.map(segment => segment.id));
+  expect(source.segments).toHaveLength(20);
+});

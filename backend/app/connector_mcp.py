@@ -26,6 +26,8 @@ INSTRUCTIONS = (
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
     "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
     "Use status to recover uncertain outcomes; do not start another task to retry an unknown write. "
+    "A rejected stage batch is not accepted: report the exact tool error rather than claiming merges are unsupported. "
+    "For merge_previous_requires_same_speaker, keep the speaker boundary; for merge_previous_preceding_segment_deleted, do not delete the merge target. "
     "Keep replies concise: do not list the full transcript or all changes unless requested. "
     "On completion report the saved version, scope and exceptions; complete differences appear in Ripple. "
     "For analysis read enough context, cite relevant real snippets and timestamps, separate quotations from inference; "

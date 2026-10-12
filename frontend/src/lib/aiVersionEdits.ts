@@ -30,7 +30,10 @@ export function applyAISuggestions(current: Transcript, baseline: Transcript, su
     if (suggestion?.action === 'merge_previous') {
       const previous = current.segments[index - 1];
       const target = segments.findIndex(segment => segment.id === original.id);
-      if (!previous || previous.speaker_id !== original.speaker_id || changes.get(previous.id)?.action === 'delete' || target < 1 || segments[target - 1].speaker_id !== original.speaker_id) throw new Error('invalid_change');
+      if (!previous) throw new Error('merge_previous_has_no_preceding_segment');
+      if (previous.speaker_id !== original.speaker_id) throw new Error('merge_previous_requires_same_speaker');
+      if (changes.get(previous.id)?.action === 'delete') throw new Error('merge_previous_preceding_segment_deleted');
+      if (target < 1 || segments[target - 1].speaker_id !== original.speaker_id) throw new Error('merge_previous_target_unavailable');
       segments = mergeSegmentWithNext(segments, segments[target - 1].id)!;
     }
   }

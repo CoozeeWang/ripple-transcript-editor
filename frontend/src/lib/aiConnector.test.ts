@@ -262,10 +262,10 @@ it('rejects out-of-scope merges and structural edits across partial character bo
 it('rejects mixed speakers, delete/merge conflicts across batches and deletion of the entire transcript atomically',async()=>{
  const f=fixture();f.current={...f.current,transcript:{...f.baseline,segments:[f.baseline.segments[0],{...f.baseline.segments[1],speaker_id:'other'}]}};
  const plan=await prepare(f,{start_id:'a',allowed_actions:['edit','merge_previous']});
- await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,action:'merge_previous'}]})).rejects.toThrow('invalid_change');
+ await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,action:'merge_previous'}]})).rejects.toThrow('merge_previous_requires_same_speaker');
  const g=fixture(),p=await prepare(g,{start_id:'a',allowed_actions:['edit','merge_previous','delete']});
  await g.c.handle('stage',{task_id:p.task_id,changes:[{...change,action:'merge_previous'}]});
- await expect(g.c.handle('stage',{task_id:p.task_id,changes:[{segment_id:'a',before:g.baseline.segments[0].text,after:'',action:'delete'}]})).rejects.toThrow('invalid_change');
+ await expect(g.c.handle('stage',{task_id:p.task_id,changes:[{segment_id:'a',before:g.baseline.segments[0].text,after:'',action:'delete'}]})).rejects.toThrow('merge_previous_preceding_segment_deleted');
  expect((await g.c.handle('status',{task_id:p.task_id})).staged_ids).toEqual(['b']);
  const h=fixture(),q=await prepare(h,{start_id:'a',allowed_actions:['delete']});
  await expect(h.c.handle('stage',{task_id:q.task_id,changes:h.baseline.segments.map(s=>({segment_id:s.id,before:s.text,after:'',action:'delete'}))})).rejects.toThrow('cannot_delete_all_segments');
