@@ -129,7 +129,7 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
         if(event.button===0 && (event.target as HTMLElement).closest('button')) event.preventDefault();
       }}>
       {groups.map(({model,entries})=><section key={model.id} className={`version-picker-group${model.sourceKind === "import" ? " version-picker-group--import" : ""}`}>
-        
+
         {entries.map(entry=><div key={entry.id} className={`version-picker-row version-picker-row--${entry.id==="original" ? "original" : "edit"}${`${model.id}:${entry.id}`===value ? " is-selected" : ""}`}>
           {entry.id === "original" && model.sourceKind !== "import" && <div className="version-picker-engine"><span>{msg('VersionPicker.m1092')}</span><strong>{displayEngineLabel(model.engine)}</strong></div>}
           {editing?.model===model.id && (editing.edit===entry.id || (editing.edit==="model-name" && entry===entries[0])) ? <div className="version-picker-inline">
