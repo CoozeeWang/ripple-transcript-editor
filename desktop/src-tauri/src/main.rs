@@ -81,6 +81,20 @@ async fn pick_files(app: tauri::AppHandle, state: tauri::State<'_, Grants>, mult
     selected.into_iter().map(|file| add_grant(&state, file.into_path().map_err(|e| e.to_string())?, false, false)).collect()
 }
 
+#[derive(Serialize)]
+struct SavePath { root: String, name: String }
+
+#[tauri::command]
+async fn pick_save_file(app: tauri::AppHandle, state: tauri::State<'_, Grants>, filename: String) -> Result<SavePath, String> {
+    let selected = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_file_name(filename).blocking_save_file())
+        .await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
+    let path = selected.into_path().map_err(|e| e.to_string())?;
+    let name = path.file_name().and_then(|n| n.to_str()).ok_or("invalid_save_name")?.to_string();
+    let parent = path.parent().ok_or("invalid_save_path")?;
+    let grant = add_grant(&state, parent.to_path_buf(), true, true)?;
+    Ok(SavePath { root: grant.root, name })
+}
+
 #[tauri::command]
 fn fs_permission(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, write: bool) -> bool {
     grant_path(&state, &root, &parts, write).is_ok()
@@ -176,7 +190,7 @@ fn fs_read_chunk(state: tauri::State<'_, Grants>, root: String, parts: Vec<Strin
 #[tauri::command]
 fn fs_begin_write(grants: tauri::State<'_, Grants>, writes: tauri::State<'_, Writes>, root: String, parts: Vec<String>) -> Result<u64, String> {
     let target = grant_path(&grants, &root, &parts, true)?;
-    if !target.is_file() { return Err("目标文件不存在".into()); }
+    if target.exists() && !target.is_file() { return Err("目标不是文件".into()); }
     let parent = target.parent().ok_or("目标缺少父文件夹")?;
     let temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
     let id = WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -539,7 +553,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+        .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])

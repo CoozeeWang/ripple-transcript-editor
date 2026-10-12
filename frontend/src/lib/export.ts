@@ -3,6 +3,7 @@ import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
 import { sanitizeForFilename } from "../localStore";
 import { showPdfPrintPreview } from './pdfPrint';
+import { nativeDesktopAvailable, saveNativeBlob } from './desktopFs';
 
 // 导出（Markdown / TXT / Word / PDF / JSON）的格式化逻辑。
 // 除 downloadBlob 外全部是无副作用的纯函数，独立成模块以便单元测试。
@@ -268,7 +269,8 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   return Packer.toBlob(doc);
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
+export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+  if (nativeDesktopAvailable()) { await saveNativeBlob(blob, filename); return; }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -319,7 +321,7 @@ export async function exportTranscript(
   const model = buildExportModel(transcript, metadata);
   const stem = exportFilenameStem(model.title, versionLabel);
   if (format !== 'pdf') {
-    downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
+    await downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
     return;
   }
   if (format === "pdf") {

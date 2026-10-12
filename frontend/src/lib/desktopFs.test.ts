@@ -30,3 +30,23 @@ it('decorates only native project handles and keeps decoration failure non-block
  expect(invoke).toHaveBeenLastCalledWith('project_set_icon',{root:'/synthetic',parts:['demo.ripple']});
  invoke.mockRejectedValueOnce('project_icon_failed'); expect(await decorateNativeProject(directory)).toBe(false);
 });
+
+it('saves through the native picker and commits the selected file, including a new name', async () => {
+ const {saveNativeBlob}=await import('./desktopFs'); bridge();
+ invoke.mockImplementation(async command => command==='pick_save_file'?{root:'/synthetic/exports',name:'reading.txt'}:command==='fs_begin_write'?7:undefined);
+ await saveNativeBlob(new Blob(['synthetic']), 'reading.txt');
+ expect(invoke.mock.calls.map(call=>call[0])).toEqual(['pick_save_file','fs_begin_write','fs_write_chunk','fs_commit_write']);
+ expect(invoke).toHaveBeenCalledWith('fs_begin_write',{root:'/synthetic/exports',parts:['reading.txt']});
+});
+it('cancelled save does not write or report a completed export', async () => {
+ const {saveNativeBlob}=await import('./desktopFs'); bridge(); invoke.mockRejectedValueOnce('selection_cancelled');
+ await expect(saveNativeBlob(new Blob(['synthetic']),'reading.txt')).rejects.toMatchObject({name:'AbortError'});
+ expect(invoke.mock.calls.map(call=>call[0])).toEqual(['pick_save_file']);
+});
+it('failed native write aborts without committing', async () => {
+ const {saveNativeBlob}=await import('./desktopFs'); bridge();
+ invoke.mockImplementation(async command => {if(command==='pick_save_file')return {root:'/synthetic',name:'reading.txt'};if(command==='fs_begin_write')return 7;if(command==='fs_write_chunk')throw new Error('disk full');});
+ await expect(saveNativeBlob(new Blob(['synthetic']),'reading.txt')).rejects.toThrow('disk full');
+ expect(invoke.mock.calls.map(call=>call[0])).toContain('fs_abort_write');
+ expect(invoke.mock.calls.map(call=>call[0])).not.toContain('fs_commit_write');
+});
