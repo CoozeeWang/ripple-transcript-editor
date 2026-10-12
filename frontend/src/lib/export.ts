@@ -109,7 +109,7 @@ export function renderMarkdown(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1314', { v0: m.notes }));
   lines.push("", "---", "");
   for (const seg of m.segments) {
-    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text}`);
+    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text.replace(/\r\n?/g, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/\n+/g, "\n\n")}`);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1315', { v0: a.date, v1: a.text }));
     }

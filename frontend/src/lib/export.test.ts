@@ -146,6 +146,13 @@ describe("renderMarkdown / renderTxt", () => {
     expect(md).toContain("**王远** [00:00:00]：你好");
   });
 
+  it.each(["第一段\n第二段", "第一段\r\n第二段", "第一段<br>第二段", "第一段<BR />第二段"])("exports real Markdown paragraphs for %s", text => {
+    const md=renderMarkdown({...model,segments:[{...model.segments[0],text}]});
+    expect(md).toContain("：第一段\n\n第二段\n");
+    expect(md).not.toMatch(/<br/i);
+    expect(text).toMatch(/第一段/);
+  });
+
   it("txt 含标题和说话人", () => {
     const txt = renderTxt(model);
     expect(txt).toContain("标题");
