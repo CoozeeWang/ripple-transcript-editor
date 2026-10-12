@@ -153,8 +153,6 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
           </div>
         </div>)}
       </section>)}
-      {models.some(model => model.sourceKind === 'import' && !model.designatedOriginal && model.original) &&
-        <p className="version-picker-snapshot-note">{msg('VersionPicker.importSnapshotPurpose')}</p>}
     </div>}
   </div>;
 }

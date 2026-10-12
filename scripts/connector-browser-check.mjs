@@ -105,13 +105,12 @@ try {
       await trigger.click();
       const popup = page.locator('.version-picker--current .version-picker-menu');
       if (await popup.locator('.version-picker-row--original').count() !== 1) throw new Error('Internal import snapshot leaked to current menu');
-      await popup.locator('.version-picker-snapshot-note').waitFor();
+      if (await popup.locator('.version-picker-snapshot-note').count()) throw new Error('Internal snapshot explanation leaked to menu');
       const layout = await popup.evaluate(menu => {
-        const box = menu.getBoundingClientRect(), note = menu.querySelector('.version-picker-snapshot-note');
-        return { fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
-          textFits: note.scrollWidth <= note.clientWidth, text: note.textContent };
+        const box = menu.getBoundingClientRect();
+        return { fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight };
       });
-      if (!layout.fits || !layout.textFits) throw new Error('Import snapshot explanation clipped');
+      if (!layout.fits) throw new Error('Version menu clipped');
       await popup.locator('.version-picker-option').first().focus();
       await popup.locator('.version-picker-option').first().hover();
       if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) {

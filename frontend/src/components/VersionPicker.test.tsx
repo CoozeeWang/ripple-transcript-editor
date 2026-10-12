@@ -91,15 +91,15 @@ it("single pointer click still selects after the double-click window",()=>{
  act(()=>{vi.runAllTimers();});
  expect(select).toHaveBeenCalledWith("m1","e2");expect(screen.queryByRole("group")).toBeNull();
 });
-it.each(['current', 'comparison'] as const)('hides an internal imported snapshot from the %s menu and explains its purpose',async variant=>{
+it.each(['current', 'comparison'] as const)('hides an internal imported snapshot from the %s menu without showing internal implementation notes',async variant=>{
  const select=vi.fn();
  render(<VersionPicker models={[{...models[0],sourceKind:'import',label:'Synthetic import'}]} value="m1:e1" variant={variant} onSelect={select} onRename={vi.fn()}/>);
  fireEvent.click(screen.getByRole('button',{name:variant==='current'?'当前版本：v1':'对照版本：v1'}));
  expect(screen.queryByText('Synthetic import（只读）')).toBeNull();
- expect(screen.getByText('导入时快照保留用于恢复来源与时间定位，不作为对照版本。')).toBeTruthy();
+ expect(screen.queryByText('导入时快照保留用于恢复来源与时间定位，不作为对照版本。')).toBeNull();
  await act(()=>setInterfaceLanguage('en'));
  expect(screen.queryByText('Synthetic import (read-only)')).toBeNull();
- expect(screen.getByText('Import snapshots are retained to recover source and timing information, not as comparison versions.')).toBeTruthy();
+ expect(screen.queryByText('Import snapshots are retained to recover source and timing information, not as comparison versions.')).toBeNull();
  expect(select).not.toHaveBeenCalled();
  await act(()=>setInterfaceLanguage('zh-CN'));
 });

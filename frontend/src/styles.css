@@ -3035,7 +3035,6 @@ button.brand:disabled { opacity: .5; cursor: default; }
 
 /* Imported manuscripts have source labels on their rows, without an engine heading. */
 .version-picker-source { display:block; font-size:0.68rem; color:var(--color-text-3); overflow-wrap:anywhere; font-weight:400; }
-.version-picker-snapshot-note { margin: 6px 8px; font-size: .78rem; line-height: 1.5; color: var(--color-text-2); overflow-wrap: anywhere; }
 
 /* Ripple standard checkbox: native control, matching AI plan selection. */
 input.ripple-checkbox[type="checkbox"] {
