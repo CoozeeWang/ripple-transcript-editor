@@ -79,3 +79,13 @@ it.each([['2026','2026'],['2026-09','2026-09']])('preserves partial date %s when
  expect(validDateTime('2026-13')).toBe(false);
  expect(validDateTime('2026--20')).toBe(false);
 });
+
+it('retains October when sequential digit entry moves focus synchronously',()=>{
+ const save=vi.fn();render(<InlineEdit value="2026-01-01" onCommit={save} inputType="date" ariaLabel="日期"/>);
+ fireEvent.click(screen.getByRole('button'));
+ const month=screen.getByRole('textbox',{name:'日期：月'}) as HTMLInputElement;
+ month.focus();fireEvent.change(month,{target:{value:'1'}});fireEvent.change(month,{target:{value:'10'}});
+ expect(document.activeElement).toBe(screen.getByRole('textbox',{name:'日期：日'}));
+ expect(month.value).toBe('10');fireEvent.keyDown(document.activeElement!,{key:'Enter'});
+ expect(save).toHaveBeenCalledWith('2026-10-01');
+});
