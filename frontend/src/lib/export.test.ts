@@ -11,8 +11,23 @@ import {
   formatDateField,
   renderMarkdown,
   renderTxt,
+  renderDocx,
+  renderPdfHtml,
 } from "./export";
 import type { InterviewMetadata, Transcript } from "../types";
+
+it('retains paragraph breaks and annotation ranges in Word and PDF exports', async () => {
+  const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [],
+    segments: [{ id: 's', speaker_id: '', start: 0, end: 2, text: 'First paragraph\nSecond paragraph',
+      annotations: [{ id: 'a', text: 'Synthetic note', createdAt: '2026-01-01' }] }] }, null);
+  const { default: JSZip } = await import('jszip');
+  const archive = await JSZip.loadAsync(await (await renderDocx(model)).arrayBuffer());
+  const xml = await archive.file('word/document.xml')!.async('string');
+  expect(xml).toMatch(/First paragraph[\s\S]*<w:br\/>[\s\S]*Second paragraph/);
+  expect(xml).toMatch(/commentRangeStart[\s\S]*First paragraph[\s\S]*Second paragraph[\s\S]*commentRangeEnd/);
+  expect(renderPdfHtml(model)).toContain('.body, .anno-text { white-space: pre-wrap; }');
+  expect(renderPdfHtml(model)).toContain('First paragraph\nSecond paragraph');
+});
 
 describe("formatClock", () => {
   it("0 秒 → 00:00:00", () => {

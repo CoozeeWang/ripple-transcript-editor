@@ -185,6 +185,7 @@ export function renderPdfHtml(m: ExportModel): string {
   table.meta td { padding: 2px 0; }
   hr { border: none; border-top: 1px solid #e2e0d8; margin: 16px 0; }
   .seg { margin: 16px 0 4px; }
+  .body, .anno-text { white-space: pre-wrap; }
   .sp { font-weight: 700; }
   .ts { color:#999; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 0 4px; }
   .anno { margin: 2px 0 6px 0; padding: 6px 10px; background:#fff8e6; border-left: 3px solid #e0b84a; border-radius: 3px; font-size: 13.5px; }
@@ -233,12 +234,12 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
     const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]` : "", color: "999999" });
-    const bodyRun = new TextRun({ text: seg.text });
+    const bodyRuns = seg.text.split(/\r?\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined }));
 
     paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
     const runs: unknown[] = [];
     if (seg.annotations.length === 0) {
-      runs.push(bodyRun);
+      runs.push(...bodyRuns);
     } else {
       const ids: number[] = [];
       seg.annotations.forEach((a) => {
@@ -255,7 +256,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
       const startRuns = ids.map((id) => new CommentRangeStart(id));
       const endRuns = ids.map((id) => new CommentRangeEnd(id)).reverse();
       const refRuns = ids.map((id) => new CommentReference(id));
-      runs.push(...startRuns, bodyRun, ...endRuns, ...refRuns);
+      runs.push(...startRuns, ...bodyRuns, ...endRuns, ...refRuns);
     }
     paragraphChildren.push(
       new Paragraph({ spacing: { after: 160, line: 320 }, children: runs as never }),
