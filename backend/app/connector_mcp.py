@@ -1,5 +1,6 @@
 """Ripple MCP stdio adapter. Reads a credential file, never transcript files."""
 import argparse
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -179,7 +180,7 @@ def register_tools(mcp, call):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://127.0.0.1:18701")
+    parser.add_argument("--url", default=os.environ.get("RIPPLE_CONNECTOR_URL", "http://127.0.0.1:18701"))
     parser.add_argument("--credential-file", type=Path, required=True)
     args = parser.parse_args()
     create_server(args.url, args.credential_file).run(transport="stdio")

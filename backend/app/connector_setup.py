@@ -33,7 +33,7 @@ def save_setup(data_root: Path, resources: Path, values: dict):
     elif not key_file.is_file():
         raise ValueError('Runtime key required')
     python = resources / 'python/bin/python3.12'
-    command = shlex.join([str(python), '-m', 'app.connector_mcp', '--credential-file', str(directory / 'client.key')])
+    command = shlex.join([str(python), '-m', 'app.connector_mcp', '--url', os.environ.get('RIPPLE_CONNECTOR_URL', 'http://127.0.0.1:18701'), '--credential-file', str(directory / 'client.key')])
     # JSON string scalars are valid YAML; shell command uses shlex quoting, never JSON quoting.
     profile = ('config_version: 1\ncontrol_plane:\n  base_url: "https://api.openai.com"\n'
                f'  tunnel_id: {json.dumps(tunnel)}\n  api_key: {json.dumps("file:" + str(key_file))}\n'

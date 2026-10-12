@@ -44,7 +44,7 @@ def installation(data: Path, resources: Path, client: str) -> dict:
     if client not in ("claude", "workbuddy"):
         raise ValueError("Invalid local client")
     return {"command": str(resources / "python/bin/python3.12"),
-            "args": ["-m", "app.connector_mcp", "--credential-file", str(data / "connector" / f"{client}.key")],
+            "args": ["-m", "app.connector_mcp", "--url", os.environ.get("RIPPLE_CONNECTOR_URL", "http://127.0.0.1:18701"), "--credential-file", str(data / "connector" / f"{client}.key")],
             "env": {"PYTHONPATH": os.pathsep.join(map(str, [resources / "backend", resources / "site-packages"])),
                     "PYTHONDONTWRITEBYTECODE": "1"}}
 

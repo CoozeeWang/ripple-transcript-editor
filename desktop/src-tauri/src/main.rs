@@ -19,6 +19,9 @@ use std::time::Duration;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
+#[cfg(debug_assertions)]
+const PORT: u16 = 18702;
+#[cfg(not(debug_assertions))]
 const PORT: u16 = 18701;
 static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
