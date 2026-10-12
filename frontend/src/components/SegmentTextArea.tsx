@@ -304,7 +304,17 @@ export function SegmentTextArea({
       suppressContentEditableWarning
       onCompositionStart={startComposition}
       onCompositionEnd={endComposition}
-      onFocus={onFocus}
+      onFocus={()=>{
+        onFocus();
+        requestAnimationFrame(()=>{
+          const editor=ref.current,selection=window.getSelection();
+          if(editor&&document.activeElement===editor&&selection?.isCollapsed&&selection.anchorNode&&editor.contains(selection.anchorNode)&&selection.anchorNode.nodeType!==Node.TEXT_NODE){
+            // WebKit can place its initial caret on a paragraph container,
+            // giving it the full line-box height. Use the equivalent text point.
+            const offset=editor.selectionStart;editor.setSelectionRange(offset,offset);
+          }
+        });
+      }}
       onBlur={(event) => {
         commit();
         onBlur(event as unknown as ReactFocusEvent<ParagraphEditorElement>);
