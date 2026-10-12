@@ -174,7 +174,13 @@ export function ProjectWorkspace() {
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
-    projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={editor.recording.name}
+    projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
+    onRenameInterview={async title => {
+      const snapshot = current.current!;
+      const interviews = snapshot.data.interviews.map(session => ({...session, recordings: session.recordings.map(recording =>
+        recording.id===editor.recording.id ? {...recording, name:title.trim()} : recording)}));
+      await publish(await saveProject(snapshot, {...snapshot.data, interviews}));
+    }}
     interviewMetadata={interview?.metadata} recordingDraft={interview?.recordings.find(item => item.id === editor.recording.id)?.draft}
     saveRecordingDraft={async draft => {
       const snapshot = current.current!;

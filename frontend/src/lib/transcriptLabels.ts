@@ -7,7 +7,7 @@ export function importedManuscriptName(model: Pick<TranscriptModel, 'label' | 's
 }
 
 export function originalVersionLabel(model: TranscriptModel): string {
-  return model.sourceKind === 'import' && !model.designatedOriginal
-    ? msg('VersionPicker.m1085', { name: importedManuscriptName(model) })
+  return model.label?.trim()
+    ? msg('VersionPicker.m1085', { name: model.label.trim() })
     : msg('VersionPicker.m1086');
 }

@@ -1398,8 +1398,10 @@ async function renameEditLabelUnlocked(
     ...m, edits: m.edits.map(e => e.id === editId ? { ...e, label: label.trim() } : e),
   }) };
   if (manifest.models.some(m => m.edits.some(e => !(m.id === modelId && e.id === editId) && sanitizeForFilename(e.label ?? defaultEditLabel(m.edits.indexOf(e))).toLocaleLowerCase() === sanitizeForFilename(label.trim()).toLocaleLowerCase()))) throw new Error(msg('localStore.m1519'));
-  const current = await readEditedUnlocked(dir, name);
-  return syncTranscriptNames(tDir, manifest, next, manifest.title ?? current?.metadata.title ?? stemOf(name));
+  // Labels are display data. Stable internal filenames need not be rewritten
+  // when a user renames one version; exports derive names from the label.
+  await writeFileJson(tDir, MANIFEST_NAME, next);
+  return next;
 }
 
 /** Publish the index before deleting content; a failed index write must never lose a manuscript. */

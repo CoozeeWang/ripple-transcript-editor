@@ -156,7 +156,13 @@ function App(projectProps: ProjectEditorProps = {}) {
     setSettingsOpen(true);
   };
   useDismissable(recentMenuRef, recentMenuOpen, () => setRecentMenuOpen(false));
-  const [metadata, setMetadata] = useState<InterviewMetadata | null>(null);
+  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
+  const setMetadata = useCallback((value: React.SetStateAction<InterviewMetadata | null>) => {
+    setMetadataState(current => {
+      const next = typeof value === 'function' ? value(current) : value;
+      return next && typeof value !== 'function' && projectProps.recordingLabel ? {...next, title: projectProps.recordingLabel} : next;
+    });
+  }, [projectProps.recordingLabel]);
 const [hasLoadedTranscript, setHasLoadedTranscript] = useState(false);
 // 当前是否在查看引擎原始稿（只读模式，所有编辑控件禁用）。
 const [viewingOriginal, setViewingOriginal] = useState(false);
