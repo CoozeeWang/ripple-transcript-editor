@@ -28,8 +28,24 @@ pub async fn preview_export_pdf(app: AppHandle, window: WebviewWindow, html: Str
 #[tauri::command]
 pub async fn print_export_pdf(window: WebviewWindow) -> Result<(), String> {
     if !print_window(window.label()) { return Err("invalid_print_caller".into()); }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     { window.print().map_err(|error| error.to_string()) }
+    #[cfg(target_os = "windows")]
+    {
+        use windows_core::Interface;
+        use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2_16, COREWEBVIEW2_PRINT_DIALOG_KIND_BROWSER};
+        let (sender, receiver) = std::sync::mpsc::channel();
+        window.with_webview(move |platform| {
+            let result = unsafe {
+                platform.controller().CoreWebView2()
+                    .and_then(|view| view.cast::<ICoreWebView2_16>())
+                    .and_then(|view| view.ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_BROWSER))
+                    .map_err(|error| error.to_string())
+            };
+            let _ = sender.send(result);
+        }).map_err(|error| error.to_string())?;
+        receiver.recv().map_err(|error| error.to_string())?
+    }
     #[cfg(target_os = "macos")]
     {
         // WKWebView ignores CSS @page margins; Wry's default print path sets

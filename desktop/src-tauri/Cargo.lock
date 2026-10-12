@@ -2555,6 +2555,8 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tempfile",
+ "webview2-com",
+ "windows-core 0.61.2",
  "windows-sys 0.61.2",
 ]
 
