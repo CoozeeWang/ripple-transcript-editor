@@ -1217,7 +1217,7 @@
     "m0742": "Ripple project (.ripple)",
     "m0743": "Keep the project structure and transcripts. Linked external audio isn’t copied.",
     "m0744": "Materials archive (ZIP)",
-    "m0745": "Audio and current transcripts are organized by session; transcripts use the formats selected below.",
+    "m0745": "Selected audio and manuscript versions are organized by project, session and recording; each manuscript uses its selected format.",
     "m0746": "Save a .ripple project folder with all sessions, transcripts and their versions, and audio stored in the project. Trash isn’t included. For linked external audio, only reference notes are included. Locate the original audio after reopening the copy to restore playback.",
     "m0747": "Copy name",
     "m0748": "Choose a location outside the original project. Make sure the audio files are accessible and there’s enough free disk space.",
@@ -1236,7 +1236,7 @@
     "m0763": "Choose location and export",
     "m0764": "Export project copy",
     "m0765": "Export selected materials",
-    "materialPdfUnavailable": "PDF is available for individual transcripts in the editor. Material archives support the other file formats."
+    "materialPdfUnavailable": "Material archives and batch exports do not support PDF. To export a PDF, open an individual transcript in the editor and choose Export → PDF."
   },
   "export": {
     "m1307": "Transcript",
