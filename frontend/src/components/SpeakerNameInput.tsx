@@ -23,7 +23,7 @@ export function SpeakerNameInput({value, readOnly, label, onCommit}:{value:strin
   },[]);
   const schedule=()=>{clearTimeout(timer.current);if(!composing.current)timer.current=setTimeout(flush,300);};
   return <input value={draft} aria-label={label} title={draft} readOnly={readOnly}
-    onChange={event=>{latest.current=event.target.value;setDraft(latest.current);schedule();}}
+    onChange={event=>{latest.current=event.target.value;setDraft(latest.current);window.dispatchEvent(new Event("te:draft-dirty"));schedule();}}
     onCompositionStart={()=>{composing.current=true;clearTimeout(timer.current);}}
     onCompositionEnd={()=>{composing.current=false;schedule();}}
     onBlur={flush} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing)flush();}}/>;

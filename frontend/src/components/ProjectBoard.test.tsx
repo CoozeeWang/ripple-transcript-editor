@@ -201,7 +201,7 @@ it('updates the reference permission notice when switching interface language', 
 
 it('does not reread audio after only renaming a session',async()=>{
  const store=await import('../lib/projectStore');
- const recording={id:'r',file:'a.wav',name:'Audio',storage:'copy',fingerprint:'synthetic'};
+ const recording={id:'r',file:'a.wav',name:'Audio',storage:'copy' as const,fingerprint:'synthetic'};
  const session={id:'s',title:'Session',recordings:[recording]};
  const project={directory:{name:'synthetic'},data:{id:'p',interviews:[session]}} as unknown as OpenProject;
  const props={selected:'s',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>work(),legacy:()=>{},relink:()=>{},associate:()=>{}};
