@@ -34,6 +34,7 @@ export function applyAISuggestions(current: Transcript, baseline: Transcript, su
       segments = mergeSegmentWithNext(segments, segments[target - 1].id)!;
     }
   }
+  if (!segments.length) throw new Error('cannot_delete_all_segments');
   return { ...current, segments, lastEditedSegmentId: segments.find(segment => changes.has(segment.id))?.id ?? segments[0]?.id };
 }
 

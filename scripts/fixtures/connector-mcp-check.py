@@ -16,19 +16,39 @@ async def main():
                 result=await client.call_tool(name,args)
                 assert not result.is_error, str(result.content)
                 return result.structured_content
+            if os.environ.get('RIPPLE_STRUCTURAL_ONLY')=='1':
+                read=await call('read_current_interview',{})
+                page=await call('read_interview_page',{'snapshot':read['snapshot']})
+                structural=await call('prepare_continuation',{'snapshot':read['snapshot'],'start_id':'s1',
+                    'rules':['Synthetic: merge adjacent same-speaker segments and remove the final filler segment'],
+                    'allowed_actions':['edit','merge_previous','delete']})
+                await call('stage_continuation',{'task_id':structural['task_id'],'changes':[
+                    {'segment_id':s['id'],'before':s['text'],'after':'' if s['id']=='s3' else s['text'],
+                     'action':'delete' if s['id']=='s3' else 'merge_previous' if s['id']=='s2' else 'edit'}
+                    for s in reversed(page['segments'])]})
+                saved=await call('publish_continuation',{'task_id':structural['task_id'],'confirmed_summary':structural['summary']})
+                assert saved['saved'] and saved['merged_segments']==1 and saved['deleted_segments']==1
+                assert await call('publish_continuation',{'task_id':structural['task_id'],'confirmed_summary':structural['summary']})==saved
+                final=await call('read_current_interview',{})
+                assert final['segment_count']==1
+                final_page=await call('read_interview_page',{'snapshot':final['snapshot']})
+                assert final_page['segments'][0]['id']=='s1'
+                assert final_page['segments'][0]['text']==page['segments'][0]['text']+'\n'+page['segments'][1]['text']
+                print('PASS: real MCP structural operations saved one new version, repeated publish idempotent.')
+                return
             read=await call('read_current_interview',{})
             examples=await call('read_editing_examples',{'snapshot':read['snapshot'],'segment_ids':['s1']})
             assert examples['comparison_status']=='resolved'
             assert examples['comparison']['before_version']['kind']=='original'
             assert examples['comparison']['after_version']==read['current_version']
-            assert examples['examples'][0]['before']=='嗯，我觉得先开始。'
-            assert examples['examples'][0]['after']=='我觉得先开始。'
+            assert examples['examples'][0]['before']=='嗯，我觉得先开始，把这份合成稿件核对清楚。'
+            assert examples['examples'][0]['after']=='我觉得先开始，把这份合成稿件核对清楚。'
             missing=await call('prepare_continuation',{'snapshot':read['snapshot'],'rules':['删除填充，保留不确定和强调']})
             assert missing['needs_clarification']==['continuation_start']
             page=await call('read_interview_page',{'snapshot':read['snapshot']})
-            assert page['segments'][0]['text']=='我觉得先开始。'
+            assert page['segments'][0]['text']=='我觉得先开始，把这份合成稿件核对清楚。'
             plan=await call('prepare_continuation',{'snapshot':read['snapshot'],'start_id':'s2','rules':['删除填充，保留不确定和强调']})
-            await call('stage_continuation',{'task_id':plan['task_id'],'changes':[{'segment_id':'s2','before':'嗯，我觉得可能还有问题。','after':'我觉得可能还有问题。'},{'segment_id':'s3','before':'这是很重要、很重要的。','after':'这是很重要、很重要的。'}]})
+            await call('stage_continuation',{'task_id':plan['task_id'],'changes':[{'segment_id':'s2','before':'嗯，我觉得可能还有问题，需要继续检查这个合成例子。','after':'我觉得可能还有问题，需要继续检查这个合成例子。'},{'segment_id':'s3','before':'这是很重要、很重要的。','after':'这是很重要、很重要的。'}]})
             result=await call('publish_continuation',{'task_id':plan['task_id'],'confirmed_summary':plan['summary']})
             assert result['saved'] and result['comparison_requested']
             again=await call('publish_continuation',{'task_id':plan['task_id'],'confirmed_summary':plan['summary']})
@@ -42,8 +62,8 @@ async def main():
                                                         'comparison_version_id':baseline['id']})
             assert compared['comparison']['before_version']==baseline
             assert compared['comparison']['after_version']==read['current_version']
-            assert compared['examples'][0]['before']=='嗯，我觉得可能还有问题。'
-            assert compared['examples'][0]['after']=='我觉得可能还有问题。'
+            assert compared['examples'][0]['before']=='嗯，我觉得可能还有问题，需要继续检查这个合成例子。'
+            assert compared['examples'][0]['after']=='我觉得可能还有问题，需要继续检查这个合成例子。'
             page=await call('read_interview_page',{'snapshot':read['snapshot']})
             marks=await call('prepare_interview_marks',{'snapshot':read['snapshot'],'whole_interview':True,'instructions':'添加合成分析批注，高亮可能'})
             await call('stage_interview_marks',{'task_id':marks['task_id'],'marks':[

@@ -3,7 +3,7 @@ import argparse
 import os
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -21,7 +21,7 @@ INSTRUCTIONS = (
     "Read pages and selected version comparison examples as needed. "
     "Never assume the continuation start: ask the user if missing or ambiguous. "
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
-    "Text edits always save a new version. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
+    "Text and segment-structure edits always save a new version. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
     "Infer preferences only from examples confirmed as human edits; selected-version differences may include AI edits. "
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
     "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
@@ -39,6 +39,7 @@ class Change(BaseModel):
     segment_id: str
     before: str
     after: str
+    action: Literal["edit", "delete", "merge_previous"] = "edit"
 
 
 class MarkHighlight(BaseModel):
@@ -116,8 +117,14 @@ def register_tools(mcp, call):
     @mcp.tool(structured_output=True, annotations=draft)
     async def prepare_continuation(snapshot: str, rules: list[str], start_id: str | None = None,
                                    start_offset: int = 0, end_id: str | None = None,
-                                   end_offset: int | None = None) -> dict[str, Any]:
-        """Prepare an explicit scoped task. Missing start requires user clarification. No manuscript write."""
+                                   end_offset: int | None = None,
+                                   allowed_actions: list[Literal["edit", "delete", "merge_previous"]] | None = None) -> dict[str, Any]:
+        """Prepare explicit scope and allowed_actions after agreement; default is text edit only.
+
+        Enable delete/merge_previous only when the user requests these structural edits.
+        Include every affected full segment, including the preceding merge target. No manuscript write.
+        Missing start requires clarification; existing versions are preserved.
+        """
         args = {"snapshot": snapshot, "rules": rules, "start_offset": start_offset}
         if start_id is not None:
             args["start_id"] = start_id
@@ -125,11 +132,19 @@ def register_tools(mcp, call):
             args["end_id"] = end_id
         if end_offset is not None:
             args["end_offset"] = end_offset
+        if allowed_actions is not None:
+            args["allowed_actions"] = allowed_actions
         return await call("prepare", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
     async def stage_continuation(task_id: str, changes: list[Change]) -> dict[str, Any]:
-        """Stage up to 32 complete segment texts; include unchanged segments to prove full scope coverage."""
+        """Stage up to 32 changes, including unchanged segments to prove coverage.
+
+        action defaults to edit. delete requires after=""; merge_previous uses only this segment's
+        revised text, joined to the preceding in-scope same-speaker segment (do not repeat its text).
+        before must match full source text. Structural edits require allowed_actions at preparation,
+        whole affected segments, and cannot delete all segments. Writes occur only at publication.
+        """
         return await call("stage", {"task_id": task_id, "changes": [c.model_dump() for c in changes]})
 
     @mcp.tool(structured_output=True, annotations=write)

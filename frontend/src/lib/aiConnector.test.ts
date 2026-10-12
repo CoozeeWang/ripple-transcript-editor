@@ -217,3 +217,57 @@ describe('current interview connector', () => {
     expect((await f.c.handle('publish', args)).saved).toBe(true);
   });
 });
+
+// Synthetic structural operations exercise the public task boundary, not only the helper.
+it('merges and deletes only in a new version, idempotently, preserving source and merge marks',async()=>{
+ const f=fixture();
+ const source:Transcript={...f.baseline,segments:[
+  {...f.baseline.segments[0],annotations:[{id:'note',text:'Synthetic human note',createdAt:'t'}]},
+  {...f.baseline.segments[1],highlights:[{id:'highlight',start:0,end:1}]},
+  {id:'c',speaker_id:'sp',text:'Synthetic filler',start:8,end:9},
+ ]};
+ f.current={...f.current,transcript:source};
+ const plan=await prepare(f,{start_id:'a',allowed_actions:['edit','merge_previous','delete']});
+ expect(JSON.parse(String(plan.summary)).allowed_actions).toEqual(['edit','merge_previous','delete']);
+ // Reverse submission order must not change document order or merge destination.
+ await f.c.handle('stage',{task_id:plan.task_id,changes:[
+  {segment_id:'c',before:'Synthetic filler',after:'',action:'delete'},
+  {segment_id:'b',before:source.segments[1].text,after:source.segments[1].text,action:'merge_previous'},
+  {segment_id:'a',before:source.segments[0].text,after:source.segments[0].text},
+ ]});
+ const args={task_id:plan.task_id,confirmed_summary:plan.summary};
+ const result=await f.c.handle('publish',args);
+ expect(result).toMatchObject({saved:true,merged_segments:1,deleted_segments:1});
+ expect(await f.c.handle('publish',args)).toEqual(result);expect(f.publish).toHaveBeenCalledOnce();
+ expect(f.current.transcript.segments).toHaveLength(1);
+ const merged=f.current.transcript.segments[0];
+ expect(merged.id).toBe('a');expect(merged.text).toBe(source.segments[0].text+'\n'+source.segments[1].text);
+ expect(merged.annotations?.[0].id).toBe('note');expect(merged.highlights?.[0].id).toBe('highlight');
+ expect(merged.mergedFrom).toEqual(['a','b']);expect(merged.end).toBe(8);
+ expect(source.segments).toHaveLength(3);expect(source.segments[0].annotations).toHaveLength(1);
+});
+it('defaults to text editing and rejects structural edits without the prepared permission',async()=>{
+ const f=fixture(),plan=await prepare(f);
+ await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,after:'',action:'delete'}]})).rejects.toThrow('action_not_allowed');
+ expect((await f.c.handle('status',{task_id:plan.task_id})).staged_ids).toEqual([]);
+});
+it('rejects out-of-scope merges and structural edits across partial character boundaries',async()=>{
+ for(const args of [{},{start_id:'a',start_offset:1},{end_offset:2}]){
+  const f=fixture(),plan=await prepare(f,{allowed_actions:['edit','merge_previous','delete'],...args});
+  await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,action:'merge_previous'}]})).rejects.toThrow(/outside_scope|requires_full_segments/);
+ }
+ const f=fixture(),plan=await prepare(f,{allowed_actions:['delete'],start_offset:1});
+ await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,after:'',action:'delete'}]})).rejects.toThrow('requires_full_segments');
+});
+it('rejects mixed speakers, delete/merge conflicts across batches and deletion of the entire transcript atomically',async()=>{
+ const f=fixture();f.current={...f.current,transcript:{...f.baseline,segments:[f.baseline.segments[0],{...f.baseline.segments[1],speaker_id:'other'}]}};
+ const plan=await prepare(f,{start_id:'a',allowed_actions:['edit','merge_previous']});
+ await expect(f.c.handle('stage',{task_id:plan.task_id,changes:[{...change,action:'merge_previous'}]})).rejects.toThrow('invalid_change');
+ const g=fixture(),p=await prepare(g,{start_id:'a',allowed_actions:['edit','merge_previous','delete']});
+ await g.c.handle('stage',{task_id:p.task_id,changes:[{...change,action:'merge_previous'}]});
+ await expect(g.c.handle('stage',{task_id:p.task_id,changes:[{segment_id:'a',before:g.baseline.segments[0].text,after:'',action:'delete'}]})).rejects.toThrow('invalid_change');
+ expect((await g.c.handle('status',{task_id:p.task_id})).staged_ids).toEqual(['b']);
+ const h=fixture(),q=await prepare(h,{start_id:'a',allowed_actions:['delete']});
+ await expect(h.c.handle('stage',{task_id:q.task_id,changes:h.baseline.segments.map(s=>({segment_id:s.id,before:s.text,after:'',action:'delete'}))})).rejects.toThrow('cannot_delete_all_segments');
+ expect((await h.c.handle('status',{task_id:q.task_id})).staged_ids).toEqual([]);
+});

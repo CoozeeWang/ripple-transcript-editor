@@ -46,7 +46,7 @@ try {
     return name === 'connector_window_key' ? key : true;
   } } }; }, token);
   await page.goto(vite.resolvedUrls.local[0]);
-  await page.getByText('我觉得先开始。', { exact: true }).waitFor();
+  await page.getByText('我觉得先开始，把这份合成稿件核对清楚。', { exact: true }).waitFor();
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
   if (await page.getByRole('heading', { name: 'MCP 连接', exact: true }).count()) throw new Error('MCP must not be in General settings');
   await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
@@ -57,16 +57,16 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: /关闭/ }).first().click();
   await page.waitForTimeout(200);
   const state = await page.evaluate(async () => {
-    const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models[0];
+    const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models.find(m => m.id === manifest.activeModelId);
     const original = await f.readModelEdit(model.id, model.edits[0].id);
     const current = await f.readModelEdit(model.id, model.activeEditId);
     return { count: model.edits.length, source: original.transcript.segments.map(s => s.text), result: current.transcript.segments.map(s => s.text), notes: current.transcript.segments.flatMap(s => s.annotations ?? []), marks: current.transcript.segments.flatMap(s => s.highlights ?? []), words: current.transcript.segments[1].words };
   });
-  if (state.count !== 2 || state.source[1] !== '嗯，我觉得可能还有问题。' || state.result[1] !== '我觉得可能还有问题。' || state.result[2] !== state.source[2]) throw new Error('Version preservation failed');
+  if (state.count !== 2 || state.source[1] !== '嗯，我觉得可能还有问题，需要继续检查这个合成例子。' || state.result[1] !== '我觉得可能还有问题，需要继续检查这个合成例子。' || state.result[2] !== state.source[2]) throw new Error('Version preservation failed');
   if (state.notes.filter(note => note.source === 'ai').length !== 1 || !state.notes.some(note => note.id === 'manual') || state.marks.filter(mark => mark.source === 'ai').length !== 1 || !state.words.length) throw new Error('AI marks or human marks/timing not preserved');
   await page.getByText('AI 批注', { exact: true }).waitFor();
   const savedMarks = async () => page.evaluate(async () => {
-    const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models[0];
+    const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models.find(m => m.id === manifest.activeModelId);
     const edit = await f.readModelEdit(model.id, model.activeEditId);
     return { versions: model.edits.length, ai: edit.transcript.segments.flatMap(s => s.annotations ?? []).filter(n => n.source === 'ai').length, human: edit.transcript.segments.flatMap(s => s.annotations ?? []).filter(n => n.id === 'manual').length };
   });
@@ -79,6 +79,51 @@ try {
   await page.waitForTimeout(1200);
   if ((await savedMarks()).ai !== 1) throw new Error('Mark redo did not persist');
 
+  const structural = await promisify(execFile)(python, [join(repo, 'scripts/fixtures/connector-mcp-check.py')],
+    { cwd: repo, env: { ...process.env, RIPPLE_CONNECTOR_TEST_DIR: directory, RIPPLE_CONNECTOR_TEST_URL: backendUrl, RIPPLE_STRUCTURAL_ONLY: '1' } });
+  const merged = await page.evaluate(async () => {
+    const f = window.__fixture, manifest = await f.readManifest(), model = manifest.models.find(m => m.id === manifest.activeModelId);
+    const source = await f.readModelEdit(model.id, model.edits[0].id);
+    const marked = await f.readModelEdit(model.id, model.edits[1].id);
+    const current = await f.readModelEdit(model.id, model.activeEditId);
+    return { versions: model.edits.length, sourceCount: source.transcript.segments.length, markedCount: marked.transcript.segments.length,
+      count: current.transcript.segments.length, row: current.transcript.segments[0], internalSnapshot: model.original };
+  });
+  if (merged.versions !== 3 || merged.sourceCount !== 3 || merged.markedCount !== 3 || merged.count !== 1 ||
+      merged.row.id !== 's1' || merged.row.mergedFrom.join() !== 's1,s2' ||
+      merged.row.annotations.filter(n => n.source === 'ai').length !== 1 || !merged.row.annotations.some(n => n.id === 'manual') ||
+      !merged.row.words.length || merged.row.highlights.filter(h => h.source === 'ai').length !== 1 || !merged.internalSnapshot)
+    throw new Error('Structural version preservation failed');
+  console.log(structural.stdout.trim());
+
+  // The imported snapshot stays stored but never becomes a user-facing version.
+  for (const language of ['zh-CN', 'en']) {
+    await page.locator('.language-control select').selectOption(language);
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 850, height: 520 }]) {
+      await page.setViewportSize(viewport);
+      const trigger = page.locator('.version-picker--current .version-picker-trigger');
+      await trigger.click();
+      const popup = page.locator('.version-picker--current .version-picker-menu');
+      if (await popup.locator('.version-picker-row--original').count() !== 1) throw new Error('Internal import snapshot leaked to current menu');
+      await popup.locator('.version-picker-snapshot-note').waitFor();
+      const layout = await popup.evaluate(menu => {
+        const box = menu.getBoundingClientRect(), note = menu.querySelector('.version-picker-snapshot-note');
+        return { fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+          textFits: note.scrollWidth <= note.clientWidth, text: note.textContent };
+      });
+      if (!layout.fits || !layout.textFits) throw new Error('Import snapshot explanation clipped');
+      await popup.locator('.version-picker-option').first().focus();
+      await popup.locator('.version-picker-option').first().hover();
+      if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) {
+        await mkdir(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, { recursive: true });
+        await page.screenshot({ path: join(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, `versions-${language}-${viewport.width}.png`) });
+      }
+      await trigger.press('Escape');
+    }
+  }
+
+  await page.locator('.language-control select').selectOption('zh-CN');
+  await page.setViewportSize({ width: 1280, height: 800 });
   if (!(await page.getByText('显示修改痕迹', { exact: true }).isVisible())) throw new Error('Comparison was not displayed');
   // A higher z-index cannot escape the title area's scrolling clip. Check the
   // complete tooltip box in both languages and in a short, narrow window.

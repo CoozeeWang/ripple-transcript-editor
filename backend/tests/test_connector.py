@@ -132,3 +132,21 @@ def test_mark_schema_and_current_version_instructions(tmp_path):
     assert 'current editable version' in INSTRUCTIONS
     with pytest.raises(ValidationError):
         Mark(segment_id='a', before='Synthetic', after='forbidden')
+
+
+def test_structural_continuation_schema_and_backward_compatible_default(tmp_path):
+    from pydantic import ValidationError
+
+    from app.connector_mcp import Change, create_server
+    key = tmp_path / 'synthetic.key'
+    key.write_text('x' * 48)
+    tools = asyncio.run(create_server('http://127.0.0.1:18702', key).list_tools())
+    prepare = next(t for t in tools if t.name == 'prepare_continuation')
+    stage = next(t for t in tools if t.name == 'stage_continuation')
+    assert 'allowed_actions' in prepare.input_schema['properties']
+    assert 'allowed_actions' not in prepare.input_schema.get('required', [])
+    assert set(stage.input_schema['$defs']['Change']['properties']['action']['enum']) == {'edit', 'delete', 'merge_previous'}
+    assert Change(segment_id='s', before='Synthetic', after='Synthetic').action == 'edit'
+    assert Change(segment_id='s', before='Synthetic', after='', action='delete').action == 'delete'
+    with pytest.raises(ValidationError):
+        Change(segment_id='s', before='Synthetic', after='', action='delete_file')
