@@ -1,5 +1,6 @@
 """Synthetic bridge tests: no real paths, interviews, or credentials."""
 import asyncio
+import os
 import time
 
 import pytest
@@ -70,7 +71,8 @@ def test_owner_only_setup_escapes_paths_and_never_puts_keys_in_yaml(tmp_path):
     profile = (root / 'connector/tunnel.yaml').read_text()
     assert key not in profile
     assert 'file:' in profile and 'app.connector_mcp' in profile
-    assert (root / 'connector/runtime.key').stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert (root / 'connector/runtime.key').stat().st_mode & 0o777 == 0o600
     save_setup(root, resources, {'client_path': str(client), 'tunnel_id': 'tunnel_synthetic', 'runtime_key': ''})
     assert (root / 'connector/runtime.key').read_text() == key
 

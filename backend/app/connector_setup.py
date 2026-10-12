@@ -5,8 +5,12 @@ No output secrets. This does not create accounts, tunnels or keys, or download b
 import json
 import os
 import shlex
+import subprocess
 import sys
 from pathlib import Path
+
+from .bundled_runtime import bundled_python
+from .private_files import protect_private_fd
 
 
 def save_setup(data_root: Path, resources: Path, values: dict):
@@ -32,9 +36,10 @@ def save_setup(data_root: Path, resources: Path, values: dict):
         write_private(key_file, key)
     elif not key_file.is_file():
         raise ValueError('Runtime key required')
-    python = resources / 'python/bin/python3.12'
-    command = shlex.join([str(python), '-m', 'app.connector_mcp', '--url', os.environ.get('RIPPLE_CONNECTOR_URL', 'http://127.0.0.1:18701'), '--credential-file', str(directory / 'client.key')])
-    # JSON string scalars are valid YAML; shell command uses shlex quoting, never JSON quoting.
+    python = bundled_python(resources)
+    arguments = [str(python), '-m', 'app.connector_mcp', '--url', os.environ.get('RIPPLE_CONNECTOR_URL', 'http://127.0.0.1:18701'), '--credential-file', str(directory / 'client.key')]
+    command = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
+    # JSON scalars are valid YAML; commands use platform shell quoting.
     profile = ('config_version: 1\ncontrol_plane:\n  base_url: "https://api.openai.com"\n'
                f'  tunnel_id: {json.dumps(tunnel)}\n  api_key: {json.dumps("file:" + str(key_file))}\n'
                'health:\n  listen_addr: "127.0.0.1:0"\n'
@@ -48,8 +53,8 @@ def save_setup(data_root: Path, resources: Path, values: dict):
 def write_private(path: Path, value: str):
     flags = os.O_NOFOLLOW if hasattr(os, 'O_NOFOLLOW') else 0
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | flags, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, 'w') as f:
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        protect_private_fd(f.fileno())
         f.write(value)
 
 

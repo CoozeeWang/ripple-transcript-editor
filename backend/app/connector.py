@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from .private_files import protect_private_fd
 from .runtime_paths import CODE_ROOT, DATA_ROOT
 
 router = APIRouter(prefix="/api/connector", tags=["connector"])
@@ -31,8 +32,8 @@ def _key(path: Path, replace: bool = False) -> str:
         return value
     value = secrets.token_urlsafe(48)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | flags, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        protect_private_fd(f.fileno())
         f.write(value)
     return value
 
