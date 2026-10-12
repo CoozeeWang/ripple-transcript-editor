@@ -13,6 +13,8 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState(false);
   const [exported, setExported] = useState('');
+  const [tunnelReady,setTunnelReady]=useState(false);
+  useEffect(()=>{let disposed=false;const check=()=>{void invoke<boolean>('connector_tunnel_ready').then(value=>{if(!disposed)setTunnelReady(value);}).catch(()=>{if(!disposed)setTunnelReady(false);});};if(client==='chatgpt')check();const timer=client==='chatgpt'?setInterval(check,5000):undefined;return()=>{disposed=true;clearInterval(timer);};},[client]);
   useEffect(() => {
     let disposed = false;
     void invoke<{client: Client}>('connector_client_status').then(value => {if (!disposed) setClient(value.client);})
@@ -21,7 +23,7 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   }, []);
   async function select(value: Client) {
     setBusy(true); setError(false); setExported('');
-    try {await invoke('connector_client_select', {client: value}); setClient(value); onSaved?.();}
+    try {await invoke('connector_client_select', {client: value}); setClient(value);}
     catch {setError(true);} finally {setBusy(false);}
   }
   async function addClient() {
@@ -37,7 +39,7 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
           <option value="chatgpt">{msg('connector.chatgptWeb')}</option><option value="claude">{msg('connector.claudeDesktop')}</option><option value="workbuddy">WorkBuddy</option>
         </select></span><span className="cred-field__hint">{msg('connector.softwareHint')}</span>
       </label></div>
-      {client === 'chatgpt' ? <p className="settings-hint">{msg('connector.chatgptSteps')}</p> : <>
+      {client === 'chatgpt' ? <><p className="settings-hint">{msg('connector.chatgptSteps')}</p><p className="settings-hint" role="status">{msg(tunnelReady?'connector.chatgptTransportReady':'connector.chatgptTransportPending')}</p></> : <>
         <ol className="settings-hint connector-steps"><li>{msg(`connector.${client}Step1`)}</li><li>{msg(`connector.${client}Step2`)}</li><li>{msg(client === 'workbuddy' ? 'connector.workbuddyStep3' : 'connector.localStep3')}</li></ol>
       </>}
       <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button></div>

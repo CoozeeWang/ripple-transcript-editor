@@ -69,16 +69,22 @@ class Broker:
 
     def authorize(self, authorization: str | None, role: str):
         self.initialize()
-        expected = self.window_key if role == "window" else self.client_key
-        if role != "window":
-            from .connector_local import selected_client
-            try:
-                selected = selected_client(DATA_ROOT)
-                if selected != "chatgpt":
-                    expected = (DATA_ROOT / "connector" / f"{selected}.key").read_text().strip()
-            except (OSError, ValueError, KeyError):
-                raise HTTPException(503, "Connector configuration unavailable") from None
-        if not secrets.compare_digest(authorization or "", f"Bearer {expected}"):
+        if role == "window":
+            expected = [self.window_key]
+        else:
+            # Configuration selection is a view preference, not a connection gate.
+            # Each owner-local client retains its own credential and shares the
+            # same consent lease and snapshot/concurrent-publish protection.
+            expected = [self.client_key]
+            for client in ("claude", "workbuddy"):
+                path = DATA_ROOT / "connector" / f"{client}.key"
+                try:
+                    if path.is_file() and not path.is_symlink():
+                        expected.append(path.read_text().strip())
+                except OSError:
+                    continue
+        matches = [secrets.compare_digest(authorization or "", f"Bearer {key}") for key in expected if key]
+        if not any(matches):
             raise HTTPException(401, "Connector authorization required")
 
     def disable(self, session: str):

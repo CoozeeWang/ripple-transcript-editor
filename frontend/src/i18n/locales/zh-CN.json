@@ -1595,7 +1595,7 @@
     "aiAnnotation": "AI 批注",
     "software": "AI 软件",
     "claudeDesktop": "Claude 桌面版（实验性连接）",
-    "softwareHint": "只有当前选中的 AI 软件可以连接 Ripple。切换后，其他软件暂时无法使用 Ripple，但各自配置会保留。",
+    "softwareHint": "选择要查看设置的 AI 软件。已配置的连接可独立使用，切换此列表不会断开其他连接。",
     "chatgptSteps": "首次连接请完成下方隧道配置，再点击“前往 ChatGPT 添加”。添加后可在网页端和桌面端调用 Ripple。",
     "claudeStep1": "点击“添加到 Claude”，打开扩展安装界面。",
     "claudeStep2": "在 Claude 中确认安装 Ripple；无需手动编辑配置。",
@@ -1615,7 +1615,9 @@
     "copyTunnel": "复制隧道标识",
     "tunnelCopied": "隧道标识已复制。在 ChatGPT 中选择 Tunnel 连接方式后，粘贴此标识。",
     "copyFailed": "复制失败，请手动复制上方隧道标识。",
-    "workbuddyStep3": "保持 Ripple 打开，并启用 MCP 连接。在 WorkBuddy 中启用 Ripple 后，可直接在对话中提出要求，无需从“＋”菜单选择 Ripple。"
+    "workbuddyStep3": "保持 Ripple 打开，并启用 MCP 连接。在 WorkBuddy 中启用 Ripple 后，可直接在对话中提出要求，无需从“＋”菜单选择 Ripple。",
+    "chatgptTransportReady": "ChatGPT 隧道已就绪。",
+    "chatgptTransportPending": "ChatGPT 隧道尚未就绪。请检查下方连接设置；其他已配置的 AI 软件仍可连接。"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。"

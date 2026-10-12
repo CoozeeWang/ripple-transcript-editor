@@ -39,12 +39,13 @@ export function useAIConnector(host: ConnectorHost) {
       token = String(await tauri.core.invoke('connector_window_key'));
       if (disposed) return;
       await request('session', { session, enabled: true }, abort.signal);
-      await tauri.core.invoke('connector_tunnel_start');
+      // A remote tunnel failure must not disable configured local clients.
+      await tauri.core.invoke('connector_tunnel_start').catch(() => {});
       heartbeat = setInterval(() => {
         void request('session', { session, enabled: true }, abort.signal).catch(() => { if (!disposed) setStatus('connecting'); });
       }, 5000);
       while (!disposed) {
-        const ready = await tauri.core.invoke('connector_tunnel_ready');
+        const ready = await tauri.core.invoke('connector_local_ready');
         if (disposed) return;
         setStatus(ready ? 'ready' : 'connecting');
         let call;

@@ -329,8 +329,7 @@ fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<C
 }
 
 #[tauri::command]
-async fn connector_client_select(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>, client: String) -> Result<(), String> {
-    connector_tunnel_stop(state);
+async fn connector_client_select(app: tauri::AppHandle, client: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         if local_command(&app, "select", &client)?.status().map_err(|_| "client_save_failed")?.success() { Ok(()) }
         else { Err("client_save_failed".into()) }
@@ -450,8 +449,8 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     if let Some(child) = guard.as_mut() {
         if child.try_wait().map_err(|_| "connector_failed")?.is_none() { return Ok(()); }
     }
-    if connector_client_status(app.clone())?.get("client").and_then(|v|v.as_str()) != Some("chatgpt") { return Ok(()); }
     let data = app_data(&app).map_err(|_| "data_unavailable")?.join("connector");
+    if !data.join("setup.json").exists() { return Ok(()); }
     let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
     let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
     let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
@@ -473,9 +472,6 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
 
 #[tauri::command]
 fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> bool {
-    if let Ok(value) = connector_client_status(app.clone()) {
-        if value.get("client").and_then(|v|v.as_str()) != Some("chatgpt") { return health_ok(); }
-    }
     let Ok(mut guard) = state.0.lock() else { return false };
     let Some(child) = guard.as_mut() else { return false };
     if !matches!(child.try_wait(), Ok(None)) { return false; }
@@ -489,6 +485,9 @@ fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let mut response = String::new();
     stream.read_to_string(&mut response).is_ok() && (response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200"))
 }
+
+#[tauri::command]
+fn connector_local_ready() -> bool { health_ok() }
 
 #[tauri::command]
 fn connector_tunnel_stop(state: tauri::State<'_, ConnectorTunnel>) {
@@ -574,7 +573,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

@@ -20,7 +20,7 @@ def test_selection_persists_and_rejects_unknown(tmp_path):
     assert selected_client(tmp_path) == "claude"
 
 
-def test_selected_client_credentials_isolate_calls(tmp_path, monkeypatch):
+def test_client_credentials_work_independently_of_configuration_selection(tmp_path, monkeypatch):
     monkeypatch.setattr(connector, "DATA_ROOT", tmp_path)
     broker = connector.Broker()
     broker.initialize()
@@ -28,15 +28,16 @@ def test_selected_client_credentials_isolate_calls(tmp_path, monkeypatch):
     workbuddy = (tmp_path / "connector/workbuddy.key").read_text(encoding="utf-8")
     select_client(tmp_path, "claude")
     broker.authorize("Bearer " + claude, "client")
-    for other in (broker.client_key, workbuddy):
-        with pytest.raises(HTTPException) as error:
-            broker.authorize("Bearer " + other, "client")
-        assert error.value.status_code == 401
+    for key in (broker.client_key, workbuddy, claude):
+        broker.authorize("Bearer " + key, "client")
     broker.authorize("Bearer " + broker.window_key, "window")
     select_client(tmp_path, "workbuddy")
-    with pytest.raises(HTTPException):
-        broker.authorize("Bearer " + claude, "client")
-    broker.authorize("Bearer " + workbuddy, "client")
+    for key in (broker.client_key, workbuddy, claude):
+        broker.authorize("Bearer " + key, "client")
+    for key, role in [("unknown", "client"), (broker.window_key, "client"), (claude, "window")]:
+        with pytest.raises(HTTPException) as error:
+            broker.authorize("Bearer " + key, role)
+        assert error.value.status_code == 401
 
 
 def test_exports_use_bundled_runtime_and_exclude_secret_values(tmp_path):
