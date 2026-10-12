@@ -20,6 +20,6 @@ Export Ripple-WorkBuddy.json. In WorkBuddy, open Experts · Skills · Connectors
 
 ## Verification and limits
 
-A ready local broker/transport does not prove that the AI application installed or called it. Verify with an actual read request before attempting edits. All clients share the same 13 tools and current-interview restrictions. Edits save a new version; annotations and highlights use the current editable version and retain human marks. Unknown writes must be checked via task status before retrying.
+A ready local broker/transport does not prove that the AI application installed or called it. Verify with an actual read request before attempting edits. All clients share the same 17 tools and current-interview restrictions. Before editing, ask whether to update the current editable version or create a new one. Incremental tasks save each batch into the same agreed target version. Annotations and highlights retain human marks. Unknown writes must be checked via task status before retrying.
 
 macOS is the initial packaged target. Windows native packaging and real-client acceptance must be recorded separately. Installation export or protocol tests do not establish a real Claude/WorkBuddy account acceptance result. No model subscription or third-party service price is included in Ripple's local connection.

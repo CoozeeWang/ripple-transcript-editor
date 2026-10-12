@@ -301,6 +301,7 @@ export function buildJsonPayload(
   });
   const base = { ...transcript, segments } as Record<string, unknown>;
   delete base.comparisonReviews;
+  delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {
     return { engine, ...base };
   }

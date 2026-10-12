@@ -3226,3 +3226,12 @@ label:has(> input[type="radio"]:focus-visible) > span {
 .segment-text-editor > div > span, .segment-text-editor > div > ins {line-height:normal;}
 
 .recent-dock__btn > svg {width:20px;height:20px;}
+
+.continuation-progress { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--color-border); border-radius: 10px; font-family: var(--font-sans); font-size: .86rem; }
+.continuation-progress-heading, .continuation-progress-task > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.continuation-progress-task { margin-top: 10px; }
+.continuation-progress-task strong { overflow-wrap: anywhere; }
+.continuation-progress-task p { margin: 6px 0; color: var(--color-text-2); }
+.continuation-progress-actions { justify-content: flex-end !important; }
+.continuation-proposals pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 8px; background: var(--color-surface-warm); }
+.continuation-proposals { max-height: 16rem; overflow-y: auto; }

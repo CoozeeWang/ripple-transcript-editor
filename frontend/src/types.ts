@@ -62,6 +62,8 @@ export interface Segment {
 }
 
 export interface Transcript {
+  /** Local save receipts for interrupted AI batches; excluded from public exports. */
+  aiContinuationReceipts?: Record<string, ContinuationReceipt>;
   timeAligned?: boolean;
   /** Display confirmations scoped to a comparison version and segment; never manuscript text. */
   comparisonReviews?: Record<string, {segmentId:string; before:string; accepted:string[]}>;
@@ -72,6 +74,17 @@ export interface Transcript {
   segments: Segment[];
   /** Explicit approval of a specific segment revision; never inferred from edits. */
   reviewedSegments?: Record<string, string>;
+}
+
+export interface ContinuationReceipt {
+  task_id: string;
+  batch_id: string;
+  source_version_id: string;
+  version_id: string;
+  processed_ids: string[];
+  changed_segments: number;
+  deleted_segments: number;
+  merged_segments: number;
 }
 
 export interface Participant {

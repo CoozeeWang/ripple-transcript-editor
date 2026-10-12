@@ -11,7 +11,7 @@ async def main():
         async with ClientSession(read,write) as client:
             await client.initialize()
             tools=(await client.list_tools()).tools
-            assert len(tools)==13
+            assert len(tools)==17
             assert 'save_mode' in next(t for t in tools if t.name=='prepare_continuation').input_schema['properties']
             async def call(name,args):
                 if name=='prepare_continuation':

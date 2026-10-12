@@ -2,6 +2,8 @@ import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
 import { applyAISuggestions } from "./lib/aiVersionEdits";
+import { applyContinuationBatch,checkContinuationGuard } from './lib/continuationBatch';
+import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
@@ -46,7 +48,7 @@ import { usePersistence } from "./hooks/usePersistence";
 import { useEditor } from "./hooks/useEditor";
 import { usePlayback } from "./hooks/usePlayback";
 import {
-  readConnectorRules, writeConnectorRules,
+  readConnectorRules, writeConnectorRules, readContinuationTasks, writeContinuationTask,
   AUDIO_EXT_LABEL,
   defaultEditLabel,
   defaultMetadata,
@@ -538,12 +540,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   useLayoutEffect(() => { beforeChangeRef.current = flushPendingSave; }, [flushPendingSave]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
-  const connectorContext = useRef({ dir: dirHandle, context: aiContext, generation: 0 });
+  const connectorContext = useRef({ dir: dirHandle, audio:selectedAudio, context: aiContext, generation: 0 });
   useLayoutEffect(() => {
     if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
-      connectorContext.current = { dir: dirHandle, context: aiContext, generation: connectorContext.current.generation + 1 };
+      connectorContext.current = { dir: dirHandle, audio:selectedAudio, context: aiContext, generation: connectorContext.current.generation + 1 };
     }
-  }, [dirHandle, aiContext]);
+  }, [dirHandle, aiContext,selectedAudio]);
   const connector = useAIConnector({
     current: async () => {
       const identity = connectorContext.current.generation;
@@ -559,6 +561,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       const version = connectorVersions(manifest?.models ?? []).find(v => v.id === versionId);
       if (!version) throw new Error('current_version_unavailable');
       return { identity: String(identity), editable: !viewingOriginal, transcript: latestExport.current.transcript, rules,
+        continuations: {scope:String(identity),read:async()=>readContinuationTasks(dir,audio),write:async task=>{
+          if(dirHandleRef.current!==dir || connectorContext.current.audio!==audio)throw Error('interview_changed');
+          await writeContinuationTask(dir,audio,task);
+        }},
         remember: async confirmedRules => writeConnectorRules(dir, audio, confirmedRules),
         title: latestExport.current.metadata?.title ?? '',
         label: version.name, version,
@@ -594,15 +600,19 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         target.source_version.edit_id !== sourceEdit) throw new Error('source_changed_read_current_again');
       if (target.save_mode === 'current_version') {
         if (viewingOriginal || activeModel?.designatedOriginal || target.source_version.kind === 'original') throw new Error('current_version_read_only_create_new_version');
-        if (versionBusy || JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
-        const transcript = applyAISuggestions(baseline, baseline, suggestions);
+        if (versionBusy || !target.checkpoint && JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+        const checkpoint=target.checkpoint ? {...target.checkpoint,receipt:{...target.checkpoint.receipt,version_id:target.source_version.id}} : undefined;
+        const atomicTranscript=checkpoint?null:applyAISuggestions(baseline,baseline,suggestions);
+        if(checkpoint&&(!latestExport.current.transcript||!checkContinuationGuard(latestExport.current.transcript,checkpoint.guard)))throw Error('batch_conflict_manual_changes_preserved');
         let applied = false;
         flushSync(() => {
           mutateTranscript(current => {
-            if (JSON.stringify(current) !== JSON.stringify(baseline)) return current;
-            applied = true; return transcript;
-          }, `ai-continuation:${target.task_id}`);
-          setSelectedSegmentId(transcript.lastEditedSegmentId ?? transcript.segments[0]?.id ?? '');
+            if(checkpoint&&!checkContinuationGuard(current,checkpoint.guard))return current;
+            if (!checkpoint && JSON.stringify(current) !== JSON.stringify(baseline)) return current;
+            const next=checkpoint ? applyContinuationBatch(current,suggestions,checkpoint) : atomicTranscript!;
+            applied = true; return next;
+          }, `ai-continuation:${checkpoint?.receipt.batch_id??target.task_id}`);
+          if(atomicTranscript)setSelectedSegmentId(atomicTranscript.lastEditedSegmentId??atomicTranscript.segments[0]?.id??'');
         });
         if (!applied) throw new Error('source_changed_read_current_again');
         try { await flushPendingSave(); }
@@ -613,13 +623,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         return { version: target.source_version.name, version_id: sourceEdit, result_version: target.source_version,
           comparison_requested: false, undo_available: true };
       }
-      const result = await createAIEdit(baseline, suggestions, name);
+      const result = await createAIEdit(baseline, suggestions, name, target.checkpoint);
       if (!result) throw new Error('save_result_unavailable_check_versions');
       comparison.activate(result.model.id, result.edit.id, `${sourceModel}:${sourceEdit}`);
       return { version: result.edit.label, version_id: result.edit.id,
         result_version: {id:`${result.model.id}:${result.edit.id}`,model_id:result.model.id,edit_id:result.edit.id,name:result.edit.label,kind:'edit'}, comparison_requested: true };
     },
-  });
+  }, `${aiContext}:${hasLoadedTranscript}:${versionBusy}`);
 
   // 设置弹层：必须在「空状态提前 return」与「完整 UI return」两处都渲染，
   // 否则空状态下点击「偏好设置」会因提前 return 而永不显示。
@@ -1076,6 +1086,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         {!preparingTranscript && transcriptionNotice}
         </div>
         <section className="transcript-panel" ref={transcriptPanelRef} aria-label={msg('App.m0045')}>
+          <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
               {msg('App.m0046')}</button>

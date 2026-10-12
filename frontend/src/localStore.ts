@@ -1,4 +1,6 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
+import { stampContinuationReceipt } from './lib/continuationBatch';
+import type { ContinuationTask } from './lib/incrementalContinuation';
 import { apiErrorMessage } from './i18n/errors';
 import { msg } from './i18n';
 import { chooseDirectory } from './lib/projectPreferences';
@@ -1090,6 +1092,7 @@ async function createModelUnlocked(
     transcript: withSharedSpeakers(params.original ? restoreTranscriptOrigins({...params.transcript,segments:params.transcript.segments.map(s=>({...s,words:s.words?.map(w=>({...w,timing:undefined,origins:undefined}))}))},params.original,id) : params.transcript, params.sharedSpeakers ?? existing.sharedSpeakers, Boolean(params.sharedSpeakers?.length)),
   };
   const editFile = params.editLabel ? transcriptFilename(existing.title ?? stem, requireVersionName(params.editLabel)) : `${id}-e1.json`;
+  edited.transcript = stampContinuationReceipt(edited.transcript, `${id}:e1`);
   if (params.editLabel && (await hasSidecar(tDir,editFile) || existing.models.some(m=>m.edits.some(e=>e.label===params.editLabel)))) throw new Error(msg('localStore.m1487'));
   if (!params.originalOnly) await writeFileJson(tDir, editFile, { ...edited, updated_at: new Date().toISOString() });
 
@@ -1196,6 +1199,7 @@ async function createEditUnlocked(
     file: editFile,
     updated_at: new Date().toISOString(),
   };
+  edited.transcript = stampContinuationReceipt(edited.transcript, `${modelId}:${id}`);
   const newModel: TranscriptModel = {
     ...model,
     designatedOriginal: model.designatedOriginal,
@@ -2016,5 +2020,37 @@ export async function writeConnectorRules(dir: FileSystemDirectoryHandle, audio:
     const container = await resolveTranscriptDir(dir, audio, false);
     if (!container) throw new Error('connector_document_unavailable');
     await writeFileJson(container, 'ai-connector-rules.json', { rules, scope: 'current-interview' });
+  });
+}
+
+/** One local journal per task, scoped to this recording's existing transcript container. */
+export async function readContinuationTasks(dir: FileSystemDirectoryHandle, audio: string): Promise<ContinuationTask[]> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) return [];
+    let folder: FileSystemDirectoryHandle;
+    try { folder = await container.getDirectoryHandle('ai-continuation-tasks'); }
+    catch (error) { if ((error as {name?:string}).name === 'NotFoundError') return []; throw error; }
+    const tasks: ContinuationTask[] = [];
+    for await (const [name, handle] of folder.entries()) {
+      if (handle.kind !== 'file' || !/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+      const value = JSON.parse(await (await (handle as FileSystemFileHandle).getFile()).text()) as ContinuationTask;
+      if (value.schema !== 1 || `${value.id}.json` !== name || !Array.isArray(value.ids) || !Array.isArray(value.done) ||
+          !Array.isArray(value.held) || !['draft','paused','completed','cancelled'].includes(value.state) || !value.target?.id) throw Error('continuation_journal_unreadable');
+      tasks.push(value);
+    }
+    return tasks;
+  });
+}
+export async function writeContinuationTask(dir: FileSystemDirectoryHandle, audio: string, task: ContinuationTask): Promise<void> {
+  if (!/^[a-f0-9-]{36}$/.test(task.id)) throw Error('invalid_continuation_task_id');
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) throw Error('connector_document_unavailable');
+    const folder = await container.getDirectoryHandle('ai-continuation-tasks', {create:true});
+    const name=`${task.id}.json`;
+    let exists=true;
+    try{await folder.getFileHandle(name);}catch(error){if((error as {name?:string}).name==='NotFoundError')exists=false;else throw error;}
+    try{await writeFileJson(folder,name,task);}catch(error){if(!exists)await folder.removeEntry(name).catch(()=>{});throw error;}
   });
 }

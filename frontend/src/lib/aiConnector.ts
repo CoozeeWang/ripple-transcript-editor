@@ -3,6 +3,8 @@ import type { AIMark } from './aiMarks';
 import { applyAISuggestions, nextAIEditName, type AISuggestion } from './aiVersionEdits';
 import type { Transcript } from '../types';
 import { editingExamples } from './editingExamples';
+import { IncrementalContinuation, type ContinuationStore, type ContinuationProgress } from './incrementalContinuation';
+import type { ContinuationCheckpoint } from './continuationBatch';
 
 /** IDs are unique within the current interview, not paths or display names. */
 export interface ConnectorVersion {
@@ -18,6 +20,7 @@ export interface ConnectorReference {
 }
 
 export interface ConnectorDocument {
+  continuations?: ContinuationStore;
   editable?: boolean;
   identity: string;
   transcript: Transcript;
@@ -30,12 +33,13 @@ export interface ConnectorDocument {
   references: () => Promise<ConnectorReference[]>;
 }
 export interface ConnectorHost {
+  continuationProgress?: (tasks: ContinuationProgress[]) => void;
   current: () => Promise<ConnectorDocument>;
   applyMarks?: (baseline: Transcript, marks: AIMark[], taskId: string) => Promise<Record<string, unknown>>;
   publish: (baseline: Transcript, suggestions: AISuggestion[], name: string, target: ConnectorSaveTarget) => Promise<Record<string, unknown>>;
 }
 export type ConnectorSaveMode = 'new_version' | 'current_version';
-export interface ConnectorSaveTarget { save_mode: ConnectorSaveMode; source_version: ConnectorVersion; identity: string; task_id: string }
+export interface ConnectorSaveTarget { save_mode: ConnectorSaveMode; source_version: ConnectorVersion; identity: string; task_id: string; checkpoint?: ContinuationCheckpoint }
 type Snapshot = ConnectorDocument & { id: string; revision: string };
 type Action = 'edit' | 'delete' | 'merge_previous';
 interface Change { segment_id: string; before: string; after: string; action: Action }
@@ -56,12 +60,13 @@ function boundary(text: string, offset: number): boolean {
   return offset === text.length || new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text).containing(offset)?.index === offset;
 }
 
-/** Owns transient tasks, never a second project store. Model input cannot choose a path. */
+/** Owns snapshots and legacy atomic tasks; delegates recoverable batches to the current document. */
 export class AIConnector {
   private snapshots = new Map<string, Snapshot>();
   private tasks = new Map<string, Task>();
   private markTasks: AIMarkTasks;
-  constructor(private host: ConnectorHost) { this.markTasks = new AIMarkTasks(host, id => this.valid(id)); }
+  private incremental: IncrementalContinuation;
+  constructor(private host: ConnectorHost) { this.markTasks = new AIMarkTasks(host, id => this.valid(id)); this.incremental = new IncrementalContinuation(host); }
   private async valid(id: unknown): Promise<Snapshot> {
     const snapshot = this.snapshots.get(String(id));
     if (!snapshot) fail('snapshot_expired_read_current_again');
@@ -76,6 +81,8 @@ export class AIConnector {
     return task;
   }
   async handle(operation: string, a: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (['tasks','batch','checkpoint','pause','resume','proposals'].includes(operation) ||
+      ['stage','status','cancel','publish'].includes(operation) && !this.tasks.has(String(a.task_id))) return this.incremental.handle(operation,a);
     if (['prepare_marks', 'stage_marks', 'apply_marks', 'marks_status', 'cancel_marks'].includes(operation)) return this.markTasks.handle(operation, a);
     if (operation === 'read_current') {
       const doc = await this.host.current();
@@ -87,7 +94,7 @@ export class AIConnector {
       return { snapshot: id, title: doc.title, version: doc.label, segment_count: doc.transcript.segments.length,
         current_version: doc.version,
         duration: doc.transcript.audio.duration, speakers: doc.transcript.speakers, current_interview_rules: doc.rules ?? [],
-        instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed. Ask for an explicit continuation start and whether to save a new version or update the current editable version; reuse already explicit choices. Pass save_mode to prepare_continuation. Read-only originals require a new version. Do not display full text by default.' };
+        instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed for analysis. For long editing, use delivery_mode incremental, read_continuation_batch and save_continuation_batch; reuse returned next_batch rather than reading the entire manuscript up front. List continuations after interruption before starting another task. Ask for an explicit continuation start and whether to save a new version or update the current editable version; reuse already explicit choices. Pass save_mode to prepare_continuation. Read-only originals require a new version. Do not display full text by default.' };
     }
     if (operation === 'read_page') {
       const s = await this.valid(a.snapshot);
@@ -144,6 +151,8 @@ export class AIConnector {
     }
     if (operation === 'prepare') {
       const s = await this.valid(a.snapshot);
+      if (a.delivery_mode === 'incremental') return this.incremental.prepare(s,a);
+      if (a.delivery_mode !== undefined && a.delivery_mode !== 'atomic') fail('invalid_delivery_mode');
       if (typeof a.start_id !== 'string' || !a.start_id) return { needs_clarification: ['continuation_start'], writable: false };
       if (!Array.isArray(a.rules) || !a.rules.length || a.rules.length > 30 || a.rules.some(rule => typeof rule !== 'string' || !rule.trim() || rule.length > 2000))
         return { needs_clarification: ['key_style_rules'], writable: false };
@@ -165,6 +174,7 @@ export class AIConnector {
       const endOffset = a.end_offset === undefined ? segments[last].text.length : integer(a.end_offset, 0, segments[last].text.length);
       if (!boundary(segments[first].text, startOffset) || !boundary(segments[last].text, endOffset) || (first === last && startOffset >= endOffset)) fail('invalid_range');
       const ids = segments.slice(first, last + 1).map(segment => segment.id);
+      if (ids.length > 48) fail('long_task_requires_incremental_mode');
       if (segments.slice(first, last + 1).some(segment => segment.text.length > 12000)) fail('segment_too_large_split_in_ripple_first');
       if (this.tasks.size >= 32) fail('too_many_tasks_cancel_or_restart_connection');
       const name = saveMode === 'new_version' ? nextAIEditName(s.label, s.names) : s.label;

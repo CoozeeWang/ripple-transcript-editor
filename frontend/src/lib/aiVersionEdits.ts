@@ -2,7 +2,7 @@ import { mergeSegmentWithNext } from './segmentOps';
 import type { Transcript } from '../types';
 import { reanchorCharacters, reanchorRanges } from './transcriptOps';
 
-/** A proposed text change that is published as a new, comparable version. */
+/** A scoped proposal applied at the agreed manuscript save boundary. */
 export interface AISuggestion {
   action?: 'edit' | 'delete' | 'merge_previous';
   id: string;
@@ -11,7 +11,7 @@ export interface AISuggestion {
 }
 
 export function applyAISuggestions(current: Transcript, baseline: Transcript, suggestions: AISuggestion[]): Transcript {
-  if (JSON.stringify(current) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+  if (current !== baseline && JSON.stringify(current) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
   const changes = new Map(suggestions.map(suggestion => [suggestion.id, suggestion]));
   if (changes.size !== suggestions.length || suggestions.some(suggestion => !current.segments.some(segment => segment.id === suggestion.id) ||
     !['edit', 'delete', 'merge_previous'].includes(suggestion.action ?? 'edit') ||

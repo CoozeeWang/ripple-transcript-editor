@@ -1648,5 +1648,32 @@
   },
   "notice": {
     "dismiss": "关闭提示"
+  },
+  "continuation": {
+    "title": "AI 续改",
+    "refresh": "刷新进度",
+    "saved": "已保存 {{saved}}／{{total}} 个片段",
+    "ready": "进度已保存在本机。可在 AI 对话中继续。",
+    "staged": "本批已检查 {{count}} 个片段，尚未写入稿件。",
+    "paused": "已暂停，完成的批次仍保留在稿件中。",
+    "conflict": "本批内容已变化，续改已暂停。你的修改和 AI 待提交结果均已保留。",
+    "savePaused": "本批尚未确认保存，续改已暂停。请刷新进度后重试。",
+    "completed": "续改已完成，全部批次已保存。",
+    "openVersion": "请打开此任务的目标版本后继续。",
+    "held": "此前冲突的待提交结果保留在本机任务中。",
+    "pause": "暂停",
+    "resume": "重读本批继续",
+    "cancel": "结束续改",
+    "error": "无法更新续改进度。请检查稿件保存状态，再刷新重试。",
+    "viewPending": "查看待提交修改",
+    "hidePending": "收起待提交修改",
+    "noPending": "没有待提交的正文修改。",
+    "segment": "片段 {{index}}",
+    "removedSegment": "此片段已被移除",
+    "currentText": "当前稿件",
+    "proposedText": "AI 待提交正文",
+    "proposedDelete": "AI 提议删除此片段",
+    "proposedMerge": "AI 提议与前段合并，待提交正文如下",
+    "scopeChanged": "未处理的片段结构已变化。请结束此任务，再在 AI 对话中确认新的续改范围；已保存的批次仍保留。"
   }
 }

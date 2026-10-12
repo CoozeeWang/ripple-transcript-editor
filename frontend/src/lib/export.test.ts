@@ -16,6 +16,13 @@ import {
 } from "./export";
 import type { InterviewMetadata, Transcript } from "../types";
 
+it('does not export internal AI save receipts as manuscript JSON',()=>{
+  const transcript:Transcript={audio:{filename:'synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'',start:0,end:1,text:'Synthetic'}],
+    aiContinuationReceipts:{task:{task_id:'task',batch_id:'batch',source_version_id:'m:e1',version_id:'m:e2',processed_ids:['s'],changed_segments:1,deleted_segments:0,merged_segments:0}}};
+  expect(buildJsonPayload(transcript,undefined)).not.toHaveProperty('aiContinuationReceipts');
+  expect(transcript.aiContinuationReceipts).toBeTruthy();
+});
+
 it('retains paragraph breaks and annotation ranges in Word and PDF exports', async () => {
   const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [],
     segments: [{ id: 's', speaker_id: '', start: 0, end: 2, text: 'First paragraph\nSecond paragraph',

@@ -306,6 +306,56 @@ try {
   if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
   console.log(blocked.stdout.trim());
   console.log('PASS: blocked current-version write returned failure; disk/original/snapshot unchanged, one version, editor changes retained.');
+
+  await page.goto(`${vite.resolvedUrls.local[0]}?incremental`);
+  await page.getByText('我觉得先开始，把这份合成稿件核对清楚。',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();await page.getByLabel('启用 MCP 连接').check();
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  const incrementalBefore=await currentState();
+  const phase=async name=>{
+    const result=await promisify(execFile)(python,[join(repo,'scripts/fixtures/connector-incremental-check.py')],
+      {cwd:repo,env:{...process.env,RIPPLE_CONNECTOR_TEST_DIR:directory,RIPPLE_CONNECTOR_TEST_URL:backendUrl,RIPPLE_INCREMENTAL_PHASE:name}});
+    return JSON.parse(result.stdout.trim());
+  };
+  const pending=await phase('prepare');if(pending.staged!==24)throw Error('Incremental batch size changed');
+  await page.locator('.segment-text-editor').last().fill('Synthetic manual edit outside this batch.');
+  const first=await phase('save');if(first.saved_segments!==24)throw Error('First checkpoint not persisted');
+  await page.getByText('已保存 24／60 个片段',{exact:true}).waitFor();
+  const firstState=await currentState();if(firstState.count!==2||firstState.segments.at(-1).text!=='Synthetic manual edit outside this batch.')throw Error('First batch created wrong versions or overwrote manual text');
+  await phase('stage');
+  await page.locator('.segment-text-editor').nth(24).fill('Synthetic overlapping manual correction.');
+  await phase('conflict');await page.getByText(/本批内容已变化，续改已暂停/).waitFor();
+  await page.getByRole('button',{name:'查看待提交修改',exact:true}).click();
+  await page.getByText('Synthetic overlapping manual correction.',{exact:true}).last().waitFor();
+  if(!(await page.locator('.continuation-proposals').innerText()).includes('Synthetic AI checkpoint.'))throw Error('Conflicting AI proposal not retained/displayed');
+  await page.getByRole('button',{name:'收起待提交修改',exact:true}).click();
+  for(const language of ['en','zh-CN']) {
+    await page.locator('.language-control > button').click();await page.getByRole('menuitemradio',{name:language==='en'?'English':'简体中文'}).click();
+    await page.setViewportSize({width:850,height:650});
+    const progress=page.locator('.continuation-progress');
+    if(await progress.evaluate(node=>node.scrollWidth>node.clientWidth))throw Error('Continuation progress clipped');
+    const resume=page.getByRole('button',{name:language==='en'?'Re-read batch and continue':'重读本批继续',exact:true});await resume.focus();await resume.hover();
+  }
+  await page.getByRole('button',{name:'重读本批继续',exact:true}).click();await phase('stage');await phase('save');
+  await page.getByText('已保存 48／60 个片段',{exact:true}).waitFor();
+  await phase('stage');
+  // Remount the actual App against its saved fixture files: no controller/task memory survives.
+  await page.evaluate(()=>window.__fixture.remount());
+  await page.getByText('已保存 48／60 个片段',{exact:true}).waitFor();
+  const last=await phase('save');if(last.saved_segments!==60||last.state!=='completed')throw Error('Saved task did not resume/complete after App remount');
+  const final=await currentState();
+  if(final.count!==2||final.original!==incrementalBefore.original||final.snapshot!==incrementalBefore.snapshot||
+     final.segments.at(-1).text!=='Synthetic manual edit outside this batch.'||
+     !final.segments[24].text.startsWith('Synthetic overlapping manual correction.'))throw Error('Incremental save did not preserve source/snapshot/manual edits');
+  const journals=await page.evaluate(async()=>{
+    const dir=await window.__fixture.root.handle.getDirectoryHandle('synthetic.transcript'),folder=await dir.getDirectoryHandle('ai-continuation-tasks');const tasks=[];
+    for await(const [,handle]of folder.entries())tasks.push(JSON.parse(await(await handle.getFile()).text()));return tasks;
+  });
+  if(journals.length!==1||journals[0].done.length!==60||journals[0].held.length!==1)throw Error('Durable continuation journal lost progress or held proposal');
+  await page.getByText('续改已完成，全部批次已保存。',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();await page.getByLabel('启用 MCP 连接').uncheck();
+  if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
+  console.log('PASS: real SDK incremental 60-segment saves into one work version; manual outside edits preserved, overlap paused/proposal visible, bilingual narrow progress and App-remount recovery passed.');
 } finally {
   await browser?.close();
   await vite?.close();

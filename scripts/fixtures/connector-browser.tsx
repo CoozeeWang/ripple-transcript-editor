@@ -44,6 +44,9 @@ if (new URLSearchParams(location.search).has('delete-between')) {
   raw.speakers.push({id:'filler-speaker',name:'Synthetic filler speaker'});
   raw.segments[1]={...raw.segments[1],speaker_id:'filler-speaker',text:'嗯',words:[{text:'嗯',start:10,end:20}]};
 }
+if(new URLSearchParams(location.search).has('incremental')) {
+  for(let i=3;i<60;i++)raw.segments.push({id:`s${i+1}`,speaker_id:'speaker',start:i,end:i+1,text:`Synthetic continuation segment ${i+1}`} as typeof raw.segments[number]);
+}
 await createModel(root.handle,'synthetic.wav',{engine:'imported',sourceKind:'import',sourceName:'Synthetic original.json',transcript:raw,original:raw,originalOnly:true,designatedOriginal:true});
 const made=await createModel(root.handle,'synthetic.wav',{engine:'imported',sourceKind:'import',sourceName:'Synthetic revision.json',transcript:raw,original:raw,editLabel:'v1'});
 // Reproduce a legacy import snapshot retained by existing projects; never a user version.
@@ -55,5 +58,7 @@ await writeJson('manifest.json',made.manifest);
 const current=structuredClone(made.edited);
 current.transcript.segments[0].text='我觉得先开始，把这份合成稿件核对清楚。';
 await saveActiveEdit(root.handle,'synthetic.wav',made.model.id,made.model.edits[0].id,current);
-(window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit),readModelOriginal:(model:string)=>readModelOriginal(root.handle,'synthetic.wav',model)};
-createRoot(document.getElementById('root')!).render(<App projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/>);
+const appRoot=createRoot(document.getElementById('root')!);let generation=0;
+const render=()=>appRoot.render(<App key={generation} projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/>);
+(window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit),readModelOriginal:(model:string)=>readModelOriginal(root.handle,'synthetic.wav',model),remount:()=>{generation++;render();}};
+render();
