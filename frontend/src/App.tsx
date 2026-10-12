@@ -54,6 +54,7 @@ import {
   defaultMetadata,
   readAudioUrl,
   renameAudio,
+  readModelOriginal,
   readManifest,
   sanitizeForFilename,
   stemOf,
@@ -88,6 +89,7 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 
 export interface ProjectEditorProps {
   projectDirectory?: FileSystemDirectoryHandle;
+  initialOriginalModelId?: string;
   projectLabel?: string;
   interviewTitle?: string;
   interviewMetadata?: InterviewMetadata;
@@ -102,6 +104,7 @@ export interface ProjectEditorProps {
 }
 function App(projectProps: ProjectEditorProps = {}) {
   useInterfaceLanguage();
+  const initialVersionApplied = useRef(false);
   // 平台检测——tooltip 与按钮文案里显示对应的快捷键（避免 Mac 用户看到 Ctrl+O）
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform);
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
@@ -302,7 +305,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setLoadError("");
       initialLoadRef.current = true;
     },
-    onLoaded: ({ url, manifest, edited }, name) => {
+    onLoaded: async ({ url, manifest, edited }, name) => {
+      let openingOriginal = false;
+      if (manifest && edited && !initialVersionApplied.current && projectProps.initialOriginalModelId && dirHandleRef.current) {
+        const original = await readModelOriginal(dirHandleRef.current, name, projectProps.initialOriginalModelId);
+        if (!original) throw new Error(msg('useVersions.m1196'));
+        edited = { ...edited, transcript: original.transcript };
+        openingOriginal = true;
+        initialVersionApplied.current = true;
+      }
       setAudioUrl(url);
       setAudioFilename(name);
       setCurrentTime(0);
@@ -331,7 +342,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setOpeningPosition({ id: openingId });
       setHasLoadedTranscript(true);
       const loadedModel = manifest.models.find(m => m.id === manifest.activeModelId) ?? manifest.models[0];
-      setViewingOriginal(Boolean(loadedModel?.designatedOriginal) || (!loadedModel?.edits.length && Boolean(loadedModel?.original)));
+      setViewingOriginal(openingOriginal || Boolean(loadedModel?.designatedOriginal) || (!loadedModel?.edits.length && Boolean(loadedModel?.original)));
       setProcessStatus("done");
       setProcessMessage(msg('App.m0002', { v0: edited.transcript.segments.length }));
       setSaveStatus("saved");

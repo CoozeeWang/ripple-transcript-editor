@@ -170,3 +170,5 @@
 .setup-document { align-items:flex-start; }
 .setup-document-name { line-height:22px; }
 .setup-document > svg { margin-top:3px; }
+
+.setup-document-version { margin-left:24px; }

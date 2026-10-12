@@ -6,7 +6,7 @@ import { ProjectBoard } from './ProjectBoard';
 import * as local from '../localStore';
 import type { OpenProject } from '../lib/projectStore';
 import type { TranscriptModel } from '../types';
-vi.mock('../localStore',async original=>({...await original<typeof local>(),readManifest:vi.fn(),readModelEdit:vi.fn(),readModelOriginal:vi.fn(),createModel:vi.fn(),setModelOriginal:vi.fn()}));
+vi.mock('../localStore',async original=>({...await original<typeof local>(),readManifest:vi.fn(),readModelEdit:vi.fn(),readModelOriginal:vi.fn(),createModel:vi.fn(),setModelOriginal:vi.fn(),renameEditLabel:vi.fn()}));
 vi.mock('../lib/projectStore',async original=>({...await original<typeof import('../lib/projectStore')>(),mutateProjectManuscript:vi.fn(async(_p,work)=>work()),checkProjectMedia:vi.fn(async()=>new File(['synthetic'],'audio.wav')),recordingDirectory:vi.fn(async()=>({}))}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 it.each([false,true])('opens names, removes previews, and copies the current document (original=%s)',async original=>{
@@ -209,4 +209,40 @@ it('does not reread audio after only renaming a session',async()=>{
  await waitFor(()=>expect(store.checkProjectMedia).toHaveBeenCalledTimes(1));
  ui.rerender(<ProjectBoard {...props} project={{...project,data:{...project.data,interviews:[{...session,title:'Renamed'}]}}}/>);
  await act(async()=>{});expect(store.checkProjectMedia).toHaveBeenCalledTimes(1);
+});
+
+it('shows AI and manual revisions together and opens or renames the requested ID',async()=>{
+ await (await import('../i18n')).setInterfaceLanguage('zh-CN');
+ vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockResolvedValue({} as FileSystemDirectoryHandle);
+ const model={id:'m',label:'导入稿',engine:'test',sourceKind:'import',original:'snapshot.json',edits:[{id:'e1',label:'修改稿 v1'},{id:'e2',label:'修改稿 v1 · AI 辅助 01'}],activeEditId:'e1'} as TranscriptModel;
+ vi.mocked(local.readManifest).mockResolvedValue({models:[model]} as never);
+ vi.mocked(local.renameEditLabel).mockResolvedValue({models:[{...model,edits:[model.edits[0],{...model.edits[1],label:'AI 校对'}]}]} as never);
+ const recording={id:'r',file:'source.m4a',name:'音频.m4a',storage:'copy'};
+ const project={data:{id:'p',interviews:[{id:'s',title:'访谈',recordings:[recording]}]}} as OpenProject;
+ const open=vi.fn();const props={project,selected:'s',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open,run:async(work:()=>Promise<void>)=>{await work();},legacy:()=>{},relink:()=>{},associate:()=>{}};
+ const view=render(<ProjectBoard {...props}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'打开 转录稿 修改稿 v1 · AI 辅助 01'}));
+ expect(open).toHaveBeenLastCalledWith(recording,'m','e2');
+ expect(screen.getByRole('button',{name:'打开 转录稿 修改稿 v1'})).toBeTruthy();
+ expect(screen.queryByText(/snapshot/)).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'重命名 修改稿 v1 · AI 辅助 01'}));
+ const input=screen.getByRole('textbox',{name:'重命名 转录稿'});
+ fireEvent.change(input,{target:{value:'AI 校对'}});fireEvent.keyDown(input,{key:'Enter'});
+ await waitFor(()=>expect(local.renameEditLabel).toHaveBeenLastCalledWith(expect.anything(),'source.m4a','m','e2','AI 校对'));
+ await screen.findByRole('button',{name:'打开 转录稿 AI 校对'});
+ view.rerender(<ProjectBoard {...props} busy/>);
+ expect(screen.getByRole('button',{name:'打开 转录稿 AI 校对'}).hasAttribute('disabled')).toBe(true);
+});
+
+it('shows engine original and every revision and opens the original explicitly',async()=>{
+ await (await import('../i18n')).setInterfaceLanguage('zh-CN');
+ vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockResolvedValue({} as FileSystemDirectoryHandle);
+ const model={id:'engine',label:'原始转录稿',engine:'synthetic',sourceKind:'transcription',original:'original.json',edits:[{id:'e1',label:'修改稿 v1'},{id:'e2',label:'AI 辅助 01'}],activeEditId:'e2'} as TranscriptModel;
+ vi.mocked(local.readManifest).mockResolvedValue({models:[model]} as never);
+ const recording={id:'r',file:'source.m4a',name:'音频.m4a',storage:'copy'};
+ const project={data:{id:'p',interviews:[{id:'s',title:'访谈',recordings:[recording]}]}} as OpenProject;const open=vi.fn();
+ render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={open} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'打开 转录稿 原始转录稿'}));expect(open).toHaveBeenLastCalledWith(recording,'engine','original');
+ fireEvent.click(screen.getByRole('button',{name:'打开 转录稿 修改稿 v1'}));expect(open).toHaveBeenLastCalledWith(recording,'engine','e1');
+ expect(screen.getByRole('button',{name:'打开 转录稿 AI 辅助 01'})).toBeTruthy();
 });

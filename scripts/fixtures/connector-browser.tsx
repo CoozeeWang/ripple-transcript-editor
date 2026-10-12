@@ -2,6 +2,9 @@
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import App from '__REPO__/frontend/src/App.tsx';
+import {ProjectBoard} from '__REPO__/frontend/src/components/ProjectBoard.tsx';
+import {persistActiveModel} from '__REPO__/frontend/src/localStore.ts';
+import '__REPO__/frontend/src/components/projectSetup.css';
 import {createModel, saveActiveEdit, readManifest, readModelEdit, readModelOriginal} from '__REPO__/frontend/src/localStore.ts';
 import '__REPO__/frontend/src/styles.css';
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
@@ -59,6 +62,11 @@ const current=structuredClone(made.edited);
 current.transcript.segments[0].text='我觉得先开始，把这份合成稿件核对清楚。';
 await saveActiveEdit(root.handle,'synthetic.wav',made.model.id,made.model.edits[0].id,current);
 const appRoot=createRoot(document.getElementById('root')!);let generation=0;
-const render=()=>appRoot.render(<App key={generation} projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/>);
-(window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit),readModelOriginal:(model:string)=>readModelOriginal(root.handle,'synthetic.wav',model),remount:()=>{generation++;render();}};
+const render=(initialOriginalModelId?:string)=>appRoot.render(<App initialOriginalModelId={initialOriginalModelId} key={generation} projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/>);
+(window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit),readModelOriginal:(model:string)=>readModelOriginal(root.handle,'synthetic.wav',model),remount:()=>{generation++;render();},showBoard:()=>{
+  const projectRoot=directory('Synthetic project'),interviews=directory('interviews');projectRoot.dirs.set('interviews',interviews);interviews.dirs.set('synthetic-session',root);
+  const recording={id:'synthetic-recording',file:'synthetic.wav',name:'Synthetic audio',storage:'copy'};
+  const project={directory:projectRoot.handle,data:{id:'synthetic-version-project',title:'Synthetic project',interviews:[{id:'synthetic-session',title:'Synthetic session',recordings:[recording]}]}};
+  appRoot.render(<ProjectBoard project={project as any} selected="synthetic-session" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}} open={async(_recording,model,edit)=>{await persistActiveModel(root.handle,'synthetic.wav',model!,edit==='original'?undefined:edit);generation++;render(edit==='original'?model:undefined);}}/>);
+}};
 render();

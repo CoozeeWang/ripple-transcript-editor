@@ -356,6 +356,27 @@ try {
   await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();await page.getByLabel('启用 MCP 连接').uncheck();
   if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
   console.log('PASS: real SDK incremental 60-segment saves into one work version; manual outside edits preserved, overlap paused/proposal visible, bilingual narrow progress and App-remount recovery passed.');
+  const versions=await page.evaluate(async()=>{const f=window.__fixture,m=(await f.readManifest()).models.find(m=>m.id===f.made.model.id);return m.edits.map(e=>({id:e.id,label:e.label}));});
+  await page.evaluate(()=>window.__fixture.showBoard());
+  for(const version of versions)await page.getByRole('button',{name:`打开 转录稿 ${version.label}`,exact:true}).waitFor();
+  await page.setViewportSize({width:850,height:850});
+  const revision=page.getByRole('button',{name:`打开 转录稿 ${versions[0].label}`,exact:true});
+  await revision.hover();await revision.focus();
+  await page.keyboard.press('Enter');
+  await page.locator('.segment-text-editor').first().waitFor();
+  const selected=await page.evaluate(async()=>{const f=window.__fixture,m=(await f.readManifest()).models.find(m=>m.id===f.made.model.id);return m.activeEditId;});
+  if(selected!==versions[0].id)throw new Error('Project page opened a different version');
+  await page.locator('.language-control > button').click();await page.getByRole('menuitemradio',{name:'English'}).click();
+  await page.evaluate(()=>window.__fixture.showBoard());
+  for(const version of versions)await page.getByRole('button',{name:`Open Transcript ${version.label}`,exact:true}).waitFor();
+  const ai=page.getByRole('button',{name:`Open Transcript ${versions[1].label}`,exact:true});await ai.hover();await ai.focus();
+  const box=await ai.boundingBox();if(!box||box.x<0||box.x+box.width>850)throw new Error('Project version row clipped');
+  await ai.click();await page.locator('.segment-text-editor').first().waitFor();
+  const actual=await page.evaluate(async()=>{const f=window.__fixture,m=(await f.readManifest()).models.find(m=>m.id===f.made.model.id);return {id:m.activeEditId,text:document.querySelector('.segment-text-editor')?.textContent};});
+  if(actual.id!==versions[1].id||!actual.text.includes('Synthetic AI checkpoint.'))throw new Error('AI version not opened correctly');
+  if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
+  console.log('PASS: project page lists manual and AI versions in both languages; narrow rows, hover/focus and opening exact saved version passed.');
+
 } finally {
   await browser?.close();
   await vite?.close();

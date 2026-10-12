@@ -2,7 +2,7 @@ import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
-import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
+import { createEdit, setModelOriginal, saveActiveEdit, createModel, persistActiveModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
 function directory(name = 'root'): TestDirectory {
@@ -778,4 +778,18 @@ it('writes one complete English reference note without duplicating session and m
     expect(note).toContain('Synthetic transcript');
     expect(note).toContain('Locate original audio');
   } finally { await setInterfaceLanguage('zh-CN'); }
+});
+
+it('opens exact revision IDs and the read-only engine source without changing any manuscript',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:3},speakers:[{id:'s',name:'Synthetic'}],segments:[{id:'1',speaker_id:'s',start:0,end:3,text:'原始内容'}]};
+ const made=await createModel(dir,recording.file,{engine:'synthetic',sourceKind:'transcription',transcript,original:transcript,label:'原始转录稿'});
+ const second=await createEdit(dir,recording.file,made.model.id,{srcEditId:'e1',label:'AI 辅助 01'});
+ await saveActiveEdit(dir,recording.file,made.model.id,second.edit.id,{kind:'te-edited',audio:recording.file,metadata:(await readModelEdit(dir,recording.file,made.model.id,second.edit.id))!.metadata,transcript:{...transcript,segments:[{...transcript.segments[0],text:'AI 修改'}]}});
+ await persistActiveModel(dir,recording.file,made.model.id,'e1');expect((await readEdited(dir,recording.file))?.transcript.segments[0].text).toBe('原始内容');
+ await persistActiveModel(dir,recording.file,made.model.id,second.edit.id);expect((await readEdited(dir,recording.file))?.transcript.segments[0].text).toBe('AI 修改');
+ expect((await readModelOriginal(dir,recording.file,made.model.id))?.transcript.segments[0].text).toBe('原始内容');
+ expect((await readModelEdit(dir,recording.file,made.model.id,second.edit.id))?.transcript.segments[0].text).toBe('AI 修改');
+ await expect(persistActiveModel(dir,recording.file,made.model.id,'missing')).rejects.toThrow();
+ expect((await readManifest(dir,recording.file))?.models[0].activeEditId).toBe(second.edit.id);
 });

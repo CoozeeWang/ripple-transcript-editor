@@ -39,7 +39,7 @@ export function ProjectWorkspace() {
   const [project, setProject] = useState<OpenProject | null>(null);
   const [recent, setRecent] = useState<Awaited<ReturnType<typeof recentProjects>>>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
-  const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string } | null>(null);
+  const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string; originalModelId?: string } | null>(null);
   const [association, setAssociation] = useState<{ source: string; modelId: string; name: string; anchor:DOMRect } | null>(null);
   const [recentOpen, setRecentOpen] = useState(false);
   const [recentRecovery, setRecentRecovery] = useState<{id:string;title:string;reason:'missing'|'permission'|'unreadable'} | null>(null);
@@ -144,7 +144,7 @@ export function ProjectWorkspace() {
     setRecentRecovery(null); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
-  const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string) => {
+  const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string, editId?: string) => {
     if (!project || !targetId) return;
     const target = project.data.interviews.find(i => i.id === targetId);
     if (!target) throw new Error(msg('ProjectWorkspace.m0902'));
@@ -154,12 +154,12 @@ export function ProjectWorkspace() {
     // Request access during the user gesture, but missing media must not block manuscripts.
     try { await permit(await resolveMedia(project, targetId, recording), 'read'); } catch { /* Editor displays offline media notice. */ }
     const directory = await recordingDirectory(project, targetId, recording);
-    if (modelId) await persistActiveModel(directory, recording.file, modelId);
-    setInterviewId(targetId); setEditor({ directory, recording, title: target.title });
+    if (modelId) await persistActiveModel(directory, recording.file, modelId, editId === "original" ? undefined : editId);
+    setInterviewId(targetId); setEditor({ directory, recording, title: target.title, originalModelId: editId === "original" ? modelId : undefined });
     editorLease.current = release; opened = true;
     } finally { if (!opened) release(); }
   };
-  const openRecording = (recording: ProjectRecording, targetId = interviewId, modelId?: string) => run(async () => { if (project && targetId) await enterRecording(project, recording, targetId, modelId); });
+  const openRecording = (recording: ProjectRecording, targetId = interviewId, modelId?: string, editId?: string) => run(async () => { if (project && targetId) await enterRecording(project, recording, targetId, modelId, editId); });
   const checkManuscripts = async (targetId: string, recordings: ProjectRecording[], folder?: FileSystemDirectoryHandle) => {
     const parent = folder ?? await chooseDirectory('open-audio-folder', 'read');
     const items = await findExistingManuscripts(parent, recordings);
@@ -173,7 +173,7 @@ export function ProjectWorkspace() {
     setTrashOpen(false);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice([]); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
-  if (editor && project) return <App key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
+  if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onRenameInterview={async title => {
       const snapshot = current.current!;
@@ -317,7 +317,7 @@ export function ProjectWorkspace() {
             if (kind === 'audio') setSuccessNotice(msg('projectImport.audioDone'));
             setImportNotice(materials.flatMap(item => { const keys = manuscriptImportNoticeKeys(item); return keys.length ? [{ name: item.name, keys }] : []; }));
           }}
-          add={id => setMaterialTarget(id ?? null)} open={(recording, modelId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId); }} run={run}
+          add={id => setMaterialTarget(id ?? null)} open={(recording, modelId, editId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId, editId); }} run={run}
           legacy={recording => { void run(() => checkManuscripts(interviewId ?? project.data.interviews[0].id, [recording])); }}
           remove={(recording,model,hasDocuments=false)=>{setError('');setDeleteTarget({recording,modelId:model?.id,name:model?.label||model?.sourceName||model?.engine||recording.name,hasDocuments,sessionId:interviewId??project.data.interviews[0].id});}}
           detach={async (recording, modelId) => { const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}

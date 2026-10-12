@@ -1275,6 +1275,8 @@ async function persistActiveModelUnlocked(
   if (!tDir) return null;
   const manifest = await readManifestUnlocked(dir, name);
   if (!manifest) return null;
+  const selected = manifest.models.find(m => m.id === modelId);
+  if (!selected || (editId && (selected.designatedOriginal || !selected.edits.some(edit => edit.id === editId)))) throw new Error(msg('localStore.m1504'));
   const models = manifest.models.map((m) => {
     if (m.id !== modelId) return m;
     return editId ? { ...m, activeEditId: editId } : m;
