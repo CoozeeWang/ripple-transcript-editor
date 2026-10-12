@@ -98,7 +98,7 @@ try {
 
   // The imported snapshot stays stored but never becomes a user-facing version.
   for (const language of ['zh-CN', 'en']) {
-    await page.locator('.language-control select').selectOption(language);
+    await page.locator('.language-control > button').click(); await page.getByRole('menuitemradio', {name: language === 'en' ? 'English' : '简体中文'}).click();
     for (const viewport of [{ width: 1280, height: 800 }, { width: 850, height: 520 }]) {
       await page.setViewportSize(viewport);
       const trigger = page.locator('.version-picker--current .version-picker-trigger');
@@ -122,13 +122,13 @@ try {
     }
   }
 
-  await page.locator('.language-control select').selectOption('zh-CN');
+  await page.locator('.language-control > button').click(); await page.getByRole('menuitemradio', {name: 'zh-CN' === 'en' ? 'English' : '简体中文'}).click();
   await page.setViewportSize({ width: 1280, height: 800 });
   if (!(await page.getByText('显示修改痕迹', { exact: true }).isVisible())) throw new Error('Comparison was not displayed');
   // A higher z-index cannot escape the title area's scrolling clip. Check the
   // complete tooltip box in both languages and in a short, narrow window.
   for (const language of ['zh-CN', 'en']) {
-    await page.locator('.language-control select').selectOption(language);
+    await page.locator('.language-control > button').click(); await page.getByRole('menuitemradio', {name: language === 'en' ? 'English' : '简体中文'}).click();
     for (const viewport of [{ width: 1280, height: 800 }, { width: 850, height: 520 }]) {
       await page.setViewportSize(viewport);
       const toggle = page.locator('.comparison-toggle');
@@ -150,10 +150,10 @@ try {
       }
     }
   }
-  await page.locator('.language-control select').selectOption('zh-CN');
+  await page.locator('.language-control > button').click(); await page.getByRole('menuitemradio', {name: 'zh-CN' === 'en' ? 'English' : '简体中文'}).click();
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const language of ['zh-CN', 'en']) {
-    await page.locator('.language-control select').selectOption(language);
+    await page.locator('.language-control > button').click(); await page.getByRole('menuitemradio', {name: language === 'en' ? 'English' : '简体中文'}).click();
     await page.getByRole('button', { name: language === 'en' ? 'Settings' : '设置', exact: true }).click();
     await page.getByRole('tab', { name: language === 'en' ? 'AI-assisted editing' : 'AI 辅助编辑', exact: true }).click();
     await page.locator('.connector-setup summary').click();
@@ -175,7 +175,7 @@ try {
     if (process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RIPPLE_CONNECTOR_SCREENSHOT_DIR, `settings-${language}.png`) });
     await page.getByRole('dialog').getByRole('button', { name: language === 'en' ? 'Close' : '关闭', exact: true }).click();
   }
-  await page.locator('.language-control select').selectOption('zh-CN');
+  await page.locator('.language-control > button').click(); await page.getByRole('menuitemradio', {name: 'zh-CN' === 'en' ? 'English' : '简体中文'}).click();
   await page.getByRole('button', { name: /设置|偏好/ }).first().click();
   await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
   await page.getByLabel('启用 MCP 连接').uncheck();
