@@ -1358,7 +1358,7 @@ async function syncTranscriptNames(
 }
 
 /** 重命名模型（更新 manifest.label）。 */
-async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: string, modelId: string, designatedOriginal: boolean): Promise<TranscriptManifest> {
+async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: string, modelId: string, designatedOriginal: boolean, editId?: string): Promise<TranscriptManifest> {
   const manifest = await readManifestUnlocked(dir, name);
   const tDir = await resolveTranscriptDir(dir, name, false);
   const model = manifest?.models.find(m => m.id === modelId);
@@ -1373,7 +1373,11 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
     const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
     await writeFileJson(tDir, MANIFEST_NAME, next);return next;
   }
-  const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal, designatedOriginalEditId: designatedOriginal ? (m.activeEditId || m.edits[0]?.id) : undefined } : m) };
+  const designatedEditId = editId ?? model.activeEditId ?? model.edits[0]?.id;
+  if (designatedOriginal && editId && !model.edits.some(edit => edit.id === editId)) throw new Error(msg('localStore.m1504'));
+  const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal,
+    ...(designatedOriginal && editId ? { activeEditId: editId } : {}),
+    designatedOriginalEditId: designatedOriginal ? designatedEditId : undefined } : m) };
   await writeFileJson(tDir, MANIFEST_NAME, next);
   return next;
 }

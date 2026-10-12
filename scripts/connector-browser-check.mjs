@@ -359,6 +359,7 @@ try {
   const versions=await page.evaluate(async()=>{const f=window.__fixture,m=(await f.readManifest()).models.find(m=>m.id===f.made.model.id);return m.edits.map(e=>({id:e.id,label:e.label}));});
   await page.evaluate(()=>window.__fixture.showBoard());
   for(const version of versions)await page.getByRole('button',{name:`打开 转录稿 ${version.label}`,exact:true}).waitFor();
+  if(await page.locator(`[data-root-version-id="${await page.evaluate(()=>window.__fixture.made.model.id)}:${versions[0].id}"]`).count()!==1)throw new Error('Active AI revision reversed project hierarchy');
   await page.setViewportSize({width:850,height:850});
   const revision=page.getByRole('button',{name:`打开 转录稿 ${versions[0].label}`,exact:true});
   await revision.hover();await revision.focus();

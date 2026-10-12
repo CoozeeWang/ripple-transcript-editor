@@ -793,3 +793,15 @@ it('opens exact revision IDs and the read-only engine source without changing an
  await expect(persistActiveModel(dir,recording.file,made.model.id,'missing')).rejects.toThrow();
  expect((await readManifest(dir,recording.file))?.models[0].activeEditId).toBe(second.edit.id);
 });
+
+it('designates the explicit base revision even while a later AI revision is active',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:2},speakers:[{id:'s',name:'Synthetic'}],segments:[{id:'1',speaker_id:'s',start:0,end:2,text:'Base synthetic words'}]};
+ const made=await createModel(dir,recording.file,{engine:'imported',sourceKind:'import',transcript,label:'Base'});
+ const ai=await createEdit(dir,recording.file,made.model.id,{srcEditId:'e1',label:'AI version'});
+ const result=await setModelOriginal(dir,recording.file,made.model.id,true,'e1');
+ expect(result.models[0]).toMatchObject({designatedOriginalEditId:'e1',activeEditId:'e1'});
+ expect(result.models[0].edits.map(e=>e.id)).toEqual(['e1',ai.edit.id]);
+ expect((await readModelOriginal(dir,recording.file,made.model.id))?.transcript.segments[0].text).toBe('Base synthetic words');
+ await expect(setModelOriginal(dir,recording.file,made.model.id,true,'missing')).rejects.toThrow();
+});
