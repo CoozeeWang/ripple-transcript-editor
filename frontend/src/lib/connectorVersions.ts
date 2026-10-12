@@ -5,7 +5,7 @@ import { originalVersionLabel } from './transcriptLabels';
 
 export function connectorVersions(models: TranscriptModel[]): ConnectorVersion[] {
   return models.flatMap(model => [
-    ...(model.original || model.designatedOriginal ? [{ id: `${model.id}:original`, model_id: model.id,
+    ...(model.designatedOriginal || (model.original && model.sourceKind !== 'import') ? [{ id: `${model.id}:original`, model_id: model.id,
       edit_id: 'original', name: originalVersionLabel(model), kind: 'original' as const }] : []),
     ...(model.designatedOriginal ? [] : model.edits.map((edit, i) => ({ id: `${model.id}:${edit.id}`,
       model_id: model.id, edit_id: edit.id, name: edit.label ?? defaultEditLabel(i), kind: 'edit' as const }))),

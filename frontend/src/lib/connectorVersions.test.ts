@@ -18,15 +18,15 @@ describe('MCP version catalog', () => {
   it('returns current interface labels in Chinese and English while preserving user version names', async () => {
     await setInterfaceLanguage('zh-CN');
     expect(connectorVersions(models)[0].name).toBe('原始转录稿（只读）');
-    expect(connectorVersions(models)[1].name).toBe('Synthetic copy（只读）');
+    expect(connectorVersions(models)[1].name).toBe('v1');
     await setInterfaceLanguage('en');
     expect(connectorVersions(models)[0].name).toBe('Original transcript (read-only)');
-    expect(connectorVersions(models)[1].name).toBe('Synthetic copy (read-only)');
+    expect(connectorVersions(models)[1].name).toBe('v1');
     expect(connectorVersions(models)[2].name).toBe('v1');
   });
   it('includes the designated original and other same-interview versions with unique IDs despite duplicate names', () => {
     const versions = connectorVersions(models);
-    expect(versions.map(v => v.id)).toEqual(['m1:original', 'm2:original', 'm2:e1', 'm3:e1']);
+    expect(versions.map(v => v.id)).toEqual(['m1:original', 'm2:e1', 'm3:e1']);
     expect(versions.filter(v => v.name === 'v1')).toHaveLength(2);
     expect(connectorVersions([{ ...models[1], designatedOriginal: true }]).map(v => v.id)).toEqual(['m2:original']);
   });

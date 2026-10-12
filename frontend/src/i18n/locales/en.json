@@ -1013,7 +1013,8 @@
     "m1106": "Delete imported transcript",
     "m1107": "Delete original transcript",
     "m1108": "Delete version",
-    "m1109": "Delete {{v0}}"
+    "m1109": "Delete {{v0}}",
+    "importSnapshotPurpose": "Import snapshots are retained to recover source and timing information, not as comparison versions."
   },
   "useEditor": {
     "m1112": "“{{v0}}” can’t be deleted because it still has assigned segments. Assigned segments: {{v1}}. Reassign them using the speaker menu, or merge “{{v2}}” into another speaker before deleting.\nReassign these segments using the speaker menu, or merge “{{v2}}” into another speaker before deleting.",

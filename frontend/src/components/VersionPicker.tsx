@@ -95,7 +95,7 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
     .sort((a,b)=>Number(!!b.designatedOriginal)-Number(!!a.designatedOriginal));
   let importIndex=0;
   const groups=orderedModels.map(model=>model.sourceKind === "import" ? imported[importIndex++] : model).map(model=>({model,entries:[
-    ...((model.designatedOriginal || (model.original && (model.sourceKind !== "import" || variant === "comparison" || value === `${model.id}:original`))) ? [{id:"original",label:originalVersionLabel(model)}] : []),
+    ...((model.designatedOriginal || (model.original && model.sourceKind !== "import")) ? [{id:"original",label:originalVersionLabel(model)}] : []),
     ...(model.designatedOriginal && variant === "current" ? [] : model.edits).map((edit,index)=>({id:edit.id,label:edit.label ?? defaultEditLabel(index)})),
   ].filter(entry=>`${model.id}:${entry.id}`!==excluded)})).filter(group=>group.entries.length);
   const selected=groups.flatMap(({model,entries})=>entries.map(entry=>({...entry,value:`${model.id}:${entry.id}`}))).find(entry=>entry.value===value);
@@ -152,6 +152,8 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
           </div>
         </div>)}
       </section>)}
+      {models.some(model => model.sourceKind === 'import' && !model.designatedOriginal && model.original) &&
+        <p className="version-picker-snapshot-note">{msg('VersionPicker.importSnapshotPurpose')}</p>}
     </div>}
   </div>;
 }

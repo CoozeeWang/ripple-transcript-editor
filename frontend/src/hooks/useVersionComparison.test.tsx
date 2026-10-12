@@ -54,12 +54,12 @@ it('prefers the designated original over an imported revision snapshot, while ke
  ];
  const {result}=renderHook(()=>useVersionComparison(dir,'A',imported,'edit','e1',false));
  expect(result.current.base).toBe('source:original');
- expect(result.current.options.find(o=>o.value==='edit:original')?.label).toBe('人工修改稿（只读）');
+ expect(result.current.options.find(o=>o.value==='edit:original')).toBeUndefined();
  act(()=>result.current.toggle());await waitFor(()=>expect(result.current.loading).toBe(false));
  act(()=>result.current.choose('edit:original'));await waitFor(()=>expect(result.current.loading).toBe(false));
- expect(result.current.base).toBe('edit:original');
+ expect(result.current.base).toBe('source:original');
  act(()=>result.current.toggle());act(()=>result.current.toggle());
- expect(result.current.base).toBe('edit:original');
+ expect(result.current.base).toBe('source:original');
 });
 
 it('keeps the recorded AI source ahead of a designated original',()=>{
