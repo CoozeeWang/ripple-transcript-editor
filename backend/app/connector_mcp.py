@@ -21,7 +21,7 @@ INSTRUCTIONS = (
     "Read pages and selected version comparison examples as needed. "
     "Never assume the continuation start: ask the user if missing or ambiguous. "
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
-    "Text and segment-structure edits always save a new version. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
+    "Before continuation ask the user, in their language, whether to save a new version or update the current editable version; reuse an already explicit choice and pass save_mode. Never silently choose a save mode. Read-only originals require a new version. Current-version edits retain the version name and support ordinary undo during the current editing session; use a new version for a persistent separate before/after comparison. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
     "Infer preferences only from examples confirmed as human edits; selected-version differences may include AI edits. "
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
     "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
@@ -122,12 +122,15 @@ def register_tools(mcp, call):
     async def prepare_continuation(snapshot: str, rules: list[str], start_id: str | None = None,
                                    start_offset: int = 0, end_id: str | None = None,
                                    end_offset: int | None = None,
-                                   allowed_actions: list[Literal["edit", "delete", "merge_previous"]] | None = None) -> dict[str, Any]:
+                                   allowed_actions: list[Literal["edit", "delete", "merge_previous"]] | None = None,
+                                   save_mode: Literal["new_version", "current_version"] | None = None) -> dict[str, Any]:
         """Prepare explicit scope and allowed_actions after agreement; default is text edit only.
 
         Enable delete/merge_previous only when the user requests these structural edits.
         Include every affected full segment, including the preceding merge target. No manuscript write.
         Missing start requires clarification; existing versions are preserved.
+        First ask whether to save a new_version or update current_version, unless already explicit.
+        Without save_mode no task is created. current_version cannot modify a read-only original.
         """
         args = {"snapshot": snapshot, "rules": rules, "start_offset": start_offset}
         if start_id is not None:
@@ -138,6 +141,8 @@ def register_tools(mcp, call):
             args["end_offset"] = end_offset
         if allowed_actions is not None:
             args["allowed_actions"] = allowed_actions
+        if save_mode is not None:
+            args["save_mode"] = save_mode
         return await call("prepare", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
@@ -153,9 +158,15 @@ def register_tools(mcp, call):
         """
         return await call("stage", {"task_id": task_id, "changes": [c.model_dump() for c in changes]})
 
-    @mcp.tool(structured_output=True, annotations=write)
+    @mcp.tool(structured_output=True, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False))
     async def publish_continuation(task_id: str, confirmed_summary: str) -> dict[str, Any]:
-        """Save staged text as ONE new local Ripple version after user agreement. Only the current interview is affected. Existing versions are never overwritten or deleted; no messages, audio, or data are sent to other services. Open comparison against the source version."""
+        """Save once using the explicit save_mode and source version in the agreed summary.
+
+        new_version preserves the source and opens comparison. current_version updates only the
+        chosen editable version, keeps its name/ID, and supports normal editor undo in this session.
+        Read-only originals and other versions stay unchanged. No audio or messages are sent.
+        After an uncertain save, check continuation_status before repeating the write.
+        """
         return await call("publish", {"task_id": task_id, "confirmed_summary": confirmed_summary})
 
     @mcp.tool(structured_output=True, annotations=read)

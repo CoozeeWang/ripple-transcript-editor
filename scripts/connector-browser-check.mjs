@@ -227,6 +227,86 @@ try {
   if(errors.length) throw new Error(`Browser errors: ${errors.join('; ')}`);
   console.log(deleteBetween.stdout.trim());
   console.log('PASS: fresh same-speaker neighbors merged after deletion; source, original, import snapshot and retained marks preserved.');
+
+  await page.goto(`${vite.resolvedUrls.local[0]}?delete-between&in-place`);
+  await page.getByText('我觉得先开始，把这份合成稿件核对清楚。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /设置|偏好/ }).first().click();
+  await page.getByRole('tab', { name: 'AI 辅助编辑', exact: true }).click();
+  await page.getByLabel('启用 MCP 连接').check();
+  await page.getByText('本机连接已就绪。请在所选 AI 软件中完成 Ripple 的添加和启用后使用。').waitFor();
+  const currentState = async () => page.evaluate(async () => {
+    const f=window.__fixture,manifest=await f.readManifest(),model=manifest.models.find(m=>m.id===manifest.activeModelId);
+    const current=await f.readModelEdit(model.id,model.activeEditId),originalModel=manifest.models.find(m=>m.id!==model.id);
+    const original=await f.readModelOriginal(originalModel.id),dir=await f.root.handle.getDirectoryHandle('synthetic.transcript');
+    return {count:model.edits.length,id:model.activeEditId,label:model.edits.find(e=>e.id===model.activeEditId).label,
+      segments:current.transcript.segments,original:JSON.stringify(original.transcript),
+      snapshot:await (await (await dir.getFileHandle(model.original)).getFile()).text() };
+  });
+  const currentBefore=await currentState();
+  const inPlace=await promisify(execFile)(python,[join(repo,'scripts/fixtures/connector-mcp-check.py')],
+    {cwd:repo,env:{...process.env,RIPPLE_CONNECTOR_TEST_DIR:directory,RIPPLE_CONNECTOR_TEST_URL:backendUrl,RIPPLE_DELETE_BETWEEN_ONLY:'1',RIPPLE_SAVE_MODE:'current_version'}});
+  const currentSaved=await currentState();
+  if(currentSaved.count!==1 || currentSaved.id!==currentBefore.id || currentSaved.label!==currentBefore.label ||
+    currentSaved.segments.length!==1 || currentSaved.original!==currentBefore.original || currentSaved.snapshot!==currentBefore.snapshot)
+    throw new Error('Current-version identity or original preservation failed');
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  await page.getByText('AI 修改已保存到当前版本，可在编辑器中撤销。',{exact:true}).waitFor();
+  await page.locator('.annotation-card').first().focus();await page.keyboard.press('Meta+z');await page.waitForTimeout(1000);
+  const currentUndone=await currentState();
+  if(currentUndone.count!==1 || JSON.stringify(currentUndone.segments)!==JSON.stringify(currentBefore.segments)) throw new Error('Current-version batch undo did not restore/persist the source');
+  await page.keyboard.press('Meta+Shift+z');await page.waitForTimeout(1000);
+  const currentRedone=await currentState();
+  if(currentRedone.count!==1 || JSON.stringify(currentRedone.segments)!==JSON.stringify(currentSaved.segments)) throw new Error('Current-version redo did not persist');
+  for(const language of ['en','zh-CN']){
+    await page.locator('.language-control > button').click();await page.getByRole('menuitemradio',{name:language==='en'?'English':'简体中文'}).click();
+    await page.getByRole('button',{name:language==='en'?'Settings':'设置',exact:true}).click();
+    await page.getByRole('tab',{name:language==='en'?'AI-assisted editing':'AI 辅助编辑',exact:true}).click();
+    const hint=page.getByText(language==='en'?/Before editing, it asks whether to save a new version/:/修改前会询问你：另存为新版本/);
+    await hint.waitFor();
+    if(await hint.evaluate(node=>node.scrollWidth>node.clientWidth))throw new Error('Save-mode capability hint clipped');
+    await page.getByRole('dialog').getByRole('button',{name:language==='en'?'Close':'关闭',exact:true}).click();
+  }
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();await page.getByLabel('启用 MCP 连接').uncheck();
+  if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
+  console.log(inPlace.stdout.trim());
+  console.log('PASS: current-version save kept one version/name/ID; one-step undo and redo persisted; original/import snapshot preserved; bilingual hints fit.');
+
+  await page.goto(`${vite.resolvedUrls.local[0]}?delete-between&blocked-save`);
+  await page.getByText('我觉得先开始，把这份合成稿件核对清楚。',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();
+  await page.getByLabel('启用 MCP 连接').check();
+  await page.getByText('本机连接已就绪。请在所选 AI 软件中完成 Ripple 的添加和启用后使用。').waitFor();
+  const blockedBefore=await currentState();
+  await page.evaluate(async()=>{
+    const f=window.__fixture,m=await f.readManifest(),model=m.models.find(x=>x.id===m.activeModelId),file=model.edits.find(e=>e.id===model.activeEditId).file;
+    const dir=await f.root.handle.getDirectoryHandle('synthetic.transcript'),getFileHandle=dir.getFileHandle.bind(dir);
+    dir.getFileHandle=async(name,options)=>{
+      const h=await getFileHandle(name,options);
+      if(name!==file)return h;
+      const createWritable=h.createWritable.bind(h);
+      return Object.assign(h,{createWritable:async()=>{
+        const writable=await createWritable(),write=writable.write.bind(writable);
+        writable.write=async(text)=>{
+          // Allow pre-task draft flushing; block only the actual AI result write.
+          if(typeof text==='string' && JSON.parse(text).transcript?.segments.length===1)
+            throw new DOMException('Synthetic blocked write','NotAllowedError');
+          await write(text);
+        };
+        return writable;
+      }});
+    };
+  });
+  const blocked=await promisify(execFile)(python,[join(repo,'scripts/fixtures/connector-mcp-check.py')],
+    {cwd:repo,env:{...process.env,RIPPLE_CONNECTOR_TEST_DIR:directory,RIPPLE_CONNECTOR_TEST_URL:backendUrl,RIPPLE_DELETE_BETWEEN_ONLY:'1',RIPPLE_SAVE_MODE:'current_version',RIPPLE_EXPECT_SAVE_FAILURE:'1'}});
+  const blockedAfter=await currentState();
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  if(blockedAfter.count!==1 || JSON.stringify(blockedAfter.segments)!==JSON.stringify(blockedBefore.segments) ||
+    blockedAfter.original!==blockedBefore.original || blockedAfter.snapshot!==blockedBefore.snapshot || await page.locator('.segment-text-editor').count()!==1)
+    throw new Error('Failed current save overwrote disk/source, created a version or lost editor changes');
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();await page.getByLabel('启用 MCP 连接').uncheck();
+  if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
+  console.log(blocked.stdout.trim());
+  console.log('PASS: blocked current-version write returned failure; disk/original/snapshot unchanged, one version, editor changes retained.');
 } finally {
   await browser?.close();
   await vite?.close();

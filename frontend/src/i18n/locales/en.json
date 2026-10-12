@@ -1121,7 +1121,8 @@
     "m1199": "Viewing the engine’s original transcript (read-only)",
     "m1200": "Switched to revision",
     "m1201": "Couldn’t delete",
-    "m1202": "Couldn’t complete the transcript action"
+    "m1202": "Couldn’t complete the transcript action",
+    "aiCurrentSaved": "AI changes saved to the current version. You can undo them in the editor."
   },
   "comparisonText": {
     "m1249": "Review this change"
@@ -1564,7 +1565,7 @@
   },
   "connector": {
     "title": "MCP connection",
-    "hint": "External AI can read and analyze the open transcript and its original comparison on request, save a new revision, and add AI annotations and highlights to the current editable version. Access is limited to the open transcript. No audio is sent; transcript text is sent to the selected AI service when requested.",
+    "hint": "External AI can read and analyze the open transcript and its original comparison on request. Before editing, it asks whether to save a new version or update the current editable version. It can also add AI annotations and highlights to the current version. Access is limited to the open transcript. No audio is sent; transcript text is sent to the selected AI service when requested.",
     "enable": "Enable MCP connection",
     "off": "Connection disabled",
     "connecting": "Connecting…",

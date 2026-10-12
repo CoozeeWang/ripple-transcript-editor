@@ -1,6 +1,7 @@
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
+import { applyAISuggestions } from "./lib/aiVersionEdits";
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
@@ -586,13 +587,37 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       }
       return { saved: true, version, version_id: versionId, added_annotations: result.added_annotations, added_highlights: result.added_highlights };
     },
-    publish: async (baseline, suggestions, name) => {
-      const sourceModel = activeModelId, sourceEdit = viewingOriginal ? 'original' : activeModel?.activeEditId;
+    publish: async (baseline, suggestions, name, target) => {
+      const sourceModel = activeModelId, sourceEdit = viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId;
       if (!sourceModel || !sourceEdit) throw new Error('interview_changed');
+      if (String(connectorContext.current.generation) !== target.identity || target.source_version.model_id !== sourceModel ||
+        target.source_version.edit_id !== sourceEdit) throw new Error('source_changed_read_current_again');
+      if (target.save_mode === 'current_version') {
+        if (viewingOriginal || activeModel?.designatedOriginal || target.source_version.kind === 'original') throw new Error('current_version_read_only_create_new_version');
+        if (versionBusy || JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+        const transcript = applyAISuggestions(baseline, baseline, suggestions);
+        let applied = false;
+        flushSync(() => {
+          mutateTranscript(current => {
+            if (JSON.stringify(current) !== JSON.stringify(baseline)) return current;
+            applied = true; return transcript;
+          }, `ai-continuation:${target.task_id}`);
+          setSelectedSegmentId(transcript.lastEditedSegmentId ?? transcript.segments[0]?.id ?? '');
+        });
+        if (!applied) throw new Error('source_changed_read_current_again');
+        try { await flushPendingSave(); }
+        catch { throw new Error('current_version_save_failed_changes_retained_in_ripple'); }
+        if (String(connectorContext.current.generation) === target.identity) {
+          setProcessStatus('done'); setProcessMessage(msg('useVersions.aiCurrentSaved'));
+        }
+        return { version: target.source_version.name, version_id: sourceEdit, result_version: target.source_version,
+          comparison_requested: false, undo_available: true };
+      }
       const result = await createAIEdit(baseline, suggestions, name);
       if (!result) throw new Error('save_result_unavailable_check_versions');
       comparison.activate(result.model.id, result.edit.id, `${sourceModel}:${sourceEdit}`);
-      return { version: result.edit.label, version_id: result.edit.id, comparison_requested: true };
+      return { version: result.edit.label, version_id: result.edit.id,
+        result_version: {id:`${result.model.id}:${result.edit.id}`,model_id:result.model.id,edit_id:result.edit.id,name:result.edit.label,kind:'edit'}, comparison_requested: true };
     },
   });
 

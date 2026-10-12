@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AIConnector, type ConnectorDocument } from './aiConnector';
+import { AIConnector, type ConnectorDocument, type ConnectorSaveTarget } from './aiConnector';
 import { applyAISuggestions } from './aiVersionEdits';
 import type { Transcript } from '../types';
 
@@ -13,19 +13,43 @@ function fixture() {
   let current: ConnectorDocument = { identity: '1', transcript: baseline, label: 'v1', title: 'Synthetic interview', names: ['v1'],
     version: { id: 'm1:e1', model_id: 'm1', edit_id: 'e1', name: 'v1', kind: 'edit' },
     references: async () => [{ version: original, load: async () => baseline }] };
-  const publish = vi.fn(async (source: Transcript, changes: Parameters<typeof applyAISuggestions>[2], name: string) => {
+  const publish = vi.fn(async (source: Transcript, changes: Parameters<typeof applyAISuggestions>[2], name: string, target: ConnectorSaveTarget) => {
     const next = applyAISuggestions(current.transcript, source, changes);
     current = { ...current, identity: '2', transcript: next };
-    return { version: name, comparison_requested: true };
+    return { version: name, comparison_requested: target.save_mode === 'new_version' };
   });
   const c = new AIConnector({ current: async () => current, publish });
   return { c, baseline, publish, get current() { return current; }, set current(value) { current = value; } };
 }
 async function prepare(f: ReturnType<typeof fixture>, args: Record<string, unknown> = {}) {
   const read = await f.c.handle('read_current', {});
-  return f.c.handle('prepare', { snapshot: read.snapshot, start_id: 'b', rules: ['删无意义填充词，保留不确定表达'], ...args });
+  return f.c.handle('prepare', { snapshot: read.snapshot, start_id: 'b', rules: ['删无意义填充词，保留不确定表达'], save_mode:'new_version', ...args });
 }
 const change = { segment_id: 'b', before: '嗯，我觉得可能有问题。', after: '我觉得可能有问题。' };
+
+it('requires an explicit save choice and rejects in-place writes to read-only originals', async () => {
+ const f=fixture(),ask=await prepare(f,{save_mode:undefined});
+ expect(ask).toMatchObject({needs_clarification:['save_mode'],writable:false,save_options:['new_version','current_version']});
+ expect(ask.task_id).toBeUndefined();expect(f.publish).not.toHaveBeenCalled();
+ await expect(prepare(f,{save_mode:'automatic'})).rejects.toThrow('invalid_save_mode');
+ f.current={...f.current,editable:false,version:{...f.current.version,kind:'original',edit_id:'original',id:'m1:original'}};
+ expect(await prepare(f,{save_mode:undefined})).toMatchObject({save_options:['new_version'],writable:false});
+ await expect(prepare(f,{save_mode:'current_version'})).rejects.toThrow('current_version_read_only');
+ expect(await prepare(f,{save_mode:'new_version'})).toMatchObject({save_mode:'new_version'});
+});
+it('binds the current-version choice and target ID to confirmation, preserving repeated-publish safety', async () => {
+ const f=fixture(),version=f.current.version,plan=await prepare(f,{save_mode:'current_version'});
+ expect(plan).toMatchObject({save_mode:'current_version',target_version:version});expect(plan.new_version).toBeUndefined();
+ const summary=JSON.parse(String(plan.summary));expect(summary).toMatchObject({save_mode:'current_version',source_version:version,result_version_name:'v1'});
+ await f.c.handle('stage',{task_id:plan.task_id,changes:[change]});
+ await expect(f.c.handle('publish',{task_id:plan.task_id,confirmed_summary:JSON.stringify({...summary,save_mode:'new_version'})})).rejects.toThrow('confirmation_changed');
+ const args={task_id:plan.task_id,confirmed_summary:plan.summary};
+ const results=await Promise.all([f.c.handle('publish',args),f.c.handle('publish',args)]);
+ expect(results[0]).toMatchObject({saved:true,save_mode:'current_version',new_version_created:false,version:'v1'});
+ expect(await f.c.handle('publish',args)).toEqual(results[0]);expect(f.publish).toHaveBeenCalledOnce();
+ expect(f.publish.mock.calls[0][3]).toMatchObject({save_mode:'current_version',source_version:version,identity:'1',task_id:plan.task_id});
+ expect((await f.c.handle('status',{task_id:plan.task_id})).target_version).toEqual(version);
+});
 
 describe('current interview connector', () => {
   it('identifies both versions without interpreting unchanged selected samples as a whole-manuscript result', async () => {

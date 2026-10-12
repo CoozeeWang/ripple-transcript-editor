@@ -12,7 +12,10 @@ async def main():
             await client.initialize()
             tools=(await client.list_tools()).tools
             assert len(tools)==13
+            assert 'save_mode' in next(t for t in tools if t.name=='prepare_continuation').input_schema['properties']
             async def call(name,args):
+                if name=='prepare_continuation':
+                    args={'save_mode':'new_version',**args}
                 result=await client.call_tool(name,args)
                 assert not result.is_error, str(result.content)
                 return result.structured_content
@@ -22,6 +25,7 @@ async def main():
                 assert len(page['segments'])==3 and page['segments'][1]['text']=='嗯'
                 plan=await call('prepare_continuation',{'snapshot':read['snapshot'],'start_id':'s1',
                     'rules':['Synthetic: delete the filler, then merge the remaining same-speaker neighbors'],
+                    'save_mode':os.environ.get('RIPPLE_SAVE_MODE','new_version'),
                     'allowed_actions':['edit','merge_previous','delete']})
                 await call('stage_continuation',{'task_id':plan['task_id'],'changes':[
                     {'segment_id':'s2','before':'嗯','after':'','action':'delete'}]})
@@ -30,8 +34,18 @@ async def main():
                      'action':'merge_previous' if s['id']=='s3' else 'edit'}
                     for s in reversed(page['segments']) if s['id']!='s2']})
                 args={'task_id':plan['task_id'],'confirmed_summary':plan['summary']}
+                if os.environ.get('RIPPLE_EXPECT_SAVE_FAILURE')=='1':
+                    failed=await client.call_tool('publish_continuation',args)
+                    assert failed.is_error and 'current_version_save_failed_changes_retained_in_ripple' in str(failed.content)
+                    status=await call('continuation_status',{'task_id':plan['task_id']})
+                    assert status['state']=='draft' and status['result'] is None
+                    print('PASS: current-version failed save was reported as failure, not saved success.')
+                    return
                 saved=await call('publish_continuation',args)
                 assert saved['saved'] and saved['deleted_segments']==1 and saved['merged_segments']==1
+                assert saved['new_version_created']==(os.environ.get('RIPPLE_SAVE_MODE')!='current_version')
+                if os.environ.get('RIPPLE_SAVE_MODE')=='current_version':
+                    assert saved['result_version']==read['current_version']
                 assert await call('publish_continuation',args)==saved
                 final=await call('read_current_interview',{})
                 assert final['segment_count']==1

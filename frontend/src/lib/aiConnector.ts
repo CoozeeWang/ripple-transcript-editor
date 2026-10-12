@@ -32,8 +32,10 @@ export interface ConnectorDocument {
 export interface ConnectorHost {
   current: () => Promise<ConnectorDocument>;
   applyMarks?: (baseline: Transcript, marks: AIMark[], taskId: string) => Promise<Record<string, unknown>>;
-  publish: (baseline: Transcript, suggestions: AISuggestion[], name: string) => Promise<Record<string, unknown>>;
+  publish: (baseline: Transcript, suggestions: AISuggestion[], name: string, target: ConnectorSaveTarget) => Promise<Record<string, unknown>>;
 }
+export type ConnectorSaveMode = 'new_version' | 'current_version';
+export interface ConnectorSaveTarget { save_mode: ConnectorSaveMode; source_version: ConnectorVersion; identity: string; task_id: string }
 type Snapshot = ConnectorDocument & { id: string; revision: string };
 type Action = 'edit' | 'delete' | 'merge_previous';
 interface Change { segment_id: string; before: string; after: string; action: Action }
@@ -41,6 +43,7 @@ interface Task {
   snapshot: Snapshot; id: string; summary: string; rules: string[];
   ids: string[]; startOffset: number; endOffset: number;
   allowedActions: Action[];
+  saveMode: ConnectorSaveMode;
   staged: Map<string, Change>; state: 'draft' | 'publishing' | 'completed' | 'cancelled';
   name: string; result?: Record<string, unknown>; promise?: Promise<Record<string, unknown>>;
 }
@@ -84,7 +87,7 @@ export class AIConnector {
       return { snapshot: id, title: doc.title, version: doc.label, segment_count: doc.transcript.segments.length,
         current_version: doc.version,
         duration: doc.transcript.audio.duration, speakers: doc.transcript.speakers, current_interview_rules: doc.rules ?? [],
-        instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed. Ask for an explicit continuation start. Do not display full text by default.' };
+        instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed. Ask for an explicit continuation start and whether to save a new version or update the current editable version; reuse already explicit choices. Pass save_mode to prepare_continuation. Read-only originals require a new version. Do not display full text by default.' };
     }
     if (operation === 'read_page') {
       const s = await this.valid(a.snapshot);
@@ -144,6 +147,12 @@ export class AIConnector {
       if (typeof a.start_id !== 'string' || !a.start_id) return { needs_clarification: ['continuation_start'], writable: false };
       if (!Array.isArray(a.rules) || !a.rules.length || a.rules.length > 30 || a.rules.some(rule => typeof rule !== 'string' || !rule.trim() || rule.length > 2000))
         return { needs_clarification: ['key_style_rules'], writable: false };
+      if (a.save_mode === undefined) return { needs_clarification: ['save_mode'], writable: false,
+        current_version: s.version, save_options: s.editable === false || s.version.kind === 'original' ? ['new_version'] : ['new_version', 'current_version'],
+        instruction: 'Ask the user whether to save a new version or update the current editable version. Do not guess. Reuse an already explicit choice. Read-only originals require a new version.' };
+      if (a.save_mode !== 'new_version' && a.save_mode !== 'current_version') fail('invalid_save_mode');
+      const saveMode = a.save_mode as ConnectorSaveMode;
+      if (saveMode === 'current_version' && (s.editable === false || s.version.kind === 'original')) fail('current_version_read_only_create_new_version');
       const actions = a.allowed_actions ?? ['edit'];
       if (!Array.isArray(actions) || !actions.length || actions.length > 3 || new Set(actions).size !== actions.length ||
         actions.some(action => !['edit', 'delete', 'merge_previous'].includes(action))) fail('invalid_allowed_actions');
@@ -158,14 +167,15 @@ export class AIConnector {
       const ids = segments.slice(first, last + 1).map(segment => segment.id);
       if (segments.slice(first, last + 1).some(segment => segment.text.length > 12000)) fail('segment_too_large_split_in_ripple_first');
       if (this.tasks.size >= 32) fail('too_many_tasks_cancel_or_restart_connection');
-      const name = nextAIEditName(s.label, s.names);
+      const name = saveMode === 'new_version' ? nextAIEditName(s.label, s.names) : s.label;
       const summary = JSON.stringify({ source: s.label, start_id: a.start_id, start_offset: startOffset,
-        end_id: segments[last].id, end_offset: endOffset, rules: a.rules, allowed_actions: allowedActions, new_version: name });
+        end_id: segments[last].id, end_offset: endOffset, rules: a.rules, allowed_actions: allowedActions,
+        save_mode: saveMode, source_version: s.version, result_version_name: name });
       const task: Task = { snapshot: s, id: crypto.randomUUID(), summary, rules: a.rules as string[], ids,
-        startOffset, endOffset, allowedActions, staged: new Map(), state: 'draft', name };
+        startOffset, endOffset, allowedActions, saveMode, staged: new Map(), state: 'draft', name };
       this.tasks.set(task.id, task);
       return { task_id: task.id, summary, start_id: ids[0], end_id: ids.at(-1), segment_count: ids.length,
-        new_version: name, allowed_actions: allowedActions,
+        ...(saveMode === 'new_version' ? {new_version: name} : {}), save_mode: saveMode, target_version: s.version, allowed_actions: allowedActions,
         instruction: 'Confirm key style, scope and allowed actions in conversation. Stage every in-scope segment, including unchanged ones, then publish once. merge_previous uses this segment’s revised text and joins it to the nearest retained preceding in-scope same-speaker segment after staged deletions; do not repeat the preceding text. Stage intervening deletions first or in the same batch as the merge. delete requires after="" and does not automatically merge neighbors. Structural actions require full segments.' };
     }
     if (operation === 'stage') {
@@ -215,6 +225,7 @@ export class AIConnector {
       const task = this.task(a.task_id);
       return { task_id: task.id, state: task.state, summary: task.summary,
         allowed_actions: task.allowedActions,
+        save_mode: task.saveMode, target_version: task.snapshot.version,
         staged_actions: [...task.staged.values()].map(c => ({ segment_id: c.segment_id, action: c.action })),
         staged_ids: [...task.staged.keys()], remaining_ids: task.ids.filter(id => !task.staged.has(id)), result: task.result ?? null };
     }
@@ -239,15 +250,19 @@ export class AIConnector {
         .map(c => ({ id: c.segment_id, text: c.after, action: c.action, reason: task.rules.join('; ') }));
       if (!suggestions.length) {
         await task.snapshot.remember?.(task.rules);
-        task.state = 'completed'; task.result = { saved: false, reason: 'no_changes', source_version: task.snapshot.label };
+        task.state = 'completed'; task.result = { saved: false, reason: 'no_changes', source_version: task.snapshot.label,
+          save_mode: task.saveMode, new_version_created: false, result_version: task.snapshot.version };
         return task.result;
       }
       // State and shared promise serialize independent calls before the first await.
       task.state = 'publishing';
-      task.promise = this.host.publish(task.snapshot.transcript, suggestions, task.name).then(async result => {
+      task.promise = this.host.publish(task.snapshot.transcript, suggestions, task.name, {
+        save_mode: task.saveMode, source_version: task.snapshot.version, identity: task.snapshot.identity, task_id: task.id,
+      }).then(async result => {
         let rulesSaved = true;
         try { await task.snapshot.remember?.(task.rules); } catch { rulesSaved = false; }
-        task.result = { ...result, saved: true, rules_saved: rulesSaved, changed_segments: suggestions.length,
+        task.result = { ...result, saved: true, save_mode: task.saveMode, new_version_created: task.saveMode === 'new_version',
+          rules_saved: rulesSaved, changed_segments: suggestions.length,
           deleted_segments: suggestions.filter(c => c.action === 'delete').length,
           merged_segments: suggestions.filter(c => c.action === 'merge_previous').length, source_version: task.snapshot.label };
         task.state = 'completed'; return task.result;

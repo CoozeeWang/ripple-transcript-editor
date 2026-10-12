@@ -96,10 +96,14 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
-    assert not publish.annotations.destructive_hint
+    # It can now update the chosen editable version; clients must see that write capability.
+    assert publish.annotations.destructive_hint
+    prepare = next(tool for tool in tools if tool.name == 'prepare_continuation')
+    assert 'save_mode' in prepare.input_schema['properties']
     read = next(tool for tool in tools if tool.name == 'read_current_interview')
     assert read.annotations.read_only_hint
-    assert 'save_mode' not in next(tool for tool in tools if tool.name == 'prepare_continuation').input_schema['properties']
+    # Optional at the schema boundary so omission can return a user clarification, not a write.
+    assert 'save_mode' not in prepare.input_schema.get('required', [])
     examples = next(tool for tool in tools if tool.name == 'read_editing_examples')
     assert 'comparison_version_id' in examples.input_schema['properties']
     assert 'comparison_version_id' not in examples.input_schema.get('required', [])
