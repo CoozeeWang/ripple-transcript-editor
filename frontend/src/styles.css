@@ -3228,3 +3228,5 @@ label:has(> input[type="radio"]:focus-visible) > span {
 
 .settings-mcp .cred-btn--primary {background:var(--color-accent);border-color:var(--color-accent);color:var(--color-surface);}
 .settings-mcp .cred-profile__actions {justify-content:flex-end;}
+
+.seek-shortcut {font-family:var(--font-mono);font-variant-numeric:slashed-zero;white-space:nowrap;}

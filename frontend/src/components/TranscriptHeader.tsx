@@ -77,7 +77,7 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
             {props.comparisonControls}
           </div>
           <div className="transcript-heading-status">
-          <p className="seek-hint">{msg('review.seekHint', { shortcut: keys("0") })}</p>
+          <p className="seek-hint">{msg('review.seekHint', { shortcut: '__shortcut__' }).split('__shortcut__').map((part,index)=><span key={index}>{index>0&&<span className="seek-shortcut">{keys("0")}</span>}{part}</span>)}</p>
           <p className="segment-count">{msg('TranscriptHeader.m1078', { count: segmentCount })}</p>
           </div>
         </div>}
