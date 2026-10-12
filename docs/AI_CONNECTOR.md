@@ -43,7 +43,9 @@ Automated source, browser fixtures, native builds, actual ChatGPT conversations,
 
 ## Annotations and highlights
 
-After upgrading Ripple with new MCP tools, keep the desktop application running with its MCP connection ready. In the ChatGPT plugin management page, use **Refresh tools**, then start a new chat with Ripple. Installing a desktop build alone does not refresh the tool list available to ChatGPT; older chats may retain the earlier capabilities.
+After upgrading Ripple with new MCP tools or changed input parameters, keep the desktop application running with its MCP connection ready. In the ChatGPT plugin management page, use **Refresh tools**, confirm the new metadata, then start a new chat with Ripple. Installing a desktop build alone does not refresh the tool list available to ChatGPT; older chats may retain the earlier capabilities. For version comparison, `read_editing_examples` must expose `comparison_version_id`; an older two-parameter definition cannot submit a user's version selection.
+
+For separately imported versions without shared source IDs, Ripple compares only complete, ordered time windows supported by unchanged text of at least 12 characters that occurs uniquely in both manuscripts. Results disclose this alignment method; matching IDs or overlapping timestamps alone are insufficient. Missing boundaries, repeated context or ambiguous timing return an explicit reason. These comparisons still do not establish who authored a change.
 
 Annotations and highlights are added to the current editable version, without creating another version or changing text, speakers, word timestamps, or existing human marks. AI-created annotations display an **AI annotation** label and support ordinary editing/deletion. The batch is undoable in Ripple. The original read-only transcript cannot receive marks.
 

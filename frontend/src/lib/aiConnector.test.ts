@@ -82,7 +82,7 @@ describe('current interview connector', () => {
     const read = await f.c.handle('read_current', {});
     const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] });
     expect(result.comparison_status).toBe('unreliable');
-    expect(result.examples).toEqual([{ id: 'a', ambiguous: true, reason: 'source_mapping_unavailable' }]);
+    expect(result.examples).toEqual([expect.objectContaining({ id: 'a', ambiguous: true, reason: 'source_mapping_unavailable' })]);
   });
   it('rejects results if the interview changes while loading the baseline', async () => {
     const f = fixture(); const original = (await f.current.references())[0];
@@ -91,6 +91,19 @@ describe('current interview connector', () => {
     } }] };
     const read = await f.c.handle('read_current', {});
     await expect(f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['a'] })).rejects.toThrow('source_changed');
+  });
+  it('returns actual independently imported version pairs when time and unique text establish alignment', async () => {
+    const f = fixture(); const anchor = '这个明确写出的合成长句可以作为唯一文本锚点。';
+    const before = { ...f.baseline, segments: [{ ...f.baseline.segments[0], text: '嗯，' + anchor }] };
+    f.current = { ...f.current, version: { ...f.current.version, id: 'm2:e1', model_id: 'm2' },
+      transcript: { ...f.baseline, segments: [{ ...f.baseline.segments[0], id: 'imported', text: anchor }] },
+      references: async () => [{ version: { id: 'm1:original', model_id: 'm1', edit_id: 'original', name: 'Original', kind: 'original' }, load: async () => before }] };
+    const read = await f.c.handle('read_current', {});
+    const result = await f.c.handle('read_examples', { snapshot: read.snapshot, segment_ids: ['imported'], comparison_version_id: 'm1:original' });
+    expect(result.comparison_status).toBe('resolved'); expect(result.changed_examples).toBe(1);
+    expect(result.comparison).toEqual({ before_version: expect.objectContaining({ id: 'm1:original' }), after_version: f.current.version });
+    expect(result.examples).toEqual([expect.objectContaining({ before: '嗯，' + anchor, after: anchor,
+      alignment: expect.objectContaining({ method: 'complete_timestamp_window_and_unique_text' }) })]);
   });
   it('reads a merged human example against both original paragraphs without guessing by time', async () => {
     const f = fixture();

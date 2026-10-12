@@ -1,10 +1,12 @@
 import type { ConnectorVersion } from './aiConnector';
 import type { Segment, Transcript } from '../types';
+import { importedComparison } from './importedComparison';
 
 /** Match recorded lineage, not text similarity or coincidental cross-model IDs. */
 export function editingExamples(before: Transcript, after: Transcript, baseline: ConnectorVersion,
   current: ConnectorVersion, requested: string[]): Record<string, unknown>[] {
   const sameModel = baseline.model_id === current.model_id;
+  const compareImports = importedComparison(before, after);
   const lineageModel = baseline.model_id;
   const anchors = (segment: Segment, original: boolean): string[] => {
     const recorded = (segment.words ?? []).flatMap(word => (word.origins ?? [])
@@ -27,7 +29,7 @@ export function editingExamples(before: Transcript, after: Transcript, baseline:
     if (index < 0) return { id, ambiguous: true, reason: 'current_segment_missing' };
     const segment = after.segments[index];
     const ids = new Set(afterAnchors[index]);
-    if (!ids.size) return { id, ambiguous: true, reason: 'source_mapping_unavailable' };
+    if (!ids.size) return sameModel ? { id, ambiguous: true, reason: 'source_mapping_unavailable' } : compareImports(id);
     const sourceIndexes = new Set<number>(), currentIndexes = new Set<number>([index]);
     // Transitive groups retain complete context for merges/splits in either version.
     let expanded = true;
@@ -40,7 +42,7 @@ export function editingExamples(before: Transcript, after: Transcript, baseline:
         });
       }
     }
-    if (!sourceIndexes.size) return { id, ambiguous: true, reason: 'source_mapping_unavailable' };
+    if (!sourceIndexes.size) return sameModel ? { id, ambiguous: true, reason: 'source_mapping_unavailable' } : compareImports(id);
     const covered = new Set([...sourceIndexes].flatMap(i => beforeAnchors[i]));
     if ([...ids].some(source => !covered.has(source))) return { id, ambiguous: true, reason: 'source_context_incomplete' };
     const sources = before.segments.filter((_, i) => sourceIndexes.has(i));
