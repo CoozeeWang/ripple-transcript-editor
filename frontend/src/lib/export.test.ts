@@ -127,7 +127,7 @@ describe("renderMarkdown / renderTxt", () => {
   it("txt 含标题和说话人", () => {
     const txt = renderTxt(model);
     expect(txt).toContain("标题");
-    expect(txt).toContain("王远 [00:00:00]：你好");
+    expect(txt).toContain("王远 [00:00:00]\n你好");
   });
 });
 

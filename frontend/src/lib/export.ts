@@ -128,7 +128,7 @@ export function renderTxt(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1321', { v0: m.notes }));
   lines.push("", "========", "");
   for (const seg of m.segments) {
-    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text}`);
+    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}`, seg.text);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1322', { v0: a.date, v1: a.text }));
     }
@@ -167,9 +167,9 @@ export function renderPdfHtml(m: ExportModel): string {
         .join("");
       return `<div class="seg"><span class="sp" style="color:${seg.speakerColor}">${escapeHtml(
         seg.speakerName,
-      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><span class="body">：${escapeHtml(
+      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><div class="body">${escapeHtml(
         seg.text,
-      )}</span></div>${anns}`;
+      )}</div></div>${anns}`;
     })
     .join("");
   return `<!doctype html>
@@ -184,7 +184,7 @@ export function renderPdfHtml(m: ExportModel): string {
   table.meta th { text-align: left; color:#888; font-weight: 600; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; }
   table.meta td { padding: 2px 0; }
   hr { border: none; border-top: 1px solid #e2e0d8; margin: 16px 0; }
-  .seg { margin: 10px 0 2px; }
+  .seg { margin: 16px 0 4px; }
   .sp { font-weight: 700; }
   .ts { color:#999; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 0 4px; }
   .anno { margin: 2px 0 6px 0; padding: 6px 10px; background:#fff8e6; border-left: 3px solid #e0b84a; border-radius: 3px; font-size: 13.5px; }
@@ -232,10 +232,11 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
 
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
-    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]：` : "：", color: "999999" });
+    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]` : "", color: "999999" });
     const bodyRun = new TextRun({ text: seg.text });
 
-    const runs: unknown[] = [speakerRun, tsRun];
+    paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
+    const runs: unknown[] = [];
     if (seg.annotations.length === 0) {
       runs.push(bodyRun);
     } else {
@@ -257,7 +258,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
       runs.push(...startRuns, bodyRun, ...endRuns, ...refRuns);
     }
     paragraphChildren.push(
-      new Paragraph({ spacing: { after: 120 }, children: runs as never }),
+      new Paragraph({ spacing: { after: 160, line: 320 }, children: runs as never }),
     );
   });
 
