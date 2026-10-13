@@ -182,3 +182,25 @@ it('requires an explicit save choice and full segment scope, and survives restar
   const g=fixture();await expect(g.plan('current_version',{start_offset:1})).rejects.toThrow('incremental_requires_full_segments');
   const read=await g.c.handle('read_current',{});expect(await g.c.handle('prepare',{snapshot:read.snapshot,start_id:'s0',rules:['Synthetic'],delivery_mode:'incremental'})).toMatchObject({needs_clarification:['save_mode']});
 });
+
+it('reports actual saved batch counts across restart and repeated receipts',async()=>{
+  const f=fixture(50),plan=await f.plan();
+  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({saved_batches:0,batch_number:1})]);
+  const first=await stage(f,plan);await f.c.handle('checkpoint',first.args);
+  f.restart();
+  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({saved_batches:1,batch_number:2,saved_segments:24})]);
+  await f.c.handle('checkpoint',first.args);
+  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({saved_batches:1})]);
+  const second=await stage(f,plan);await f.c.handle('checkpoint',second.args);
+  const third=await stage(f,plan);await f.c.handle('checkpoint',third.args);
+  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({state:'completed',saved_batches:3,saved_segments:50})]);
+});
+it('does not invent batches when legacy saved segments are missing from the receipt history',async()=>{
+  const f=fixture(50),plan=await f.plan(),first=await stage(f,plan);await f.c.handle('checkpoint',first.args);
+  const journal=f.files.get(String(plan.task_id))!;delete journal.receipts;delete journal.lastReceipt;f.restart();
+  const tasks=(await f.c.handle('tasks',{})).tasks as {saved_batches?:number;batch_number?:number}[];
+  expect(tasks[0].saved_batches).toBeUndefined();expect(tasks[0].batch_number).toBeUndefined();
+  const second=await stage(f,plan);await f.c.handle('checkpoint',second.args);
+  const updated=(await f.c.handle('tasks',{})).tasks as {saved_batches?:number}[];
+  expect(updated[0].saved_batches).toBeUndefined();
+});

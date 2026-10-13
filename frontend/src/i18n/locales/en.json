@@ -1650,21 +1650,24 @@
     "dismiss": "Dismiss message"
   },
   "continuation": {
-    "title": "AI continuation",
+    "caution": "Edit manually with care; overlapping changes pause the batch.",
+    "batchesSaved": "Batches saved: {{count}}",
+    "batch": "Batch {{batch}}",
+    "title": "AI-assisted editing",
     "refresh": "Refresh progress",
     "saved": "Saved {{saved}} / {{total}} segments",
     "ready": "Progress is saved locally. Continue in your AI conversation.",
     "staged": "Segments checked in this batch: {{count}}; manuscript not saved yet.",
     "paused": "Paused. Completed batches remain in the manuscript.",
-    "conflict": "This batch has changed. Continuation is paused; your edits and pending AI proposals are retained.",
+    "conflict": "This batch has changed. Editing is paused; your edits and pending AI proposals are retained.",
     "savePaused": "This batch has not been confirmed saved. Refresh progress before retrying.",
-    "completed": "Continuation complete. All batches are saved.",
+    "completed": "Editing complete. All batches are saved.",
     "openVersion": "Open this task’s target version to continue.",
     "held": "Earlier conflicting proposals are retained in the local task.",
     "pause": "Pause",
     "resume": "Re-read batch and continue",
-    "cancel": "End continuation",
-    "error": "Couldn’t update continuation progress. Check that the manuscript can be saved, then refresh and retry.",
+    "cancel": "End editing",
+    "error": "Couldn’t update editing progress. Check that the manuscript can be saved, then refresh and retry.",
     "viewPending": "View pending changes",
     "hidePending": "Hide pending changes",
     "noPending": "No pending text changes.",
@@ -1674,6 +1677,6 @@
     "proposedText": "Pending AI text",
     "proposedDelete": "AI proposes deleting this segment",
     "proposedMerge": "AI proposes merging with the previous segment, using this text",
-    "scopeChanged": "The remaining segment structure has changed. End this task and agree on a new continuation range in your AI conversation. Saved batches are retained."
+    "scopeChanged": "The remaining segment structure has changed. End this task and agree on a new editing range in your AI conversation. Saved batches are retained."
   }
 }

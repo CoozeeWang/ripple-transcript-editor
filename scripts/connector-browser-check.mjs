@@ -321,10 +321,23 @@ try {
   await page.locator('.segment-text-editor').last().fill('Synthetic manual edit outside this batch.');
   const first=await phase('save');if(first.saved_segments!==24)throw Error('First checkpoint not persisted');
   await page.getByText('已保存 24／60 个片段',{exact:true}).waitFor();
+  const progressBar=page.locator('.continuation-progress');
+  if(await progressBar.getByRole('status').count()!==1)throw Error('Multiple progress rows displayed');
+  await progressBar.getByText('第 2 批',{exact:true}).waitFor();
+  if(await page.locator('.transcript-panel .continuation-progress').count())throw Error('Progress remains inside scrolling manuscript');
+  const beforeScroll=await progressBar.boundingBox();
+  await page.locator('.transcript-panel').evaluate(node=>{node.scrollTop=node.scrollHeight;});
+  const afterScroll=await progressBar.boundingBox();
+  if(!beforeScroll||!afterScroll||Math.abs(beforeScroll.y-afterScroll.y)>1)throw Error('Progress moved when manuscript scrolled');
+  await page.locator('.transcript-panel').evaluate(node=>{node.scrollTop=0;});
+  if(process.env.RIPPLE_PROGRESS_SCREENSHOTS) {
+    await mkdir(process.env.RIPPLE_PROGRESS_SCREENSHOTS,{recursive:true});
+    await page.screenshot({path:join(process.env.RIPPLE_PROGRESS_SCREENSHOTS,'running-zh.png')});
+  }
   const firstState=await currentState();if(firstState.count!==2||firstState.segments.at(-1).text!=='Synthetic manual edit outside this batch.')throw Error('First batch created wrong versions or overwrote manual text');
   await phase('stage');
   await page.locator('.segment-text-editor').nth(24).fill('Synthetic overlapping manual correction.');
-  await phase('conflict');await page.getByText(/本批内容已变化，续改已暂停/).waitFor();
+  await phase('conflict');await page.getByText(/本批内容已变化，编辑已暂停/).waitFor();
   await page.getByRole('button',{name:'查看待提交修改',exact:true}).click();
   await page.getByText('Synthetic overlapping manual correction.',{exact:true}).last().waitFor();
   if(!(await page.locator('.continuation-proposals').innerText()).includes('Synthetic AI checkpoint.'))throw Error('Conflicting AI proposal not retained/displayed');
@@ -335,6 +348,9 @@ try {
     const progress=page.locator('.continuation-progress');
     if(await progress.evaluate(node=>node.scrollWidth>node.clientWidth))throw Error('Continuation progress clipped');
     const resume=page.getByRole('button',{name:language==='en'?'Re-read batch and continue':'重读本批继续',exact:true});await resume.focus();await resume.hover();
+    if(await progress.getByRole('status').count()!==1)throw Error('Progress rows accumulated in narrow window');
+    if(process.env.RIPPLE_PROGRESS_SCREENSHOTS)await page.screenshot({path:join(process.env.RIPPLE_PROGRESS_SCREENSHOTS,`paused-${language}.png`)});
+
   }
   await page.getByRole('button',{name:'重读本批继续',exact:true}).click();await phase('stage');await phase('save');
   await page.getByText('已保存 48／60 个片段',{exact:true}).waitFor();
@@ -352,7 +368,22 @@ try {
     for await(const [,handle]of folder.entries())tasks.push(JSON.parse(await(await handle.getFile()).text()));return tasks;
   });
   if(journals.length!==1||journals[0].done.length!==60||journals[0].held.length!==1)throw Error('Durable continuation journal lost progress or held proposal');
-  await page.getByText('续改已完成，全部批次已保存。',{exact:true}).waitFor();
+  await page.getByText('编辑已完成，全部批次已保存。',{exact:true}).waitFor();
+  await page.locator('.continuation-progress').getByText('已保存 3 批',{exact:true}).waitFor();
+  await page.evaluate(async()=>{
+    const root=window.__fixture.root.handle,dir=await root.getDirectoryHandle('synthetic.transcript'),folder=await dir.getDirectoryHandle('ai-continuation-tasks');
+    let source;for await(const [,handle]of folder.entries()){source=JSON.parse(await(await handle.getFile()).text());break;}
+    for(let i=0;i<3;i++){
+      const old={...source,id:`synthetic-history-${i}`,ids:source.ids.slice(0,i+1),done:source.done.slice(0,i+1),updated:'2026-01-01T00:00:00.000Z'};
+      const handle=await folder.getFileHandle(`${old.id}.json`,{create:true}),w=await handle.createWritable();await w.write(JSON.stringify(old));await w.close();
+    }
+    window.__fixture.remount();
+  });
+  await page.getByText('编辑已完成，全部批次已保存。',{exact:true}).waitFor();
+  if(await page.locator('.continuation-progress').getByRole('status').count()!==1)throw Error('Completed history accumulated after reopening');
+  await page.getByText('已保存 60／60 个片段',{exact:true}).waitFor();
+  if(process.env.RIPPLE_PROGRESS_SCREENSHOTS)await page.screenshot({path:join(process.env.RIPPLE_PROGRESS_SCREENSHOTS,'completed-zh.png')});
+
   await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('tab',{name:'AI 辅助编辑',exact:true}).click();await page.getByLabel('启用 MCP 连接').uncheck();
   if(errors.length)throw new Error(`Browser errors: ${errors.join('; ')}`);
   console.log('PASS: real SDK incremental 60-segment saves into one work version; manual outside edits preserved, overlap paused/proposal visible, bilingual narrow progress and App-remount recovery passed.');

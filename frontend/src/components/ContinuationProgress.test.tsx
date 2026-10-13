@@ -29,3 +29,58 @@ it('reports an uncertain write as awaiting recovery rather than a content confli
 it('shows nothing when there are no tasks and no recovery error',()=>{
   const {container}=render(<ContinuationProgress tasks={[]} error="" onAction={vi.fn()}/>);expect(container.textContent).toBe('');
 });
+
+it('replaces historical completed tasks with one live progress row and updates it in place',()=>{
+  const history=[1,2,3].map(n=>({...task,task_id:`done-${n}`,state:'completed' as const,staged:0,saved_segments:n,total_segments:n,updated:`2026-01-0${n}`}));
+  const live={...task,task_id:'live',state:'draft' as const,saved_batches:1,batch_number:2,updated:'2026-01-01'};
+  const {rerender}=render(<ContinuationProgress tasks={[live,...history]} error="" onAction={vi.fn()}/>);
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  expect(screen.getByRole('status').textContent).toContain('第 2 批');
+  expect(screen.getByRole('button',{name:'结束编辑'})).toBeTruthy();
+  expect(screen.queryByText('编辑已完成，全部批次已保存。')).toBeNull();
+  rerender(<ContinuationProgress tasks={[...history,{...live,saved_segments:48,saved_batches:2,batch_number:3}]} error="" onAction={vi.fn()}/>);
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  expect(screen.getByRole('status').textContent).toContain('第 3 批');
+  expect(screen.getByRole('status').textContent).toContain('48／60');
+});
+it('uses the newest current completed task and keeps cancelled history hidden',()=>{
+  const completed={...task,state:'completed' as const,staged:0,saved_batches:3,saved_segments:60};
+  render(<ContinuationProgress tasks={[{...completed,task_id:'old',version:'Old completed',updated:'2026-01-01'},
+    {...completed,task_id:'latest',version:'Latest completed',updated:'2026-01-02'},
+    {...completed,task_id:'cancelled',state:'cancelled',version:'Cancelled',updated:'2026-01-03'}]} error="" onAction={vi.fn()}/>);
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  expect(screen.getByText('Latest completed')).toBeTruthy();
+  expect(screen.queryByText('Old completed')).toBeNull();expect(screen.queryByText('Cancelled')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('已保存 3 批');
+  expect(screen.queryByRole('button',{name:'结束编辑'})).toBeNull();
+});
+it('prioritizes current recoverable work and never guesses an old journal batch count',()=>{
+  render(<ContinuationProgress tasks={[{...task,task_id:'other',is_current:false,version:'Other version',updated:'2026-01-03'},
+    {...task,version:'Current paused',updated:'2026-01-01'}]} error="" onAction={vi.fn()}/>);
+  expect(screen.getByText('Current paused')).toBeTruthy();expect(screen.queryByText('Other version')).toBeNull();
+  expect(screen.getByRole('status').textContent).toBe('已保存 24／60 个片段');
+});
+it('retains actionable refresh errors even without a visible task',()=>{
+  render(<ContinuationProgress tasks={[{...task,state:'cancelled'}]} error="synthetic_failure" onAction={vi.fn()}/>);
+  expect(screen.getByRole('alert').textContent).toContain('无法更新编辑进度');
+  expect(screen.getByRole('button',{name:'刷新进度'})).toBeTruthy();
+});
+it('prevents pending proposals from another task or version remaining visible',async()=>{
+  const action=vi.fn(async()=>({proposals:[{index:25,action:'edit',current_text:'Synthetic current',after:'Synthetic proposal'}]}));
+  const {rerender}=render(<ContinuationProgress tasks={[task]} error="" onAction={action}/>);
+  fireEvent.click(screen.getByRole('button',{name:'查看待提交修改'}));await screen.findByText('Synthetic proposal');
+  rerender(<ContinuationProgress tasks={[{...task,is_current:false}]} error="" onAction={action}/>);
+  expect(screen.queryByText('Synthetic proposal')).toBeNull();
+});
+it('disables task actions until an in-flight operation settles',async()=>{
+  let done!:()=>void;const action=vi.fn(()=>new Promise<void>(resolve=>{done=resolve;}));
+  render(<ContinuationProgress tasks={[{...task,state:'draft'}]} error="" onAction={action}/>);
+  fireEvent.click(screen.getByRole('button',{name:'暂停'}));
+  expect((screen.getByRole('button',{name:'结束编辑'}) as HTMLButtonElement).disabled).toBe(true);
+  await act(async()=>done());
+  expect((screen.getByRole('button',{name:'结束编辑'}) as HTMLButtonElement).disabled).toBe(false);
+});
+it('does not carry a completed task into another manuscript version',()=>{
+  const {container}=render(<ContinuationProgress tasks={[{...task,state:'completed',is_current:false,staged:0}]} error="" onAction={vi.fn()}/>);
+  expect(container.textContent).toBe('');
+});

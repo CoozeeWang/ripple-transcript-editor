@@ -1096,8 +1096,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
         {!preparingTranscript && transcriptionNotice}
         </div>
+        <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>
         <section className="transcript-panel" ref={transcriptPanelRef} aria-label={msg('App.m0045')}>
-          <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
               {msg('App.m0046')}</button>

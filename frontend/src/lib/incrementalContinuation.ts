@@ -28,13 +28,24 @@ export interface ContinuationProgress {
   task_id: string; state: ContinuationTask['state']; reason?: string;
   version: string; version_id: string; saved_segments: number; total_segments: number; staged: number;
   held_batches: number; is_current: boolean;
+  saved_batches?: number; batch_number?: number; updated?: string;
 }
-const progress = (task: ContinuationTask, doc: ConnectorDocument): ContinuationProgress => ({
+const progress = (task: ContinuationTask, doc: ConnectorDocument): ContinuationProgress => {
+  const history = [...(task.receipts ?? []), ...(task.lastReceipt ? [task.lastReceipt] : [])];
+  const receipts = new Set(history.map(receipt => receipt.batch_id));
+  const covered = new Set(history.flatMap(receipt => receipt.processed_ids));
+  // Older journals may know the saved segments without a complete batch history.
+  const savedBatches = task.done.length === 0 ? 0 : task.done.every(id => covered.has(id)) ? receipts.size : undefined;
+  return {
   task_id: task.id, state: task.state, reason: task.reason, version: task.target.id===doc.version.id?doc.version.name:task.target.name,
   version_id: task.target.id, saved_segments: task.done.length, total_segments: task.ids.length,
   staged: task.batch?.checked.length ?? 0, held_batches: task.held.length,
   is_current: task.target.id === doc.version.id,
-});
+  saved_batches: savedBatches,
+  batch_number: savedBatches === undefined ? undefined : savedBatches + (task.state === 'draft' || task.state === 'paused' ? 1 : 0),
+  updated: task.updated,
+  };
+};
 function fail(code: string): never { throw Error(code); }
 const readableSegment=(s:Segment)=>({id:s.id,speaker_id:s.speaker_id,start:s.start,end:s.end,text:s.text});
 

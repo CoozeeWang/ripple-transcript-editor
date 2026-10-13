@@ -3227,11 +3227,21 @@ label:has(> input[type="radio"]:focus-visible) > span {
 
 .recent-dock__btn > svg {width:20px;height:20px;}
 
-.continuation-progress { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--color-border); border-radius: 10px; font-family: var(--font-sans); font-size: .86rem; }
-.continuation-progress-heading, .continuation-progress-task > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.continuation-progress-task { margin-top: 10px; }
-.continuation-progress-task strong { overflow-wrap: anywhere; }
-.continuation-progress-task p { margin: 6px 0; color: var(--color-text-2); }
-.continuation-progress-actions { justify-content: flex-end !important; }
-.continuation-proposals pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 8px; background: var(--color-surface-warm); }
-.continuation-proposals { max-height: 16rem; overflow-y: auto; }
+/* A fixed sibling of the scrolling manuscript: progress stays visible without covering text. */
+.continuation-progress { flex: none; min-width: 0; max-height: 35%; overflow-y: auto; margin: 0 clamp(28px, 4vw, 60px) 10px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-warm); font-family: var(--font-sans); font-size: .8rem; }
+.continuation-progress.is-running { border-inline-start: 3px solid var(--color-danger); }
+.continuation-progress-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+.continuation-progress-title { flex: none; font-size: .8rem; font-weight: 600; }
+.continuation-progress-version { min-width: 0; flex: 1 1 100px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text-3); }
+.continuation-progress-data { display: flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.continuation-progress-data > span { white-space: nowrap; }
+.continuation-progress-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-inline-start: auto; }
+.continuation-progress .cred-btn { min-height: 28px; padding: 3px 8px; font-family: var(--font-sans); font-size: .78rem; }
+.continuation-progress-note, .continuation-progress-error { margin: 5px 0 0; line-height: 1.5; overflow-wrap: anywhere; color: var(--color-text-3); }
+.continuation-progress-caution, .continuation-progress-error { color: var(--color-danger); }
+.continuation-proposals pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 8px; background: var(--color-page-bg); }
+.continuation-proposals { max-height: 16rem; overflow-y: auto; margin-top: 6px; }
+@container transcript (max-width: 700px) {
+  .continuation-progress { margin-inline: 16px; }
+  .continuation-progress-actions { flex-basis: 100%; }
+}
