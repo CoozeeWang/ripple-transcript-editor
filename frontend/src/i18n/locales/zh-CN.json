@@ -1721,5 +1721,25 @@
     "proposedDelete": "AI 提议删除此片段",
     "proposedMerge": "AI 提议与前段合并，待提交正文如下",
     "scopeChanged": "未处理的片段结构已变化。请结束此任务，再在 AI 对话中确认新的编辑范围；已保存的批次仍保留。"
+  },
+  "aiEditing": {
+    "title": "AI 辅助编辑",
+    "locked": "{{client}} 正在辅助编辑，此稿件暂时只读，可浏览、查找。",
+    "end": "结束编辑",
+    "dismiss": "关闭提示",
+    "waiting": "等待 AI 返回 · 已保存 {{saved}} / {{total}} 个片段",
+    "processing": "正在处理 · 已处理 {{processed}} / {{total}} 个片段",
+    "saving": "正在保存 · 已确认保存 {{saved}} / {{total}} 个片段",
+    "counts": "已确认保存 {{saved}} / {{total}} 个片段",
+    "paused": "AI 编辑已暂停，此稿件仍暂时只读。可继续任务或结束编辑。",
+    "failed": "AI 编辑遇到问题，此稿件仍暂时只读。请核对结果后继续任务，或结束编辑。",
+    "ended": "AI 编辑已结束，已保存的内容保留。",
+    "inUse": "此稿件正在由 AI 编辑，请先结束编辑。",
+    "preparing": "正在准备编辑…",
+    "readOnly": "AI 编辑期间暂时只读，结束编辑后可继续修改。",
+    "ending": "正在结束编辑，等待本次保存确认…",
+    "endingAction": "正在结束…",
+    "background": "{{client}} 正在辅助编辑「{{recording}}」，该稿件暂时只读。其他稿件可继续编辑。",
+    "completed": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。"
   }
 }

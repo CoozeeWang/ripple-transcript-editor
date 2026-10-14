@@ -6,6 +6,16 @@ import {ContinuationProgress} from './ContinuationProgress';
 import type {ContinuationProgress as Progress} from '../lib/incrementalContinuation';
 const task:Progress={task_id:'synthetic-task',state:'paused',reason:'batch_conflict_manual_changes_preserved',version:'Synthetic draft',version_id:'m:e1',saved_segments:24,total_segments:60,staged:24,held_batches:0,is_current:true};
 afterEach(()=>{cleanup();setInterfaceLanguage('zh-CN');});
+it('embeds only actionable recovery without a second progress summary or End control', () => {
+  const action = vi.fn(async () => ({}));
+  const { rerender, container } = render(<ContinuationProgress embedded tasks={[task]} error="" onAction={action}/>);
+  expect(screen.getByRole('button', { name: '重读本批继续' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '查看待提交修改' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '结束编辑' })).toBeNull();
+  expect(screen.queryByRole('status')).toBeNull();
+  rerender(<ContinuationProgress embedded tasks={[{ ...task, state: 'draft', staged: 0 }]} error="" onAction={action}/>);
+  expect(container.textContent).toBe('');
+});
 it.each(['zh-CN','en'] as const)('shows saved progress, recoverable proposals and scoped actions in %s',async language=>{
   await act(()=>setInterfaceLanguage(language));
   const action=vi.fn(async()=>({proposals:[{index:25,action:'edit',current_text:'Synthetic manual correction',after:'Synthetic AI proposal'}]}));

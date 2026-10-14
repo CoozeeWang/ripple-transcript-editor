@@ -12,7 +12,8 @@ import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
 import { ProjectImportStatus } from './ProjectImportStatus';
 import { manuscriptImportNoticeKeys } from '../lib/materialImport';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { ConnectorContext } from '../hooks/connectorContext';
 import App from '../App';
 import { prepareMaterials } from '../lib/materialImport';
 import { ProjectExportDialog } from './ProjectExportDialog';
@@ -32,12 +33,16 @@ type Picker = Window & {
   showOpenFilePicker: (options: { multiple: boolean; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
 };
 export function ProjectWorkspace() {
+  const aiConnector = useContext(ConnectorContext);
   const language = useInterfaceLanguage();
   const audioStorage = useAudioStorageChoice();
   const [trashOpen,setTrashOpen]=useState(false);
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
   const [deleteTarget,setDeleteTarget]=useState<{recording:ProjectRecording;modelId?:string;name:string;hasDocuments:boolean;sessionId:string}|null>(null);
   const [project, setProject] = useState<OpenProject | null>(null);
+  const assertRecordingMutable = (session: string, recording: string) => {
+    if (aiConnector?.state.targetLocked('', recording, session, project?.data.id)) throw Error(msg('aiEditing.inUse'));
+  };
   const [recent, setRecent] = useState<Awaited<ReturnType<typeof recentProjects>>>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string; originalModelId?: string } | null>(null);
@@ -251,7 +256,7 @@ export function ProjectWorkspace() {
           </div>}
         </section>}
       </> : <>
-        {deleteTarget&&<DeleteMaterialDialog name={deleteTarget.name} audio={!deleteTarget.modelId} referenced={!deleteTarget.modelId&&deleteTarget.recording.storage==='reference'} hasDocuments={deleteTarget.hasDocuments} busy={busy} error={error} onCancel={()=>setDeleteTarget(null)} onDelete={keepDocuments=>void run(async()=>{const next=await trashProjectMaterial(current.current!,deleteTarget.sessionId,deleteTarget.recording.id,{modelId:deleteTarget.modelId,keepDocuments});await publish(next);setUndoTrash(next.data.trash!.at(-1)!.id);setDeleteTarget(null);},false)}/>}
+        {deleteTarget&&<DeleteMaterialDialog name={deleteTarget.name} audio={!deleteTarget.modelId} referenced={!deleteTarget.modelId&&deleteTarget.recording.storage==='reference'} hasDocuments={deleteTarget.hasDocuments} busy={busy} error={error} onCancel={()=>setDeleteTarget(null)} onDelete={keepDocuments=>void run(async()=>{assertRecordingMutable(deleteTarget.sessionId,deleteTarget.recording.id);const next=await trashProjectMaterial(current.current!,deleteTarget.sessionId,deleteTarget.recording.id,{modelId:deleteTarget.modelId,keepDocuments});await publish(next);setUndoTrash(next.data.trash!.at(-1)!.id);setDeleteTarget(null);},false)}/>}
         {trashOpen&&<ProjectTrashDialog project={project} busy={busy} error={error} onClose={()=>setTrashOpen(false)} onRestore={id=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,id));if(undoTrash===id)setUndoTrash(null);},false)} onClear={()=>void run(async()=>{await publish(await clearProjectTrash(current.current!));setUndoTrash(null);},false)}/>}
         {undoTrash&&project.data.trash?.some(t=>t.id===undoTrash)&&!trashOpen&&<TrashUndoNotice key={undoTrash} busy={busy} onUndo={()=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,undoTrash));setUndoTrash(null);},false)} onDismiss={()=>setUndoTrash(null)}/>}
         <div className="setup-title project-saved-title" hidden={materialTarget !== undefined}><ProjectIcon kind="project" /><div className="project-title-content"><div className="project-title-row"><div className="project-title-heading"><h1><InlineEdit doubleClick disabled={busy} value={project.data.title} ariaLabel={msg('ProjectWorkspace.m0922')} onCommit={next => { void run(async () => { if (!next.trim()) throw new Error(msg('ProjectWorkspace.m0923')); await publish(await saveProject(project, { ...project.data, title: next.trim() })); }); }} /></h1>
@@ -308,9 +313,9 @@ export function ProjectWorkspace() {
           add={id => setMaterialTarget(id ?? null)} open={(recording, modelId, editId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId, editId); }} run={run}
           legacy={recording => { void run(() => checkManuscripts(interviewId ?? project.data.interviews[0].id, [recording])); }}
           remove={(recording,model,hasDocuments=false)=>{setError('');setDeleteTarget({recording,modelId:model?.id,name:model?.label||model?.sourceName||model?.engine||recording.name,hasDocuments,sessionId:interviewId??project.data.interviews[0].id});}}
-          detach={async (recording, modelId) => { const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}
+          detach={async (recording, modelId) => { assertRecordingMutable(interviewId!,recording.id); const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}
           associate={(recording,model,anchor) => { setError('');setInterviewId(interviewId ?? project.data.interviews[0].id); setAssociation({ source: recording.id, modelId:model.id, name:model.label||model.sourceName||model.engine,anchor }); }}
-          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); }); }} />
+          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) { assertRecordingMutable(interviewId!,recording.id); await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); } }); }} />
             {interview && legacyCandidates?.interviewId === interview.id && legacyCandidates.items.map((candidate, index) => <div className="project-section project-import-existing" key={`${candidate.recordingId}:${index}`}>
               <strong>{msg('ProjectWorkspace.m0938')}</strong>
               <p>{candidate.directory.name}</p>
@@ -323,7 +328,7 @@ export function ProjectWorkspace() {
 
               })}>{msg('ProjectWorkspace.m0941')}</button><button className="cred-btn" disabled={busy} onClick={() => { setLegacyCandidates(null); }}>{msg('ProjectWorkspace.m0942')}</button></div>
             </div>)}
-            {interview && association && <AssociateAudioDialog anchor={association.anchor} name={association.name} recordings={interview.recordings.filter(r=>r.storage!=='none')} busy={busy} error={error} onClose={()=>setAssociation(null)} onConfirm={target=>void run(async()=>{await publish(await reassignManuscript(current.current!,interview.id,association.source,target,association.modelId));setAssociation(null);},false)}/>}
+            {interview && association && <AssociateAudioDialog anchor={association.anchor} name={association.name} recordings={interview.recordings.filter(r=>r.storage!=='none')} busy={busy} error={error} onClose={()=>setAssociation(null)} onConfirm={target=>void run(async()=>{assertRecordingMutable(interview.id,association.source);assertRecordingMutable(interview.id,target);await publish(await reassignManuscript(current.current!,interview.id,association.source,target,association.modelId));setAssociation(null);},false)}/>}
 
 
         </>}

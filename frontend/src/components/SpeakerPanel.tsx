@@ -13,6 +13,7 @@ export interface SpeakerPanelProps {
   speakers: Speaker[];
   hiddenSpeakerIds: Set<string>;
   viewingOriginal: boolean;
+  readOnlyMessage?: string;
   mergeMenuFor: string | null;
   setMergeMenuFor: (id: string | null) => void;
   mergeMenuRef: RefObject<HTMLDivElement | null>;
@@ -335,7 +336,7 @@ export function SpeakerPanel(props: SpeakerPanelProps) {
       {viewingOriginal ? (
         <div className="tip">
           <span>{msg('SpeakerPanel.m1029')}</span>
-          {msg('SpeakerPanel.m1030')}</div>
+          {props.readOnlyMessage ?? msg('SpeakerPanel.m1030')}</div>
       ) : null}
     </aside>
   );

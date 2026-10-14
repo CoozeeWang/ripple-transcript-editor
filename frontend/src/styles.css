@@ -15,6 +15,7 @@
   --color-surface: #ffffff;
   --color-surface-warm: #fffdf8;
   --color-surface-dialog: #f9f8f3;
+  --color-surface-status: #eeece2;
   --color-hover: #f4f1ea;
   --color-hover-soft: #f3f2ec;
 
@@ -690,7 +691,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
   padding: 8px 28px;
   color: #5f5d54;
   border-bottom: 1px solid #ddd9cc;
-  background: #eeece2;
+  background: var(--color-surface-status);
   font-size: 0.75rem;
   grid-template-columns: 8px minmax(0, 1fr) auto;
   gap: 10px;
@@ -3279,3 +3280,21 @@ button > svg.action-icon[aria-hidden="true"] {
   .continuation-progress { margin-inline: 16px; }
   .continuation-progress-actions { flex-basis: 100%; }
 }
+
+/* AI feedback occupies the top status position, never a second panel over the text. */
+.ai-editing-region { flex: none; min-width: 0; max-height: 35%; overflow-y: auto; border-bottom: 1px solid var(--color-border); background: var(--color-surface-status); font-family: var(--font-sans); }
+.ai-editing-region:empty { display: none; }
+.ai-editing-notice { display: flex; align-items: center; gap: 12px; padding: 9px clamp(16px, 3vw, 36px); color: var(--color-danger); font-size: .8rem; line-height: 1.5; }
+.ai-editing-lock { flex: none; width: 20px; height: 20px; }
+.ai-editing-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ai-editing-detail { display: block; color: var(--color-text-3); font-size: .78rem; }
+.ai-editing-end { flex: none; padding: 6px 12px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.ai-editing-end:hover { background: color-mix(in srgb, var(--color-danger) 7%, transparent); }
+.ai-editing-end:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 3px; }
+.ai-editing-end:disabled { opacity: .5; cursor: wait; }
+.ai-editing-notice.is-completed { color: var(--color-accent); }
+.ai-editing-close { flex: none; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-3); font: inherit; font-size: 1.15rem; cursor: pointer; }
+.ai-editing-close:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.ai-editing-region > .continuation-progress { margin: 0; border: 0; border-radius: 0; max-height: none; }
+.ai-editing-global { position: sticky; top: 0; z-index: 20; }
+@media (max-width: 650px) { .ai-editing-notice { gap: 8px; padding-inline: 12px; } .ai-editing-end { padding-inline: 8px; } }

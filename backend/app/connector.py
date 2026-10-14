@@ -127,13 +127,13 @@ class Broker:
             raise HTTPException(409, "multiple_enabled_ripple_windows")
         return next(iter(self.windows.items()))
 
-    async def dispatch(self, operation: str, arguments: dict):
+    async def dispatch(self, operation: str, arguments: dict, client: str | None = None):
         session, window = self.current()
         request_id = secrets.token_urlsafe(24)
         future = asyncio.get_running_loop().create_future()
         self.pending[request_id] = (session, future)
         await window.queue.put({"request_id": request_id, "operation": operation,
-                                "arguments": arguments})
+                                "arguments": arguments, "client": client or "local"})
         try:
             # Timeout is an unknown outcome for writes; the same request id recovers it.
             return await asyncio.wait_for(asyncio.shield(future), timeout=120)
@@ -161,7 +161,7 @@ class Broker:
                     raise HTTPException(429, "Too many pending connector requests")
                 self.calls.pop(removable)
                 self.call_clients.pop(removable, None)
-            task = asyncio.create_task(self.dispatch(operation, arguments))
+            task = asyncio.create_task(self.dispatch(operation, arguments, client))
             self.calls[request_id] = (digest, owner, task)
             self.call_clients[request_id] = client
         task = self.calls[request_id][2]

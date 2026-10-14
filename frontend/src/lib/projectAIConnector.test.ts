@@ -10,6 +10,67 @@ async function prepared(c: ProjectAIConnector, delivery_mode = 'atomic', save_mo
   return c.handle('prepare', { snapshot: read.snapshot, start_id: 's1', end_id: 's1', rules: ['Synthetic test edit'], save_mode, delivery_mode });
 }
 describe('current-project AI routing', () => {
+  it('keeps a WorkBuddy task protected after a validation error, and reconciles its actual saved receipt', async () => {
+    const f = await fixture(), c = f.connector();
+    const read = await c.handle('read_project', { interview_id: 'session-b', recording_id: 'recording-session-b', version_id: 'm1:e1' }, 'workbuddy');
+    const task = await c.handle('prepare_marks', { snapshot: read.snapshot, segment_ids: ['s1'], instructions: 'Synthetic note' }, 'workbuddy');
+    await expect(c.handle('stage_marks', { task_id: task.task_id, marks: [] }, 'workbuddy')).rejects.toThrow('invalid_batch');
+    await c.handle('stage_marks', { task_id: task.task_id, marks: [{ segment_id: 's1', before: 'B0', annotation: 'Synthetic WorkBuddy note' }] }, 'workbuddy');
+    await c.handle('apply_marks', { task_id: task.task_id, confirmed_summary: task.summary }, 'workbuddy');
+    // A late invalid request must never replace a completed disk receipt with failed/zero.
+    await expect(c.handle('stage_marks', { task_id: task.task_id, marks: [] }, 'workbuddy')).rejects.toThrow('task_not_editable');
+    expect(await c.handle('marks_status', { task_id: task.task_id }, 'workbuddy')).toMatchObject({ state: 'completed', editing_state: 'completed', result: { saved: true } });
+    expect(c.editing.get(String(task.task_id))).toMatchObject({ state: 'completed', saved: 1, total: 1 });
+  });
+  it('reserves writes across clients, allows readonly analysis and rejects foreign task adoption', async () => {
+    const f = await fixture(), c = f.connector();
+    const a = await readB(c);
+    expect(c.editing.values()).toHaveLength(0);
+    const task = await c.handle('prepare_marks', { snapshot: a.snapshot, segment_ids: ['s1'], instructions: 'Synthetic note' });
+    const other = await c.handle('read_project', { interview_id: 'session-b', recording_id: 'recording-session-b', version_id: 'm1:e1' }, 'claude');
+    await expect(c.handle('prepare_marks', { snapshot: other.snapshot, segment_ids: ['s1'], instructions: 'Other synthetic note' }, 'claude')).rejects.toThrow('locked_by_other_ai');
+    await expect(c.handle('stage_marks', { task_id: task.task_id, marks: [] }, 'claude')).rejects.toThrow('another_client');
+    await c.handle('end_editing', { task_id: task.task_id }, 'window');
+    await expect(c.handle('stage_marks', { task_id: task.task_id, marks: [] })).rejects.toThrow('editing_task_ended');
+    expect(c.editing.values().find(t => t.task_id === task.task_id)?.state).toBe('ended');
+    const next = await c.handle('prepare_marks', { snapshot: other.snapshot, segment_ids: ['s1'], instructions: 'Other synthetic note' }, 'claude');
+    expect(next.task_id).toBeTruthy();
+  });
+  it('revokes a marks write while validation waits and still allows a status lookup', async () => {
+    const f = await fixture(), c = f.connector();
+    const read = await c.handle('read_current', {});
+    const task = await c.handle('prepare_marks', { snapshot: read.snapshot, segment_ids: ['s1'], instructions: 'Synthetic annotation' });
+    await c.handle('stage_marks', { task_id: task.task_id, marks: [{ segment_id: 's1', before: 'A0', annotation: 'Synthetic AI note' }] });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const originalCurrent = f.active.current.getMockImplementation()!;
+    let enter!: () => void; const entered = new Promise<void>(resolve => { enter = resolve; });
+    f.active.current.mockImplementation(async () => { enter(); await gate; return originalCurrent(); });
+    const pending = c.handle('apply_marks', { task_id: task.task_id, confirmed_summary: task.summary });
+    await entered;
+    await c.handle('end_editing', { task_id: task.task_id }, 'window'); release();
+    const result = await pending;
+    expect(result.saved).toBe(false); expect(f.active.applyMarks).not.toHaveBeenCalled();
+    expect(await c.handle('marks_status', { task_id: task.task_id })).toMatchObject({ state: 'failed', result: { saved: false } });
+  });
+  it('never redirects an active save if the viewed recording changes during host validation', async () => {
+    const f = await fixture(); let active = 'a';
+    const c = new ProjectAIConnector(f.active, () => ({ project: () => f.project, active: () => ({
+      interview_id: `session-${active}`, recording_id: `recording-session-${active}`,
+      version_id: 'm1:e1', directory: active === 'a' ? f.dirA : f.dirB,
+    }) }));
+    const read = await c.handle('read_current', {});
+    const task = await c.handle('prepare', { snapshot: read.snapshot, start_id: 's1', end_id: 's1', save_mode: 'current_version', rules: ['Synthetic edit'] });
+    await c.handle('stage', { task_id: task.task_id, changes: [{ segment_id: 's1', before: 'A0', after: 'A0 Test' }] });
+    let release!: () => void, enter!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    f.active.current.mockImplementationOnce(async () => f.current).mockImplementationOnce(async () => { enter(); await gate; return f.current; });
+    const pending = c.handle('publish', { task_id: task.task_id, confirmed_summary: task.summary });
+    await entered; active = 'b'; release();
+    await expect(pending).rejects.toThrow('source_changed_read_current_again');
+    expect(f.active.publish).not.toHaveBeenCalled();
+    expect((await readModelEdit(f.dirB, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0');
+  });
   it('lists duplicate names with stable IDs and refuses unspecified versions even with one edit', async () => {
     const f = await fixture(), c = f.connector();
     const directory = await c.handle('project_directory', { query: 'duplicate', limit: 1 });

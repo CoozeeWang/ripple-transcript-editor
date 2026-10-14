@@ -114,17 +114,19 @@ export class ProjectConnectorHosts {
     };
     const host: ConnectorHost = { current,
       publish: async (baseline, suggestions, name, saveTarget) => {
-        await check();
+        const guard = async () => { await check(); this.activeHost.assertWrite?.(saveTarget.task_id); };
+        await guard();
         if (saveTarget.identity !== identity || saveTarget.source_version.id !== version!.id)
           throw Error('source_changed_read_current_again');
         let result: Record<string, unknown>;
         if (isActive()) {
           const doc = await this.activeHost.current();
-          if (doc.version.id !== version!.id) throw Error('source_changed_read_current_again');
+          await guard();
+          if (!isActive() || doc.version.id !== version!.id) throw Error('source_changed_read_current_again');
           result = await this.activeHost.publish(baseline, suggestions, name, { ...saveTarget, identity: doc.identity });
         } else {
           const saved = await saveConnectorVersion(entry.directory, entry.recording.file, {
-            version: version!, baseline, check,
+            version: version!, baseline, check: guard,
             allowRebase: !!saveTarget.checkpoint,
             name: saveTarget.save_mode === 'new_version' ? name : undefined,
             update: existing => {
@@ -145,13 +147,14 @@ export class ProjectConnectorHosts {
         return { ...result, target: savedTarget };
       },
       applyMarks: async (baseline, marks, taskId) => {
-        await check();
+        const guard = async () => { await check(); this.activeHost.assertWrite?.(taskId); };
+        await guard();
         if (isActive()) {
           const result = await this.activeHost.applyMarks!(baseline, marks, taskId);
           return { ...result, target: target() };
         }
         let counts = { added_annotations: 0, added_highlights: 0 };
-        await saveConnectorVersion(entry.directory, entry.recording.file, { version: version!, baseline, check,
+        await saveConnectorVersion(entry.directory, entry.recording.file, { version: version!, baseline, check: guard,
           update: existing => {
             if (JSON.stringify(existing) !== JSON.stringify(baseline)) throw Error('source_changed_read_current_again');
             const result = applyAIMarks(existing, marks, taskId);
