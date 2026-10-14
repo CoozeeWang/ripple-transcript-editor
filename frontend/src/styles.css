@@ -510,7 +510,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .cred-info-icon:hover { color: var(--color-text-strong); }
 .cred-info-tip::after { max-width: min(260px, calc(100vw - 32px)); text-align: left; }
-.toolbar-button-icon { display: block; width: 13px; height: 13px; flex: none; }
+.toolbar-button-icon { display: block; width: 20px; height: 20px; flex: none; }
 .button input { display: none; }
 .button--secondary { border-color: var(--color-border-2); background: var(--color-surface); }
 .button--primary { color: var(--color-surface); background: var(--color-accent); }
@@ -3186,6 +3186,28 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 
 .settings-mcp .cred-profile__name { font-size: .84rem; }
 
+/* ChatGPT onboarding uses the approved sequential guide; other credential cards stay aligned. */
+.settings-mcp .connector-guided-steps { margin: 8px 0 0; padding-left: 22px; }
+.settings-mcp .connector-guided-steps > li { padding: 10px 0; min-width: 0; }
+.settings-mcp .connector-guided-steps > li + li { border-top: 1px solid var(--color-border); }
+.settings-mcp .connector-guided-steps > li::marker { color: var(--color-accent); }
+.settings-mcp .connector-step-label { display: block; font-size: .78rem; font-weight: 500; margin-bottom: 8px; }
+.settings-mcp .connector-guided-steps input { width: 100%; min-width: 0; box-sizing: border-box; font-size: .84rem; }
+.settings-mcp .connector-guided-steps .settings-hint { margin: 8px 0 0; overflow-wrap: anywhere; }
+.settings-mcp .connector-guided-steps > li > .settings-hint:first-of-type { margin-bottom: 8px; }
+.settings-mcp .connector-device-row { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; margin-top: 8px; }
+.settings-mcp .connector-guided-steps .connector-device-row .settings-hint { margin: 0; }
+.settings-mcp .connector-refresh { padding: 0; border: 0; background: transparent; color: var(--color-accent); font: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.settings-mcp .connector-refresh:hover:not(:disabled) { text-decoration-thickness: 2px; }
+.settings-mcp .connector-refresh:disabled { color: var(--color-text-3); text-decoration: none; }
+.settings-mcp .connector-guided-steps .connector-download .settings-hint { margin: 4px 0 0; }
+.settings-mcp .connector-download a { overflow-wrap: anywhere; }
+.settings-mcp .connector-device { color: var(--color-text); }
+.settings-mcp .connector-step-help { margin-top: 8px; }
+.settings-mcp .connector-step-help > p { margin-top: 8px; }
+.settings-mcp .connector-guided-steps .cred-profile__actions { flex-wrap: wrap; justify-content: flex-start; }
+.settings-mcp .connector-setup-prompt { padding-left: 10px; border-left: 2px solid var(--color-border); }
+
 .settings-mcp .connector-pair-code { font-size: .84rem; font-family: var(--font-mono, monospace); letter-spacing: .06em; overflow-wrap: anywhere; }
 
 /* Mutually exclusive choices use one integrated keyboard marker. */
@@ -3211,4 +3233,49 @@ label:has(> input[type="radio"]:focus-visible) > span {
 .field textarea:focus-visible, .participant-row input:focus-visible,
 .cred-field__input input:focus-visible, .api-key-row input:focus-visible {
   outline: none; border-color: var(--color-focus); box-shadow: none;
+}
+
+.notice-dismiss {flex:0 0 auto;margin-left:auto;border:0;background:transparent;color:inherit;padding:0 6px;min-width:28px;min-height:28px;font:400 18px/1 var(--font-sans);cursor:pointer;}
+.notice-dismiss:hover {background:var(--color-surface-warm);border-radius:4px;}
+.notice-dismiss:focus-visible {outline:2px solid var(--color-focus);outline-offset:2px;}
+
+.topbar .icon-button > svg, .project-home__header nav .icon-button > svg, .welcome-card--small > svg {width:20px;height:20px;}
+.settings-mcp .cred-btn--primary {background:var(--color-accent);border-color:var(--color-accent);color:var(--color-surface);}
+.settings-mcp .cred-profile__actions {justify-content:flex-end;}
+.version-picker-row--original:has(.version-picker-engine) {flex-wrap:wrap;}
+.version-picker-row--original > .version-picker-engine {flex-basis:100%;}
+.seek-shortcut {font-family:var(--font-mono);font-variant-numeric:slashed-zero;white-space:nowrap;}
+.segment-text-editor > div > span, .segment-text-editor > div > ins {line-height:normal;}
+
+.recent-dock__btn > svg {width:20px;height:20px;}
+
+/* Inset action artwork while preserving control and SVG layout geometry. */
+button > svg[aria-hidden="true"] {
+  box-sizing: border-box;
+  padding: 1px;
+}
+/* These five drawings normalize their own visible bounds in ActionIcon. */
+button > svg.action-icon[aria-hidden="true"] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+/* A fixed sibling of the scrolling manuscript: progress stays visible without covering text. */
+.continuation-progress { flex: none; min-width: 0; max-height: 35%; overflow-y: auto; margin: 0 clamp(28px, 4vw, 60px) 10px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-warm); font-family: var(--font-sans); font-size: .8rem; }
+.continuation-progress.is-running { border-inline-start: 3px solid var(--color-danger); }
+.continuation-progress-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+.continuation-progress-title { flex: none; font-size: .8rem; font-weight: 600; }
+.continuation-progress-version { min-width: 0; flex: 1 1 100px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text-3); }
+.continuation-progress-data { display: flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.continuation-progress-data > span { white-space: nowrap; }
+.continuation-progress-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-inline-start: auto; }
+.continuation-progress .cred-btn { min-height: 28px; padding: 3px 8px; font-family: var(--font-sans); font-size: .78rem; }
+.continuation-progress-note, .continuation-progress-error { margin: 5px 0 0; line-height: 1.5; overflow-wrap: anywhere; color: var(--color-text-3); }
+.continuation-progress-caution, .continuation-progress-error { color: var(--color-danger); }
+.continuation-proposals pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 8px; background: var(--color-page-bg); }
+.continuation-proposals { max-height: 16rem; overflow-y: auto; margin-top: 6px; }
+@container transcript (max-width: 700px) {
+  .continuation-progress { margin-inline: 16px; }
+  .continuation-progress-actions { flex-basis: 100%; }
 }

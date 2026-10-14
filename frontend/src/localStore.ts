@@ -1,4 +1,6 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
+import { stampContinuationReceipt } from './lib/continuationBatch';
+import type { ContinuationTask } from './lib/incrementalContinuation';
 import { apiErrorMessage } from './i18n/errors';
 import { msg } from './i18n';
 import { chooseDirectory } from './lib/projectPreferences';
@@ -336,8 +338,11 @@ async function audioFingerprint(dir: FileSystemDirectoryHandle, name: string): P
   const cached = fingerprintCache.get(dir)?.get(name);
   if (cached) return cached;
   const fileHandle = await (dir as unknown as {
-    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
+    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File>; getPlaybackUrl?: () => Promise<string> }>;
   }).getFileHandle(name);
+  // Raw AAC still needs the existing ADTS-to-M4A adapter. Other native media
+  // is streamed by the authorized asset protocol instead of copied into JS.
+  if (fileHandle.getPlaybackUrl && !/\.aac$/i.test(name)) return fileHandle.getPlaybackUrl();
   const file = await fileHandle.getFile();
   const head = await file.slice(0, 65536).arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", head);
@@ -1087,6 +1092,7 @@ async function createModelUnlocked(
     transcript: withSharedSpeakers(params.original ? restoreTranscriptOrigins({...params.transcript,segments:params.transcript.segments.map(s=>({...s,words:s.words?.map(w=>({...w,timing:undefined,origins:undefined}))}))},params.original,id) : params.transcript, params.sharedSpeakers ?? existing.sharedSpeakers, Boolean(params.sharedSpeakers?.length)),
   };
   const editFile = params.editLabel ? transcriptFilename(existing.title ?? stem, requireVersionName(params.editLabel)) : `${id}-e1.json`;
+  edited.transcript = stampContinuationReceipt(edited.transcript, `${id}:e1`);
   if (params.editLabel && (await hasSidecar(tDir,editFile) || existing.models.some(m=>m.edits.some(e=>e.label===params.editLabel)))) throw new Error(msg('localStore.m1487'));
   if (!params.originalOnly) await writeFileJson(tDir, editFile, { ...edited, updated_at: new Date().toISOString() });
 
@@ -1193,6 +1199,7 @@ async function createEditUnlocked(
     file: editFile,
     updated_at: new Date().toISOString(),
   };
+  edited.transcript = stampContinuationReceipt(edited.transcript, `${modelId}:${id}`);
   const newModel: TranscriptModel = {
     ...model,
     designatedOriginal: model.designatedOriginal,
@@ -1268,6 +1275,8 @@ async function persistActiveModelUnlocked(
   if (!tDir) return null;
   const manifest = await readManifestUnlocked(dir, name);
   if (!manifest) return null;
+  const selected = manifest.models.find(m => m.id === modelId);
+  if (!selected || (editId && (selected.designatedOriginal || !selected.edits.some(edit => edit.id === editId)))) throw new Error(msg('localStore.m1504'));
   const models = manifest.models.map((m) => {
     if (m.id !== modelId) return m;
     return editId ? { ...m, activeEditId: editId } : m;
@@ -1349,7 +1358,7 @@ async function syncTranscriptNames(
 }
 
 /** 重命名模型（更新 manifest.label）。 */
-async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: string, modelId: string, designatedOriginal: boolean): Promise<TranscriptManifest> {
+async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: string, modelId: string, designatedOriginal: boolean, editId?: string): Promise<TranscriptManifest> {
   const manifest = await readManifestUnlocked(dir, name);
   const tDir = await resolveTranscriptDir(dir, name, false);
   const model = manifest?.models.find(m => m.id === modelId);
@@ -1364,7 +1373,11 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
     const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
     await writeFileJson(tDir, MANIFEST_NAME, next);return next;
   }
-  const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal, designatedOriginalEditId: designatedOriginal ? (m.activeEditId || m.edits[0]?.id) : undefined } : m) };
+  const designatedEditId = editId ?? model.activeEditId ?? model.edits[0]?.id;
+  if (designatedOriginal && editId && !model.edits.some(edit => edit.id === editId)) throw new Error(msg('localStore.m1504'));
+  const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal,
+    ...(designatedOriginal && editId ? { activeEditId: editId } : {}),
+    designatedOriginalEditId: designatedOriginal ? designatedEditId : undefined } : m) };
   await writeFileJson(tDir, MANIFEST_NAME, next);
   return next;
 }
@@ -1398,8 +1411,10 @@ async function renameEditLabelUnlocked(
     ...m, edits: m.edits.map(e => e.id === editId ? { ...e, label: label.trim() } : e),
   }) };
   if (manifest.models.some(m => m.edits.some(e => !(m.id === modelId && e.id === editId) && sanitizeForFilename(e.label ?? defaultEditLabel(m.edits.indexOf(e))).toLocaleLowerCase() === sanitizeForFilename(label.trim()).toLocaleLowerCase()))) throw new Error(msg('localStore.m1519'));
-  const current = await readEditedUnlocked(dir, name);
-  return syncTranscriptNames(tDir, manifest, next, manifest.title ?? current?.metadata.title ?? stemOf(name));
+  // Labels are display data. Stable internal filenames need not be rewritten
+  // when a user renames one version; exports derive names from the label.
+  await writeFileJson(tDir, MANIFEST_NAME, next);
+  return next;
 }
 
 /** Publish the index before deleting content; a failed index write must never lose a manuscript. */
@@ -2011,5 +2026,37 @@ export async function writeConnectorRules(dir: FileSystemDirectoryHandle, audio:
     const container = await resolveTranscriptDir(dir, audio, false);
     if (!container) throw new Error('connector_document_unavailable');
     await writeFileJson(container, 'ai-connector-rules.json', { rules, scope: 'current-interview' });
+  });
+}
+
+/** One local journal per task, scoped to this recording's existing transcript container. */
+export async function readContinuationTasks(dir: FileSystemDirectoryHandle, audio: string): Promise<ContinuationTask[]> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) return [];
+    let folder: FileSystemDirectoryHandle;
+    try { folder = await container.getDirectoryHandle('ai-continuation-tasks'); }
+    catch (error) { if ((error as {name?:string}).name === 'NotFoundError') return []; throw error; }
+    const tasks: ContinuationTask[] = [];
+    for await (const [name, handle] of folder.entries()) {
+      if (handle.kind !== 'file' || !/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+      const value = JSON.parse(await (await (handle as FileSystemFileHandle).getFile()).text()) as ContinuationTask;
+      if (value.schema !== 1 || `${value.id}.json` !== name || !Array.isArray(value.ids) || !Array.isArray(value.done) ||
+          !Array.isArray(value.held) || !['draft','paused','completed','cancelled'].includes(value.state) || !value.target?.id) throw Error('continuation_journal_unreadable');
+      tasks.push(value);
+    }
+    return tasks;
+  });
+}
+export async function writeContinuationTask(dir: FileSystemDirectoryHandle, audio: string, task: ContinuationTask): Promise<void> {
+  if (!/^[a-f0-9-]{36}$/.test(task.id)) throw Error('invalid_continuation_task_id');
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) throw Error('connector_document_unavailable');
+    const folder = await container.getDirectoryHandle('ai-continuation-tasks', {create:true});
+    const name=`${task.id}.json`;
+    let exists=true;
+    try{await folder.getFileHandle(name);}catch(error){if((error as {name?:string}).name==='NotFoundError')exists=false;else throw error;}
+    try{await writeFileJson(folder,name,task);}catch(error){if(!exists)await folder.removeEntry(name).catch(()=>{});throw error;}
   });
 }

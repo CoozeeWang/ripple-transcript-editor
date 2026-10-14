@@ -25,7 +25,7 @@ it('switches only after saving succeeds, retains separate instructions without a
  fireEvent.change(ui.getByRole('combobox'),{target:{value:'workbuddy'}});
  await waitFor(()=>expect(ui.getByText('添加到 WorkBuddy')).toBeTruthy());
  expect(invoke).toHaveBeenCalledWith('connector_client_select',{client:'workbuddy'});
- expect(onSaved).toHaveBeenCalledOnce();
+ expect(onSaved).not.toHaveBeenCalled();
  expect(ui.queryByText('断开连接')).toBeNull();
 });
 it('cancelled installation is not reported as success',async()=>{

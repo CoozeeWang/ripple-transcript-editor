@@ -2,6 +2,7 @@ import { msg } from '../i18n';
 import { recordProblem } from "../lib/diagnostics";
 import { flushEditorDrafts } from "../lib/editorDrafts";
 import { applyAISuggestions, type AISuggestion } from "../lib/aiVersionEdits";
+import { applyContinuationBatch, type ContinuationCheckpoint } from '../lib/continuationBatch';
 import { useLayoutEffect, useRef, useState } from "react";
 import { useDismissable } from "../useDismissable";
 import type {
@@ -208,7 +209,7 @@ export function useVersions(deps: UseVersionsDeps) {
   };
 
   /** Publish reviewed suggestions in one new version; the source remains untouched. */
-  const createAIEdit = async (baseline: Transcript, suggestions: AISuggestion[], label: string) => {
+  const createAIEdit = async (baseline: Transcript, suggestions: AISuggestion[], label: string, checkpoint?: ContinuationCheckpoint) => {
     if (versionBusy || !activeModel) {
       throw new Error(msg('useVersions.m1187'));
     }
@@ -221,11 +222,11 @@ export function useVersions(deps: UseVersionsDeps) {
     try {
       await flushActiveEdit();
       if (!isCurrent() || !latest.current.transcript) throw new Error(msg('useVersions.m1189'));
-      const transcript = applyAISuggestions(latest.current.transcript, baseline, suggestions);
+      const transcript = checkpoint ? applyContinuationBatch(latest.current.transcript, suggestions, checkpoint) : applyAISuggestions(latest.current.transcript, baseline, suggestions);
       const result = await createEdit(dir, audio, activeModel.id, {
         fromOriginal: deps.viewingOriginal,
         srcEditId: deps.viewingOriginal ? undefined : activeModel.activeEditId,
-        reviewed: { baseline, transcript, label: label.slice(0, 100) },
+        reviewed: { baseline: checkpoint ? latest.current.transcript : baseline, transcript, label: label.slice(0, 100) },
       });
       if (!isCurrent()) return;
       setModels(result.manifest.models);

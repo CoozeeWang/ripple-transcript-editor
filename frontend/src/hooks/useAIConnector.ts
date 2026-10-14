@@ -1,17 +1,41 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AIConnector, type ConnectorHost } from '../lib/aiConnector';
+import type { ContinuationProgress } from '../lib/incrementalContinuation';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
 import { loadBooleanPreference, saveBooleanPreference } from '../lib/preferences';
 
 export const CONNECTOR_ENABLED_KEY = 'ripple-mcp-enabled';
 
-export function useAIConnector(host: ConnectorHost) {
+export function useAIConnector(host: ConnectorHost, context = '') {
   const latest = useRef(host);
   useLayoutEffect(() => { latest.current = host; });
   const [enabled, updateEnabled] = useState(() => loadBooleanPreference(CONNECTOR_ENABLED_KEY, false));
   const [attempt, setAttempt] = useState(0);
   const setEnabled = (value: boolean) => { saveBooleanPreference(CONNECTOR_ENABLED_KEY, value); updateEnabled(value); };
   const [status, setStatus] = useState<'off' | 'connecting' | 'ready' | 'error'>('off');
+  const [tasks,setTasks]=useState<ContinuationProgress[]>([]);
+  const [taskError,setTaskError]=useState('');
+  const controllerRef=useRef<AIConnector|null>(null);
+  const createController=useCallback(()=>new AIConnector({current:()=>latest.current.current(),publish:(...args)=>latest.current.publish(...args),
+    applyMarks:(...args)=>{if(!latest.current.applyMarks)throw Error('marks_unavailable');return latest.current.applyMarks(...args);},
+    continuationProgress:next=>setTasks(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next)}),[]);
+  const taskAction=useCallback(async(operation:string,task_id?:string)=>{
+    const controller=controllerRef.current ?? (controllerRef.current=createController());
+    try{const result=await controller.handle(operation,task_id?{task_id}:{});setTaskError('');return result;}
+    catch(error){const message=error instanceof Error?error.message:'continuation_unavailable';setTaskError(['no_editable_interview','interview_changed'].includes(message)?'':message);if(['no_editable_interview','interview_changed'].includes(message))setTasks([]);throw error;}
+  },[createController]);
+  useEffect(()=>{
+    if(!context)return;
+    let disposed=false;
+    const controller=controllerRef.current ?? (controllerRef.current=createController());
+    void controller.handle('tasks',{}).then(()=>{if(!disposed)setTaskError('');}).catch(error=>{
+      if(disposed)return;
+      const message=error instanceof Error?error.message:'continuation_unavailable';
+      setTaskError(['no_editable_interview','interview_changed'].includes(message)?'':message);
+      if(['no_editable_interview','interview_changed'].includes(message))setTasks([]);
+    });
+    return()=>{disposed=true;};
+  },[context,createController]);
   useEffect(() => {
     if (!enabled) return;
     let disposed = false;
@@ -19,12 +43,7 @@ export function useAIConnector(host: ConnectorHost) {
     const session = crypto.randomUUID();
     let token = '';
     let heartbeat: ReturnType<typeof setInterval> | undefined;
-    const controller = new AIConnector({ current: () => latest.current.current(),
-      publish: (...args) => latest.current.publish(...args),
-      applyMarks: (...args) => {
-        if (!latest.current.applyMarks) throw new Error("marks_unavailable");
-        return latest.current.applyMarks(...args);
-      } });
+    const controller = createController();controllerRef.current=controller;
     async function request(path: string, body?: unknown, signal?: AbortSignal) {
       const response = await fetch(`/api/connector/${path}`, { method: body === undefined ? 'GET' : 'POST',
         headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
@@ -39,12 +58,13 @@ export function useAIConnector(host: ConnectorHost) {
       token = String(await tauri.core.invoke('connector_window_key'));
       if (disposed) return;
       await request('session', { session, enabled: true }, abort.signal);
-      await tauri.core.invoke('connector_tunnel_start');
+      // A remote tunnel failure must not disable configured local clients.
+      await tauri.core.invoke('connector_tunnel_start').catch(() => {});
       heartbeat = setInterval(() => {
         void request('session', { session, enabled: true }, abort.signal).catch(() => { if (!disposed) setStatus('connecting'); });
       }, 5000);
       while (!disposed) {
-        const ready = await tauri.core.invoke('connector_tunnel_ready');
+        const ready = await tauri.core.invoke('connector_local_ready');
         if (disposed) return;
         setStatus(ready ? 'ready' : 'connecting');
         let call;
@@ -82,6 +102,6 @@ export function useAIConnector(host: ConnectorHost) {
         void tauri.core.invoke('connector_tunnel_stop').catch(() => {});
       }
     };
-  }, [enabled, attempt]);
-  return { enabled, setEnabled, reconnect: () => setAttempt(value => value + 1), status: enabled ? status : 'off' as const };
+  }, [enabled, attempt,createController]);
+  return { enabled, setEnabled, reconnect: () => setAttempt(value => value + 1), status: enabled ? status : 'off' as const,tasks,taskError,taskAction };
 }

@@ -36,33 +36,22 @@ try {
   await page.goto(vite.resolvedUrls.local[0]);
   for (const variant of ['welcome', 'project', 'editor']) {
     const control = page.getByTestId(variant).locator('.language-control');
-    const select = control.locator('select');
-    for (const language of ['zh-CN', 'en']) {
-      await select.selectOption(language);
-      const result = await select.evaluate(element => {
-        const root = getComputedStyle(document.documentElement);
-        return [element, ...element.options].map(node => {
-          const style = getComputedStyle(node);
-          return { size: parseFloat(style.fontSize), expected: parseFloat(root.fontSize) * 0.86,
-            weight: style.fontWeight, family: style.fontFamily,
-            expectedFamily: root.getPropertyValue('--font-sans').trim() };
-        });
-      });
-      // Native select text can round to an integer pixel; the inherited icon
-      // size (1.05rem) remains well outside this half-pixel allowance.
-      if (result.some(item => Math.abs(item.size - item.expected) > 0.5 || item.weight !== '400' || item.family !== item.expectedFamily)) {
-        throw new Error(`${variant}/${language}: incorrect menu typography ${JSON.stringify(result)}`);
-      }
-      if (await select.inputValue() !== language) throw new Error('Language selection failed');
-      await select.focus();
-      await select.press('Tab');
-      await page.keyboard.press('Shift+Tab');
-      if (await control.evaluate(element => getComputedStyle(element).outlineStyle) !== 'solid') {
-        throw new Error(`${variant}: keyboard focus is not visible`);
-      }
+    const trigger=control.locator('button[aria-haspopup="menu"]');
+    for (const language of ['zh-CN','en']) {
+      await trigger.click();
+      const option=control.getByRole('menuitemradio',{name:language==='en'?'English':'简体中文'});
+      const style=await option.evaluate(element=>({font:getComputedStyle(element).fontSize,weight:getComputedStyle(element).fontWeight}));
+      if(Math.abs(parseFloat(style.font)-13.76)>.5||style.weight!=='400')throw new Error(`${variant}: menu typography`);
+      await option.click();
+      if(await trigger.getAttribute('aria-expanded')!=='false')throw new Error('Menu did not close');
+      await trigger.press('ArrowDown');
+      const selected=control.getByRole('menuitemradio',{name:language==='en'?'English':'简体中文'});
+      if(await selected.getAttribute('aria-checked')!=='true')throw new Error('Language not selected');
+      await selected.press('Escape');
+      if(await trigger.evaluate(element=>getComputedStyle(element).outlineStyle)!=='solid')throw new Error('Keyboard focus not visible');
     }
   }
-  console.log('Language selector: three variants, both languages, select/option typography and keyboard focus passed. Native popup visual acceptance remains separate.');
+  console.log('Language selector: three variants, both languages, app-menu typography, single-click selection and keyboard focus passed. Desktop visuals are checked separately.');
 } finally {
   await browser?.close();
   await vite?.close();

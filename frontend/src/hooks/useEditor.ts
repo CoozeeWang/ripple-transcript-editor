@@ -55,11 +55,6 @@ export function useEditor(deps: UseEditorDeps) {
     setHiddenSpeakerIds,
     textareaRefs,
     editingRef,
-    findOpen,
-    showReplace,
-    setShowReplace,
-    replaceCurrent,
-    findNext,
   } = deps;
 
   // 合并说话人的确认对话框状态。
@@ -417,22 +412,8 @@ export function useEditor(deps: UseEditorDeps) {
     event: ReactKeyboardEvent<ParagraphEditorElement>,
     segmentId: string,
   ) => {
-    // 查找模式优先：回车 = 下一个匹配，Cmd/Ctrl+回车 = 替换当前匹配。
-    // 否则 findNext 会把焦点移到 textarea 并选中匹配词，用户再按回车会被浏览器
-    // 默认的「选中文本替换成换行」误删匹配词。
-    if (findOpen && event.key === "Enter") {
-      event.preventDefault();
-      if (event.metaKey || event.ctrlKey) {
-        if (showReplace) replaceCurrent();
-        else {
-          setShowReplace(true);
-          window.requestAnimationFrame(() => document.getElementById("replace-input")?.focus());
-        }
-      } else {
-        findNext();
-      }
-      return;
-    }
+    // Search controls own their Enter key. In the transcript body, ordinary
+    // Enter always starts a paragraph, including while search remains open.
     // 高亮选区，再按一次取消。快捷键组合由 lib/highlights 共享，
     // 因为 textarea 要先用同一个判断把草稿提交上去。
     if (isHighlightShortcut(event)) {

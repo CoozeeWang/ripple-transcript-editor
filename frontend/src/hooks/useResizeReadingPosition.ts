@@ -15,9 +15,12 @@ export function useResizeReadingPosition(panelRef: {current:HTMLElement|null}, c
       // Browser-generated scroll events during reflow must not replace the old anchor.
       if(panel.getBoundingClientRect().width!==width)return;
       const bounds=panel.getBoundingClientRect();
-      const segment=Array.from(panel.querySelectorAll<HTMLElement>(".segment, .comparison-deleted-segment")).find(node=>{
-        const rect=node.getBoundingClientRect();return rect.height>0 && rect.bottom>bounds.top && rect.top<bounds.bottom;
-      });
+      const segments=panel.querySelectorAll<HTMLElement>(".segment, .comparison-deleted-segment");
+      // Ordered vertical rows allow logarithmic geometry reads on long interviews.
+      let low=0,high=segments.length;
+      while(low<high){const middle=(low+high)>>>1;if(segments[middle].getBoundingClientRect().bottom<=bounds.top)low=middle+1;else high=middle;}
+      const candidate=segments[low],candidateRect=candidate?.getBoundingClientRect();
+      const segment=candidateRect&&candidateRect.height>0&&candidateRect.top<bounds.bottom?candidate:undefined;
       if(!segment){anchor=null;return;}
       const node=Array.from(segment.querySelectorAll<HTMLElement>(".rt-para, .segment-text-readonly p")).find(node=>{
         const rect=node.getBoundingClientRect();return rect.height>0 && rect.bottom>bounds.top && rect.top<bounds.bottom;

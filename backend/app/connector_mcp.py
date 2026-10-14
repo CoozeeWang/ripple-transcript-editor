@@ -1,8 +1,9 @@
 """Ripple MCP stdio adapter. Reads a credential file, never transcript files."""
 import argparse
+import os
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -13,14 +14,27 @@ from pydantic import BaseModel, ConfigDict
 
 INSTRUCTIONS = (
     "Ripple is the local editor; this connection only accesses its explicitly enabled current interview. "
-    "Call read_current_interview, then read pages and selected original/current examples as needed. "
+    "Call read_current_interview; its current_version is the continuation target. "
+    "Call read_editing_examples to discover comparison_versions. Only a sole original is selected automatically. "
+    "If selection_required, list version names and IDs and ask the user to choose; pass comparison_version_id. "
+    "Explain the actual before_version and after_version before inferring style. Never treat ambiguous pairs as differences. "
+    "Read pages and selected version comparison examples as needed. "
     "Never assume the continuation start: ask the user if missing or ambiguous. "
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
-    "Text edits always save a new version. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
-    "Infer preferences only from examples confirmed as human edits; original/current differences may include AI edits. "
+    "Before continuation ask the user, in their language, whether to save a new version or update the current editable version; reuse an already explicit choice and pass save_mode. Never silently choose a save mode. Read-only originals require a new version. Current-version edits retain the version name and support ordinary undo during the current editing session; use a new version for a persistent separate before/after comparison. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
+    "Infer preferences only from examples confirmed as human edits; selected-version differences may include AI edits. "
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
-    "Prepare a task, stage every in-scope segment including unchanged ones, publish once only after agreement. "
+    "For long editing use delivery_mode incremental. List continuations before starting again after interruption. "
+    "Read one continuation batch, then save actual changes plus unchanged_ids with its batch_id and agreed summary. "
+    "save_continuation_batch returns next_batch when ready, so reuse it instead of reading the same text again. Stage separately only when draft persistence is needed before saving. "
+    "Repeat short batches in the same target version until complete; each saved batch is visible in Ripple. "
+    "If manual edits pause a batch, preserve the user's work and ask before resuming/re-reading it. "
+    "Never claim unsaved work is saved. Atomic mode is limited to 48 segments; use incremental for longer scopes. "
     "Use status to recover uncertain outcomes; do not start another task to retry an unknown write. "
+    "A rejected stage batch is not accepted: report the exact tool error rather than claiming merges are unsupported. "
+    "merge_previous finds the nearest retained preceding in-scope segment after explicitly staged deletions, and still requires the same speaker. "
+    "Stage filler deletions first or together with the affected merge; deleting filler alone does not implicitly merge neighbors. "
+    "For merge_previous_requires_same_speaker, keep the remaining speaker boundary. "
     "Keep replies concise: do not list the full transcript or all changes unless requested. "
     "On completion report the saved version, scope and exceptions; complete differences appear in Ripple. "
     "For analysis read enough context, cite relevant real snippets and timestamps, separate quotations from inference; "
@@ -34,6 +48,7 @@ class Change(BaseModel):
     segment_id: str
     before: str
     after: str
+    action: Literal["edit", "delete", "merge_previous"] = "edit"
 
 
 class MarkHighlight(BaseModel):
@@ -95,32 +110,126 @@ def register_tools(mcp, call):
         return await call("read_page", {"snapshot": snapshot, "cursor": cursor, "max_chars": max_chars})
 
     @mcp.tool(structured_output=True, annotations=read)
-    async def read_editing_examples(snapshot: str, segment_ids: list[str]) -> dict[str, Any]:
-        """Read selected original/current pairs. Ask if these are human edits before learning style."""
-        return await call("read_examples", {"snapshot": snapshot, "segment_ids": segment_ids})
+    async def read_editing_examples(snapshot: str, segment_ids: list[str],
+                                   comparison_version_id: str | None = None) -> dict[str, Any]:
+        """Compare selected segments to an explicit version. Use segment_ids=[] to list candidates.
+
+        A sole original is automatic; otherwise ask the user to select comparison_version_id.
+        Returns named before/after version IDs, unchanged/changed pairs or mapping failure reasons.
+        Confirm human authorship (especially mixed/AI edits) before learning personal preferences.
+        """
+        args = {"snapshot": snapshot, "segment_ids": segment_ids}
+        if comparison_version_id is not None:
+            args["comparison_version_id"] = comparison_version_id
+        return await call("read_examples", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
     async def prepare_continuation(snapshot: str, rules: list[str], start_id: str | None = None,
                                    start_offset: int = 0, end_id: str | None = None,
-                                   end_offset: int | None = None) -> dict[str, Any]:
-        """Prepare an explicit scoped task. Missing start requires user clarification. No manuscript write."""
+                                   end_offset: int | None = None,
+                                   allowed_actions: list[Literal["edit", "delete", "merge_previous"]] | None = None,
+                                   save_mode: Literal["new_version", "current_version"] | None = None,
+                                   delivery_mode: Literal["atomic", "incremental"] = "atomic") -> dict[str, Any]:
+        """Prepare explicit scope and allowed_actions after agreement; default is text edit only.
+
+        Enable delete/merge_previous only when the user requests these structural edits.
+        Include every affected full segment, including the preceding merge target. No manuscript write.
+        Missing start requires clarification; existing versions are preserved.
+        First ask whether to save a new_version or update current_version, unless already explicit.
+        Without save_mode no task is created. current_version cannot modify a read-only original.
+        Use incremental for long work: persist a recoverable task and visibly save short batches.
+        Incremental mode requires full segments. Atomic mode keeps the legacy one-publication flow.
+        """
         args = {"snapshot": snapshot, "rules": rules, "start_offset": start_offset}
+        args["delivery_mode"] = delivery_mode
         if start_id is not None:
             args["start_id"] = start_id
         if end_id is not None:
             args["end_id"] = end_id
         if end_offset is not None:
             args["end_offset"] = end_offset
+        if allowed_actions is not None:
+            args["allowed_actions"] = allowed_actions
+        if save_mode is not None:
+            args["save_mode"] = save_mode
         return await call("prepare", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
-    async def stage_continuation(task_id: str, changes: list[Change]) -> dict[str, Any]:
-        """Stage up to 32 complete segment texts; include unchanged segments to prove full scope coverage."""
-        return await call("stage", {"task_id": task_id, "changes": [c.model_dump() for c in changes]})
+    async def stage_continuation(task_id: str, changes: list[Change] | None = None, unchanged_ids: list[str] | None = None,
+                                 batch_id: str | None = None) -> dict[str, Any]:
+        """Stage up to 32 changes, including unchanged segments to prove coverage.
 
-    @mcp.tool(structured_output=True, annotations=write)
+        action defaults to edit. delete requires after=""; merge_previous uses only this segment's
+        revised text, joined to the nearest retained preceding in-scope same-speaker segment
+        after staged deletions (do not repeat its text). Stage intervening deletions first or in
+        the same batch as the merge. Deletion alone never automatically merges neighbors.
+        before must match full source text. Structural edits require allowed_actions at preparation,
+        whole affected segments, and cannot delete all segments. Incremental tasks may use unchanged_ids
+        instead of repeating unchanged text. Staging saves a local draft, not the manuscript.
+        Incremental staging must pass the batch_id from read_continuation_batch, preventing stale batches.
+        """
+        args = {"task_id": task_id, "changes": [c.model_dump() for c in changes or []]}
+        if unchanged_ids is not None:
+            args["unchanged_ids"] = unchanged_ids
+        if batch_id is not None:
+            args["batch_id"] = batch_id
+        return await call("stage", args)
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def list_continuations() -> dict[str, Any]:
+        """Find durable tasks only in the current interview, with saved progress and target version IDs.
+
+        Use after a disconnected or new chat. Opening a target version remains a user action.
+        This does not start AI editing or access another interview.
+        """
+        return await call("tasks", {})
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def read_continuation_batch(task_id: str) -> dict[str, Any]:
+        """Read/persist the next small batch, up to 24 whole segments and about 6000 text characters.
+
+        Returns batch_id, current text, limited neighbouring context, staged changes and checked IDs.
+        Context is not permission to rewrite outside scope. Existing pending proposals are retained.
+        """
+        return await call("batch", {"task_id": task_id})
+
+    @mcp.tool(structured_output=True, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False))
+    async def save_continuation_batch(task_id: str, batch_id: str, confirmed_summary: str,
+                                      changes: list[Change] | None = None, unchanged_ids: list[str] | None = None) -> dict[str, Any]:
+        """Save a fully checked batch to the agreed manuscript and make it visible in Ripple.
+
+        Only the first batch creates a version in new_version mode; later batches update that same version.
+        Manual edits elsewhere are preserved. Overlapping text, speaker, mark or structure changes pause
+        the batch with proposals retained. After timeout check status before retrying an unknown write.
+        A repeated saved batch returns its result without writing again. Saved means file persistence.
+        Supply changes and unchanged_ids to stage and save in one call. Reuse returned next_batch
+        for the following save, reducing round trips. Separate stage_continuation remains supported.
+        """
+        args = {"task_id": task_id, "batch_id": batch_id, "confirmed_summary": confirmed_summary}
+        if changes is not None:
+            args["changes"] = [c.model_dump() for c in changes]
+        if unchanged_ids is not None:
+            args["unchanged_ids"] = unchanged_ids
+        return await call("checkpoint", args)
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def resume_continuation(task_id: str) -> dict[str, Any]:
+        """Resume a paused incremental task only after the user requests it.
+
+        If the pending batch conflicts, retain its proposals locally and re-read that batch from the
+        latest manuscript. Already-saved batches are not rewritten. Then read_continuation_batch.
+        """
+        return await call("resume", {"task_id": task_id})
+
+    @mcp.tool(structured_output=True, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False))
     async def publish_continuation(task_id: str, confirmed_summary: str) -> dict[str, Any]:
-        """Save staged text as ONE new local Ripple version after user agreement. Only the current interview is affected. Existing versions are never overwritten or deleted; no messages, audio, or data are sent to other services. Open comparison against the source version."""
+        """Save once using the explicit save_mode and source version in the agreed summary.
+
+        new_version preserves the source and opens comparison. current_version updates only the
+        chosen editable version, keeps its name/ID, and supports normal editor undo in this session.
+        Read-only originals and other versions stay unchanged. No audio or messages are sent.
+        After an uncertain save, check continuation_status before repeating the write.
+        """
         return await call("publish", {"task_id": task_id, "confirmed_summary": confirmed_summary})
 
     @mcp.tool(structured_output=True, annotations=read)
@@ -166,7 +275,7 @@ def register_tools(mcp, call):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://127.0.0.1:18701")
+    parser.add_argument("--url", default=os.environ.get("RIPPLE_CONNECTOR_URL", "http://127.0.0.1:18701"))
     parser.add_argument("--credential-file", type=Path, required=True)
     args = parser.parse_args()
     create_server(args.url, args.credential_file).run(transport="stdio")

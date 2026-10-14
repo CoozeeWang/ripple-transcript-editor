@@ -15,6 +15,7 @@ export interface ProcessNoticeProps {
   ratio: number;
   hint: string;
   raw: string;
+  onDismiss?: () => void;
   cancelTranscription: () => void;
   setTranscriptionDialogOpen: (open: boolean) => void;
   setSaveToast: (toast: { kind: "error" | "ok"; text: string }) => void;
@@ -66,7 +67,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
         <div className="transcription-card-actions">
           {running ? <button type="button" disabled={phase === "saving"} onClick={cancelTranscription}>{msg('ProcessNotice.m0652')}</button> : <>
             <button type="button" onClick={()=>setTranscriptionDialogOpen(true)}>{msg('ProcessNotice.m0653')}</button>
-            <CopyProblem operation="transcription" />
+            <CopyProblem operation="transcription" />{props.onDismiss&&<button type="button" onClick={props.onDismiss}>{msg('notice.dismiss')}</button>}
           </>}
         </div>
       </div>
@@ -99,7 +100,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
           <>
             <button type="button" onClick={() => setTranscriptionDialogOpen(true)}>
               {msg('ProcessNotice.m0655')}</button>
-            <CopyProblem operation="transcription" />
+            <CopyProblem operation="transcription" />{props.onDismiss&&<button type="button" onClick={props.onDismiss}>{msg('notice.dismiss')}</button>}
           </>
         )}
       </div>

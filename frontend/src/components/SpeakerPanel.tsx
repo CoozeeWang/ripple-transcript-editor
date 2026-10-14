@@ -1,6 +1,7 @@
 import { msg, useInterfaceLanguage } from '../i18n';
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
+import { SpeakerNameInput } from "./SpeakerNameInput";
 import { SpeakerColorPicker } from "./SpeakerColorPicker";
 import type { Speaker, Transcript } from "../types";
 import { SPEAKER_PALETTE, normalizeSpeakerName, speakerAccent, speakerColorStyle } from "../lib/speakers";
@@ -140,13 +141,11 @@ export function SpeakerPanel(props: SpeakerPanelProps) {
                 overflow: hidden 视觉截断 editing 状态长名字 inline 溢出；
                 readOnly 状态由 input text-overflow: ellipsis 负责加省略号。 */}
             <span className="speaker-card-name">
-              <input
+              <SpeakerNameInput
                 value={speaker.name}
-                aria-label={msg('SpeakerPanel.m1014', { v0: speaker.name })}
-                title={speaker.name}
+                label={msg('SpeakerPanel.m1014', { v0: speaker.name })}
                 readOnly={viewingOriginal}
-                onChange={(event) => {
-                  const newName = event.target.value;
+                onCommit={(newName) => {
                   mutateTranscript(
                     (current) => ({
                       ...current,

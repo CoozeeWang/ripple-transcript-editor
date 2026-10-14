@@ -1,0 +1,85 @@
+name: Windows internal installer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-internal-build.yml'
+      - 'desktop/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'mock-data/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-internal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      UV_PYTHON_PREFERENCE: only-managed
+      RIPPLE_BUILD_NUMBER: '50'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: astral-sh/setup-uv@v7
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          uv python install 3.12
+          uv sync --project backend --locked
+          npm --prefix frontend ci
+          if ($LASTEXITCODE) { throw 'Frontend dependencies failed' }
+          npm --prefix desktop ci
+          if ($LASTEXITCODE) { throw 'Desktop dependencies failed' }
+      - name: Backend tests on Windows NTFS
+        working-directory: backend
+        run: uv run --locked pytest -q
+      - name: Backend staging tests
+        run: uv run --project backend --locked python -m unittest discover -s desktop/tests -p 'test_*.py' -v
+      - name: Build frontend
+        run: npm --prefix frontend run build
+      - name: Stage and verify relocatable backend
+        shell: pwsh
+        run: |
+          uv sync --project backend --locked --no-dev
+          if ($LASTEXITCODE) { throw 'Production dependencies failed' }
+          uv run --project backend --no-sync python desktop/stage-backend.py --output desktop/dist/backend
+          if ($LASTEXITCODE) { throw 'Backend staging failed' }
+          $stage = (Resolve-Path desktop/dist/backend).Path
+          $env:PYTHONPATH = "$stage/backend;$stage/site-packages"
+          $env:RIPPLE_DATA_DIR = "$stage/data"
+          & "$stage/python/python.exe" "$stage/verify.py"
+          if ($LASTEXITCODE) { throw 'Relocated backend failed' }
+          Remove-Item "$stage/data" -Recurse -Force
+          Remove-Item "$stage/verify.py"
+          Remove-Item Env:PYTHONPATH
+          Remove-Item Env:RIPPLE_DATA_DIR
+          $env:RIPPLE_APP_VERSION = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $env:RIPPLE_SOURCE_COMMIT = git rev-parse HEAD
+          "RIPPLE_APP_VERSION=$env:RIPPLE_APP_VERSION" >> $env:GITHUB_ENV
+          "RIPPLE_SOURCE_COMMIT=$env:RIPPLE_SOURCE_COMMIT" >> $env:GITHUB_ENV
+          @{version=$env:RIPPLE_APP_VERSION;build=$env:RIPPLE_BUILD_NUMBER;commit=$env:RIPPLE_SOURCE_COMMIT;platform='windows';architecture='x64'} | ConvertTo-Json | Set-Content desktop/dist/build-info.json -Encoding utf8
+      - name: Rust tests on Windows
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked
+      - name: Build Windows x64 NSIS installer
+        working-directory: desktop/src-tauri
+        run: ../node_modules/.bin/tauri.cmd build --target x86_64-pc-windows-msvc --features custom-protocol --bundles nsis
+      - name: Install and verify packaged runtime
+        shell: pwsh
+        run: desktop/verify-windows-install.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ripple-Windows-x64-b${{ env.RIPPLE_BUILD_NUMBER }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/dist/windows-artifact/*
+          if-no-files-found: error
+          retention-days: 14

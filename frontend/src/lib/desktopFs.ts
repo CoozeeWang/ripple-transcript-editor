@@ -54,6 +54,7 @@ abstract class NativeHandle {
 
 class NativeWritable extends WritableStream<BufferSource | Blob | string> {
   private writerForDirect: WritableStreamDefaultWriter<BufferSource | Blob | string> | null = null;
+  private abortNative: () => Promise<void>;
   constructor(root: string, parts: string[]) {
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -93,6 +94,7 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
       },
       async abort() { if (session) await invoke('fs_abort_write', { id: await session }); },
     });
+    this.abortNative = async () => { if (session) await invoke('fs_abort_write', { id: await session }); };
   }
   async write(data: FileSystemWriteChunkType): Promise<void> {
     if (typeof data === 'object' && data !== null && 'data' in data) {
@@ -110,8 +112,8 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
   }
   async abort(reason?: unknown): Promise<void> {
     this.writerForDirect ??= this.getWriter();
-    await this.writerForDirect.abort(reason);
-    this.writerForDirect.releaseLock();
+    try { await this.writerForDirect.abort(reason); }
+    finally { await this.abortNative(); this.writerForDirect.releaseLock(); }
   }
   async seek(): Promise<void> { throw new Error('Unsupported in probe'); }
   async truncate(): Promise<void> { throw new Error('Unsupported in probe'); }
@@ -119,6 +121,14 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
 
 export class NativeFileHandle extends NativeHandle {
   readonly kind = 'file';
+  async checkMedia(expected: string): Promise<void> {
+    await invoke('fs_media_check', {root:this.root, parts:this.parts, expected});
+  }
+  async getPlaybackUrl(expected = ''): Promise<string> {
+    const path = await invoke<string>('fs_media_url', {root:this.root, parts:this.parts, expected});
+    const tauri = (window as unknown as {__TAURI__: {core: {convertFileSrc:(path:string)=>string}}}).__TAURI__;
+    return tauri.core.convertFileSrc(path);
+  }
   async getFile(): Promise<File> {
     if (!productionDesktop) {
       const bytes = await invoke<number[]>('fs_read', { root: this.root, parts: this.parts });
@@ -195,6 +205,14 @@ export async function chooseNativeFiles(multiple: boolean): Promise<FileSystemFi
   const selected = await invoke<SelectedPath[]>('pick_files', { multiple });
   for (const item of selected) selectedRoots.add(item.root);
   return selected.map(item => new NativeFileHandle(item.root, []) as FileSystemFileHandle);
+}
+
+/** The native dialog authorizes the destination; writes remain atomic. */
+export async function saveNativeBlob(blob: Blob, filename: string): Promise<void> {
+  const selected = await invoke<{root: string; name: string}>('pick_save_file', {filename});
+  const stream = await new NativeFileHandle(selected.root, child([], selected.name)).createWritable();
+  try { await stream.write(blob); await stream.close(); }
+  catch (error) { await stream.abort().catch(() => {}); throw error; }
 }
 
 /** Called only by the packaged desktop entry point. Browser pickers remain untouched. */

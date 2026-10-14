@@ -2,12 +2,13 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import App from "./App";
+import * as local from "./localStore";
 import type { UseFolderDeps } from "./hooks/useFolder";
 
-const fixture = vi.hoisted(() => ({ folder: null as UseFolderDeps | null, flush: vi.fn(async () => {}) }));
+const fixture = vi.hoisted(() => ({ folder: null as UseFolderDeps | null, directory: null as FileSystemDirectoryHandle | null, flush: vi.fn(async () => {}) }));
 vi.mock("./hooks/useFolder", () => ({ useFolder: (deps: UseFolderDeps) => {
   fixture.folder = deps;
-  return { dirHandle: null, dirHandleRef: { current: null }, startPref: { type: "last" },
+  return { dirHandle: null, dirHandleRef: { current: fixture.directory }, startPref: { type: "last" },
     preferredStartName: "", recentFolders: [], audioFiles: [], legacyEntries: [],
     migratingLegacy: false, selectedAudio: null, setSelectedAudio: vi.fn(),
     refreshAudioList: vi.fn(), loadAudio: vi.fn(), applyStartPref: vi.fn(),
@@ -34,7 +35,8 @@ function loadFresh(name: string) {
   act(() => { fixture.folder!.onLoaded({ url: "", manifest: null, edited: null }, name); });
 }
 
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+vi.mock("./localStore", async original=>({...await original<typeof local>(),readModelOriginal:vi.fn()}));
+afterEach(() => { fixture.directory=null;cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it("uses the complete recording filename for a new project's manuscript without changing the session", () => {
   const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
@@ -48,15 +50,15 @@ it("uses the complete recording filename for a new project's manuscript without 
   expect(session.title).toBe("第一场");
 });
 
-it("keeps a saved recording draft title and an existing manuscript title", () => {
+it("uses the recording combination name when opening both draft and manuscript versions", () => {
   const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
     recorded_at: null, created_at: "", updated_at: "" };
   const draft = { metadata: { ...session, title: "我改过的标题" }, speakers: [] };
   render(<App recordingLabel="录音_A.m4a" interviewMetadata={session} recordingDraft={draft} />);
   loadFresh("stored-a.m4a");
-  expect(screen.getByRole("heading", { name: "我改过的标题" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
   load("stored-a.m4a", "导入稿标题");
-  expect(screen.getByRole("heading", { name: "导入稿标题" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
 });
 
 it("does not inherit hidden speaker IDs from old global storage or a previous document", () => {
@@ -103,14 +105,14 @@ it('waits for successful persistence before leaving the editor for projects', as
   expect(leave).toHaveBeenCalledOnce();
 });
 
-it('opens an original with readable markers and disables their modification', () => {
+it('opens an original with readable markers and disables their modification', async () => {
   Object.assign(HTMLElement.prototype, { scrollIntoView: vi.fn() });
   render(<App />);
   const name='Synthetic.wav';
   const segment={id:'synthetic-segment',speaker_id:'synthetic-speaker',start:0,end:2,text:'Synthetic original text',annotations:[{id:'synthetic-note',text:'Synthetic original annotation',createdAt:'2026-01-01'}],highlights:[{id:'synthetic-highlight',start:0,end:9}]};
   const transcript={audio:{filename:name,duration:2},speakers:[{id:'synthetic-speaker',name:'Synthetic speaker'}],segments:[segment]};
   const metadata={id:'synthetic',title:'Synthetic original',participants:[],topics:[],notes:'',location:'',recorded_at:null,created_at:'',updated_at:''};
-  act(()=>fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:name,activeModelId:'m1',models:[{id:'m1',engine:'synthetic',createdAt:'2026-01-01',original:'original.json',activeEditId:'',edits:[]}]},edited:{kind:'te-edited',audio:name,metadata,transcript}},name));
+  await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:name,activeModelId:'m1',models:[{id:'m1',engine:'synthetic',createdAt:'2026-01-01',original:'original.json',activeEditId:'',edits:[]}]},edited:{kind:'te-edited',audio:name,metadata,transcript}},name);});
   expect(screen.getByText(/当前转录稿为只读/)).toBeTruthy();
   const card=screen.getByText('Synthetic original annotation').closest('.annotation-card')!;
   expect((card.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
@@ -118,4 +120,17 @@ it('opens an original with readable markers and disables their modification', ()
   expect(card.querySelector('textarea')).toBeNull();
   expect((screen.getByRole('textbox',{name:'给当前片段添加批注'}) as HTMLTextAreaElement).disabled).toBe(true);
   expect(segment.annotations[0].text).toBe('Synthetic original annotation');
+});
+
+it('opens the explicitly selected engine original instead of the last editing revision',async()=>{
+ fixture.directory={} as FileSystemDirectoryHandle;
+ const metadata={id:'synthetic',title:'Synthetic',participants:[],topics:[],notes:'',location:'',recorded_at:null,created_at:'',updated_at:''};
+ const transcript={audio:{filename:'synthetic.wav',duration:2},speakers:[{id:'speaker',name:'Synthetic'}],segments:[{id:'s1',speaker_id:'speaker',start:0,end:2,text:'Original synthetic words'}]};
+ vi.mocked(local.readModelOriginal).mockResolvedValue({transcript} as never);
+ Object.assign(HTMLElement.prototype,{scrollIntoView:vi.fn()});
+ render(<App initialOriginalModelId="engine"/>);
+ await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:'synthetic.wav',activeModelId:'engine',models:[{id:'engine',engine:'synthetic',createdAt:'2026-01-01',original:'original.json',activeEditId:'e2',edits:[{id:'e2',file:'e2.json',updated_at:''}]}]},edited:{kind:'te-edited',audio:'synthetic.wav',metadata,transcript:{...transcript,segments:[{...transcript.segments[0],text:'AI synthetic words'}]}}},'synthetic.wav');});
+ expect(local.readModelOriginal).toHaveBeenCalledWith(fixture.directory,'synthetic.wav','engine');
+ expect(screen.getByText('Original synthetic words')).toBeTruthy();expect(screen.queryByText('AI synthetic words')).toBeNull();
+ expect(screen.getByText(/当前转录稿为只读/)).toBeTruthy();
 });

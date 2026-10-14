@@ -5,6 +5,7 @@ import os
 import plistlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "package-mac.sh"
 
 
+@unittest.skipUnless(sys.platform == "darwin", "macOS packaging requires macOS shell tools")
 class PackageMacTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

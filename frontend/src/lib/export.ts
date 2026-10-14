@@ -3,6 +3,7 @@ import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
 import { sanitizeForFilename } from "../localStore";
 import { showPdfPrintPreview } from './pdfPrint';
+import { nativeDesktopAvailable, saveNativeBlob } from './desktopFs';
 
 // 导出（Markdown / TXT / Word / PDF / JSON）的格式化逻辑。
 // 除 downloadBlob 外全部是无副作用的纯函数，独立成模块以便单元测试。
@@ -108,7 +109,7 @@ export function renderMarkdown(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1314', { v0: m.notes }));
   lines.push("", "---", "");
   for (const seg of m.segments) {
-    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text}`);
+    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text.replace(/\r\n?/g, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/\n+/g, "\n\n")}`);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1315', { v0: a.date, v1: a.text }));
     }
@@ -127,7 +128,7 @@ export function renderTxt(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1321', { v0: m.notes }));
   lines.push("", "========", "");
   for (const seg of m.segments) {
-    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text}`);
+    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}`, seg.text);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1322', { v0: a.date, v1: a.text }));
     }
@@ -166,9 +167,9 @@ export function renderPdfHtml(m: ExportModel): string {
         .join("");
       return `<div class="seg"><span class="sp" style="color:${seg.speakerColor}">${escapeHtml(
         seg.speakerName,
-      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><span class="body">：${escapeHtml(
+      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><div class="body">${escapeHtml(
         seg.text,
-      )}</span></div>${anns}`;
+      )}</div></div>${anns}`;
     })
     .join("");
   return `<!doctype html>
@@ -183,7 +184,8 @@ export function renderPdfHtml(m: ExportModel): string {
   table.meta th { text-align: left; color:#888; font-weight: 600; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; }
   table.meta td { padding: 2px 0; }
   hr { border: none; border-top: 1px solid #e2e0d8; margin: 16px 0; }
-  .seg { margin: 10px 0 2px; }
+  .seg { margin: 16px 0 4px; }
+  .body, .anno-text { white-space: pre-wrap; }
   .sp { font-weight: 700; }
   .ts { color:#999; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 0 4px; }
   .anno { margin: 2px 0 6px 0; padding: 6px 10px; background:#fff8e6; border-left: 3px solid #e0b84a; border-radius: 3px; font-size: 13.5px; }
@@ -231,12 +233,13 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
 
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
-    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]：` : "：", color: "999999" });
-    const bodyRun = new TextRun({ text: seg.text });
+    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]` : "", color: "999999" });
+    const bodyRuns = seg.text.split(/\r?\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined }));
 
-    const runs: unknown[] = [speakerRun, tsRun];
+    paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
+    const runs: unknown[] = [];
     if (seg.annotations.length === 0) {
-      runs.push(bodyRun);
+      runs.push(...bodyRuns);
     } else {
       const ids: number[] = [];
       seg.annotations.forEach((a) => {
@@ -253,10 +256,10 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
       const startRuns = ids.map((id) => new CommentRangeStart(id));
       const endRuns = ids.map((id) => new CommentRangeEnd(id)).reverse();
       const refRuns = ids.map((id) => new CommentReference(id));
-      runs.push(...startRuns, bodyRun, ...endRuns, ...refRuns);
+      runs.push(...startRuns, ...bodyRuns, ...endRuns, ...refRuns);
     }
     paragraphChildren.push(
-      new Paragraph({ spacing: { after: 120 }, children: runs as never }),
+      new Paragraph({ spacing: { after: 160, line: 320 }, children: runs as never }),
     );
   });
 
@@ -268,7 +271,8 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   return Packer.toBlob(doc);
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
+export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+  if (nativeDesktopAvailable()) { await saveNativeBlob(blob, filename); return; }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -297,6 +301,7 @@ export function buildJsonPayload(
   });
   const base = { ...transcript, segments } as Record<string, unknown>;
   delete base.comparisonReviews;
+  delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {
     return { engine, ...base };
   }
@@ -319,7 +324,7 @@ export async function exportTranscript(
   const model = buildExportModel(transcript, metadata);
   const stem = exportFilenameStem(model.title, versionLabel);
   if (format !== 'pdf') {
-    downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
+    await downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
     return;
   }
   if (format === "pdf") {

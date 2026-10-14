@@ -1,5 +1,6 @@
 """Synthetic bridge tests: no real paths, interviews, or credentials."""
 import asyncio
+import os
 import time
 
 import pytest
@@ -70,7 +71,8 @@ def test_owner_only_setup_escapes_paths_and_never_puts_keys_in_yaml(tmp_path):
     profile = (root / 'connector/tunnel.yaml').read_text()
     assert key not in profile
     assert 'file:' in profile and 'app.connector_mcp' in profile
-    assert (root / 'connector/runtime.key').stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert (root / 'connector/runtime.key').stat().st_mode & 0o777 == 0o600
     save_setup(root, resources, {'client_path': str(client), 'tunnel_id': 'tunnel_synthetic', 'runtime_key': ''})
     assert (root / 'connector/runtime.key').read_text() == key
 
@@ -90,14 +92,27 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     key_file.write_text('synthetic-not-real-credential-' * 3)
     server = create_server('http://127.0.0.1:18701', key_file)
     tools = asyncio.run(server.list_tools())
-    assert len(tools) == 13
+    assert len(tools) == 17
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
-    assert not publish.annotations.destructive_hint
+    # It can now update the chosen editable version; clients must see that write capability.
+    assert publish.annotations.destructive_hint
+    prepare = next(tool for tool in tools if tool.name == 'prepare_continuation')
+    assert 'save_mode' in prepare.input_schema['properties']
+    assert 'delivery_mode' in prepare.input_schema['properties']
+    assert {'list_continuations','read_continuation_batch','save_continuation_batch','resume_continuation'} <= {t.name for t in tools}
+    checkpoint = next(t for t in tools if t.name == 'save_continuation_batch')
+    assert checkpoint.annotations.idempotent_hint and checkpoint.annotations.destructive_hint
     read = next(tool for tool in tools if tool.name == 'read_current_interview')
     assert read.annotations.read_only_hint
-    assert 'save_mode' not in next(tool for tool in tools if tool.name == 'prepare_continuation').input_schema['properties']
+    # Optional at the schema boundary so omission can return a user clarification, not a write.
+    assert 'save_mode' not in prepare.input_schema.get('required', [])
+    examples = next(tool for tool in tools if tool.name == 'read_editing_examples')
+    assert 'comparison_version_id' in examples.input_schema['properties']
+    assert 'comparison_version_id' not in examples.input_schema.get('required', [])
+    assert examples.annotations.read_only_hint
+    assert 'sole original' in examples.description
 
 
 def test_disabling_clears_replay_results_and_new_window_cannot_replay_old_reads():
@@ -115,8 +130,9 @@ def test_disabling_clears_replay_results_and_new_window_cannot_replay_old_reads(
 
 
 def test_mark_schema_and_current_version_instructions(tmp_path):
-    from app.connector_mcp import create_server, INSTRUCTIONS, Mark
     from pydantic import ValidationError
+
+    from app.connector_mcp import INSTRUCTIONS, Mark, create_server
     key = tmp_path / 'credential'
     key.write_text('x' * 48)
     tools = asyncio.run(create_server('http://127.0.0.1:18701', key).list_tools())
@@ -126,3 +142,21 @@ def test_mark_schema_and_current_version_instructions(tmp_path):
     assert 'current editable version' in INSTRUCTIONS
     with pytest.raises(ValidationError):
         Mark(segment_id='a', before='Synthetic', after='forbidden')
+
+
+def test_structural_continuation_schema_and_backward_compatible_default(tmp_path):
+    from pydantic import ValidationError
+
+    from app.connector_mcp import Change, create_server
+    key = tmp_path / 'synthetic.key'
+    key.write_text('x' * 48)
+    tools = asyncio.run(create_server('http://127.0.0.1:18702', key).list_tools())
+    prepare = next(t for t in tools if t.name == 'prepare_continuation')
+    stage = next(t for t in tools if t.name == 'stage_continuation')
+    assert 'allowed_actions' in prepare.input_schema['properties']
+    assert 'allowed_actions' not in prepare.input_schema.get('required', [])
+    assert set(stage.input_schema['$defs']['Change']['properties']['action']['enum']) == {'edit', 'delete', 'merge_previous'}
+    assert Change(segment_id='s', before='Synthetic', after='Synthetic').action == 'edit'
+    assert Change(segment_id='s', before='Synthetic', after='', action='delete').action == 'delete'
+    with pytest.raises(ValidationError):
+        Change(segment_id='s', before='Synthetic', after='', action='delete_file')

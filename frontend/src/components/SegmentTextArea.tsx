@@ -145,7 +145,12 @@ export function SegmentTextArea({
         onKeyDown(event as unknown as ReactKeyboardEvent<ParagraphEditorElement>);
         if (!event.defaultPrevented && event.key === "Enter") {
           event.preventDefault();
-          document.execCommand("insertParagraph");
+          const editor=ref.current!;
+          const start=editor.selectionStart,end=editor.selectionEnd;
+          const text=editor.value;
+          recordDraft(text.slice(0,start)+"\n"+text.slice(end),{start,end});
+          paint();editor.setSelectionRange(start+1,start+1);
+          window.dispatchEvent(new Event("te:draft-dirty"));scheduleCommit();
         }
         if ((event.metaKey || event.ctrlKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
           event.preventDefault();
@@ -304,7 +309,17 @@ export function SegmentTextArea({
       suppressContentEditableWarning
       onCompositionStart={startComposition}
       onCompositionEnd={endComposition}
-      onFocus={onFocus}
+      onFocus={()=>{
+        onFocus();
+        requestAnimationFrame(()=>{
+          const editor=ref.current,selection=window.getSelection();
+          if(editor&&document.activeElement===editor&&selection?.isCollapsed&&selection.anchorNode&&editor.contains(selection.anchorNode)&&selection.anchorNode.nodeType!==Node.TEXT_NODE){
+            // WebKit can place its initial caret on a paragraph container,
+            // giving it the full line-box height. Use the equivalent text point.
+            const offset=editor.selectionStart;editor.setSelectionRange(offset,offset);
+          }
+        });
+      }}
       onBlur={(event) => {
         commit();
         onBlur(event as unknown as ReactFocusEvent<ParagraphEditorElement>);

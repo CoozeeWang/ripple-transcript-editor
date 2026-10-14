@@ -191,7 +191,14 @@ async def test_authenticated_mcp_tools_route_only_to_paired_device(tmp_path):
         assert (await client.post("/mcp", json=body)).status_code == 401
         listed = await client.post("/mcp", json=body, headers=headers)
         assert listed.status_code == 200, listed.text
-        assert len(listed.json()["result"]["tools"]) == 13
+        tools = listed.json()["result"]["tools"]
+        assert len(tools) == 17
+        assert {
+            "list_continuations",
+            "read_continuation_batch",
+            "save_continuation_batch",
+            "resume_continuation",
+        } <= {tool["name"] for tool in tools}
         app.state.relay.seen[device["device_id"]] = __import__("time").monotonic()
         pending = asyncio.create_task(
             client.post(

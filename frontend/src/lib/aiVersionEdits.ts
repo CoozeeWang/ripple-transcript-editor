@@ -2,7 +2,7 @@ import { mergeSegmentWithNext } from './segmentOps';
 import type { Transcript } from '../types';
 import { reanchorCharacters, reanchorRanges } from './transcriptOps';
 
-/** A proposed text change that is published as a new, comparable version. */
+/** A scoped proposal applied at the agreed manuscript save boundary. */
 export interface AISuggestion {
   action?: 'edit' | 'delete' | 'merge_previous';
   id: string;
@@ -11,7 +11,7 @@ export interface AISuggestion {
 }
 
 export function applyAISuggestions(current: Transcript, baseline: Transcript, suggestions: AISuggestion[]): Transcript {
-  if (JSON.stringify(current) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+  if (current !== baseline && JSON.stringify(current) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
   const changes = new Map(suggestions.map(suggestion => [suggestion.id, suggestion]));
   if (changes.size !== suggestions.length || suggestions.some(suggestion => !current.segments.some(segment => segment.id === suggestion.id) ||
     !['edit', 'delete', 'merge_previous'].includes(suggestion.action ?? 'edit') ||
@@ -28,12 +28,17 @@ export function applyAISuggestions(current: Transcript, baseline: Transcript, su
     const suggestion = changes.get(original.id);
     if (suggestion?.action === 'delete') segments = segments.filter(segment => segment.id !== original.id);
     if (suggestion?.action === 'merge_previous') {
-      const previous = current.segments[index - 1];
+      let previousIndex = index - 1;
+      while (previousIndex >= 0 && changes.get(current.segments[previousIndex].id)?.action === 'delete') previousIndex--;
+      const previous = current.segments[previousIndex];
       const target = segments.findIndex(segment => segment.id === original.id);
-      if (!previous || previous.speaker_id !== original.speaker_id || changes.get(previous.id)?.action === 'delete' || target < 1 || segments[target - 1].speaker_id !== original.speaker_id) throw new Error('invalid_change');
+      if (!previous) throw new Error('merge_previous_has_no_preceding_segment');
+      if (previous.speaker_id !== original.speaker_id) throw new Error('merge_previous_requires_same_speaker');
+      if (target < 1 || segments[target - 1].speaker_id !== original.speaker_id) throw new Error('merge_previous_target_unavailable');
       segments = mergeSegmentWithNext(segments, segments[target - 1].id)!;
     }
   }
+  if (!segments.length) throw new Error('cannot_delete_all_segments');
   return { ...current, segments, lastEditedSegmentId: segments.find(segment => changes.has(segment.id))?.id ?? segments[0]?.id };
 }
 

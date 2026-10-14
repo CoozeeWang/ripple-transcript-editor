@@ -319,7 +319,7 @@ it('returns home through the brand and confirms discarding an unconfirmed sessio
   fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
   expect(screen.queryByRole('button', { name: '打开音频' })).toBeNull();
   expect(screen.queryByRole('button', { name: '设置' })).toBeNull();
-  expect(screen.getByRole('combobox', { name: '界面语言' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '界面语言' })).toBeTruthy();
   confirm.mockRestore();
 });
 
@@ -429,7 +429,7 @@ it('lets first-time users select English from welcome without opening or writing
   const { setInterfaceLanguage } = await import('../i18n');
   render(<ProjectWorkspace />);
   try {
-    fireEvent.change(screen.getByRole('combobox', {name:'界面语言'}), {target:{value:'en'}});
+    fireEvent.click(screen.getByRole('button', {name:'界面语言'}));fireEvent.click(screen.getByRole('menuitemradio', {name:'English'}));
     expect(await screen.findByRole('button',{name:'New project'})).toBeTruthy();
     expect(store.openProject).not.toHaveBeenCalled();
     expect(store.createProject).not.toHaveBeenCalled();

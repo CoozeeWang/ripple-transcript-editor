@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from .private_files import protect_private_fd
 from .runtime_paths import CODE_ROOT, DATA_ROOT
 
 router = APIRouter(prefix="/api/connector", tags=["connector"])
@@ -31,8 +32,8 @@ def _key(path: Path, replace: bool = False) -> str:
         return value
     value = secrets.token_urlsafe(48)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | flags, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        protect_private_fd(f.fileno())
         f.write(value)
     return value
 
@@ -68,16 +69,22 @@ class Broker:
 
     def authorize(self, authorization: str | None, role: str):
         self.initialize()
-        expected = self.window_key if role == "window" else self.client_key
-        if role != "window":
-            from .connector_local import selected_client
-            try:
-                selected = selected_client(DATA_ROOT)
-                if selected != "chatgpt":
-                    expected = (DATA_ROOT / "connector" / f"{selected}.key").read_text().strip()
-            except (OSError, ValueError, KeyError):
-                raise HTTPException(503, "Connector configuration unavailable") from None
-        if not secrets.compare_digest(authorization or "", f"Bearer {expected}"):
+        if role == "window":
+            expected = [self.window_key]
+        else:
+            # Configuration selection is a view preference, not a connection gate.
+            # Each owner-local client retains its own credential and shares the
+            # same consent lease and snapshot/concurrent-publish protection.
+            expected = [self.client_key]
+            for client in ("claude", "workbuddy"):
+                path = DATA_ROOT / "connector" / f"{client}.key"
+                try:
+                    if path.is_file() and not path.is_symlink():
+                        expected.append(path.read_text().strip())
+                except OSError:
+                    continue
+        matches = [secrets.compare_digest(authorization or "", f"Bearer {key}") for key in expected if key]
+        if not any(matches):
             raise HTTPException(401, "Connector authorization required")
 
     def disable(self, session: str):
@@ -160,7 +167,7 @@ class Reply(StrictModel):
 
 class Call(StrictModel):
     request_id: str = Field(min_length=8, max_length=100)
-    operation: str = Field(pattern=r"^(read_current|read_page|read_examples|prepare|stage|publish|cancel|status|prepare_marks|stage_marks|apply_marks|marks_status|cancel_marks)$")
+    operation: str = Field(pattern=r"^(read_current|read_page|read_examples|prepare|stage|publish|cancel|status|tasks|batch|checkpoint|pause|resume|prepare_marks|stage_marks|apply_marks|marks_status|cancel_marks)$")
     arguments: dict = Field(default_factory=dict)
 
 

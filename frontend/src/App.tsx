@@ -1,7 +1,10 @@
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
-import { originalVersionLabel } from './lib/transcriptLabels';
+import { applyAISuggestions } from "./lib/aiVersionEdits";
+import { applyContinuationBatch,checkContinuationGuard } from './lib/continuationBatch';
+import {ContinuationProgress} from './components/ContinuationProgress';
+import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
 import { CopyProblem } from "./components/CopyProblem";
@@ -45,12 +48,13 @@ import { usePersistence } from "./hooks/usePersistence";
 import { useEditor } from "./hooks/useEditor";
 import { usePlayback } from "./hooks/usePlayback";
 import {
-  readConnectorRules, writeConnectorRules,
+  readConnectorRules, writeConnectorRules, readContinuationTasks, writeContinuationTask,
   AUDIO_EXT_LABEL,
   defaultEditLabel,
   defaultMetadata,
   readAudioUrl,
   renameAudio,
+  readModelOriginal,
   readManifest,
   sanitizeForFilename,
   stemOf,
@@ -78,7 +82,6 @@ import { SpeakerPanel } from "./components/SpeakerPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { DeleteDialog, MatchDialog, MergeDialog, NamingModal } from "./components/Dialogs";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { readModelOriginal } from "./localStore";
 
 type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 
@@ -86,6 +89,7 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 
 export interface ProjectEditorProps {
   projectDirectory?: FileSystemDirectoryHandle;
+  initialOriginalModelId?: string;
   projectLabel?: string;
   interviewTitle?: string;
   interviewMetadata?: InterviewMetadata;
@@ -100,6 +104,7 @@ export interface ProjectEditorProps {
 }
 function App(projectProps: ProjectEditorProps = {}) {
   useInterfaceLanguage();
+  const initialVersionApplied = useRef(false);
   // 平台检测——tooltip 与按钮文案里显示对应的快捷键（避免 Mac 用户看到 Ctrl+O）
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform);
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
@@ -157,7 +162,13 @@ function App(projectProps: ProjectEditorProps = {}) {
     setSettingsOpen(true);
   };
   useDismissable(recentMenuRef, recentMenuOpen, () => setRecentMenuOpen(false));
-  const [metadata, setMetadata] = useState<InterviewMetadata | null>(null);
+  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
+  const setMetadata = useCallback((value: React.SetStateAction<InterviewMetadata | null>) => {
+    setMetadataState(current => {
+      const next = typeof value === 'function' ? value(current) : value;
+      return next && typeof value !== 'function' && projectProps.recordingLabel ? {...next, title: projectProps.recordingLabel} : next;
+    });
+  }, [projectProps.recordingLabel]);
 const [hasLoadedTranscript, setHasLoadedTranscript] = useState(false);
 // 当前是否在查看引擎原始稿（只读模式，所有编辑控件禁用）。
 const [viewingOriginal, setViewingOriginal] = useState(false);
@@ -294,7 +305,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setLoadError("");
       initialLoadRef.current = true;
     },
-    onLoaded: ({ url, manifest, edited }, name) => {
+    onLoaded: async ({ url, manifest, edited }, name) => {
+      let openingOriginal = false;
+      if (manifest && edited && !initialVersionApplied.current && projectProps.initialOriginalModelId && dirHandleRef.current) {
+        const original = await readModelOriginal(dirHandleRef.current, name, projectProps.initialOriginalModelId);
+        if (!original) throw new Error(msg('useVersions.m1196'));
+        edited = { ...edited, transcript: original.transcript };
+        openingOriginal = true;
+        initialVersionApplied.current = true;
+      }
       setAudioUrl(url);
       setAudioFilename(name);
       setCurrentTime(0);
@@ -323,7 +342,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setOpeningPosition({ id: openingId });
       setHasLoadedTranscript(true);
       const loadedModel = manifest.models.find(m => m.id === manifest.activeModelId) ?? manifest.models[0];
-      setViewingOriginal(Boolean(loadedModel?.designatedOriginal) || (!loadedModel?.edits.length && Boolean(loadedModel?.original)));
+      setViewingOriginal(openingOriginal || Boolean(loadedModel?.designatedOriginal) || (!loadedModel?.edits.length && Boolean(loadedModel?.original)));
       setProcessStatus("done");
       setProcessMessage(msg('App.m0002', { v0: edited.transcript.segments.length }));
       setSaveStatus("saved");
@@ -532,12 +551,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   useLayoutEffect(() => { beforeChangeRef.current = flushPendingSave; }, [flushPendingSave]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
-  const connectorContext = useRef({ dir: dirHandle, context: aiContext, generation: 0 });
+  const connectorContext = useRef({ dir: dirHandle, audio:selectedAudio, context: aiContext, generation: 0 });
   useLayoutEffect(() => {
     if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
-      connectorContext.current = { dir: dirHandle, context: aiContext, generation: connectorContext.current.generation + 1 };
+      connectorContext.current = { dir: dirHandle, audio:selectedAudio, context: aiContext, generation: connectorContext.current.generation + 1 };
     }
-  }, [dirHandle, aiContext]);
+  }, [dirHandle, aiContext,selectedAudio]);
   const connector = useAIConnector({
     current: async () => {
       const identity = connectorContext.current.generation;
@@ -547,12 +566,21 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if (connectorContext.current.generation !== identity || dirHandleRef.current !== dir || !latestExport.current.transcript) throw new Error('interview_changed');
       const rules = await readConnectorRules(dir, audio);
       if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      const manifest = await readManifest(dir, audio);
+      if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      const versionId = `${model.id}:${viewingOriginal || model.designatedOriginal ? 'original' : model.activeEditId}`;
+      const version = connectorVersions(manifest?.models ?? []).find(v => v.id === versionId);
+      if (!version) throw new Error('current_version_unavailable');
       return { identity: String(identity), editable: !viewingOriginal, transcript: latestExport.current.transcript, rules,
+        continuations: {scope:String(identity),read:async()=>readContinuationTasks(dir,audio),write:async task=>{
+          if(dirHandleRef.current!==dir || connectorContext.current.audio!==audio)throw Error('interview_changed');
+          await writeContinuationTask(dir,audio,task);
+        }},
         remember: async confirmedRules => writeConnectorRules(dir, audio, confirmedRules),
         title: latestExport.current.metadata?.title ?? '',
-        label: viewingOriginal ? originalVersionLabel(model) : model.edits.find(e => e.id === model.activeEditId)?.label ?? 'v1',
+        label: version.name, version,
         names: models.flatMap(m => m.edits.map((e, i) => e.label ?? defaultEditLabel(i))),
-        original: async () => (await readModelOriginal(dir, audio, model.id))?.transcript ?? null };
+        references: async () => connectorReferences(dir, audio, (await readManifest(dir, audio))?.models ?? []) };
     },
     applyMarks: async (baseline, marks, taskId) => {
       if (viewingOriginal || versionBusy || !activeModel?.activeEditId || JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
@@ -576,15 +604,43 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       }
       return { saved: true, version, version_id: versionId, added_annotations: result.added_annotations, added_highlights: result.added_highlights };
     },
-    publish: async (baseline, suggestions, name) => {
-      const sourceModel = activeModelId, sourceEdit = viewingOriginal ? 'original' : activeModel?.activeEditId;
+    publish: async (baseline, suggestions, name, target) => {
+      const sourceModel = activeModelId, sourceEdit = viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId;
       if (!sourceModel || !sourceEdit) throw new Error('interview_changed');
-      const result = await createAIEdit(baseline, suggestions, name);
+      if (String(connectorContext.current.generation) !== target.identity || target.source_version.model_id !== sourceModel ||
+        target.source_version.edit_id !== sourceEdit) throw new Error('source_changed_read_current_again');
+      if (target.save_mode === 'current_version') {
+        if (viewingOriginal || activeModel?.designatedOriginal || target.source_version.kind === 'original') throw new Error('current_version_read_only_create_new_version');
+        if (versionBusy || !target.checkpoint && JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+        const checkpoint=target.checkpoint ? {...target.checkpoint,receipt:{...target.checkpoint.receipt,version_id:target.source_version.id}} : undefined;
+        const atomicTranscript=checkpoint?null:applyAISuggestions(baseline,baseline,suggestions);
+        if(checkpoint&&(!latestExport.current.transcript||!checkContinuationGuard(latestExport.current.transcript,checkpoint.guard)))throw Error('batch_conflict_manual_changes_preserved');
+        let applied = false;
+        flushSync(() => {
+          mutateTranscript(current => {
+            if(checkpoint&&!checkContinuationGuard(current,checkpoint.guard))return current;
+            if (!checkpoint && JSON.stringify(current) !== JSON.stringify(baseline)) return current;
+            const next=checkpoint ? applyContinuationBatch(current,suggestions,checkpoint) : atomicTranscript!;
+            applied = true; return next;
+          }, `ai-continuation:${checkpoint?.receipt.batch_id??target.task_id}`);
+          if(atomicTranscript)setSelectedSegmentId(atomicTranscript.lastEditedSegmentId??atomicTranscript.segments[0]?.id??'');
+        });
+        if (!applied) throw new Error('source_changed_read_current_again');
+        try { await flushPendingSave(); }
+        catch { throw new Error('current_version_save_failed_changes_retained_in_ripple'); }
+        if (String(connectorContext.current.generation) === target.identity) {
+          setProcessStatus('done'); setProcessMessage(msg('useVersions.aiCurrentSaved'));
+        }
+        return { version: target.source_version.name, version_id: sourceEdit, result_version: target.source_version,
+          comparison_requested: false, undo_available: true };
+      }
+      const result = await createAIEdit(baseline, suggestions, name, target.checkpoint);
       if (!result) throw new Error('save_result_unavailable_check_versions');
       comparison.activate(result.model.id, result.edit.id, `${sourceModel}:${sourceEdit}`);
-      return { version: result.edit.label, version_id: result.edit.id, comparison_requested: true };
+      return { version: result.edit.label, version_id: result.edit.id,
+        result_version: {id:`${result.model.id}:${result.edit.id}`,model_id:result.model.id,edit_id:result.edit.id,name:result.edit.label,kind:'edit'}, comparison_requested: true };
     },
-  });
+  }, `${aiContext}:${hasLoadedTranscript}:${versionBusy}`);
 
   // 设置弹层：必须在「空状态提前 return」与「完整 UI return」两处都渲染，
   // 否则空状态下点击「偏好设置」会因提前 return 而永不显示。
@@ -892,7 +948,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           ? msg('App.m0026', { v0: Math.round(transcribeRatio * 100), v1: formatTime(transcribeElapsed) })
           : msg('App.m0027', { v0: activeProviderName || msg('App.m0028'), v1: formatTime(transcribeElapsed) });
 
-  const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0}
+  const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0} onDismiss={()=>{setProcessStatus("ready");setProcessMessage("");}}
             text={processNoticeText} status={activeStatus} phase={transcribePhase} ratio={transcribeRatio}
             engine={transcribeJob?.engine ?? activeProviderName} elapsed={transcribeElapsed}
             hint={transcribeHint} raw={transcribeRaw} cancelTranscription={cancelTranscription}
@@ -984,7 +1040,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /></div>}
+      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setLoadError('')}>×</button></div>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -1040,6 +1096,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
         {!preparingTranscript && transcriptionNotice}
         </div>
+        <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>
         <section className="transcript-panel" ref={transcriptPanelRef} aria-label={msg('App.m0045')}>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
@@ -1115,7 +1172,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           <div className={`save-toast save-toast--${saveToast.kind}`} role="status">
             <span className="save-toast__dot" />
             {uiMessage(saveToast.text)}
-            {saveToast.kind === "error" && <CopyProblem operation="save" />}
+            {saveToast.kind === "error" && <><CopyProblem operation="save"/><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setSaveToast(null)}>×</button></>}
           </div>
         )}
 

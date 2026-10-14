@@ -1,10 +1,14 @@
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+
 #[cfg(all(not(debug_assertions), not(feature = "custom-protocol")))]
 compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
 
 mod project_icon;
+mod backend_runtime;
 mod native_menu;
 mod grants;
 mod pdf_print;
+mod media;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -19,6 +23,9 @@ use std::time::Duration;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
+#[cfg(debug_assertions)]
+const PORT: u16 = 18702;
+#[cfg(not(debug_assertions))]
 const PORT: u16 = 18701;
 static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -75,6 +82,20 @@ async fn pick_files(app: tauri::AppHandle, state: tauri::State<'_, Grants>, mult
     }).await.map_err(|e| e.to_string())?;
     if selected.is_empty() { return Err("selection_cancelled".into()); }
     selected.into_iter().map(|file| add_grant(&state, file.into_path().map_err(|e| e.to_string())?, false, false)).collect()
+}
+
+#[derive(Serialize)]
+struct SavePath { root: String, name: String }
+
+#[tauri::command]
+async fn pick_save_file(app: tauri::AppHandle, state: tauri::State<'_, Grants>, filename: String) -> Result<SavePath, String> {
+    let selected = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_file_name(filename).blocking_save_file())
+        .await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
+    let path = selected.into_path().map_err(|e| e.to_string())?;
+    let name = path.file_name().and_then(|n| n.to_str()).ok_or("invalid_save_name")?.to_string();
+    let parent = path.parent().ok_or("invalid_save_path")?;
+    let grant = add_grant(&state, parent.to_path_buf(), true, true)?;
+    Ok(SavePath { root: grant.root, name })
 }
 
 #[tauri::command]
@@ -158,6 +179,21 @@ fn fs_size(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) ->
 }
 
 #[tauri::command]
+async fn fs_media_check(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, expected: String) -> Result<(), String> {
+    let path = grant_path(&state, &root, &parts, false)?;
+    tauri::async_runtime::spawn_blocking(move || media::check(&path, &expected)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn fs_media_url(app: tauri::AppHandle, state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, expected: String) -> Result<String, String> {
+    let path = grant_path(&state, &root, &parts, false)?;
+    let checked = path.clone();
+    tauri::async_runtime::spawn_blocking(move || media::check(&checked, &expected)).await.map_err(|e| e.to_string())??;
+    app.asset_protocol_scope().allow_file(&path).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
 fn fs_read_chunk(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, offset: u64, length: usize) -> Result<Vec<u8>, String> {
     if length > 4 * 1024 * 1024 { return Err("读取块过大".into()); }
     let path = grant_path(&state, &root, &parts, false)?;
@@ -172,7 +208,7 @@ fn fs_read_chunk(state: tauri::State<'_, Grants>, root: String, parts: Vec<Strin
 #[tauri::command]
 fn fs_begin_write(grants: tauri::State<'_, Grants>, writes: tauri::State<'_, Writes>, root: String, parts: Vec<String>) -> Result<u64, String> {
     let target = grant_path(&grants, &root, &parts, true)?;
-    if !target.is_file() { return Err("目标文件不存在".into()); }
+    if target.exists() && !target.is_file() { return Err("目标不是文件".into()); }
     let parent = target.parent().ok_or("目标缺少父文件夹")?;
     let temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
     let id = WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -284,7 +320,7 @@ fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<C
     if !matches!(client, "chatgpt" | "claude" | "workbuddy") { return Err("invalid_client".into()); }
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let mut command = Command::new(resources.join("python/bin/python3.12"));
+    let mut command = backend_runtime::background_command(backend_runtime::python(&resources));
     command.env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.connector_local", action, "--client", client, "--resources"]).arg(resources)
         .arg("--data").arg(app_data(&app).map_err(|_| "data_unavailable")?)
@@ -293,8 +329,7 @@ fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<C
 }
 
 #[tauri::command]
-async fn connector_client_select(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>, client: String) -> Result<(), String> {
-    connector_tunnel_stop(state);
+async fn connector_client_select(app: tauri::AppHandle, client: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         if local_command(&app, "select", &client)?.status().map_err(|_| "client_save_failed")?.success() { Ok(()) }
         else { Err("client_save_failed".into()) }
@@ -378,6 +413,45 @@ fn connector_open_platform() -> Result<(), String> {
     match status { Ok(result) if result.success() => Ok(()), _ => Err("open_platform_failed".into()) }
 }
 
+/// Read the host architecture, including an Intel build running under Rosetta.
+#[tauri::command]
+fn connector_client_platform() -> serde_json::Value {
+    let mut arch = std::env::consts::ARCH.to_string();
+    #[cfg(target_os = "macos")]
+    if arch != "aarch64" {
+        arch = match Command::new("/usr/sbin/sysctl").args(["-n", "hw.optional.arm64"]).output() {
+            Ok(output) if output.status.success() && output.stdout == b"1\n" => "aarch64".into(),
+            Ok(output) if output.status.success() && output.stdout == b"0\n" => "x86_64".into(),
+            // Do not recommend Intel when the physical chip could not be identified.
+            _ => "unknown".into(),
+        };
+    }
+    #[cfg(target_os = "windows")]
+    if std::env::var("PROCESSOR_ARCHITEW6432").or_else(|_| std::env::var("PROCESSOR_ARCHITECTURE"))
+        .map(|value| value.eq_ignore_ascii_case("ARM64")).unwrap_or(false) {
+        arch = "aarch64".into();
+    }
+    serde_json::json!({"os": std::env::consts::OS, "arch": arch})
+}
+
+fn official_connector_link(url: &str) -> bool {
+    if matches!(url, "https://platform.openai.com/settings/organization/tunnels"
+        | "https://platform.openai.com/settings/organization/api-keys"
+        | "https://github.com/openai/tunnel-client/releases/latest") { return true; }
+    let Some(path) = url.strip_prefix("https://github.com/openai/tunnel-client/releases/download/") else { return false; };
+    let parts: Vec<_> = path.split('/').collect();
+    parts.len() == 2 && parts[0].starts_with('v') && parts[1].starts_with("tunnel-client-v")
+        && parts[1].ends_with(".zip")
+        && path.bytes().all(|c| c.is_ascii_alphanumeric() || b"/._-+".contains(&c))
+}
+
+#[tauri::command]
+async fn connector_open_setup_link(url: String) -> Result<(), String> {
+    if !official_connector_link(&url) { return Err("invalid_setup_link".into()); }
+    tauri::async_runtime::spawn_blocking(move || open_install_target(&url, None))
+        .await.map_err(|_| "open_install_failed".to_string())?
+}
+
 /// Return only saved non-secret configuration and key presence; never read the key.
 #[tauri::command]
 fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -399,7 +473,7 @@ fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let data = app_data(&app).map_err(|_| "data_unavailable")?;
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let mut child = Command::new(resources.join("python/bin/python3.12"))
+    let mut child = backend_runtime::background_command(backend_runtime::python(&resources))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.connector_setup"]).arg(&data).arg(&resources)
         .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "setup_failed")?;
@@ -414,8 +488,8 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     if let Some(child) = guard.as_mut() {
         if child.try_wait().map_err(|_| "connector_failed")?.is_none() { return Ok(()); }
     }
-    if connector_client_status(app.clone())?.get("client").and_then(|v|v.as_str()) != Some("chatgpt") { return Ok(()); }
     let data = app_data(&app).map_err(|_| "data_unavailable")?.join("connector");
+    if !data.join("setup.json").exists() { return Ok(()); }
     let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
     let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
     let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
@@ -426,7 +500,7 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let _ = fs::remove_file(data.join("health.url"));
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let child = Command::new(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
+    let child = backend_runtime::background_command(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .env("RIPPLE_DATA_DIR", app_data(&app).map_err(|_| "data_unavailable")?)
         .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
@@ -437,9 +511,6 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
 
 #[tauri::command]
 fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> bool {
-    if let Ok(value) = connector_client_status(app.clone()) {
-        if value.get("client").and_then(|v|v.as_str()) != Some("chatgpt") { return health_ok(); }
-    }
     let Ok(mut guard) = state.0.lock() else { return false };
     let Some(child) = guard.as_mut() else { return false };
     if !matches!(child.try_wait(), Ok(None)) { return false; }
@@ -455,6 +526,9 @@ fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, Connect
 }
 
 #[tauri::command]
+fn connector_local_ready() -> bool { health_ok() }
+
+#[tauri::command]
 fn connector_tunnel_stop(state: tauri::State<'_, ConnectorTunnel>) {
     if let Ok(mut guard) = state.0.lock() {
         if let Some(mut child) = guard.take() { let _ = child.kill(); let _ = child.wait(); }
@@ -464,7 +538,7 @@ fn connector_tunnel_stop(state: tauri::State<'_, ConnectorTunnel>) {
 fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     if TcpStream::connect(("127.0.0.1", PORT)).is_ok() { return Err(format!("端口 {PORT} 已被占用；请先关闭占用它的程序")); }
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
-    let python = stage.join("python/bin/python3.12");
+    let python = backend_runtime::python(&stage);
     if !python.is_file() { return Err("App 缺少随附后台".into()); }
     let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
@@ -472,10 +546,12 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let python_path = std::env::join_paths([stage.join("backend"), stage.join("site-packages")]).map_err(|e| e.to_string())?;
     // Finder launches apps with a smaller PATH than an interactive shell.
-    let mut executable_paths = vec![PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")];
+    let mut executable_paths = Vec::new();
+    #[cfg(target_os = "macos")]
+    executable_paths.extend([PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")]);
     executable_paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
     let executable_path = std::env::join_paths(executable_paths).map_err(|e| e.to_string())?;
-    Command::new(python).current_dir(&stage).env("PYTHONPATH", python_path)
+    backend_runtime::background_command(python).current_dir(&stage).env("PYTHONPATH", python_path)
         .env("PATH", executable_path)
         .env("RIPPLE_DATA_DIR", &data).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.desktop_runner", "--host", "127.0.0.1", "--port", &PORT.to_string()])
@@ -493,10 +569,19 @@ fn stop_backend(app: &tauri::AppHandle) {
 
 fn main() {
     if std::env::args().any(|arg| arg == "--ripple-build-info") {
-        println!("{}", serde_json::json!({
+        let info = serde_json::json!({
             "custom_protocol": cfg!(feature = "custom-protocol"),
             "debug": cfg!(debug_assertions),
-        }));
+        });
+        #[cfg(windows)]
+        let info = {
+            let mut info = info;
+            info["version"] = option_env!("RIPPLE_APP_VERSION").into();
+            info["build"] = option_env!("RIPPLE_BUILD_NUMBER").into();
+            info["commit"] = option_env!("RIPPLE_SOURCE_COMMIT").into();
+            info
+        };
+        println!("{}", info);
         return;
     }
     let mut context = tauri::generate_context!();
@@ -524,10 +609,10 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
-            fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write,
+        .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+            fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

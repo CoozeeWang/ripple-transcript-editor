@@ -59,7 +59,7 @@ async function main() {
   process.on('SIGTERM', stop);
   process.on('exit', stop);
   const env = { ...process.env, RIPPLE_DESKTOP_DEV: '1', RIPPLE_DATA_DIR: join(work, 'data'), RIPPLE_DEV_WORK: work,
-    PYTHONDONTWRITEBYTECODE: '1', RIPPLE_API_TARGET: 'http://127.0.0.1:18701' };
+    PYTHONDONTWRITEBYTECODE: '1', RIPPLE_API_TARGET: 'http://127.0.0.1:18702', RIPPLE_CONNECTOR_URL: 'http://127.0.0.1:18702' };
   env.PATH = [dirname(process.execPath), join(homedir(), '.cargo', 'bin'), env.PATH || ''].join(delimiter);
   env.CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER = 'node ../../scripts/desktop-dev-macos.mjs';
   env.CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER = 'node ../../scripts/desktop-dev-macos.mjs';
@@ -71,11 +71,11 @@ async function main() {
     return child;
   };
   try {
-    await assertPortFree(18701);
+    await assertPortFree(18702);
     await assertPortFree(5174);
     mkdirSync(env.RIPPLE_DATA_DIR, { recursive: true });
-    const backend = run(join(root, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18701', '--reload', '--reload-dir', 'app'], join(root, 'backend'));
-    await waitFor('http://127.0.0.1:18701/api/health', () => backend.exitCode === null && !stopping);
+    const backend = run(join(root, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18702', '--reload', '--reload-dir', 'app'], join(root, 'backend'));
+    await waitFor('http://127.0.0.1:18702/api/health', () => backend.exitCode === null && !stopping);
     const vite = run(process.execPath, [join(root, 'frontend/node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5174', '--strictPort'], join(root, 'frontend'));
     await waitFor('http://127.0.0.1:5174', () => vite.exitCode === null && !stopping);
     console.log('Ripple Dev: frontend refreshes; Python reloads; Rust rebuilds. Close the window or press Ctrl+C to stop.');
