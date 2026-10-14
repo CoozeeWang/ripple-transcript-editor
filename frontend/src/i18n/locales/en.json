@@ -1613,9 +1613,9 @@
     "guidedTitle": "Add ChatGPT · Four steps",
     "guidedTunnel": "Create or select a tunnel in <setupLink>OpenAI tunnel settings</setupLink>, then paste its Tunnel ID here.",
     "guidedKey": "Create a key with tunnel read and use permissions (Tunnels · Read / Use) on the <setupLink>OpenAI API keys page</setupLink>, then paste it here.",
-    "guidedClient": "Download and extract the archive, then select the tunnel-client program inside.",
-    "guidedClientWindows": "Download and extract the archive, then select tunnel-client.exe inside.",
-    "guidedClientUnknown": "Download the full archive for your operating system and chip, extract it, then select tunnel-client.",
+    "guidedClient": "Extract it, click “Choose tunnel client”, then select tunnel-client.",
+    "guidedClientWindows": "Extract it, click “Choose tunnel client”, then select tunnel-client.exe.",
+    "guidedClientUnknown": "Choose the full archive for your operating system and chip, extract it, then select the client.",
     "guidedChatGPTTitle": "Add to ChatGPT",
     "guidedChatGPT": "In ChatGPT, choose “+ → Add custom MCP server”. Name it Ripple, choose Tunnel and the same tunnel, and set Authentication to No authentication. Review the risk notice, create the plugin, then install it.",
     "guidedPending": "Save the configuration and enable MCP connection. Wait for the tunnel to be ready before continuing.",
@@ -1624,7 +1624,7 @@
     "tunnelPlaceholder": "Paste Tunnel ID",
     "keyPlaceholder": "Paste connection key",
     "clientPlaceholder": "No program selected",
-    "deviceRecommendation": "Recommended for this computer: {{device}}",
+    "deviceRecommendation": "This computer: {{device}}",
     "device_macos_arm64": "macOS · Apple silicon (arm64)",
     "device_macos_amd64": "macOS · Intel chip (amd64)",
     "device_windows_arm64": "Windows · ARM64",
@@ -1647,7 +1647,8 @@
     "aiSetupPrompt": "Follow the official OpenAI guide to connect Ripple on this computer to ChatGPT: create or reuse a tunnel, download the full tunnel-client archive for this computer, prepare a connection key, save the configuration in Ripple, then add a custom MCP plugin using the same tunnel. Ask me when sign-in or confirmation is needed. Keep keys out of chat. Finish with a read-only tool call without modifying transcripts.\nhttps://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
     "copySetupPrompt": "Copy setup request",
     "setupPromptCopied": "Setup request copied.",
-    "setupPromptCopyFailed": "Could not copy. Select the request above and copy it manually."
+    "setupPromptCopyFailed": "Could not copy. Select the request above and copy it manually.",
+    "downloadFile": "Download {{file}}"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple’s local service couldn’t start. Restart Ripple or check the application logs."

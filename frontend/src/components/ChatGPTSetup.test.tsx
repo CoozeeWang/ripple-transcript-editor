@@ -14,7 +14,8 @@ function fixture(ready=false){
  const onSaved=vi.fn();const ui=render(<ChatGPTSetup tunnelReady={ready} onSaved={onSaved}/>);return {ui,invoke,writeText,onSaved};
 }
 it('orders four steps, matches Apple download and does not expose the saved key',async()=>{
- const {ui,invoke}=fixture();await waitFor(()=>expect(ui.getByText('修改配置')).toBeTruthy());await waitFor(()=>expect(ui.getByRole('link',{name:release.assets[0].name})).toBeTruthy());
+ const {ui,invoke}=fixture();await waitFor(()=>expect(ui.getByText('修改配置')).toBeTruthy());await waitFor(()=>expect(ui.getByRole('link',{name:`下载 ${release.assets[0].name}`})).toBeTruthy());
+ expect(ui.queryByRole('link',{name:'查看官方最新下载页'})).toBeNull();
  expect(ui.getAllByRole('listitem').map(step=>step.querySelector('.connector-step-label')?.textContent)).toEqual(['隧道标识（Tunnel ID）','连接程序（tunnel-client）','连接密钥（Runtime API key）','添加到 ChatGPT']);
  expect((ui.getByLabelText('连接密钥（Runtime API key）') as HTMLInputElement).value).toBe('');fireEvent.click(ui.getByRole('link',{name:'OpenAI 密钥页面'}));await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connector_open_setup_link',{url:'https://platform.openai.com/settings/organization/api-keys'}));
 });
@@ -29,7 +30,7 @@ it('requires actual readiness before opening ChatGPT',async()=>{
  const {ui,invoke}=fixture(true);await waitFor(()=>expect(ui.getByText('修改配置')).toBeTruthy());fireEvent.click(ui.getByText('前往 ChatGPT 添加'));await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connector_client_add',{client:'chatgpt',language:'zh-CN'}));await waitFor(()=>expect(ui.getByText(/已打开 ChatGPT 插件页面/)).toBeTruthy());
 });
 it('shows fallback on failure and can retry',async()=>{
- vi.mocked(latestTunnelRelease).mockRejectedValueOnce(Error('offline'));const {ui}=fixture();await waitFor(()=>expect(ui.getByText(/暂时无法获取最新版本/)).toBeTruthy());expect(ui.getByRole('link',{name:'查看官方最新下载页'}).getAttribute('href')).toContain('/releases/latest');fireEvent.click(ui.getByText('重新检查'));await waitFor(()=>expect(ui.getByRole('link',{name:release.assets[0].name})).toBeTruthy());
+ vi.mocked(latestTunnelRelease).mockRejectedValueOnce(Error('offline'));const {ui}=fixture();await waitFor(()=>expect(ui.getByText(/暂时无法获取最新版本/)).toBeTruthy());expect(ui.getByRole('link',{name:'查看官方最新下载页'}).getAttribute('href')).toContain('/releases/latest');fireEvent.click(ui.getByText('重新检查'));await waitFor(()=>expect(ui.getByRole('link',{name:`下载 ${release.assets[0].name}`})).toBeTruthy());
 });
 it('does not guess when the full package is missing',async()=>{
  vi.mocked(latestTunnelRelease).mockResolvedValueOnce({...release,assets:[]});const {ui}=fixture();await waitFor(()=>expect(ui.getByText(/未找到适合本机的完整安装包/)).toBeTruthy());expect(ui.queryByRole('link',{name:/\.zip$/})).toBeNull();

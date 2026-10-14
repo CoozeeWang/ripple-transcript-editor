@@ -78,11 +78,14 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
             {editing && <button type="button" className="cred-btn" disabled={loading || status === 'saving'} onClick={() => {
               void invoke<string>('connector_pick_client').then(setClient).catch(error => { if (error !== 'client_selection_cancelled') setStatus('error'); });
             }}>{msg('connector.chooseClient')}</button>}</div>
-          <p className="settings-hint connector-device">{msg('connector.deviceRecommendation', {device:msg(deviceKey)})}</p>
+          <div className="connector-device-row">
+            <span className="settings-hint connector-device">{msg('connector.deviceRecommendation', {device:msg(deviceKey)})}</span>
+            <button type="button" className="connector-refresh" disabled={releaseStatus === 'checking'} onClick={() => {setReleaseStatus('checking'); setDownload(null); setRefresh(value=>value+1);}}>{msg('connector.refreshDownload')}</button>
+          </div>
           <div className="connector-download" aria-live="polite">
-            {releaseStatus === 'ready' && download ? <p className="settings-hint">{link(download.url, download.name)}</p> : <p className="settings-hint">{msg(`connector.release_${releaseStatus}`)}</p>}
+            {releaseStatus === 'ready' && download ? <p className="settings-hint">{link(download.url, msg('connector.downloadFile', {file:download.name}))}</p> : <p className="settings-hint">{msg(`connector.release_${releaseStatus}`)}</p>}
             <p className="settings-hint">{msg(isMac || platform?.os === 'linux' ? 'connector.guidedClient' : platform?.os === 'windows' ? 'connector.guidedClientWindows' : 'connector.guidedClientUnknown')}</p>
-            <div className="connector-inline-actions">{link(TUNNEL_RELEASE_PAGE, msg('connector.latestDownloads'))}<button type="button" className="cred-btn" disabled={releaseStatus === 'checking'} onClick={() => {setReleaseStatus('checking'); setDownload(null); setRefresh(value=>value+1);}}>{msg('connector.refreshDownload')}</button></div>
+            {(releaseStatus === 'failed' || releaseStatus === 'missing') && <p className="settings-hint">{link(TUNNEL_RELEASE_PAGE, msg('connector.latestDownloads'))}</p>}
           </div>
           {(isMac || !platform) && <details className="connector-step-help" open><summary>{msg('connector.macAuthorizationTitle')}</summary><p className="settings-hint">{msg('connector.macAuthorization')}</p></details>}
         </li>
