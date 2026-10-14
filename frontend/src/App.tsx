@@ -5,6 +5,7 @@ import { applyAISuggestions } from "./lib/aiVersionEdits";
 import { applyContinuationBatch,checkContinuationGuard } from './lib/continuationBatch';
 import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
+import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
 import { CopyProblem } from "./components/CopyProblem";
@@ -88,6 +89,9 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 // 快退/快进步长默认值（秒），可被偏好设置覆盖；键盘左右键与右侧 ± 按钮共用。
 
 export interface ProjectEditorProps {
+  connectorProject?: () => OpenProject | null;
+  projectInterviewId?: string;
+  projectRecordingId?: string;
   projectDirectory?: FileSystemDirectoryHandle;
   initialOriginalModelId?: string;
   projectLabel?: string;
@@ -640,7 +644,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       return { version: result.edit.label, version_id: result.edit.id,
         result_version: {id:`${result.model.id}:${result.edit.id}`,model_id:result.model.id,edit_id:result.edit.id,name:result.edit.label,kind:'edit'}, comparison_requested: true };
     },
-  }, `${aiContext}:${hasLoadedTranscript}:${versionBusy}`);
+  }, `${aiContext}:${hasLoadedTranscript}:${versionBusy}`, projectProps.connectorProject ? {
+    project: projectProps.connectorProject,
+    onSaved: target => { setProcessStatus('done'); setProcessMessage(msg('connector.backgroundSaved', { recording: target.recording, version: target.version })); },
+    active: () => ({ interview_id: projectProps.projectInterviewId ?? '', recording_id: projectProps.projectRecordingId ?? '',
+      directory: dirHandleRef.current, version_id: activeModelId
+        ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : null }),
+  } : undefined);
 
   // 设置弹层：必须在「空状态提前 return」与「完整 UI return」两处都渲染，
   // 否则空状态下点击「偏好设置」会因提前 return 而永不显示。

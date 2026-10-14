@@ -42,11 +42,11 @@ To transcribe, create or open an interview, choose an audio file, then click **�
 
 ## MCP connection
 
-The personal desktop MCP connection lets external AI clients read the current interview on request and publish a new editing version directly in Ripple, with automatic source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
+The personal desktop MCP connection lets external AI clients read a precisely selected version in the current project, including an unopened manuscript, and save edits in Ripple. Specify the manuscript and exact version; AI asks when the version is missing. Background saves leave the open editor unchanged; edits to the active manuscript can open normal source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## AI-assisted editing
 
-Ripple has no built-in AI editing model, saved editing plans, or editing credential store. In **Settings → AI-assisted editing**, configure an external AI application through the MCP connection. The application can read and analyse the current interview on request, publish a new editable version for normal comparison, and add AI-labelled annotations or highlights to the current editable version. It never overwrites the source version. Rules agreed through MCP apply only to the current interview or task. See [MCP connection](docs/AI_CONNECTOR.md) and [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
+Ripple has no built-in AI editing model, saved editing plans, or editing credential store. In **Settings → AI-assisted editing**, configure an external AI application through the MCP connection. The application can read and analyse a selected manuscript in the current project, save a new editable version or explicitly update the selected editable version, and add AI-labelled annotations or highlights. Original transcripts remain read-only. Rules agreed through MCP apply only to the current interview or task. See [MCP connection](docs/AI_CONNECTOR.md) and [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## Naming and compatibility
 

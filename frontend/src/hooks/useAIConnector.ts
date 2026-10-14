@@ -1,24 +1,28 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AIConnector, type ConnectorHost } from '../lib/aiConnector';
+import { type ConnectorHost } from '../lib/aiConnector';
+import { ProjectAIConnector } from '../lib/projectAIConnector';
+import type { ProjectConnectorAccess } from '../lib/projectConnectorHost';
 import type { ContinuationProgress } from '../lib/incrementalContinuation';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
 import { loadBooleanPreference, saveBooleanPreference } from '../lib/preferences';
 
 export const CONNECTOR_ENABLED_KEY = 'ripple-mcp-enabled';
 
-export function useAIConnector(host: ConnectorHost, context = '') {
+export function useAIConnector(host: ConnectorHost, context = '', projectAccess?: ProjectConnectorAccess) {
   const latest = useRef(host);
-  useLayoutEffect(() => { latest.current = host; });
+  const project = useRef(projectAccess);
+  useLayoutEffect(() => { latest.current = host; project.current = projectAccess; });
   const [enabled, updateEnabled] = useState(() => loadBooleanPreference(CONNECTOR_ENABLED_KEY, false));
   const [attempt, setAttempt] = useState(0);
   const setEnabled = (value: boolean) => { saveBooleanPreference(CONNECTOR_ENABLED_KEY, value); updateEnabled(value); };
   const [status, setStatus] = useState<'off' | 'connecting' | 'ready' | 'error'>('off');
   const [tasks,setTasks]=useState<ContinuationProgress[]>([]);
   const [taskError,setTaskError]=useState('');
-  const controllerRef=useRef<AIConnector|null>(null);
-  const createController=useCallback(()=>new AIConnector({current:()=>latest.current.current(),publish:(...args)=>latest.current.publish(...args),
+  const controllerRef=useRef<ProjectAIConnector|null>(null);
+  const createController=useCallback((valid:()=>boolean=()=>true)=>new ProjectAIConnector({current:()=>latest.current.current(),publish:(...args)=>latest.current.publish(...args),
     applyMarks:(...args)=>{if(!latest.current.applyMarks)throw Error('marks_unavailable');return latest.current.applyMarks(...args);},
-    continuationProgress:next=>setTasks(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next)}),[]);
+    continuationProgress:next=>setTasks(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next)},
+    ()=> valid() && project.current ? { ...project.current, project: () => valid() ? project.current?.project() ?? null : null } : undefined),[]);
   const taskAction=useCallback(async(operation:string,task_id?:string)=>{
     const controller=controllerRef.current ?? (controllerRef.current=createController());
     try{const result=await controller.handle(operation,task_id?{task_id}:{});setTaskError('');return result;}
@@ -43,7 +47,7 @@ export function useAIConnector(host: ConnectorHost, context = '') {
     const session = crypto.randomUUID();
     let token = '';
     let heartbeat: ReturnType<typeof setInterval> | undefined;
-    const controller = createController();controllerRef.current=controller;
+    const controller = createController(()=>!disposed);controllerRef.current=controller;
     async function request(path: string, body?: unknown, signal?: AbortSignal) {
       const response = await fetch(`/api/connector/${path}`, { method: body === undefined ? 'GET' : 'POST',
         headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },

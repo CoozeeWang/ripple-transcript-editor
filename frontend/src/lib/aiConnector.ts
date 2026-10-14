@@ -5,6 +5,7 @@ import type { Transcript } from '../types';
 import { editingExamples } from './editingExamples';
 import { IncrementalContinuation, type ContinuationStore, type ContinuationProgress } from './incrementalContinuation';
 import type { ContinuationCheckpoint } from './continuationBatch';
+import type { ProjectTarget } from './projectConnectorHost';
 
 /** IDs are unique within the current interview, not paths or display names. */
 export interface ConnectorVersion {
@@ -20,6 +21,8 @@ export interface ConnectorReference {
 }
 
 export interface ConnectorDocument {
+  target?: ProjectTarget;
+  background?: boolean;
   continuations?: ContinuationStore;
   editable?: boolean;
   identity: string;
@@ -92,6 +95,8 @@ export class AIConnector {
       const snapshot = { ...doc, transcript: structuredClone(doc.transcript), id, revision: JSON.stringify(doc.transcript) };
       this.snapshots.set(id, snapshot);
       return { snapshot: id, title: doc.title, version: doc.label, segment_count: doc.transcript.segments.length,
+        ...(doc.target ? { target: doc.target } : {}),
+        ...(doc.background ? { background: true, undo_available: false } : {}),
         current_version: doc.version,
         duration: doc.transcript.audio.duration, speakers: doc.transcript.speakers, current_interview_rules: doc.rules ?? [],
         instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed for analysis. For long editing, use delivery_mode incremental, read_continuation_batch and save_continuation_batch; reuse returned next_batch rather than reading the entire manuscript up front. List continuations after interruption before starting another task. Ask for an explicit continuation start and whether to save a new version or update the current editable version; reuse already explicit choices. Pass save_mode to prepare_continuation. Read-only originals require a new version. Do not display full text by default.' };
@@ -178,7 +183,7 @@ export class AIConnector {
       if (segments.slice(first, last + 1).some(segment => segment.text.length > 12000)) fail('segment_too_large_split_in_ripple_first');
       if (this.tasks.size >= 32) fail('too_many_tasks_cancel_or_restart_connection');
       const name = saveMode === 'new_version' ? nextAIEditName(s.label, s.names) : s.label;
-      const summary = JSON.stringify({ source: s.label, start_id: a.start_id, start_offset: startOffset,
+      const summary = JSON.stringify({ ...(s.target ? { target: s.target } : {}), source: s.label, start_id: a.start_id, start_offset: startOffset,
         end_id: segments[last].id, end_offset: endOffset, rules: a.rules, allowed_actions: allowedActions,
         save_mode: saveMode, source_version: s.version, result_version_name: name });
       const task: Task = { snapshot: s, id: crypto.randomUUID(), summary, rules: a.rules as string[], ids,

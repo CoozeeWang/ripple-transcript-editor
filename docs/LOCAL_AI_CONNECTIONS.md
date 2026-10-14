@@ -1,6 +1,6 @@
 # Local AI connections
 
-Open Settings → AI-assisted editing → MCP connection. Choose ChatGPT, Claude Desktop or WorkBuddy, follow that client's instructions, and explicitly enable access to the current interview. Selection chooses the setup view; it does not stop other configured clients. Selection and access preference survive restart; each client's saved setup is retained when switching. Uncheck Enable MCP connection to disconnect the editor session. This retains configuration and does not uninstall an extension or delete a third-party account.
+Open Settings → AI-assisted editing → MCP connection. Choose ChatGPT, Claude Desktop or WorkBuddy, follow that client's instructions, and explicitly enable access to manuscripts in the current project. Selection chooses the setup view; it does not stop other configured clients. Selection and access preference survive restart; each client's saved setup is retained when switching. Uncheck Enable MCP connection to disconnect the editor session. This retains configuration and does not uninstall an extension or delete a third-party account.
 
 Ripple does not operate or require a shared public connection server. Local connection does not mean an offline model: requested interview text is still sent to the chosen AI service. Audio is not sent.
 
@@ -30,6 +30,6 @@ Deletion does not uninstall extensions or remove registrations inside ChatGPT, C
 
 ## Verification and limits
 
-A ready local broker/transport does not prove that the AI application installed or called it. Verify with an actual read request before attempting edits. All clients share the same 17 tools and current-interview restrictions. Before editing, ask whether to update the current editable version or create a new one. Incremental tasks save each batch into the same agreed target version. Annotations and highlights retain human marks. Unknown writes must be checked via task status before retrying.
+A ready local broker/transport does not prove that the AI application installed or called it. Verify with an actual read request before attempting edits. All clients share the same 20 tools and current-project boundary. Specify the exact interview, recording and version; AI asks when the version is missing rather than selecting a default. Project tools can edit an unopened manuscript without switching the editor. Before editing, ask whether to update the current editable version or create a new one. Incremental tasks save each batch into the same agreed target version. Annotations and highlights retain human marks. Unknown writes must be checked via task status before retrying.
 
 macOS is the initial packaged target. Windows native packaging and real-client acceptance must be recorded separately. Installation export or protocol tests do not establish a real Claude/WorkBuddy account acceptance result. No model subscription or third-party service price is included in Ripple's local connection.

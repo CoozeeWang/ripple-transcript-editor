@@ -1564,7 +1564,7 @@
   },
   "connector": {
     "title": "MCP 连接",
-    "hint": "外部 AI 可按需读取、分析当前打开的转录稿及其原稿对照。修改前会询问你：另存为新版本，还是修改当前可编辑版本；也可在当前版本添加 AI 批注和高亮。访问范围仅限当前打开的稿件，不发送音频；请求 AI 时，转录文字会发送到所选 AI 服务。",
+    "hint": "外部 AI 可按需读取、分析当前项目的转录稿，也可编辑未打开的稿件。请说明稿件和精确版本；未指定时 AI 会询问。文字修改可另存新版本或修改选定的可编辑版本，批注和高亮保存到该版本。不发送音频；请求的转录文字会发送到所选 AI 服务。",
     "enable": "启用 MCP 连接",
     "off": "连接已关闭",
     "connecting": "正在连接…",
@@ -1659,7 +1659,8 @@
     "deleteError": "删除未完成。请检查 MCP 连接状态后重试。",
     "configurationPresent": "已配置",
     "configurationAbsent": "未配置",
-    "configurationUnknown": "状态待核实"
+    "configurationUnknown": "状态待核实",
+    "backgroundSaved": "已保存：{{recording}} · {{version}}"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。"

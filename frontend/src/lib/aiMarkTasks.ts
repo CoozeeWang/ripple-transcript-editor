@@ -22,7 +22,7 @@ export class AIMarkTasks {
       if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => typeof id !== 'string' || !snapshot.transcript.segments.some(s => s.id === id))) throw new Error('invalid_range');
       if (this.tasks.size >= 32) throw new Error('too_many_tasks_cancel_or_restart_connection');
       const id = crypto.randomUUID();
-      const summary = JSON.stringify({ source: snapshot.label, segment_ids: ids, instructions: a.instructions.trim(), save_in_current_version: true });
+      const summary = JSON.stringify({ ...(snapshot.target ? { target: snapshot.target } : {}), source: snapshot.label, segment_ids: ids, instructions: a.instructions.trim(), save_in_current_version: true });
       this.tasks.set(id, { id, snapshot, ids: [...ids], summary, staged: new Map(), state: 'draft' });
       return { task_id: id, summary, segment_count: ids.length, version: snapshot.label, instruction: 'Add marks to this current version; no new version or text changes. Agree on consequential scope/interpretation, then stage every scoped segment including those needing no marks.' };
     }
