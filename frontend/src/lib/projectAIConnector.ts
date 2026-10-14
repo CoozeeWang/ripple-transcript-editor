@@ -36,6 +36,23 @@ export class ProjectAIConnector {
       applyMarks: (...args) => { this.editing.assert(args[2]); if (!host.applyMarks) throw Error('marks_unavailable'); return host.applyMarks(...args); } };
   }
   private notify(host: ConnectorHost) { host.continuationProgress?.([...this.progress.values()].flat()); }
+  private reconcile(id: string, result: Record<string, unknown>, operation: string) {
+    const activity = this.editing.get(id); if (!activity) return;
+    const receipt = result.result && typeof result.result === 'object' ? result.result as Record<string, unknown> : result;
+    const complete = result.state === 'completed' && (receipt.saved === true || receipt.reason === 'no_changes' || result.complete === true)
+      || result.complete === true || ['publish', 'apply_marks'].includes(operation) && (receipt.saved === true || receipt.reason === 'no_changes');
+    // A later invalid request cannot overwrite a confirmed terminal receipt.
+    if (activity.state === 'completed' && !complete) return;
+    const failed = !!receipt.error;
+    const paused = result.state === 'paused' || operation === 'pause';
+    const cancelled = result.state === 'cancelled' || operation === 'cancel' || operation === 'cancel_marks';
+    this.editing.update(id, {
+      state: complete ? 'completed' : activity.state === 'ended' ? 'ended' : failed ? 'failed' : cancelled ? 'ended' : paused ? 'paused' : ownsEditing(activity) ? 'waiting' : activity.state,
+      processed: complete ? activity.total : Number(result.staged ?? result.staged_count ?? (Array.isArray(result.staged_ids) ? result.staged_ids.length : activity.processed)),
+      saved: complete ? Number(result.saved_segments ?? activity.total) : Number(result.saved_segments ?? activity.saved),
+      reason: complete ? undefined : failed ? String(receipt.error) : paused ? String(result.reason ?? 'user_paused') : activity.reason,
+    });
+  }
   private async owner(interview: string, recording: string, version: string): Promise<Owner> {
     const key = JSON.stringify([interview, recording, version]);
     let owner = this.owners.get(key);
@@ -73,16 +90,24 @@ export class ProjectAIConnector {
         let result = await owner.controller.handle('status', { task_id: task.id });
         if (result.result_version) owner.bound!.setVersion(result.result_version as Parameters<Bound['setVersion']>[0]);
         if (result.state === 'draft' && !this.editing.get(task.id)) result = await owner.controller.handle('pause', { task_id: task.id });
-        if (result.state === 'paused') this.editing.restorePaused(task.id, task.owner_client ?? 'local', await owner.host.current(), task.ids.length, Number(result.saved_segments ?? 0));
+        if (result.state === 'paused' || result.state === 'completed') {
+          this.editing.restorePaused(task.id, task.owner_client ?? 'local', await owner.host.current(), task.ids.length, Number(result.saved_segments ?? 0));
+          this.reconcile(task.id, result, 'status');
+        }
         results.push({ ...result, target: owner.bound!.target() });
       }
     }
     return { project_id: directory.project_id, project: directory.project, tasks: results };
   }
   async handle(operation: string, args: Record<string, unknown>, client = 'local'): Promise<Record<string, unknown>> {
-    this.editing.sweep();
+    if (operation === 'dismiss_editing') {
+      if (client !== 'window') throw Error('window_action_required');
+      this.editing.dismiss(String(args.task_id));
+      return { dismissed: true };
+    }
     if (operation === 'end_editing') {
       const id = String(args.task_id);
+      if (client !== 'window' && this.clients.get(id) !== client) throw Error('editing_task_belongs_to_another_client');
       this.editing.end(id);
       const owner = this.tasks.get(id);
       // Revocation is synchronous even if a save is already in progress. Cancelling
@@ -183,15 +208,8 @@ export class ProjectAIConnector {
         } else this.editing.end(reserved, 'clarification_required');
       }
       if (operation === 'prepare_marks' && typeof result.task_id === 'string') this.markIds.add(result.task_id);
-      if (activity && (writing || operation === 'pause' || operation === 'resume' || operation === 'cancel' || operation === 'cancel_marks')) {
-        const complete = result.complete === true || ['publish','apply_marks'].includes(operation) && result.saved !== false || operation === 'publish' && result.reason === 'no_changes';
-        const failed = !!result.error;
-        const cancelled = operation === 'cancel' || operation === 'cancel_marks';
-        const paused = result.state === 'paused' || operation === 'pause';
-        const processed = Number(result.staged ?? (Array.isArray(result.staged_ids) ? result.staged_ids.length : activity.processed));
-        this.editing.update(activity.task_id, { state: complete ? 'completed' : failed ? 'failed' : cancelled ? 'ended' : paused ? 'paused' : ownsEditing(activity) ? 'waiting' : activity.state,
-          processed: complete ? activity.total : processed, saved: complete && result.saved !== false ? activity.total : Number(result.saved_segments ?? activity.saved),
-          reason: failed ? String(result.error) : paused ? String(result.reason ?? 'user_paused') : activity.reason });
+      if (activity && (writing || ['pause','resume','cancel','cancel_marks','status','marks_status'].includes(operation))) {
+        this.reconcile(activity.task_id, result, operation);
         if (owner.bound && result.result_version) {
           const target = owner.bound.target();
           const version = result.result_version as ConnectorDocument['version'];
@@ -205,7 +223,13 @@ export class ProjectAIConnector {
       return remembered;
     } catch (error) {
       if (reserved) this.editing.end(reserved, 'prepare_failed');
-      if (activity && (writing || operation === 'resume')) this.editing.update(activity.task_id, { state: 'failed', reason: 'operation_failed_check_result' });
+      if (activity && (writing || operation === 'resume') && activity.state !== 'completed' && activity.state !== 'ended') {
+        this.editing.update(activity.task_id, { state: 'failed', reason: 'operation_failed_check_result' });
+        // Consult the actual task receipt, including a save that finished before a
+        // reply/validation error. Never infer success just from visible text/marks.
+        try { this.reconcile(activity.task_id, await owner.controller.handle(this.markIds.has(activity.task_id) ? 'marks_status' : 'status', { task_id: activity.task_id }), 'status'); }
+        catch { /* Uncertain outcome retains protection and the exact task. */ }
+      }
       throw error;
     } finally {
       if (activity && writing) this.editing.update(activity.task_id, { inFlight: Math.max(0, activity.inFlight - 1) });

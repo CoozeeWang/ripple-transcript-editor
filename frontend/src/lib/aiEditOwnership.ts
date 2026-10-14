@@ -7,17 +7,25 @@ export interface AIEditActivity {
   state: 'waiting' | 'processing' | 'saving' | 'paused' | 'completed' | 'ended' | 'failed';
   processed: number; saved: number; total: number; reason?: string;
   touched: number; inFlight: number;
+  dismissed?: boolean;
 }
 export const editTargetKey = (doc: Pick<ConnectorDocument, 'target' | 'identity' | 'version'>) => doc.target
   ? JSON.stringify([doc.target.project_id, doc.target.interview_id, doc.target.recording_id, doc.version.id])
   : JSON.stringify([doc.identity, doc.version.id]);
 export const ownsEditing = (task: AIEditActivity) => ['waiting', 'processing', 'saving'].includes(task.state);
-export const blocksHumanEditing = (task: AIEditActivity) => ownsEditing(task) || task.inFlight > 0;
+export const blocksHumanEditing = (task: AIEditActivity) => !['completed', 'ended'].includes(task.state) || task.inFlight > 0;
+
+export const visibleAIActivities = (activities: AIEditActivity[]) => {
+  // Keep task receipts, but never display an earlier attempt over a newer result.
+  const newest = new Map<string, AIEditActivity>();
+  for (const task of activities) newest.set(task.key, task);
+  return [...newest.values()].filter(task => task.inFlight > 0 || !task.dismissed && task.reason !== 'clarification_required' && task.reason !== 'prepare_failed');
+};
 
 /** One window-wide authority. A revoked task can never regain access implicitly. */
 export class AIEditOwnership {
   private entries = new Map<string, AIEditActivity>();
-  constructor(private notify: (tasks: AIEditActivity[]) => void, private now = () => Date.now(), readonly leaseMs = 120000) {}
+  constructor(private notify: (tasks: AIEditActivity[]) => void, private now = () => Date.now()) {}
   values() { return [...this.entries.values()].map(task => ({ ...task })); }
   private changed() { this.notify(this.values()); }
   get(id: string) { return this.entries.get(id); }
@@ -29,10 +37,11 @@ export class AIEditOwnership {
     this.changed();
   }
   acquire(id: string, client: string, doc: ConnectorDocument, kind: AIEditActivity['kind'], total: number) {
-    this.sweep();
     const key = editTargetKey(doc);
     if ([...this.entries.values()].some(task => task.key === key && blocksHumanEditing(task) && task.task_id !== id))
       throw Error('manuscript_locked_by_other_ai_end_editing_first');
+    // Only the newest notice for a target remains; terminal receipts stay queryable.
+    for (const task of this.entries.values()) if (task.key === key && !blocksHumanEditing(task)) task.dismissed = true;
     const previous = this.entries.get(id);
     if (previous && previous.state !== 'paused') throw Error('editing_task_ended_prepare_again');
     this.entries.set(id, { task_id: id, client, key, target: doc.target, version: doc.label, version_id: doc.version.id, kind,
@@ -44,9 +53,8 @@ export class AIEditOwnership {
     const task = this.entries.get(from)!; this.entries.delete(from); task.task_id = to; this.entries.set(to, task); this.changed();
   }
   assert(id: string, client?: string) {
-    this.sweep();
     const task = this.entries.get(id);
-    if (!task || !ownsEditing(task)) throw Error('editing_task_ended_prepare_again');
+    if (!task || task.state === 'ended' || task.state === 'completed' || task.state === 'paused') throw Error('editing_task_ended_prepare_again');
     if (client !== undefined && task.client !== client) throw Error('editing_task_belongs_to_another_client');
     task.touched = this.now();
     return task;
@@ -57,14 +65,13 @@ export class AIEditOwnership {
   }
   end(id: string, reason = 'user_ended') {
     const task = this.entries.get(id); if (!task || task.state === 'completed') return;
-    this.update(id, { state: 'ended', reason });
+    this.update(id, { state: 'ended', reason, dismissed: reason === 'user_ended' });
   }
-  endAll(reason: string) { for (const task of this.entries.values()) if (ownsEditing(task) || task.state === 'paused') this.end(task.task_id, reason); }
-  sweep() {
-    let changed = false;
-    for (const task of this.entries.values()) if (ownsEditing(task) && !task.inFlight && this.now() - task.touched >= this.leaseMs) {
-      task.state = 'ended'; task.reason = 'task_timeout'; changed = true;
-    }
-    if (changed) this.changed();
+  dismiss(id: string) { const task = this.entries.get(id); if (task && !blocksHumanEditing(task)) this.update(id, { dismissed: true }); }
+  endAll(reason: string) { for (const task of this.entries.values()) if (blocksHumanEditing(task)) this.end(task.task_id, reason); }
+  interruptAll(reason: string) {
+    for (const task of this.entries.values()) if (blocksHumanEditing(task) && task.state !== 'ended')
+      this.update(task.task_id, { reason });
   }
+
 }

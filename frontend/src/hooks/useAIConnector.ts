@@ -74,7 +74,6 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
     let token = '';
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     const controller = controllerRef.current ?? (controllerRef.current=createController());
-    const expiry = setInterval(()=>controllerRef.current?.editing.sweep(),1000);
     async function request(path: string, body?: unknown, signal?: AbortSignal) {
       const response = await fetch(`/api/connector/${path}`, { method: body === undefined ? 'GET' : 'POST',
         headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
@@ -106,7 +105,7 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
         } catch {
           if (disposed) return;
           setStatus('connecting');
-          controllerRef.current?.editing.endAll('connection_lost');
+          controllerRef.current?.editing.interruptAll('connection_lost');
           await new Promise<void>(resolve => {
             const finish = () => { clearTimeout(timer); abort.signal.removeEventListener('abort', finish); resolve(); };
             const timer = setTimeout(finish, 1000);
@@ -127,12 +126,12 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
     }
     void run().catch(() => {
       if (heartbeat) clearInterval(heartbeat);
-      controllerRef.current?.editing.endAll('connection_failed');
+      controllerRef.current?.editing.interruptAll('connection_failed');
       if (!disposed) { setStatus('error'); if (token) void request('session', { session, enabled: false }).catch(() => {}); }
     });
     return () => {
-      disposed = true; abort.abort(); clearInterval(expiry);
-      controllerRef.current?.editing.endAll('connection_disabled');
+      disposed = true; abort.abort();
+      controllerRef.current?.editing.interruptAll('connection_disabled');
       if (heartbeat) clearInterval(heartbeat);
       if (token) void request('session', { session, enabled: false }).catch(() => {});
       if (nativeDesktopAvailable()) {

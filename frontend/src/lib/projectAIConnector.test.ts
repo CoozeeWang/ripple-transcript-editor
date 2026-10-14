@@ -10,6 +10,18 @@ async function prepared(c: ProjectAIConnector, delivery_mode = 'atomic', save_mo
   return c.handle('prepare', { snapshot: read.snapshot, start_id: 's1', end_id: 's1', rules: ['Synthetic test edit'], save_mode, delivery_mode });
 }
 describe('current-project AI routing', () => {
+  it('keeps a WorkBuddy task protected after a validation error, and reconciles its actual saved receipt', async () => {
+    const f = await fixture(), c = f.connector();
+    const read = await c.handle('read_project', { interview_id: 'session-b', recording_id: 'recording-session-b', version_id: 'm1:e1' }, 'workbuddy');
+    const task = await c.handle('prepare_marks', { snapshot: read.snapshot, segment_ids: ['s1'], instructions: 'Synthetic note' }, 'workbuddy');
+    await expect(c.handle('stage_marks', { task_id: task.task_id, marks: [] }, 'workbuddy')).rejects.toThrow('invalid_batch');
+    await c.handle('stage_marks', { task_id: task.task_id, marks: [{ segment_id: 's1', before: 'B0', annotation: 'Synthetic WorkBuddy note' }] }, 'workbuddy');
+    await c.handle('apply_marks', { task_id: task.task_id, confirmed_summary: task.summary }, 'workbuddy');
+    // A late invalid request must never replace a completed disk receipt with failed/zero.
+    await expect(c.handle('stage_marks', { task_id: task.task_id, marks: [] }, 'workbuddy')).rejects.toThrow('task_not_editable');
+    expect(await c.handle('marks_status', { task_id: task.task_id }, 'workbuddy')).toMatchObject({ state: 'completed', editing_state: 'completed', result: { saved: true } });
+    expect(c.editing.get(String(task.task_id))).toMatchObject({ state: 'completed', saved: 1, total: 1 });
+  });
   it('reserves writes across clients, allows readonly analysis and rejects foreign task adoption', async () => {
     const f = await fixture(), c = f.connector();
     const a = await readB(c);

@@ -39,7 +39,7 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
   };
   const state = useAIConnectorRuntime(host, context, project);
   return <ConnectorContext.Provider value={{ state, register, unregister }}>
-    {!context && <div className="ai-editing-global"><AIEditingNotice activities={state.activities} isCurrent={() => false} onEnd={id => state.taskAction('end_editing', id)}/></div>}
+    {!context && <div className="ai-editing-global"><AIEditingNotice activities={state.activities} isCurrent={() => false} onDismiss={id => state.taskAction('dismiss_editing', id)} onEnd={id => state.taskAction('end_editing', id)}/></div>}
     {children}
   </ConnectorContext.Provider>;
 }

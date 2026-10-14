@@ -16,14 +16,20 @@ describe('AI write ownership', () => {
     expect(() => own.acquire('one', 'chatgpt', doc, 'marks', 2)).toThrow('editing_task_ended');
     expect(ownsEditing(own.get('other')!)).toBe(false);
   });
-  it('expires an idle lease but retains a pending write until its outcome can be checked', () => {
-    let now = 0; const own = new AIEditOwnership(() => {}, () => now, 100);
+  it('retains exclusive protection during idle, pause, error and disconnect until explicit end', () => {
+    let now = 0; const own = new AIEditOwnership(() => {}, () => now);
     own.acquire('one', 'chatgpt', doc, 'marks', 1);
-    own.update('one', { inFlight: 1, state: 'saving' }); now = 500; own.sweep();
+    own.update('one', { inFlight: 1, state: 'saving' }); now = 500;
     expect(own.get('one')?.state).toBe('saving');
-    own.update('one', { inFlight: 0 }); now = 700; own.sweep();
-    expect(own.get('one')).toMatchObject({ state: 'ended', reason: 'task_timeout' });
-    expect(() => own.assert('one')).toThrow('editing_task_ended');
+    own.update('one', { inFlight: 0 }); now = 700;
+    expect(blocksHumanEditing(own.get('one')!)).toBe(true);
+    own.update('one', { state: 'failed' });
+    expect(blocksHumanEditing(own.get('one')!)).toBe(true);
+    own.interruptAll('connection_lost');
+    expect(blocksHumanEditing(own.get('one')!)).toBe(true);
+    expect(() => own.acquire('other', 'claude', doc, 'marks', 1)).toThrow('locked_by_other_ai');
+    own.end('one');
+    expect(blocksHumanEditing(own.get('one')!)).toBe(false);
   });
   it('revokes future writes immediately but keeps a pending save protected until it settles', () => {
     const own = new AIEditOwnership(() => {}); own.acquire('one', 'chatgpt', doc, 'marks', 1);

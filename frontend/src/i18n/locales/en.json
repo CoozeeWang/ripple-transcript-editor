@@ -1731,14 +1731,15 @@
     "processing": "Processing · {{processed}} / {{total}} segments processed",
     "saving": "Saving · {{saved}} / {{total}} segments confirmed saved",
     "counts": "{{saved}} / {{total}} segments confirmed saved",
-    "paused": "AI editing is paused. This manuscript is editable; its content will be checked before resuming.",
-    "failed": "AI editing did not finish. The manuscript is unlocked. Check the saved result and save any pending changes in Ripple before submitting again.",
-    "ended": "AI editing was interrupted. The manuscript is unlocked. Saved changes are retained; check the result before starting another task.",
+    "paused": "AI editing is paused. This manuscript remains read-only. Resume the task or end editing.",
+    "failed": "AI editing encountered a problem. This manuscript remains read-only. Check the result, then continue the task or end editing.",
+    "ended": "AI editing ended. Saved changes are retained.",
     "inUse": "This manuscript is being edited by AI. End editing first.",
     "preparing": "Preparing edits…",
     "readOnly": "Temporarily read-only during AI editing. End editing to make changes.",
-    "ending": "Ending editing. Waiting for the current save to be confirmed before unlocking.",
+    "ending": "Ending editing. Waiting for the current save to be confirmed…",
     "endingAction": "Ending…",
-    "background": "{{client}} is editing “{{recording}}”, which is temporarily read-only. Other manuscripts remain editable."
+    "background": "{{client}} is editing “{{recording}}”, which is temporarily read-only. Other manuscripts remain editable.",
+    "completed": "AI editing completed. {{saved}} / {{total}} segments saved."
   }
 }

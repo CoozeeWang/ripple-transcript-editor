@@ -1,3 +1,4 @@
+import { visibleAIActivities } from './lib/aiEditOwnership';
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
@@ -966,6 +967,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 转录中的文案随阶段和时间变化，直接算出来，不进 state（避免 effect 里 setState）。
   // 正在转录的是别的文件时，文案改成「谁在后台跑」，秒数照旧在走。
+  const hasAIEditingNotice = visibleAIActivities(connector.activities).length > 0;
   const processNoticeText = !transcribeJob
     ? processMessage
     : !transcribeIsCurrent
@@ -1056,7 +1058,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           replaceAll={replaceAll}
         />
       )}
-      {processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
+        <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
+          ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
+          : task.version_id === aiVersionId} onDismiss={async id => { await connector.taskAction('dismiss_editing', id); setProcessMessage(''); setProcessStatus('ready'); transcriptPanelRef.current?.focus(); }} onEnd={async id => { await connector.taskAction('end_editing', id); setProcessMessage(''); setProcessStatus('ready'); transcriptPanelRef.current?.focus(); }}>
+          {connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled') && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
+        </AIEditingNotice>
+      {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice
           text={processNoticeText}
           status={activeStatus}
@@ -1129,11 +1136,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
         {!preparingTranscript && transcriptionNotice}
         </div>
-        <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
-          ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
-          : task.version_id === aiVersionId} onEnd={async id => { await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
-          {!!connector.tasks.length && <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
-        </AIEditingNotice>
+
         <section className="transcript-panel" ref={transcriptPanelRef} tabIndex={-1} aria-label={msg('App.m0045')}>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
