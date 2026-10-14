@@ -3227,6 +3227,18 @@ label:has(> input[type="radio"]:focus-visible) > span {
 
 .recent-dock__btn > svg {width:20px;height:20px;}
 
+/* Inset action artwork while preserving control and SVG layout geometry. */
+button > svg[aria-hidden="true"] {
+  box-sizing: border-box;
+  padding: 1px;
+}
+/* These five drawings normalize their own visible bounds in ActionIcon. */
+button > svg.action-icon[aria-hidden="true"] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
 /* A fixed sibling of the scrolling manuscript: progress stays visible without covering text. */
 .continuation-progress { flex: none; min-width: 0; max-height: 35%; overflow-y: auto; margin: 0 clamp(28px, 4vw, 60px) 10px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-warm); font-family: var(--font-sans); font-size: .8rem; }
 .continuation-progress.is-running { border-inline-start: 3px solid var(--color-danger); }

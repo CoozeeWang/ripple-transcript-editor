@@ -1,3 +1,4 @@
+import { ActionIcon } from './ActionIcon';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
 import { LanguageControl } from './LanguageControl';
@@ -198,21 +199,7 @@ export function ProjectWorkspace() {
     {!welcoming && <header className="project-home__header">
       {!welcoming && <button type="button" className="brand project-brand-home" aria-label={msg('ProjectWorkspace.m0905')} data-tip={msg('ProjectWorkspace.m0906')} data-tip-pos="bottom" disabled={busy} onClick={returnHome}><img className="brand-mark" src="/ripple-icon.svg" alt="" /><div><p className="product-name">Ripple</p><p className="file-name">Transcription Editor</p></div></button>}
       <nav aria-label={msg('ProjectWorkspace.m0907')}>
-        <button ref={settingsButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0908')} data-tip={msg('ProjectWorkspace.m0909')} data-tip-pos="bottom" disabled={busy || creating || materialTarget !== undefined} onClick={() => setSettings(true)}><svg
-                className="toolbar-button-icon"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-              </svg></button>
+        <button ref={settingsButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0908')} data-tip={msg('ProjectWorkspace.m0909')} data-tip-pos="bottom" disabled={busy || creating || materialTarget !== undefined} onClick={() => setSettings(true)}><ActionIcon kind="settings"/></button>
         <LanguageControl />
       </nav>
     </header>}
@@ -242,7 +229,7 @@ export function ProjectWorkspace() {
             <button className="welcome-card" disabled={busy} onClick={() => void chooseProject()}><ProjectIcon kind="project" /><span>{msg('ProjectWorkspace.m0915')}</span></button>
             <div className="recent-dock" ref={recentRef}>
               <button className="recent-dock__btn" aria-label={msg('ProjectWorkspace.m0916')} title={msg('ProjectWorkspace.m0917')} aria-expanded={recentOpen} aria-controls="welcome-recent-projects" disabled={busy} onClick={() => setRecentOpen(open => !open)}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                <ActionIcon kind="clock"/>
               </button>
               {recentOpen && <section id="welcome-recent-projects" className="recent-pop project-welcome__recent"><h2>{msg('ProjectWorkspace.m0918')}</h2>
           {!recent.length ? <p className="settings-hint">{msg('ProjectWorkspace.m0919')}</p> : <div className="project-list">{recent.map(item => <div className="project-recent-row" key={item.id}>
@@ -268,9 +255,9 @@ export function ProjectWorkspace() {
         {undoTrash&&project.data.trash?.some(t=>t.id===undoTrash)&&!trashOpen&&<TrashUndoNotice key={undoTrash} busy={busy} onUndo={()=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,undoTrash));setUndoTrash(null);},false)} onDismiss={()=>setUndoTrash(null)}/>}
         <div className="setup-title project-saved-title" hidden={materialTarget !== undefined}><ProjectIcon kind="project" /><div className="project-title-content"><div className="project-title-row"><div className="project-title-heading"><h1><InlineEdit doubleClick disabled={busy} value={project.data.title} ariaLabel={msg('ProjectWorkspace.m0922')} onCommit={next => { void run(async () => { if (!next.trim()) throw new Error(msg('ProjectWorkspace.m0923')); await publish(await saveProject(project, { ...project.data, title: next.trim() })); }); }} /></h1>
           </div><div className="project-title-actions">
-          <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ProjectIcon kind="trash"/></button>
+          <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ActionIcon kind="trash"/></button>
           {project.data.interviews.length > 0 && <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
-            <svg className="toolbar-button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 8l5-5 5 5M12 3v12"/></svg>
+            <ActionIcon kind="export"/>
           </button>}</div>
         </div>
         {editingDescription === project.data.id ? <form className="project-description-editor" onSubmit={e => { e.preventDefault(); void run(async () => {

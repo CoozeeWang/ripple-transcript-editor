@@ -1,6 +1,7 @@
 import {useId,useLayoutEffect,useRef,useState} from 'react';
 import {interfaceLanguage,msg,setInterfaceLanguage,useInterfaceLanguage} from '../i18n';
 import {useDismissable} from '../useDismissable';
+import {ActionIcon} from './ActionIcon';
 import './languageControl.css';
 
 export function LanguageControl({welcome=false}:{welcome?:boolean}) {
@@ -30,7 +31,7 @@ export function LanguageControl({welcome=false}:{welcome?:boolean}) {
     }}>
     <button ref={trigger} type="button" className={welcome?'language-control--welcome':'icon-button'} aria-label={msg('language.label')}
       title={msg('language.label')} aria-haspopup="menu" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(!open)}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9Z"/></svg>
+      <ActionIcon kind="language"/>
     </button>
     {open&&<div ref={menu} id={id} popover="manual" role="menu" className="language-menu" aria-label={msg('language.label')}
       onPointerDown={event=>{if(event.button===0)event.preventDefault();}}>
