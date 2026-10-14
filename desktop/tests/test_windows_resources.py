@@ -16,13 +16,13 @@ class WindowsResourcesTest(unittest.TestCase):
         self.assertTrue({(16, 16), (32, 32), (48, 48), (256, 256)}.issubset(sizes))
 
     def test_installer_and_uninstaller_use_approved_brand_resource(self):
-        config = json.loads((ROOT / 'src-tauri/tauri.windows.conf.json').read_text())
+        config = json.loads((ROOT / 'src-tauri/tauri.windows.conf.json').read_text(encoding='utf-8'))
         nsis = config['bundle']['windows']['nsis']
         self.assertEqual(nsis['installerIcon'], 'icons/icon.ico')
         self.assertEqual(nsis['uninstallerIcon'], 'icons/icon.ico')
 
     def test_release_binary_uses_windows_gui_subsystem(self):
-        source = (ROOT / 'src-tauri/src/main.rs').read_text()
+        source = (ROOT / 'src-tauri/src/main.rs').read_text(encoding='utf-8')
         self.assertIn('cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")', source)
 
 
