@@ -22,7 +22,9 @@ Export Ripple-WorkBuddy.json. In WorkBuddy, open Experts · Skills · Connectors
 
 ## Delete a connection configuration
 
-Select the AI application and choose **Delete connection configuration**, then confirm its name and scope. Ripple removes only that application's configuration and credentials stored by Ripple on this computer. It retains other clients, the editor access preference, projects, transcripts and the downloaded tunnel-client. Old client credentials are revoked immediately and remain revoked after restarting Ripple; explicitly adding or saving the configuration again creates a new credential. Reconnect in the AI application after adding it again.
+The AI application list shows **Configured** or **Not configured**, referring to saved setup on this computer rather than a live external connection. Automatically generated credentials alone do not count as configured. The delete action is hidden when setup is absent or its status cannot be read.
+
+Select the AI application and choose **Delete ChatGPT / Claude / WorkBuddy connection configuration**, then confirm its name and scope. Ripple removes only that application's configuration and credentials stored by Ripple on this computer. It retains other clients, the editor access preference, projects, transcripts and the downloaded tunnel-client. Old client credentials are revoked immediately and remain revoked after restarting Ripple; explicitly adding or saving the configuration again creates a new credential. Reconnect in the AI application after adding it again.
 
 Deletion does not uninstall extensions or remove registrations inside ChatGPT, Claude or WorkBuddy, and does not revoke an OpenAI tunnel or Runtime API key. Manage those separately in the relevant application or OpenAI settings. If the selected client has a request in progress, finish editing and check the saved result before retrying deletion. Cancellation changes nothing; failure keeps a retry available.
 

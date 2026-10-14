@@ -7,8 +7,8 @@ vi.mock('../lib/desktopFs', () => ({ nativeDesktopAvailable: () => true }));
 vi.mock('../lib/tunnelClientRelease', async original => ({...await original<typeof import('../lib/tunnelClientRelease')>(), latestTunnelRelease:vi.fn(async()=>({tag_name:'v0.0.99',draft:false,prerelease:false,assets:[]}))}));
 beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); await setInterfaceLanguage('zh-CN'); });
-function fixture(client = 'claude') {
- const invoke=vi.fn(async(command:string):Promise<unknown>=>command==='connector_client_status'?{client}:command==='connector_client_add'?client:command==='connector_setup_status'?{client_path:'',tunnel_id:'',has_key:false,configured:false}:command==='connector_client_platform'?{os:'macos',arch:'aarch64'}:false);
+function fixture(client = 'claude', configured = {chatgpt:true,claude:true,workbuddy:true}) {
+ const invoke=vi.fn(async(command:string):Promise<unknown>=>command==='connector_client_status'?{client,configured}:command==='connector_client_add'?client:command==='connector_setup_status'?{client_path:'',tunnel_id:'',has_key:false,configured:false}:command==='connector_client_platform'?{os:'macos',arch:'aarch64'}:false);
  (window as unknown as {__TAURI__: unknown}).__TAURI__={core:{invoke}};
  const onSaved=vi.fn();
  const ui=render(<ConnectorSetup onSaved={onSaved}/>);
@@ -26,7 +26,7 @@ it('opens the selected client installer without claiming AI connection',async()=
 it.each(['chatgpt','claude','workbuddy'])('deletes only the confirmed %s configuration without reconnecting other clients',async client=>{
  const {ui,invoke,onSaved}=fixture(client);
  await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
- const trigger=ui.getByRole('button',{name:'删除连接配置'});trigger.focus();fireEvent.click(trigger);
+ const trigger=ui.getByRole('button',{name:/删除 (ChatGPT|Claude|WorkBuddy) 连接配置/});trigger.focus();fireEvent.click(trigger);
  const dialog=ui.getByRole('dialog');const cancel=within(dialog).getByRole('button',{name:'取消'});
  expect(document.activeElement).toBe(cancel);
  expect(dialog.textContent).toContain('不会卸载');
@@ -35,11 +35,14 @@ it.each(['chatgpt','claude','workbuddy'])('deletes only the confirmed %s configu
  expect(invoke).toHaveBeenCalledWith('connector_client_delete',{client});
  expect(onSaved).not.toHaveBeenCalled();
  expect(ui.getByText(/本机连接配置已删除/)).toBeTruthy();
+ expect(ui.queryByRole('button',{name:/删除 .* 连接配置/})).toBeNull();
+ expect(document.activeElement).toBe(ui.getByRole('combobox'));
+ expect(within(ui.getByRole('combobox')).getByRole('option',{name:new RegExp((client === 'claude' ? 'Claude' : client === 'chatgpt' ? 'ChatGPT' : 'WorkBuddy')+'.*未配置')})).toBeTruthy();
 });
 
 it('cancel and Escape do not delete and restore the opener',async()=>{
  const {ui,invoke}=fixture();await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
- const trigger=ui.getByRole('button',{name:'删除连接配置'});fireEvent.click(trigger);
+ const trigger=ui.getByRole('button',{name:/删除 (ChatGPT|Claude|WorkBuddy) 连接配置/});fireEvent.click(trigger);
  fireEvent.click(within(ui.getByRole('dialog')).getByRole('button',{name:'取消'}));
  expect(document.activeElement).toBe(trigger);fireEvent.click(trigger);
  fireEvent(ui.getByRole('dialog'),new Event('cancel',{cancelable:true,bubbles:true}));
@@ -50,7 +53,7 @@ it('keeps failure in the confirmation and permits retry, with no success claim',
  const {ui,invoke}=fixture();await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
  const original=invoke.getMockImplementation()!;
  let attempt=0;invoke.mockImplementation(async command=>{if(command==='connector_client_delete'&&attempt++===0)throw 'connector_client_busy';return original(command);});
- fireEvent.click(ui.getByRole('button',{name:'删除连接配置'}));fireEvent.click(within(ui.getByRole('dialog')).getByRole('button',{name:'删除配置'}));
+ fireEvent.click(ui.getByRole('button',{name:/删除 (ChatGPT|Claude|WorkBuddy) 连接配置/}));fireEvent.click(within(ui.getByRole('dialog')).getByRole('button',{name:'删除配置'}));
  await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('还有请求正在处理'));
  expect(document.activeElement).toBe(within(ui.getByRole('dialog')).getByRole('button',{name:'取消'}));
  expect(ui.queryByText(/本机连接配置已删除/)).toBeNull();
@@ -62,7 +65,7 @@ it('locks deletion controls until the native operation finishes',async()=>{
  const {ui,invoke}=fixture();await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
  let done:()=>void=()=>{};const pending=new Promise<void>(resolve=>{done=resolve;});const original=invoke.getMockImplementation()!;
  invoke.mockImplementation(command=>command==='connector_client_delete'?pending:original(command));
- fireEvent.click(ui.getByRole('button',{name:'删除连接配置'}));fireEvent.click(within(ui.getByRole('dialog')).getByRole('button',{name:'删除配置'}));
+ fireEvent.click(ui.getByRole('button',{name:/删除 (ChatGPT|Claude|WorkBuddy) 连接配置/}));fireEvent.click(within(ui.getByRole('dialog')).getByRole('button',{name:'删除配置'}));
  expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true);
  expect((within(ui.getByRole('dialog')).getByRole('button',{name:'取消'}) as HTMLButtonElement).disabled).toBe(true);
  expect((within(ui.getByRole('dialog')).getByRole('button',{name:'正在删除…'}) as HTMLButtonElement).disabled).toBe(true);
@@ -71,7 +74,7 @@ it('locks deletion controls until the native operation finishes',async()=>{
 
 it('shows English deletion scope and generic errors without exposing native details',async()=>{
  await setInterfaceLanguage('en');const {ui,invoke}=fixture('workbuddy');await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
- invoke.mockRejectedValueOnce('synthetic_private_path');fireEvent.click(ui.getByRole('button',{name:'Delete connection configuration'}));
+ invoke.mockRejectedValueOnce('synthetic_private_path');fireEvent.click(ui.getByRole('button',{name:'Delete WorkBuddy connection configuration'}));
  expect(ui.getByRole('dialog').textContent).toContain('does not uninstall');
  fireEvent.click(within(ui.getByRole('dialog')).getByRole('button',{name:'Delete configuration'}));
  await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('Deletion did not complete'));
@@ -111,4 +114,36 @@ it('failed WorkBuddy install offers a retry and does not report addition', async
  await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('无法将 Ripple 添加到 WorkBuddy'));
  expect(ui.queryByRole('status')).toBeNull();
  expect(ui.getByText('添加到 WorkBuddy').hasAttribute('disabled')).toBe(false);
+});
+
+it('shows independent saved configuration badges and hides deletion for an unconfigured client',async()=>{
+ const {ui}=fixture('chatgpt',{chatgpt:false,claude:true,workbuddy:false});
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ expect(ui.queryByRole('button',{name:/删除 .* 连接配置/})).toBeNull();
+ expect(ui.getByRole('option',{name:'ChatGPT · 未配置'})).toBeTruthy();
+ expect(ui.getByRole('option',{name:'Claude 桌面版（实验性） · 已配置'})).toBeTruthy();
+ fireEvent.change(ui.getByRole('combobox'),{target:{value:'claude'}});
+ await waitFor(()=>expect(ui.getByRole('button',{name:'删除 Claude 连接配置'})).toBeTruthy());
+ fireEvent.change(ui.getByRole('combobox'),{target:{value:'workbuddy'}});
+ await waitFor(()=>expect(ui.getByRole('button',{name:'添加到 WorkBuddy'})).toBeTruthy());
+ expect(ui.queryByRole('button',{name:/删除 .* 连接配置/})).toBeNull();
+});
+it('refreshes configuration after adding a local client',async()=>{
+ const config={chatgpt:false,claude:false,workbuddy:false};const {ui,invoke}=fixture('claude',config);
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ expect(ui.queryByRole('button',{name:'删除 Claude 连接配置'})).toBeNull();
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(async command=>{if(command==='connector_client_add')config.claude=true;return original(command);});
+ fireEvent.click(ui.getByRole('button',{name:'添加到 Claude'}));
+ await waitFor(()=>expect(ui.getByRole('button',{name:'删除 Claude 连接配置'})).toBeTruthy());
+});
+it('uses beta and named delete actions in English, with unknown status hidden safely',async()=>{
+ await setInterfaceLanguage('en');const {ui,invoke}=fixture();
+ await waitFor(()=>expect(ui.getByRole('option',{name:'Claude Desktop (beta) · Configured'})).toBeTruthy());
+ expect(ui.getByRole('button',{name:'Delete Claude connection configuration'})).toBeTruthy();
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(async command=>{if(command==='connector_client_status')throw Error('unavailable');return original(command);});
+ fireEvent.click(ui.getByRole('button',{name:'Add to Claude'}));
+ await waitFor(()=>expect(ui.getByRole('option',{name:'Claude Desktop (beta) · Status unavailable'})).toBeTruthy());
+ expect(ui.queryByRole('button',{name:'Delete Claude connection configuration'})).toBeNull();
 });

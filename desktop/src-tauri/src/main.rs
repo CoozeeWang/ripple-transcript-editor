@@ -306,15 +306,14 @@ fn connector_window_key(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn connector_client_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let data = app_data(&app).map_err(|_| "data_unavailable")?;
-    let path = data.join("connector/client-mode.json");
-    if !path.exists() { return Ok(serde_json::json!({"client":"chatgpt"})); }
-    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).map_err(|_| "client_unavailable")?).map_err(|_| "client_unavailable")?;
-    match value.get("client").and_then(|v|v.as_str()) {
-        Some("chatgpt" | "claude" | "workbuddy") => Ok(value),
-        _ => Err("invalid_client".into()),
-    }
+async fn connector_client_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = app.path().home_dir().map_err(|_| "home_unavailable")?.join(".workbuddy/mcp.json");
+        let output = local_command(&app, "status", "chatgpt")?.arg("--target").arg(target)
+            .stdout(Stdio::piped()).output().map_err(|_| "client_unavailable")?;
+        if !output.status.success() { return Err("client_unavailable".into()); }
+        serde_json::from_slice(&output.stdout).map_err(|_| "client_unavailable".into())
+    }).await.map_err(|_| "client_unavailable".to_string())?
 }
 
 fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<Command, String> {

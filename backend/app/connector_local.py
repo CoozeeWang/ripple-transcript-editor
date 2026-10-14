@@ -8,11 +8,56 @@ import zipfile
 from pathlib import Path
 
 from .bundled_runtime import bundled_python
-from .connector_config import enable_client
+from .connector_config import disabled_clients, enable_client, read_local_file
 from .connector_setup import write_private
 from .private_files import protect_private_fd
 
 CLIENTS = ("chatgpt", "claude", "workbuddy")
+
+
+def configuration_status(data: Path, workbuddy_target: Path | None = None) -> dict:
+    """Report saved local setup only, never infer an external account connection."""
+    directory = data / "connector"
+    disabled = disabled_clients(data)
+
+    def present(name):
+        return read_local_file(directory / name) is not None
+
+    def chatgpt():
+        if not present("setup.json"):
+            return False
+        setup = json.loads(read_local_file(directory / "setup.json"))
+        return (isinstance(setup, dict)
+            and isinstance(setup.get("client_path"), str) and bool(setup["client_path"])
+            and isinstance(setup.get("tunnel_id"), str) and setup["tunnel_id"].startswith("tunnel_")
+            and all(present(name) for name in ("runtime.key", "tunnel.yaml", "client.key")))
+    def workbuddy():
+        if not present("workbuddy.key"):
+            return False
+        if present("Ripple-WorkBuddy.json"):
+            return True
+        if workbuddy_target is not None:
+            # Match only this Ripple data root; a daily-app entry is not Dev setup.
+            raw = read_local_file(workbuddy_target)
+            if raw is not None:
+                value = json.loads(raw)
+                servers = value.get("mcpServers", {}) if isinstance(value, dict) else {}
+                entry = servers.get("Ripple", {}) if isinstance(servers, dict) else {}
+                args = entry.get("args", []) if isinstance(entry, dict) else []
+                return (isinstance(args, list)
+                    and "--credential-file" in args
+                    and args[-1:] == [str(directory / "workbuddy.key")])
+        return False
+
+    checks = {"chatgpt": chatgpt, "claude": lambda: present("claude.key") and present("Ripple.mcpb"),
+              "workbuddy": workbuddy}
+    configured = {}
+    for client, check in checks.items():
+        try:
+            configured[client] = False if client in disabled else check()
+        except (OSError, ValueError, TypeError):
+            configured[client] = None  # Unknown is not an unconfigured or connected claim.
+    return {"client": selected_client(data), "configured": configured}
 
 
 def selected_client(data: Path) -> str:
@@ -167,4 +212,5 @@ if __name__ == "__main__":
         export_installation(args.data, args.resources, args.client, args.target)
     elif args.action == "install-workbuddy":
         install_workbuddy(args.data, args.resources, args.target)
-    print(json.dumps({"client": selected_client(args.data)}))
+    print(json.dumps(configuration_status(args.data, args.target)
+                     if args.action == "status" else {"client": selected_client(args.data)}))

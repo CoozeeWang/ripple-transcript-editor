@@ -1587,8 +1587,8 @@
     "cancelSetup": "取消",
     "aiAnnotation": "AI 批注",
     "software": "AI 软件",
-    "claudeDesktop": "Claude 桌面版（实验性连接）",
-    "softwareHint": "选择要查看设置的 AI 软件。已配置的连接可独立使用，切换此列表不会断开其他连接。",
+    "claudeDesktop": "Claude 桌面版（实验性）",
+    "softwareHint": "“已配置”表示本机设置已保存。切换软件不会断开其他连接。",
     "claudeStep1": "点击“添加到 Claude”，打开扩展安装界面。",
     "claudeStep2": "在 Claude 中确认安装 Ripple；无需手动编辑配置。",
     "workbuddyStep1": "点击“添加到 WorkBuddy”，确认添加连接。",
@@ -1649,7 +1649,7 @@
     "setupPromptCopied": "配置请求已复制。",
     "setupPromptCopyFailed": "复制失败，请选中上方文字手动复制。",
     "downloadFile": "下载 {{file}}",
-    "deleteConfiguration": "删除连接配置",
+    "deleteConfiguration": "删除 {{client}} 连接配置",
     "deleteTitle": "删除 {{client}} 的连接配置？",
     "deleteDescription": "清除该软件在 Ripple 本机保存的配置和凭据。其他 AI 连接、项目和稿件保留；需要时可重新添加。",
     "deleteRemoteHint": "不会卸载其他软件中的 Ripple 插件，也不会撤销 OpenAI 隧道或密钥；请在对应软件或网页中处理。",
@@ -1658,7 +1658,10 @@
     "deletingConfiguration": "正在删除…",
     "configurationDeleted": "{{client}} 的本机连接配置已删除。重新添加后，请在该软件中重新连接。",
     "deleteBusy": "该软件还有请求正在处理。请先结束编辑，确认已保存结果后重试。",
-    "deleteError": "删除未完成。请检查 MCP 连接状态后重试。"
+    "deleteError": "删除未完成。请检查 MCP 连接状态后重试。",
+    "configurationPresent": "已配置",
+    "configurationAbsent": "未配置",
+    "configurationUnknown": "状态待核实"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。"
