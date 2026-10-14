@@ -1,6 +1,7 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
 import { stampContinuationReceipt } from './lib/continuationBatch';
 import type { ContinuationTask } from './lib/incrementalContinuation';
+import type { ConnectorVersion } from './lib/aiConnector';
 import { apiErrorMessage } from './i18n/errors';
 import { msg } from './i18n';
 import { chooseDirectory } from './lib/projectPreferences';
@@ -1989,6 +1990,18 @@ function inDirectory<T>(dir: FileSystemDirectoryHandle, operation: () => Promise
   return next;
 }
 export const readManifest: typeof readManifestUnlocked = (...args) => inDirectory(args[0], () => readManifestUnlocked(...args));
+/** Project discovery must not migrate unopened manuscripts as a side effect. */
+export function readConnectorManifest(dir: FileSystemDirectoryHandle, audio: string): Promise<TranscriptManifest | null> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) return null;
+    const raw = await readManifestText(container);
+    if (raw === null) return null;
+    const manifest = JSON.parse(raw) as TranscriptManifest;
+    if (!Array.isArray(manifest.models)) throw Error('open_legacy_manuscript_in_ripple_first');
+    return manifest;
+  });
+}
 export const readEdited: typeof readEditedUnlocked = (...args) => inDirectory(args[0], () => readEditedUnlocked(...args));
 export const readModelEdit: typeof readModelEditUnlocked = (...args) => inDirectory(args[0], () => readModelEditUnlocked(...args));
 export const readModelOriginal: typeof readModelOriginalUnlocked = (...args) => inDirectory(args[0], () => readModelOriginalUnlocked(...args));
@@ -2007,6 +2020,61 @@ export const migrateAllLegacy: typeof migrateAllLegacyUnlocked = (...args) => in
 export const saveInterviewDetails: typeof saveInterviewDetailsUnlocked = (...args) => inDirectory(args[0], () => saveInterviewDetailsUnlocked(...args));
 
 export const setModelOriginal: typeof setModelOriginalUnlocked = (...args) => inDirectory(args[0], () => setModelOriginalUnlocked(...args));
+
+/** Compare and save one explicitly selected background version in the same directory queue.
+ * Never selects a different version or changes the editor's active version.
+ */
+export function saveConnectorVersion(dir: FileSystemDirectoryHandle, audio: string, options: {
+  version: ConnectorVersion; baseline: Transcript; name?: string;
+  allowRebase?: boolean;
+  check: () => Promise<void>;
+  update: (current: Transcript) => Transcript;
+}): Promise<{ version: ConnectorVersion; transcript: Transcript }> {
+  return inDirectory(dir, async () => {
+    await options.check();
+    const manifest = await readManifestUnlocked(dir, audio);
+    const model = manifest?.models.find(m => m.id === options.version.model_id);
+    const edit = model?.edits.find(e => e.id === options.version.edit_id);
+    const original = options.version.kind === 'original';
+    if (!model || !manifest || (!original && (!edit || model.designatedOriginal))) throw Error('target_version_unavailable');
+    if (original && !options.name) throw Error('current_version_read_only_create_new_version');
+    const data = original ? await readModelOriginalUnlocked(dir, audio, model.id)
+      : await readModelEditUnlocked(dir, audio, model.id, options.version.edit_id);
+    if (!data) throw Error('target_version_unavailable');
+    if (!options.allowRebase && JSON.stringify(data.transcript) !== JSON.stringify(options.baseline)) throw Error('source_changed_read_current_again');
+    const transcript = options.update(data.transcript);
+    await options.check();
+    if (!options.name && transcript === data.transcript) return { version: options.version, transcript };
+    if (options.name) {
+      const result = await createEditUnlocked(dir, audio, model.id, { fromOriginal: original,
+        srcEditId: original ? undefined : options.version.edit_id, setActive: false,
+        reviewed: { baseline: data.transcript, transcript, label: options.name } });
+      return { version: { id: `${result.model.id}:${result.edit.id}`, model_id: result.model.id,
+        edit_id: result.edit.id, name: result.edit.label!, kind: 'edit' }, transcript: result.edited.transcript };
+    }
+    // Both files are recoverable. Roll back this write if the second half fails.
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container || !edit || !('metadata' in data)) throw Error('target_version_unavailable');
+    const before = await readFileText(container, edit.file);
+    if (before === null) throw Error('target_version_unavailable');
+    const updated = new Date().toISOString();
+    try {
+      const serialized = JSON.stringify({ ...data, transcript, updated_at: updated }, null, 2);
+      await writeFileText(container, edit.file, serialized);
+      if (await readFileText(container, edit.file) !== serialized) throw Error('background_save_verification_failed');
+      await writeFileJson(container, MANIFEST_NAME, { ...manifest, models: manifest.models.map(m => m.id === model.id
+        ? { ...m, edits: m.edits.map(e => e.id === edit.id ? { ...e, updated_at: updated } : e) } : m) });
+    } catch (error) {
+      try {
+        await writeFileText(container, edit.file, before);
+        if (await readFileText(container, edit.file) !== before) throw Error('background_rollback_verification_failed', { cause: error });
+      }
+      catch { throw Error('background_save_uncertain_check_target_version', { cause: error }); }
+      throw error;
+    }
+    return { version: options.version, transcript };
+  });
+}
 
 /** Confirmed connector rules belong only to this interview, without raw examples. */
 export async function readConnectorRules(dir: FileSystemDirectoryHandle, audio: string): Promise<string[]> {

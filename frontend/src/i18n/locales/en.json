@@ -1564,7 +1564,7 @@
   },
   "connector": {
     "title": "MCP connection",
-    "hint": "External AI can read and analyze the open transcript and its original comparison on request. Before editing, it asks whether to save a new version or update the current editable version. It can also add AI annotations and highlights to the current version. Access is limited to the open transcript. No audio is sent; transcript text is sent to the selected AI service when requested.",
+    "hint": "External AI can read and analyze transcripts in the current project, including manuscripts you have not opened. Specify the manuscript and exact version; AI asks when the version is missing. Text edits can create a new version or update the selected editable version. Annotations and highlights are saved to that version. No audio is sent; requested transcript text is sent to the selected AI service.",
     "enable": "Enable MCP connection",
     "off": "Connection disabled",
     "connecting": "Connecting…",
@@ -1659,7 +1659,8 @@
     "deleteError": "Deletion did not complete. Check the MCP connection status, then retry.",
     "configurationPresent": "Configured",
     "configurationAbsent": "Not configured",
-    "configurationUnknown": "Status unavailable"
+    "configurationUnknown": "Status unavailable",
+    "backgroundSaved": "Saved: {{recording}} · {{version}}"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple’s local service couldn’t start. Restart Ripple or check the application logs."

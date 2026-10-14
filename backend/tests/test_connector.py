@@ -106,7 +106,7 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     key_file.write_text('synthetic-not-real-credential-' * 3)
     server = create_server('http://127.0.0.1:18701', key_file)
     tools = asyncio.run(server.list_tools())
-    assert len(tools) == 17
+    assert len(tools) == 20
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
@@ -120,6 +120,11 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     assert checkpoint.annotations.idempotent_hint and checkpoint.annotations.destructive_hint
     read = next(tool for tool in tools if tool.name == 'read_current_interview')
     assert read.annotations.read_only_hint
+    project_read = next(t for t in tools if t.name == 'read_project_interview')
+    assert project_read.annotations.read_only_hint
+    assert 'version_id' in project_read.input_schema['properties']
+    assert 'version_id' not in project_read.input_schema.get('required', [])
+    assert {'list_project_interviews', 'list_project_continuations'} <= {t.name for t in tools}
     # Optional at the schema boundary so omission can return a user clarification, not a write.
     assert 'save_mode' not in prepare.input_schema.get('required', [])
     examples = next(tool for tool in tools if tool.name == 'read_editing_examples')

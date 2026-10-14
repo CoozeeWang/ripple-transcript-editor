@@ -13,15 +13,15 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict
 
 INSTRUCTIONS = (
-    "Ripple is the local editor; this connection only accesses its explicitly enabled current interview. "
-    "Call read_current_interview; its current_version is the continuation target. "
+    "Ripple is the local editor; this enabled connection accesses manuscripts in its current open project, not arbitrary paths, other projects or multiple windows. "
+    "For tasks without an exact version, list_project_interviews and ask the user to choose the precise version; never default to the newest, active or only version. Pass explicit interview_id, recording_id and version_id to read_project_interview. Report target names and IDs. Snapshots and task IDs keep independent targets: reading B never retargets a task for A. read_current_interview remains available for explicitly requested current-document work. "
     "Call read_editing_examples to discover comparison_versions. Only a sole original is selected automatically. "
     "If selection_required, list version names and IDs and ask the user to choose; pass comparison_version_id. "
     "Explain the actual before_version and after_version before inferring style. Never treat ambiguous pairs as differences. "
     "Read pages and selected version comparison examples as needed. "
     "Never assume the continuation start: ask the user if missing or ambiguous. "
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
-    "Before continuation ask the user, in their language, whether to save a new version or update the current editable version; reuse an already explicit choice and pass save_mode. Never silently choose a save mode. Read-only originals require a new version. Current-version edits retain the version name and support ordinary undo during the current editing session; use a new version for a persistent separate before/after comparison. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
+    "Before continuation ask the user, in their language, whether to save a new version or update the current editable version; reuse an already explicit choice and pass save_mode. Never silently choose a save mode. Read-only originals require a new version. Current-version edits retain the version name. Active-editor writes support ordinary session undo; background writes do not, and new_version provides a persistent separate copy; use a new version for a persistent separate before/after comparison. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
     "Infer preferences only from examples confirmed as human edits; selected-version differences may include AI edits. "
     "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
     "For long editing use delivery_mode incremental. List continuations before starting again after interruption. "
@@ -98,6 +98,37 @@ def register_tools(mcp, call):
     read = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
     draft = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
     write = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def list_project_interviews(query: str = "", cursor: str = "0", limit: int = 20) -> dict[str, Any]:
+        """List current-project interview/recording/version candidates, without text or paths.
+
+        Ask the user for an exact version when unspecified, even if only one candidate.
+        Duplicate names require clarification; never pick by recency.
+        """
+        return await call("project_directory", {"query": query, "cursor": cursor, "limit": limit})
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def read_project_interview(interview_id: str | None = None, recording_id: str | None = None,
+                                     version_id: str | None = None) -> dict[str, Any]:
+        """Read an explicitly selected current-project version without opening it in Ripple.
+
+        Missing version_id returns candidates and exact_version clarification, never a snapshot.
+        Ask the user, use IDs from list_project_interviews and report actual target names/IDs.
+        Use the snapshot with existing page, editing, marks and continuation tools.
+        """
+        args = {key: value for key, value in {"interview_id": interview_id,
+                "recording_id": recording_id, "version_id": version_id}.items() if value is not None}
+        return await call("read_project", args)
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def list_project_continuations() -> dict[str, Any]:
+        """Find saved tasks in the current project with their exact targets after interruption.
+
+        Continue using the same task_id; ask before resuming a paused/conflicting task.
+        No automatic restart, no manuscript write, no other project access.
+        """
+        return await call("project_tasks", {})
 
     @mcp.tool(structured_output=True, annotations=read)
     async def read_current_interview() -> dict[str, Any]:

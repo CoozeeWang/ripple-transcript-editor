@@ -192,7 +192,7 @@ async def test_authenticated_mcp_tools_route_only_to_paired_device(tmp_path):
         listed = await client.post("/mcp", json=body, headers=headers)
         assert listed.status_code == 200, listed.text
         tools = listed.json()["result"]["tools"]
-        assert len(tools) == 17
+        assert len(tools) == 20
         assert {
             "list_continuations",
             "read_continuation_batch",

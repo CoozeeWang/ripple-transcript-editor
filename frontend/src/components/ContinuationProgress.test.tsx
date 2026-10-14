@@ -22,6 +22,17 @@ it('does not call a target-version mismatch a manual conflict or allow writes th
   const resume=screen.getByRole('button',{name:'重读本批继续'}) as HTMLButtonElement;
   expect(resume.disabled).toBe(true);fireEvent.click(resume);expect(action).not.toHaveBeenCalled();
 });
+it.each(['zh-CN','en'] as const)('labels an exact background target and permits its scoped recovery in %s',async language=>{
+  await act(()=>setInterfaceLanguage(language));
+  const action=vi.fn(async()=>({}));
+  const project_target={project_id:'synthetic-project',project:'Synthetic project',interview_id:'session-b',interview:'Synthetic B',
+    recording_id:'recording-b',recording:'Synthetic B manuscript',version_id:'m:e1',version:'Synthetic draft'};
+  render(<ContinuationProgress tasks={[{...task,is_current:false,project_target}]} error="" onAction={action}/>);
+  expect(screen.getByText('Synthetic B manuscript · Synthetic draft')).toBeTruthy();
+  const resume=screen.getByRole('button',{name:language==='en'?'Re-read batch and continue':'重读本批继续'}) as HTMLButtonElement;
+  expect(resume.disabled).toBe(false);fireEvent.click(resume);
+  await waitFor(()=>expect(action).toHaveBeenCalledWith('resume','synthetic-task'));
+});
 it('reports an uncertain write as awaiting recovery rather than a content conflict',()=>{
   render(<ContinuationProgress tasks={[{...task,reason:'synthetic_disk_failure',saved_segments:0}]} error="" onAction={vi.fn()}/>);
   expect(screen.getByText(/本批尚未确认保存/)).toBeTruthy();expect(screen.queryByText(/本批内容已变化/)).toBeNull();

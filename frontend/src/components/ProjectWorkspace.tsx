@@ -175,6 +175,7 @@ export function ProjectWorkspace() {
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
+    connectorProject={() => current.current} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onRenameInterview={async title => {
       const snapshot = current.current!;

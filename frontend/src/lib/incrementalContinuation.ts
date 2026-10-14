@@ -2,6 +2,7 @@ import type { ContinuationReceipt, Segment } from '../types';
 import type { ConnectorDocument, ConnectorHost, ConnectorSaveMode, ConnectorVersion } from './aiConnector';
 import { applyAISuggestions, nextAIEditName } from './aiVersionEdits';
 import { checkContinuationGuard, type ContinuationGuard } from './continuationBatch';
+import type { ProjectTarget } from './projectConnectorHost';
 
 type Action = 'edit' | 'delete' | 'merge_previous';
 interface Change { segment_id: string; before: string; after: string; action: Action }
@@ -25,6 +26,7 @@ export interface ContinuationStore {
   write: (task: ContinuationTask) => Promise<void>;
 }
 export interface ContinuationProgress {
+  project_target?: ProjectTarget;
   task_id: string; state: ContinuationTask['state']; reason?: string;
   version: string; version_id: string; saved_segments: number; total_segments: number; staged: number;
   held_batches: number; is_current: boolean;
@@ -124,7 +126,7 @@ export class IncrementalContinuation {
       if (ids.length !== new Set(ids).size || segments.slice(first,last+1).some(s => s.text.length > 12000)) fail('segment_too_large_or_duplicate');
       const name = a.save_mode === 'new_version' ? nextAIEditName(doc.label,doc.names) : doc.label;
       const id = crypto.randomUUID();
-      const summary = JSON.stringify({ source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
+      const summary = JSON.stringify({ ...(doc.target ? { target: doc.target } : {}), source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
       const task: ContinuationTask = { schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
       await this.save(task,doc);
       return { task_id:id,summary,segment_count:ids.length,delivery_mode:'incremental',target_version:doc.version,
