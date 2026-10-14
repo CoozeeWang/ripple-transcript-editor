@@ -8,10 +8,56 @@ import zipfile
 from pathlib import Path
 
 from .bundled_runtime import bundled_python
+from .connector_config import disabled_clients, enable_client, read_local_file
 from .connector_setup import write_private
 from .private_files import protect_private_fd
 
 CLIENTS = ("chatgpt", "claude", "workbuddy")
+
+
+def configuration_status(data: Path, workbuddy_target: Path | None = None) -> dict:
+    """Report saved local setup only, never infer an external account connection."""
+    directory = data / "connector"
+    disabled = disabled_clients(data)
+
+    def present(name):
+        return read_local_file(directory / name) is not None
+
+    def chatgpt():
+        if not present("setup.json"):
+            return False
+        setup = json.loads(read_local_file(directory / "setup.json"))
+        return (isinstance(setup, dict)
+            and isinstance(setup.get("client_path"), str) and bool(setup["client_path"])
+            and isinstance(setup.get("tunnel_id"), str) and setup["tunnel_id"].startswith("tunnel_")
+            and all(present(name) for name in ("runtime.key", "tunnel.yaml", "client.key")))
+    def workbuddy():
+        if not present("workbuddy.key"):
+            return False
+        if present("Ripple-WorkBuddy.json"):
+            return True
+        if workbuddy_target is not None:
+            # Match only this Ripple data root; a daily-app entry is not Dev setup.
+            raw = read_local_file(workbuddy_target)
+            if raw is not None:
+                value = json.loads(raw)
+                servers = value.get("mcpServers", {}) if isinstance(value, dict) else {}
+                entry = servers.get("Ripple", {}) if isinstance(servers, dict) else {}
+                args = entry.get("args", []) if isinstance(entry, dict) else []
+                return (isinstance(args, list)
+                    and "--credential-file" in args
+                    and args[-1:] == [str(directory / "workbuddy.key")])
+        return False
+
+    checks = {"chatgpt": chatgpt, "claude": lambda: present("claude.key") and present("Ripple.mcpb"),
+              "workbuddy": workbuddy}
+    configured = {}
+    for client, check in checks.items():
+        try:
+            configured[client] = False if client in disabled else check()
+        except (OSError, ValueError, TypeError):
+            configured[client] = None  # Unknown is not an unconfigured or connected claim.
+    return {"client": selected_client(data), "configured": configured}
 
 
 def selected_client(data: Path) -> str:
@@ -57,6 +103,7 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         raise ValueError("Bundled runtime unavailable")
     if client == "workbuddy":
         write_private(target, json.dumps({"mcpServers": {"Ripple": {"type": "stdio", **config}}}, ensure_ascii=False, indent=2))
+        enable_client(data, client)
         return
     manifest = {"manifest_version": "0.3", "name": "ripple", "display_name": "Ripple", "version": "1.0.0",
                 "description": "Read, analyze and edit the current Ripple interview. 读取、分析与编辑 Ripple 当前访谈。",
@@ -76,6 +123,7 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as bundle:
             bundle.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
             bundle.writestr("server/index.js", script)
+    enable_client(data, client)
 
 
 def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
@@ -120,6 +168,7 @@ def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
         if not isinstance(servers, dict):
             raise TypeError("Invalid server configuration")
         if servers.get("Ripple") == config:
+            enable_client(data, "workbuddy")
             return False
         current["mcpServers"] = {**servers, "Ripple": config}
         payload = json.dumps(current, ensure_ascii=False, indent=2).encode() + b"\n"
@@ -140,6 +189,7 @@ def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
                 os.fsync(backup.fileno())
         os.replace(temp_name, target)
         temp_name = None
+        enable_client(data, "workbuddy")
         return True
     finally:
         os.close(lock_fd)
@@ -162,4 +212,5 @@ if __name__ == "__main__":
         export_installation(args.data, args.resources, args.client, args.target)
     elif args.action == "install-workbuddy":
         install_workbuddy(args.data, args.resources, args.target)
-    print(json.dumps({"client": selected_client(args.data)}))
+    print(json.dumps(configuration_status(args.data, args.target)
+                     if args.action == "status" else {"client": selected_client(args.data)}))

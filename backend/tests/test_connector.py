@@ -62,6 +62,7 @@ def test_owner_only_setup_escapes_paths_and_never_puts_keys_in_yaml(tmp_path):
     client = tmp_path / 'client with spaces' / 'tunnel-client'
     client.parent.mkdir()
     client.write_text('synthetic executable fixture')
+    client.chmod(0o700)
     root = tmp_path / 'Synthetic data'
     resources = tmp_path / 'Synthetic resources'
     key = 'synthetic-not-a-real-key-' * 3
@@ -84,6 +85,19 @@ def test_setup_rejects_untrusted_client_name_and_malformed_tunnel(tmp_path):
     with pytest.raises(ValueError):
         save_setup(tmp_path / 'data', tmp_path, {'client_path': str(client), 'tunnel_id': 'bad',
                                               'runtime_key': 'synthetic-key-' * 4})
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Unix executable permissions')
+def test_setup_rejects_non_executable_before_saving_any_configuration(tmp_path):
+    from app.connector_setup import save_setup
+    client = tmp_path / 'tunnel-client'
+    client.write_text('Synthetic non-executable fixture, never run')
+    client.chmod(0o600)
+    root = tmp_path / 'data'
+    with pytest.raises(ValueError, match='executable'):
+        save_setup(root, tmp_path, {'client_path': str(client), 'tunnel_id': 'tunnel_synthetic',
+                                   'runtime_key': 'synthetic-key-' * 4})
+    assert not (root / 'connector').exists()
 
 
 def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_path):

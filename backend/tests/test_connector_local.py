@@ -167,3 +167,49 @@ def test_workbuddy_refresh_updates_only_existing_ripple_entry(tmp_path):
     current = json.loads(target.read_bytes())
     assert current['mcpServers']['Ripple']['command'] == str(python)
     assert current['mcpServers']['Other'] == old['mcpServers']['Other']
+
+
+def test_status_ignores_automatic_credentials_and_tracks_saved_clients(tmp_path, monkeypatch):
+    from app.connector_local import configuration_status
+    from app.connector_config import delete_client
+    monkeypatch.setattr(connector, 'DATA_ROOT', tmp_path)
+    broker = connector.Broker()
+    broker.initialize()
+    assert configuration_status(tmp_path)['configured'] == dict.fromkeys(['chatgpt', 'claude', 'workbuddy'], False)
+    directory = tmp_path / 'connector'
+    (directory / 'setup.json').write_text(json.dumps({'client_path': '/synthetic/tunnel-client', 'tunnel_id': 'tunnel_synthetic'}))
+    (directory / 'runtime.key').write_text('synthetic-runtime-key')
+    (directory / 'tunnel.yaml').write_text('synthetic profile')
+    (directory / 'Ripple.mcpb').write_bytes(b'synthetic extension')
+    target = tmp_path / 'synthetic-home/mcp.json'
+    target.parent.mkdir()
+    target.write_text(json.dumps({'mcpServers': {'Ripple': {'args': ['--credential-file', str(directory / 'workbuddy.key')]}}}))
+    assert configuration_status(tmp_path, target)['configured'] == dict.fromkeys(['chatgpt', 'claude', 'workbuddy'], True)
+    delete_client(tmp_path, 'workbuddy')
+    assert configuration_status(tmp_path, target)['configured'] == {'chatgpt': True, 'claude': True, 'workbuddy': False}
+    assert target.exists()  # External registration is retained, local revocation wins.
+
+
+def test_status_matches_workbuddy_data_root_and_contains_no_paths_or_credentials(tmp_path):
+    from app.connector_local import configuration_status
+    directory = tmp_path / 'connector'
+    directory.mkdir()
+    (directory / 'workbuddy.key').write_text('synthetic_secret')
+    target = tmp_path / 'mcp.json'
+    target.write_text(json.dumps({'mcpServers': {'Ripple': {'args': ['--credential-file', '/synthetic-other-root/workbuddy.key']}}}))
+    value = configuration_status(tmp_path, target)
+    assert value['configured']['workbuddy'] is False
+    assert str(tmp_path) not in json.dumps(value) and 'synthetic_secret' not in json.dumps(value)
+
+
+def test_bad_status_file_marks_only_affected_client_unknown(tmp_path):
+    from app.connector_local import configuration_status
+    directory = tmp_path / 'connector'
+    directory.mkdir()
+    (directory / 'workbuddy.key').write_text('synthetic_secret')
+    target = tmp_path / 'mcp.json'
+    target.write_text('not json')
+    assert configuration_status(tmp_path, target)['configured'] == {'chatgpt': False, 'claude': False, 'workbuddy': None}
+    target.unlink()
+    target.symlink_to(directory / 'workbuddy.key')
+    assert configuration_status(tmp_path, target)['configured']['workbuddy'] is None

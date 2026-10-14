@@ -17,6 +17,8 @@ def save_setup(data_root: Path, resources: Path, values: dict):
     client = Path(values['client_path']).expanduser().resolve()
     if client.name not in ('tunnel-client', 'tunnel-client.exe') or not client.is_file():
         raise ValueError('Select the official tunnel-client executable')
+    if os.name != 'nt' and not os.access(client, os.X_OK):
+        raise ValueError('Select an executable tunnel-client')
     tunnel = values['tunnel_id'].strip()
     if not tunnel.startswith('tunnel_') or not tunnel.replace('_', '').isalnum():
         raise ValueError('Invalid tunnel id')
@@ -48,6 +50,8 @@ def save_setup(data_root: Path, resources: Path, values: dict):
                f'mcp:\n  commands:\n    - channel: main\n      command: {json.dumps(command)}\n')
     write_private(directory / 'tunnel.yaml', profile)
     write_private(directory / 'setup.json', json.dumps({'client_path': str(client), 'tunnel_id': tunnel}))
+    from .connector_config import enable_client
+    enable_client(data_root, 'chatgpt')
 
 
 def write_private(path: Path, value: str):

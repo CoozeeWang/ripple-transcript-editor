@@ -9,6 +9,7 @@ mod native_menu;
 mod grants;
 mod pdf_print;
 mod media;
+mod connector_config;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -305,15 +306,14 @@ fn connector_window_key(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn connector_client_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let data = app_data(&app).map_err(|_| "data_unavailable")?;
-    let path = data.join("connector/client-mode.json");
-    if !path.exists() { return Ok(serde_json::json!({"client":"chatgpt"})); }
-    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).map_err(|_| "client_unavailable")?).map_err(|_| "client_unavailable")?;
-    match value.get("client").and_then(|v|v.as_str()) {
-        Some("chatgpt" | "claude" | "workbuddy") => Ok(value),
-        _ => Err("invalid_client".into()),
-    }
+async fn connector_client_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = app.path().home_dir().map_err(|_| "home_unavailable")?.join(".workbuddy/mcp.json");
+        let output = local_command(&app, "status", "chatgpt")?.arg("--target").arg(target)
+            .stdout(Stdio::piped()).output().map_err(|_| "client_unavailable")?;
+        if !output.status.success() { return Err("client_unavailable".into()); }
+        serde_json::from_slice(&output.stdout).map_err(|_| "client_unavailable".into())
+    }).await.map_err(|_| "client_unavailable".to_string())?
 }
 
 fn local_command(app: &tauri::AppHandle, action: &str, client: &str) -> Result<Command, String> {
@@ -334,6 +334,23 @@ async fn connector_client_select(app: tauri::AppHandle, client: String) -> Resul
         if local_command(&app, "select", &client)?.status().map_err(|_| "client_save_failed")?.success() { Ok(()) }
         else { Err("client_save_failed".into()) }
     }).await.map_err(|_| "client_save_failed".to_string())?
+}
+
+#[tauri::command]
+async fn connector_client_delete(app: tauri::AppHandle, client: String) -> Result<(), String> {
+    if !matches!(client.as_str(), "chatgpt" | "claude" | "workbuddy") { return Err("invalid_client".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        // Serialize ChatGPT deletion against startup. Keep other clients and the
+        // editor consent lease running. A busy rejection must not stop a tunnel.
+        let state = app.state::<ConnectorTunnel>();
+        let mut tunnel = if client == "chatgpt" { Some(state.0.lock().map_err(|_| "connector_delete_failed")?) } else { None };
+        let key = connector_window_key(app.clone()).map_err(|_| "connector_delete_failed")?;
+        connector_config::delete_request(PORT, &key, &client)?;
+        if let Some(guard) = tunnel.as_mut() {
+            if let Some(mut child) = guard.take() { let _ = child.kill(); let _ = child.wait(); }
+        }
+        Ok(())
+    }).await.map_err(|_| "connector_delete_failed".to_string())?
 }
 
 #[tauri::command]
@@ -612,7 +629,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

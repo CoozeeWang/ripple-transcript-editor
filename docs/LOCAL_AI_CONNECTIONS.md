@@ -1,6 +1,6 @@
 # Local AI connections
 
-Open Settings → AI-assisted editing → MCP connection. Choose ChatGPT, Claude Desktop or WorkBuddy, follow that client's instructions, and explicitly enable access to the current interview. One client is active at a time. Selection and access preference survive restart; each client's saved setup is retained when switching. Uncheck Enable MCP connection to disconnect the editor session. This retains configuration and does not uninstall an extension or delete a third-party account.
+Open Settings → AI-assisted editing → MCP connection. Choose ChatGPT, Claude Desktop or WorkBuddy, follow that client's instructions, and explicitly enable access to the current interview. Selection chooses the setup view; it does not stop other configured clients. Selection and access preference survive restart; each client's saved setup is retained when switching. Uncheck Enable MCP connection to disconnect the editor session. This retains configuration and does not uninstall an extension or delete a third-party account.
 
 Ripple does not operate or require a shared public connection server. Local connection does not mean an offline model: requested interview text is still sent to the chosen AI service. Audio is not sent.
 
@@ -19,6 +19,14 @@ Export Ripple.mcpb from Ripple. In Claude Desktop, use Settings → Extensions �
 ## WorkBuddy
 
 Export Ripple-WorkBuddy.json. In WorkBuddy, open Experts · Skills · Connectors → Connectors → Custom connector → Add MCP. Add the exported Ripple entry to the existing mcpServers object and save, preserving any other services already configured. Preserve the command, argument array and environment values separately; do not concatenate them into an unquoted shell command. Allow the tools, keep Ripple open and test a read request. Export again after moving the app. WorkBuddy supports local stdio services; see [official connector documentation](https://open.workbuddy.cn/docs/connector).
+
+## Delete a connection configuration
+
+The AI application list shows **Configured** or **Not configured**, referring to saved setup on this computer rather than a live external connection. Automatically generated credentials alone do not count as configured. The delete action is hidden when setup is absent or its status cannot be read.
+
+Select the AI application and choose **Delete ChatGPT / Claude / WorkBuddy connection configuration**, then confirm its name and scope. Ripple removes only that application's configuration and credentials stored by Ripple on this computer. It retains other clients, the editor access preference, projects, transcripts and the downloaded tunnel-client. Old client credentials are revoked immediately and remain revoked after restarting Ripple; explicitly adding or saving the configuration again creates a new credential. Reconnect in the AI application after adding it again.
+
+Deletion does not uninstall extensions or remove registrations inside ChatGPT, Claude or WorkBuddy, and does not revoke an OpenAI tunnel or Runtime API key. Manage those separately in the relevant application or OpenAI settings. If the selected client has a request in progress, finish editing and check the saved result before retrying deletion. Cancellation changes nothing; failure keeps a retry available.
 
 ## Verification and limits
 
