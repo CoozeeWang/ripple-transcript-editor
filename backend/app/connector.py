@@ -11,10 +11,12 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from .connector_config import KEY_FILES, delete_client, disabled_clients, read_local_file
 from .private_files import protect_private_fd
 from .runtime_paths import CODE_ROOT, DATA_ROOT
 
@@ -51,6 +53,8 @@ class Broker:
         self.windows: dict[str, Window] = {}
         self.pending: dict[str, tuple[str, asyncio.Future]] = {}
         self.calls: OrderedDict[str, tuple[str, str, asyncio.Task]] = OrderedDict()
+        self.call_clients: dict[str, str | None] = {}
+        self.managed_credentials = False
 
     def initialize(self):
         if self.window_key:
@@ -63,35 +67,48 @@ class Broker:
             raise RuntimeError("Invalid connector directory")
         os.chmod(directory, 0o700)
         self.window_key = _key(directory / "window.key", replace=True)
-        self.client_key = _key(directory / "client.key")
-        _key(directory / "claude.key")
-        _key(directory / "workbuddy.key")
+        disabled = disabled_clients(DATA_ROOT)
+        for client, name in KEY_FILES.items():
+            if client not in disabled:
+                value = _key(directory / name)
+                if client == "chatgpt":
+                    self.client_key = value
+        self.managed_credentials = True
 
     def authorize(self, authorization: str | None, role: str):
         self.initialize()
         if role == "window":
-            expected = [self.window_key]
+            expected = [("window", self.window_key)]
         else:
             # Configuration selection is a view preference, not a connection gate.
             # Each owner-local client retains its own credential and shares the
             # same consent lease and snapshot/concurrent-publish protection.
-            expected = [self.client_key]
-            for client in ("claude", "workbuddy"):
-                path = DATA_ROOT / "connector" / f"{client}.key"
-                try:
-                    if path.is_file() and not path.is_symlink():
-                        expected.append(path.read_text().strip())
-                except OSError:
-                    continue
-        matches = [secrets.compare_digest(authorization or "", f"Bearer {key}") for key in expected if key]
-        if not any(matches):
-            raise HTTPException(401, "Connector authorization required")
+            expected = []
+            try:
+                disabled = disabled_clients(DATA_ROOT)
+                for client, name in KEY_FILES.items():
+                    if client in disabled:
+                        continue
+                    raw = read_local_file(DATA_ROOT / "connector" / name)
+                    key = raw.decode().strip() if raw is not None else ""
+                    if client == "chatgpt" and not self.managed_credentials:
+                        key = self.client_key
+                    expected.append((client, key))
+            except (OSError, ValueError, UnicodeError):
+                raise HTTPException(503, "connector_configuration_unavailable") from None
+        matches = [(client, secrets.compare_digest(authorization or "", f"Bearer {key}"))
+                   for client, key in expected if key]
+        for client, matches_key in matches:
+            if matches_key:
+                return client
+        raise HTTPException(401, "Connector authorization required")
 
     def disable(self, session: str):
         self.windows.pop(session, None)
         for request_id, (_, owner, _task) in list(self.calls.items()):
             if owner == session:
                 self.calls.pop(request_id, None)
+                self.call_clients.pop(request_id, None)
         for request, (owner, future) in list(self.pending.items()):
             if owner == session:
                 if not future.done():
@@ -125,13 +142,15 @@ class Broker:
         finally:
             self.pending.pop(request_id, None)
 
-    async def call(self, request_id: str, operation: str, arguments: dict):
+    async def call(self, request_id: str, operation: str, arguments: dict, client: str | None = None):
         digest = hashlib.sha256(json.dumps([operation, arguments], sort_keys=True,
                                            ensure_ascii=False).encode()).hexdigest()
         owner, _window = self.current()
         prior = self.calls.get(request_id)
         if prior and prior[1] != owner:
             raise HTTPException(409, "Request belongs to another window")
+        if prior and self.call_clients.get(request_id) != client:
+            raise HTTPException(409, "Request belongs to another client")
         if prior and prior[0] != digest:
             raise HTTPException(409, "Request id reused with different input")
         if not prior:
@@ -141,8 +160,10 @@ class Broker:
                 if removable is None:
                     raise HTTPException(429, "Too many pending connector requests")
                 self.calls.pop(removable)
+                self.call_clients.pop(removable, None)
             task = asyncio.create_task(self.dispatch(operation, arguments))
             self.calls[request_id] = (digest, owner, task)
+            self.call_clients[request_id] = client
         task = self.calls[request_id][2]
         return await asyncio.shield(task)
 
@@ -169,6 +190,30 @@ class Call(StrictModel):
     request_id: str = Field(min_length=8, max_length=100)
     operation: str = Field(pattern=r"^(read_current|read_page|read_examples|prepare|stage|publish|cancel|status|tasks|batch|checkpoint|pause|resume|prepare_marks|stage_marks|apply_marks|marks_status|cancel_marks)$")
     arguments: dict = Field(default_factory=dict)
+
+
+class DeleteConfiguration(StrictModel):
+    client: Literal["chatgpt", "claude", "workbuddy"]
+
+
+@router.post("/configuration/delete")
+async def delete_configuration(body: DeleteConfiguration, authorization: str | None = Header(default=None)):
+    broker.authorize(authorization, "window")
+    # Do not interrupt an uncertain in-flight write or affect other clients.
+    if any(broker.call_clients.get(request_id) == body.client and not task.done()
+           for request_id, (_, _, task) in broker.calls.items()):
+        raise HTTPException(409, "connector_client_busy")
+    try:
+        delete_client(DATA_ROOT, body.client)
+    except (OSError, ValueError):
+        raise HTTPException(500, "connector_delete_failed") from None
+    if body.client == "chatgpt":
+        broker.client_key = ""
+    for request_id in list(broker.calls):
+        if broker.call_clients.get(request_id) == body.client:
+            broker.calls.pop(request_id)
+            broker.call_clients.pop(request_id, None)
+    return {"deleted": body.client}
 
 
 @router.post("/session")
@@ -209,7 +254,7 @@ def reply(body: Reply, authorization: str | None = Header(default=None)):
 
 @router.post("/call")
 async def call(body: Call, authorization: str | None = Header(default=None)):
-    broker.authorize(authorization, "client")
+    client = broker.authorize(authorization, "client")
     if len(json.dumps(body.arguments, ensure_ascii=False)) > 150_000:
         raise HTTPException(413, "Connector input too large")
-    return await broker.call(body.request_id, body.operation, body.arguments)
+    return await broker.call(body.request_id, body.operation, body.arguments, client)

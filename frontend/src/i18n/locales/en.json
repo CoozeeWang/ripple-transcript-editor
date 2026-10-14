@@ -1648,7 +1648,17 @@
     "copySetupPrompt": "Copy setup request",
     "setupPromptCopied": "Setup request copied.",
     "setupPromptCopyFailed": "Could not copy. Select the request above and copy it manually.",
-    "downloadFile": "Download {{file}}"
+    "downloadFile": "Download {{file}}",
+    "deleteConfiguration": "Delete connection configuration",
+    "deleteTitle": "Delete the {{client}} connection configuration?",
+    "deleteDescription": "Remove this application’s configuration and credentials saved locally by Ripple. Other AI connections, projects and transcripts are kept. You can add it again later.",
+    "deleteRemoteHint": "This does not uninstall Ripple plugins in other applications or revoke OpenAI tunnels or keys. Manage those in the relevant application or website.",
+    "cancelDelete": "Cancel",
+    "confirmDelete": "Delete configuration",
+    "deletingConfiguration": "Deleting…",
+    "configurationDeleted": "The local {{client}} connection configuration was deleted. Add it again, then reconnect in that application.",
+    "deleteBusy": "This application still has a request in progress. End editing, check the saved result, then retry.",
+    "deleteError": "Deletion did not complete. Check the MCP connection status, then retry."
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple’s local service couldn’t start. Restart Ripple or check the application logs."

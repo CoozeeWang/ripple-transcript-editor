@@ -48,6 +48,8 @@ def save_setup(data_root: Path, resources: Path, values: dict):
                f'mcp:\n  commands:\n    - channel: main\n      command: {json.dumps(command)}\n')
     write_private(directory / 'tunnel.yaml', profile)
     write_private(directory / 'setup.json', json.dumps({'client_path': str(client), 'tunnel_id': tunnel}))
+    from .connector_config import enable_client
+    enable_client(data_root, 'chatgpt')
 
 
 def write_private(path: Path, value: str):

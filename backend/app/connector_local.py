@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 from .bundled_runtime import bundled_python
+from .connector_config import enable_client
 from .connector_setup import write_private
 from .private_files import protect_private_fd
 
@@ -57,6 +58,7 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         raise ValueError("Bundled runtime unavailable")
     if client == "workbuddy":
         write_private(target, json.dumps({"mcpServers": {"Ripple": {"type": "stdio", **config}}}, ensure_ascii=False, indent=2))
+        enable_client(data, client)
         return
     manifest = {"manifest_version": "0.3", "name": "ripple", "display_name": "Ripple", "version": "1.0.0",
                 "description": "Read, analyze and edit the current Ripple interview. 读取、分析与编辑 Ripple 当前访谈。",
@@ -76,6 +78,7 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as bundle:
             bundle.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
             bundle.writestr("server/index.js", script)
+    enable_client(data, client)
 
 
 def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
@@ -120,6 +123,7 @@ def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
         if not isinstance(servers, dict):
             raise TypeError("Invalid server configuration")
         if servers.get("Ripple") == config:
+            enable_client(data, "workbuddy")
             return False
         current["mcpServers"] = {**servers, "Ripple": config}
         payload = json.dumps(current, ensure_ascii=False, indent=2).encode() + b"\n"
@@ -140,6 +144,7 @@ def install_workbuddy(data: Path, resources: Path, target: Path) -> bool:
                 os.fsync(backup.fileno())
         os.replace(temp_name, target)
         temp_name = None
+        enable_client(data, "workbuddy")
         return True
     finally:
         os.close(lock_fd)

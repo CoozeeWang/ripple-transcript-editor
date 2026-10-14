@@ -1648,7 +1648,17 @@
     "copySetupPrompt": "复制配置请求",
     "setupPromptCopied": "配置请求已复制。",
     "setupPromptCopyFailed": "复制失败，请选中上方文字手动复制。",
-    "downloadFile": "下载 {{file}}"
+    "downloadFile": "下载 {{file}}",
+    "deleteConfiguration": "删除连接配置",
+    "deleteTitle": "删除 {{client}} 的连接配置？",
+    "deleteDescription": "清除该软件在 Ripple 本机保存的配置和凭据。其他 AI 连接、项目和稿件保留；需要时可重新添加。",
+    "deleteRemoteHint": "不会卸载其他软件中的 Ripple 插件，也不会撤销 OpenAI 隧道或密钥；请在对应软件或网页中处理。",
+    "cancelDelete": "取消",
+    "confirmDelete": "删除配置",
+    "deletingConfiguration": "正在删除…",
+    "configurationDeleted": "{{client}} 的本机连接配置已删除。重新添加后，请在该软件中重新连接。",
+    "deleteBusy": "该软件还有请求正在处理。请先结束编辑，确认已保存结果后重试。",
+    "deleteError": "删除未完成。请检查 MCP 连接状态后重试。"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。"
