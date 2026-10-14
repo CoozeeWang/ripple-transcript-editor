@@ -1721,5 +1721,24 @@
     "proposedDelete": "AI proposes deleting this segment",
     "proposedMerge": "AI proposes merging with the previous segment, using this text",
     "scopeChanged": "The remaining segment structure has changed. End this task and agree on a new editing range in your AI conversation. Saved batches are retained."
+  },
+  "aiEditing": {
+    "title": "AI-assisted editing",
+    "locked": "{{client}} is editing with AI assistance. This manuscript is temporarily read-only; you can browse and find.",
+    "end": "End editing",
+    "dismiss": "Dismiss notice",
+    "waiting": "Waiting for AI · {{saved}} / {{total}} segments saved",
+    "processing": "Processing · {{processed}} / {{total}} segments processed",
+    "saving": "Saving · {{saved}} / {{total}} segments confirmed saved",
+    "counts": "{{saved}} / {{total}} segments confirmed saved",
+    "paused": "AI editing is paused. This manuscript is editable; its content will be checked before resuming.",
+    "failed": "AI editing did not finish. The manuscript is unlocked. Check the saved result and save any pending changes in Ripple before submitting again.",
+    "ended": "AI editing was interrupted. The manuscript is unlocked. Saved changes are retained; check the result before starting another task.",
+    "inUse": "This manuscript is being edited by AI. End editing first.",
+    "preparing": "Preparing edits…",
+    "readOnly": "Temporarily read-only during AI editing. End editing to make changes.",
+    "ending": "Ending editing. Waiting for the current save to be confirmed before unlocking.",
+    "endingAction": "Ending…",
+    "background": "{{client}} is editing “{{recording}}”, which is temporarily read-only. Other manuscripts remain editable."
   }
 }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { CONNECTOR_ENABLED_KEY, useAIConnector } from './useAIConnector';
+import { CONNECTOR_ENABLED_KEY, useAIConnectorRuntime as useAIConnector } from './useAIConnector';
 vi.mock('../lib/desktopFs', () => ({ nativeDesktopAvailable: () => false }));
 const host = { current: vi.fn(), publish: vi.fn() };
 afterEach(() => { localStorage.clear(); });

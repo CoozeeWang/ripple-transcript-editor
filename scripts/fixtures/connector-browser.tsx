@@ -1,6 +1,7 @@
 // Synthetic browser filesystem fixture; imports are expanded by connector-browser-check.mjs.
 import React from 'react';
 import {createRoot} from 'react-dom/client';
+import {AIConnectorProvider} from '__REPO__/frontend/src/components/AIConnectorProvider.tsx';
 import App from '__REPO__/frontend/src/App.tsx';
 import {ProjectBoard} from '__REPO__/frontend/src/components/ProjectBoard.tsx';
 import {persistActiveModel} from '__REPO__/frontend/src/localStore.ts';
@@ -62,7 +63,7 @@ const current=structuredClone(made.edited);
 current.transcript.segments[0].text='我觉得先开始，把这份合成稿件核对清楚。';
 await saveActiveEdit(root.handle,'synthetic.wav',made.model.id,made.model.edits[0].id,current);
 const appRoot=createRoot(document.getElementById('root')!);let generation=0;
-const render=(initialOriginalModelId?:string)=>appRoot.render(<App initialOriginalModelId={initialOriginalModelId} key={generation} projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/>);
+const render=(initialOriginalModelId?:string)=>appRoot.render(<AIConnectorProvider><App initialOriginalModelId={initialOriginalModelId} key={generation} projectDirectory={root.handle} projectLabel="Synthetic connector fixture"/></AIConnectorProvider>);
 (window as any).__fixture={root,raw,made,readManifest:()=>readManifest(root.handle,'synthetic.wav'),readModelEdit:(model:string,edit:string)=>readModelEdit(root.handle,'synthetic.wav',model,edit),readModelOriginal:(model:string)=>readModelOriginal(root.handle,'synthetic.wav',model),remount:()=>{generation++;render();},showBoard:()=>{
   const projectRoot=directory('Synthetic project'),interviews=directory('interviews');projectRoot.dirs.set('interviews',interviews);interviews.dirs.set('synthetic-session',root);
   const recording={id:'synthetic-recording',file:'synthetic.wav',name:'Synthetic audio',storage:'copy'};

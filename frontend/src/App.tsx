@@ -3,6 +3,8 @@ import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
 import { applyAISuggestions } from "./lib/aiVersionEdits";
 import { applyContinuationBatch,checkContinuationGuard } from './lib/continuationBatch';
+import { AIEditingNotice } from './components/AIEditingNotice';
+import { assertEditorReadyForAI } from './lib/editorDrafts';
 import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import type { OpenProject } from './lib/projectStore';
@@ -228,10 +230,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 编辑的提交入口：undo/redo 历史分组 + 标记未保存。usePlayback 依赖它，
   // 故放在 useFolder 之前定义。
+  const editLockedRef = useRef<() => boolean>(() => false);
   const mutateTranscript = useCallback(
     (updater: (current: Transcript) => Transcript, groupKey?: string) => {
-      if (viewingOriginal) return;
-      commit(current => reconcileComparisonReviews(updater(current)), groupKey);
+      const aiWrite = groupKey?.startsWith('ai-marks:') || groupKey?.startsWith('ai-continuation:');
+      if (viewingOriginal || !aiWrite && editLockedRef.current()) return;
+      commit(current => !aiWrite && editLockedRef.current() ? current : reconcileComparisonReviews(updater(current)), groupKey);
       setSaveStatus("unsaved");
     },
     [commit, viewingOriginal],
@@ -555,10 +559,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   useLayoutEffect(() => { beforeChangeRef.current = flushPendingSave; }, [flushPendingSave]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
+  const [aiIdentity, setAIIdentity] = useState('0');
   const connectorContext = useRef({ dir: dirHandle, audio:selectedAudio, context: aiContext, generation: 0 });
   useLayoutEffect(() => {
     if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
       connectorContext.current = { dir: dirHandle, audio:selectedAudio, context: aiContext, generation: connectorContext.current.generation + 1 };
+      setAIIdentity(String(connectorContext.current.generation));
     }
   }, [dirHandle, aiContext,selectedAudio]);
   const connector = useAIConnector({
@@ -566,6 +572,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       const identity = connectorContext.current.generation;
       const dir = dirHandle, audio = selectedAudio, model = activeModel;
       if (!dir || !audio || !model || !hasLoadedTranscript || versionBusy || transcribing) throw new Error('no_editable_interview');
+      assertEditorReadyForAI();
       await flushPendingSave();
       if (connectorContext.current.generation !== identity || dirHandleRef.current !== dir || !latestExport.current.transcript) throw new Error('interview_changed');
       const rules = await readConnectorRules(dir, audio);
@@ -644,13 +651,24 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       return { version: result.edit.label, version_id: result.edit.id,
         result_version: {id:`${result.model.id}:${result.edit.id}`,model_id:result.model.id,edit_id:result.edit.id,name:result.edit.label,kind:'edit'}, comparison_requested: true };
     },
-  }, `${aiContext}:${hasLoadedTranscript}:${versionBusy}`, projectProps.connectorProject ? {
+  }, hasLoadedTranscript ? `${aiContext}:${hasLoadedTranscript}:${versionBusy}` : '', projectProps.connectorProject ? {
     project: projectProps.connectorProject,
     onSaved: target => { setProcessStatus('done'); setProcessMessage(msg('connector.backgroundSaved', { recording: target.recording, version: target.version })); },
     active: () => ({ interview_id: projectProps.projectInterviewId ?? '', recording_id: projectProps.projectRecordingId ?? '',
       directory: dirHandleRef.current, version_id: activeModelId
         ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : null }),
   } : undefined);
+
+  const aiVersionId = activeModelId ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : '';
+  const aiLocked = connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, aiIdentity);
+  useLayoutEffect(() => {
+    editLockedRef.current = () => connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
+  });
+  const protectedReadOnly = viewingOriginal || aiLocked;
+  const guardedRenameVersion: typeof renameVersion = (...args) => {
+    if (editLockedRef.current()) return Promise.reject(Error('manuscript_locked_by_other_ai_end_editing_first'));
+    return renameVersion(...args);
+  };
 
   // 设置弹层：必须在「空状态提前 return」与「完整 UI return」两处都渲染，
   // 否则空状态下点击「偏好设置」会因提前 return 而永不显示。
@@ -691,7 +709,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     replaceAll,
   } = useFindReplace({
     transcript,
-    viewingOriginal,
+    viewingOriginal: protectedReadOnly,
     mutateTranscript,
     setSelectedSegmentId,
     textareaRefs,
@@ -759,6 +777,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setMergePrompt, setMergeMenuFor]);
 
   const performUndo = useCallback(() => {
+    if (editLockedRef.current()) return;
     const hadDraft = hasEditorDrafts();
     flushEditorDrafts();
     if (!canUndo && !hadDraft) return;
@@ -767,6 +786,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   }, [canUndo, undo]);
 
   const performRedo = useCallback(() => {
+    if (editLockedRef.current()) return;
     flushEditorDrafts();
     if (!canRedo) return;
     redo();
@@ -1004,8 +1024,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         viewingOriginal={viewingOriginal}
         performUndo={performUndo}
         performRedo={performRedo}
-        canUndo={canUndo}
-        canRedo={canRedo}
+        canUndo={canUndo && !aiLocked}
+        canRedo={canRedo && !aiLocked}
         setFindOpen={setFindOpen}
         exportMenuOpen={exportMenuOpen}
         setExportMenuOpen={setExportMenuOpen}
@@ -1028,7 +1048,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           setShowReplace={setShowReplace}
           replaceValue={replaceValue}
           setReplaceValue={setReplaceValue}
-          viewingOriginal={viewingOriginal}
+          viewingOriginal={protectedReadOnly}
           setFindOpen={setFindOpen}
           findNext={findNext}
           findPrev={findPrev}
@@ -1059,7 +1079,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         {!preparingTranscript && <SpeakerPanel
           speakers={transcript.speakers}
           hiddenSpeakerIds={hiddenSpeakerIds}
-          viewingOriginal={viewingOriginal}
+          viewingOriginal={protectedReadOnly}
+          readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
           mergeMenuFor={mergeMenuFor}
           setMergeMenuFor={setMergeMenuFor}
           mergeMenuRef={mergeMenuRef}
@@ -1077,12 +1098,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         <div className="transcript-header-fixed">
         <TranscriptHeader
           preparing={preparingTranscript}
+          editingLocked={aiLocked}
           comparisonControls={<>
             <button type="button" className={`comparison-toggle${comparison.shown ? " is-active" : ""}`} aria-pressed={comparison.shown}
               disabled={viewingOriginal || !comparison.options.length || versionBusy} data-tip-pos="top" data-tip={msg('App.m0039', { v0: keys("Y",true) })} onClick={comparison.toggle}><span className="comparison-toggle-track" aria-hidden="true" /><span>{msg('App.m0040')}</span></button>
             {comparison.shown && <div className="comparison-source"><span>{msg('App.m0041')}</span>
               <VersionPicker key={`${selectedAudio}:comparison`} models={models} value={comparison.base} variant="comparison"
-                excluded={currentVersionKey} disabled={versionBusy} onSelect={(model,edit)=>comparison.choose(`${model}:${edit}`)} onRename={renameVersion} />
+                excluded={currentVersionKey} disabled={versionBusy} mutationDisabled={aiLocked} onSelect={(model,edit)=>comparison.choose(`${model}:${edit}`)} onRename={guardedRenameVersion} />
             </div>}
             {comparison.loading && <span className="comparison-status" role="status">{msg('App.m0042')}</span>}
             {comparison.error && <span role="alert">{uiMessage(comparison.error)}</span>}
@@ -1091,11 +1113,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           segmentCount={visibleSegments.length}
           viewingOriginal={viewingOriginal}
           activeModelId={activeModelId}
-          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy}
+          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy} mutationDisabled={aiLocked}
             onSelect={(model,edit)=>{if(edit==="original")void openOriginal(model);else void selectEdit(model,edit);}}
-            onRename={renameVersion} onCopy={(model,edit)=>{if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
-            onDelete={(modelId,editId,label,isLast)=>setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast})} />}
+            onRename={guardedRenameVersion} onCopy={(model,edit)=>{if(editLockedRef.current())return;if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
+            onDelete={(modelId,editId,label,isLast)=>{if(editLockedRef.current())return;setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast});}} />}
           patchMetadata={patch => {
+            if (editLockedRef.current()) return;
             if (patch.title !== undefined && projectProps.onRenameInterview) {
               void projectProps.onRenameInterview(patch.title).then(() => patchMetadata(patch)).catch(error => setLoadError(error instanceof Error ? error.message : msg('App.m0043')));
             } else if (patch.title !== undefined) void renameCurrentAudio(patch.title);
@@ -1106,8 +1129,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
         {!preparingTranscript && transcriptionNotice}
         </div>
-        <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>
-        <section className="transcript-panel" ref={transcriptPanelRef} aria-label={msg('App.m0045')}>
+        <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
+          ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
+          : task.version_id === aiVersionId} onEnd={async id => { await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
+          {!!connector.tasks.length && <ContinuationProgress tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
+        </AIEditingNotice>
+        <section className="transcript-panel" ref={transcriptPanelRef} tabIndex={-1} aria-label={msg('App.m0045')}>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
               {msg('App.m0046')}</button>
@@ -1156,9 +1183,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 effectiveSelectedSegmentId={effectiveSelectedSegmentId === segment.id ? segment.id : ""}
                 isPlaying={isPlaying}
                 currentTime={currentTime}
-                findQuery={viewingOriginal ? findQuery : ""}
+                findQuery={protectedReadOnly ? findQuery : ""}
                 audioUrl={audioUrl}
-                viewingOriginal={viewingOriginal}
+                viewingOriginal={protectedReadOnly}
                 audioRef={audioRef}
                 textareaRefs={textareaRefs}
                 editingRef={editingRef}
@@ -1188,7 +1215,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           transcript={transcript}
-          readOnly={viewingOriginal}
+          readOnly={protectedReadOnly}
+          readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
           annotationView={annotationView}
           setAnnotationView={setAnnotationView}
           panelTab={panelTab}
@@ -1275,7 +1303,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           prompt={deletePrompt}
           dialogRef={deleteRef}
           setPrompt={setDeletePrompt}
-          confirmDelete={confirmDelete}
+          confirmDelete={() => { if (!editLockedRef.current()) void confirmDelete(); }}
         />
       )}
 

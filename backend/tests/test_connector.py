@@ -57,6 +57,17 @@ def test_disable_unblocks_requests_without_routing_to_another_window():
     asyncio.run(run())
 
 
+def test_authenticated_client_is_forwarded_outside_client_supplied_arguments():
+    async def run():
+        b = Broker(); b.windows['synthetic-window'] = Window(time.monotonic())
+        pending = asyncio.create_task(b.call('synthetic-authenticated-request', 'prepare_marks', {'client': 'claude'}, 'chatgpt'))
+        command = await b.windows['synthetic-window'].queue.get()
+        assert command['client'] == 'chatgpt'
+        b.pending[command['request_id']][1].set_result({'ok': True, 'data': {}})
+        await pending
+    asyncio.run(run())
+
+
 def test_owner_only_setup_escapes_paths_and_never_puts_keys_in_yaml(tmp_path):
     from app.connector_setup import save_setup
     client = tmp_path / 'client with spaces' / 'tunnel-client'

@@ -11,6 +11,7 @@ interface Batch {
   changes: Change[]; checked: string[];
 }
 export interface ContinuationTask {
+  owner_client?: string;
   schema: 1; id: string; source: ConnectorVersion; target: ConnectorVersion;
   saveMode: ConnectorSaveMode; name: string; rules: string[]; actions: Action[];
   ids: string[]; done: string[]; summary: string;
@@ -127,7 +128,7 @@ export class IncrementalContinuation {
       const name = a.save_mode === 'new_version' ? nextAIEditName(doc.label,doc.names) : doc.label;
       const id = crypto.randomUUID();
       const summary = JSON.stringify({ ...(doc.target ? { target: doc.target } : {}), source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
-      const task: ContinuationTask = { schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
+      const task: ContinuationTask = { owner_client: typeof a.owner_client === 'string' ? a.owner_client : undefined, schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
       await this.save(task,doc);
       return { task_id:id,summary,segment_count:ids.length,delivery_mode:'incremental',target_version:doc.version,
         instruction:'Confirm this scope and save choice once. Read a continuation batch, stage changed segments and unchanged_ids, then save_continuation_batch using its batch_id and the agreed summary. Each saved batch is visible in Ripple. Repeat until complete. Resume a paused batch only after the user asks; do not overwrite manual changes.' };

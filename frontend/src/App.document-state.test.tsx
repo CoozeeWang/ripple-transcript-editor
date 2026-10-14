@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as renderBase, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import App from "./App";
+import type { ReactNode } from 'react';
+import { AIConnectorProvider } from './components/AIConnectorProvider';
+function render(ui: ReactNode) {
+  const result = renderBase(<AIConnectorProvider>{ui}</AIConnectorProvider>);
+  return { ...result, rerender: (next: ReactNode) => result.rerender(<AIConnectorProvider>{next}</AIConnectorProvider>) };
+}
 import * as local from "./localStore";
 import type { UseFolderDeps } from "./hooks/useFolder";
 

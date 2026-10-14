@@ -9,6 +9,7 @@ import { InlineEdit } from "./InlineEdit";
 export interface TranscriptHeaderProps {
   comparisonControls?: ReactNode;
   preparing?: boolean;
+  editingLocked?: boolean;
   metadata: InterviewMetadata | null;
   segmentCount: number;
   viewingOriginal: boolean;
@@ -35,7 +36,7 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
                text-transform: uppercase 对中文无效，字间距在 CSS 里单独收紧。 */}
           <p className="section-label">{msg('TranscriptHeader.m1066')}</p>
           <h1>
-            {props.preparing ? (metadata?.title || msg('TranscriptHeader.m1067')) : <InlineEdit
+            {props.preparing ? (metadata?.title || msg('TranscriptHeader.m1067')) : <InlineEdit disabled={props.editingLocked}
               value={metadata?.title ?? ""}
               placeholder={msg('TranscriptHeader.m1068')}
               ariaLabel={msg('TranscriptHeader.m1069')}
@@ -46,7 +47,7 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
           </h1>
           {metadata && !props.preparing && (
             <div className="metadata-summary">
-              <InlineEdit
+              <InlineEdit disabled={props.editingLocked}
                 value={toDatetimeLocalValue(metadata.recorded_at)}
                 placeholder={msg('TranscriptHeader.m1071')}
                 ariaLabel={msg('TranscriptHeader.m1072')}
@@ -56,13 +57,13 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
                   : fieldValue.replace("T", " ")}
                 onCommit={(next) => void patchMetadata({ recorded_at: next ? (next.includes("T") ? `${next}:00` : next) : null })}
               />
-              <InlineEdit
+              <InlineEdit disabled={props.editingLocked}
                 value={metadata.location}
                 placeholder={msg('TranscriptHeader.m1073')}
                 ariaLabel={msg('TranscriptHeader.m1074')}
                 onCommit={(next) => void patchMetadata({ location: next })}
               />
-              <InlineEdit
+              <InlineEdit disabled={props.editingLocked}
                 value={metadata.notes}
                 placeholder={msg('TranscriptHeader.m1075')}
                 ariaLabel={msg('TranscriptHeader.m1076')}

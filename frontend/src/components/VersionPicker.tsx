@@ -11,6 +11,7 @@ export interface VersionPickerProps {
   variant: "current" | "comparison";
   excluded?: string;
   disabled?: boolean;
+  mutationDisabled?: boolean;
   onSelect: (modelId: string, editId: string) => void;
   onRename: (modelId: string, editId: string, label: string) => void | Promise<void>;
   onCopy?: (modelId: string, editId: string) => void;
@@ -28,7 +29,7 @@ function VersionActionIcon({action}:{action:"rename"|"new"|"copy"|"delete"}) {
 }
 
 /** Both selectors share labels and rename actions; selection always uses stable IDs. */
-export function VersionPicker({models,value,variant,excluded,disabled,onSelect,onRename,onCopy,onDelete}:VersionPickerProps) {
+export function VersionPicker({models,value,variant,excluded,disabled,mutationDisabled,onSelect,onRename,onCopy,onDelete}:VersionPickerProps) {
   const language = useInterfaceLanguage();
   const [open,setOpen]=useState(false);
   const root=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null);
@@ -144,11 +145,11 @@ export function VersionPicker({models,value,variant,excluded,disabled,onSelect,o
               else clickTimer.current=setTimeout(()=>run(()=>onSelect(model.id,entry.id)),300);
             }} onDoubleClick={()=>{if(entry.id!=="original")beginRename(model.id,entry.id,entry.label);}}>{`${model.id}:${entry.id}`===value && <span className="version-picker-selection" aria-hidden="true">✓</span>}<span>{entry.label}</span>{model.sourceKind === "import" && entry.id !== "original" && <small className="version-picker-source" title={model.sourceName}>{model.label ?? model.sourceName ?? msg('VersionPicker.m1095')}</small>}</button>}
           <div className="version-picker-actions">
-            {model.sourceKind === "import" && entry.id === "original" && entry === entries[0] && <button type="button" data-tip={msg('VersionPicker.m1096')} aria-label={msg('VersionPicker.m1097', { v0: model.label ?? model.sourceName ?? '' })} disabled={saving || disabled} onClick={()=>beginRename(model.id,"model-name",model.label ?? model.sourceName ?? msg('VersionPicker.m1098'))}><VersionActionIcon action="rename"/></button>}
-            {entry.id!=="original" && <button type="button" data-tip={editing?.model===model.id&&editing.edit===entry.id?msg('VersionPicker.m1099'):msg('VersionPicker.m1100')} aria-label={msg('VersionPicker.m1101', { v0: entry.label })} disabled={saving||disabled} onClick={()=>{if(editing?.model===model.id&&editing.edit===entry.id)void save();else beginRename(model.id,entry.id,entry.label);}}><VersionActionIcon action="rename"/></button>}
-            {onCopy && <button disabled={saving||disabled} type="button" data-tip={entry.id==="original" ? msg('VersionPicker.m1102') : msg('VersionPicker.m1103')} aria-label={entry.id==="original" ? msg('VersionPicker.m1104') : msg('VersionPicker.m1105', { v0: entry.label })}
+            {model.sourceKind === "import" && entry.id === "original" && entry === entries[0] && <button type="button" data-tip={msg('VersionPicker.m1096')} aria-label={msg('VersionPicker.m1097', { v0: model.label ?? model.sourceName ?? '' })} disabled={saving || disabled || mutationDisabled} onClick={()=>beginRename(model.id,"model-name",model.label ?? model.sourceName ?? msg('VersionPicker.m1098'))}><VersionActionIcon action="rename"/></button>}
+            {entry.id!=="original" && <button type="button" data-tip={editing?.model===model.id&&editing.edit===entry.id?msg('VersionPicker.m1099'):msg('VersionPicker.m1100')} aria-label={msg('VersionPicker.m1101', { v0: entry.label })} disabled={saving||disabled||mutationDisabled} onClick={()=>{if(editing?.model===model.id&&editing.edit===entry.id)void save();else beginRename(model.id,entry.id,entry.label);}}><VersionActionIcon action="rename"/></button>}
+            {onCopy && <button disabled={saving||disabled||mutationDisabled} type="button" data-tip={entry.id==="original" ? msg('VersionPicker.m1102') : msg('VersionPicker.m1103')} aria-label={entry.id==="original" ? msg('VersionPicker.m1104') : msg('VersionPicker.m1105', { v0: entry.label })}
               onClick={()=>run(()=>onCopy(model.id,entry.id))}><VersionActionIcon action={entry.id==="original" ? "new" : "copy"}/></button>}
-            {onDelete && <button disabled={saving||disabled} type="button" className="version-picker-delete" data-tip={entry.id==="original" ? (model.sourceKind === "import" && !model.designatedOriginal ? msg('VersionPicker.m1106') : msg('VersionPicker.m1107')) : msg('VersionPicker.m1108')} aria-label={msg('VersionPicker.m1109', { v0: entry.label })}
+            {onDelete && <button disabled={saving||disabled||mutationDisabled} type="button" className="version-picker-delete" data-tip={entry.id==="original" ? (model.sourceKind === "import" && !model.designatedOriginal ? msg('VersionPicker.m1106') : msg('VersionPicker.m1107')) : msg('VersionPicker.m1108')} aria-label={msg('VersionPicker.m1109', { v0: entry.label })}
               onClick={()=>run(()=>onDelete(model.id,entry.id,entry.label,entry.id==="original" ? !model.edits.length : !model.original && model.edits.length===1))}><VersionActionIcon action="delete"/></button>}
           </div>
         </div>)}

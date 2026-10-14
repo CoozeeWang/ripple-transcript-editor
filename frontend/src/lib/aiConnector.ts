@@ -6,6 +6,7 @@ import { editingExamples } from './editingExamples';
 import { IncrementalContinuation, type ContinuationStore, type ContinuationProgress } from './incrementalContinuation';
 import type { ContinuationCheckpoint } from './continuationBatch';
 import type { ProjectTarget } from './projectConnectorHost';
+import type { AIEditActivity } from './aiEditOwnership';
 
 /** IDs are unique within the current interview, not paths or display names. */
 export interface ConnectorVersion {
@@ -36,6 +37,8 @@ export interface ConnectorDocument {
   references: () => Promise<ConnectorReference[]>;
 }
 export interface ConnectorHost {
+  editingActivity?: (tasks: AIEditActivity[]) => void;
+  assertWrite?: (taskId: string) => void;
   continuationProgress?: (tasks: ContinuationProgress[]) => void;
   current: () => Promise<ConnectorDocument>;
   applyMarks?: (baseline: Transcript, marks: AIMark[], taskId: string) => Promise<Record<string, unknown>>;

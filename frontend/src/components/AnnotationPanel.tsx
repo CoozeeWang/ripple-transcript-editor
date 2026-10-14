@@ -14,6 +14,7 @@ export type PanelTab = "annotation" | "highlight";
 export interface AnnotationPanelProps {
   transcript: Transcript | null;
   readOnly?: boolean;
+  readOnlyMessage?: string;
   annotationView: "selected" | "all";
   setAnnotationView: Dispatch<SetStateAction<"selected" | "all">>;
   panelTab: PanelTab;
@@ -175,7 +176,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
         </div>
       </div>
 
-      {readOnly && <p className="annotation-empty" role="note">{msg('AnnotationPanel.readOnly')}</p>}
+      {readOnly && <p className="annotation-empty" role="note">{props.readOnlyMessage ?? msg('AnnotationPanel.readOnly')}</p>}
       {panelTab === "annotation" ? (
         <>
           <div className="annotation-view-toggle">
