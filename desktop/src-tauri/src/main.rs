@@ -413,6 +413,45 @@ fn connector_open_platform() -> Result<(), String> {
     match status { Ok(result) if result.success() => Ok(()), _ => Err("open_platform_failed".into()) }
 }
 
+/// Read the host architecture, including an Intel build running under Rosetta.
+#[tauri::command]
+fn connector_client_platform() -> serde_json::Value {
+    let mut arch = std::env::consts::ARCH.to_string();
+    #[cfg(target_os = "macos")]
+    if arch != "aarch64" {
+        arch = match Command::new("/usr/sbin/sysctl").args(["-n", "hw.optional.arm64"]).output() {
+            Ok(output) if output.status.success() && output.stdout == b"1\n" => "aarch64".into(),
+            Ok(output) if output.status.success() && output.stdout == b"0\n" => "x86_64".into(),
+            // Do not recommend Intel when the physical chip could not be identified.
+            _ => "unknown".into(),
+        };
+    }
+    #[cfg(target_os = "windows")]
+    if std::env::var("PROCESSOR_ARCHITEW6432").or_else(|_| std::env::var("PROCESSOR_ARCHITECTURE"))
+        .map(|value| value.eq_ignore_ascii_case("ARM64")).unwrap_or(false) {
+        arch = "aarch64".into();
+    }
+    serde_json::json!({"os": std::env::consts::OS, "arch": arch})
+}
+
+fn official_connector_link(url: &str) -> bool {
+    if matches!(url, "https://platform.openai.com/settings/organization/tunnels"
+        | "https://platform.openai.com/settings/organization/api-keys"
+        | "https://github.com/openai/tunnel-client/releases/latest") { return true; }
+    let Some(path) = url.strip_prefix("https://github.com/openai/tunnel-client/releases/download/") else { return false; };
+    let parts: Vec<_> = path.split('/').collect();
+    parts.len() == 2 && parts[0].starts_with('v') && parts[1].starts_with("tunnel-client-v")
+        && parts[1].ends_with(".zip")
+        && path.bytes().all(|c| c.is_ascii_alphanumeric() || b"/._-+".contains(&c))
+}
+
+#[tauri::command]
+async fn connector_open_setup_link(url: String) -> Result<(), String> {
+    if !official_connector_link(&url) { return Err("invalid_setup_link".into()); }
+    tauri::async_runtime::spawn_blocking(move || open_install_target(&url, None))
+        .await.map_err(|_| "open_install_failed".to_string())?
+}
+
 /// Return only saved non-secret configuration and key presence; never read the key.
 #[tauri::command]
 fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -573,7 +612,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

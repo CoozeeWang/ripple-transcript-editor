@@ -39,13 +39,13 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
           <option value="chatgpt">{msg('connector.chatgptWeb')}</option><option value="claude">{msg('connector.claudeDesktop')}</option><option value="workbuddy">WorkBuddy</option>
         </select></span><span className="cred-field__hint">{msg('connector.softwareHint')}</span>
       </label></div>
-      {client === 'chatgpt' ? <><p className="settings-hint">{msg('connector.chatgptSteps')}</p><p className="settings-hint" role="status">{msg(tunnelReady?'connector.chatgptTransportReady':'connector.chatgptTransportPending')}</p></> : <>
+      {client !== 'chatgpt' && <>
         <ol className="settings-hint connector-steps"><li>{msg(`connector.${client}Step1`)}</li><li>{msg(`connector.${client}Step2`)}</li><li>{msg(client === 'workbuddy' ? 'connector.workbuddyStep3' : 'connector.localStep3')}</li></ol>
       </>}
-      <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button></div>
+      {client !== 'chatgpt' && <div className="cred-profile__actions"><button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button></div>}
       {exported && <p className="settings-hint" role="status">{msg(`connector.added_${exported}`)}</p>}
       {error && <p className="settings-hint connector-error" role="alert">{msg(`connector.addError_${client}`)}</p>}
     </div>
-    {client === 'chatgpt' && !busy && <ChatGPTSetup onSaved={onSaved}/>}
+    {client === 'chatgpt' && !busy && <ChatGPTSetup onSaved={() => {setTunnelReady(false); onSaved?.();}} tunnelReady={tunnelReady}/>}
   </div>;
 }
