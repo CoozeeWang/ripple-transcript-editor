@@ -122,7 +122,6 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
             try { await navigator.clipboard.writeText(saved.tunnel_id); setCopied(true); }
             catch { setCopyError(true); }
           }}>{msg('connector.copyTunnel')}</button></div>
-          <p className="settings-hint" role="status">{msg(tunnelReady ? 'connector.chatgptTransportReady' : 'connector.guidedPending')}</p>
           {added && <p className="settings-hint" role="status">{msg('connector.added_chatgpt')}</p>}
           {addError && <p className="settings-hint connector-error" role="alert">{msg('connector.addError_chatgpt')}</p>}
           {copied && <p className="settings-hint" role="status">{msg('connector.tunnelCopied')}</p>}

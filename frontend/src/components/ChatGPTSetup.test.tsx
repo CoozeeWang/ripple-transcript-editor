@@ -40,3 +40,8 @@ it('clears entered secrets on failure and keeps editing available',async()=>{
  fireEvent.change(ui.getByLabelText('连接密钥（Runtime API key）'),{target:{value:'synthetic-secret-for-failure'}});invoke.mockRejectedValueOnce('setup_failed');fireEvent.click(ui.getByText('保存配置'));
  await waitFor(()=>expect((ui.getByLabelText('连接密钥（Runtime API key）') as HTMLInputElement).value).toBe(''));expect(ui.getByText(/配置尚未完成/)).toBeTruthy();expect((ui.getByText('保存配置') as HTMLButtonElement).disabled).toBe(false);
 });
+
+it('omits the obsolete fourth-step continuation hint',async()=>{
+ const {ui}=fixture();await waitFor(()=>expect(ui.getByText('修改配置')).toBeTruthy());
+ expect(ui.queryByText(/等待隧道就绪后继续/)).toBeNull();
+});

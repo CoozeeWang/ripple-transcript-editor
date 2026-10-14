@@ -17,6 +17,8 @@ def save_setup(data_root: Path, resources: Path, values: dict):
     client = Path(values['client_path']).expanduser().resolve()
     if client.name not in ('tunnel-client', 'tunnel-client.exe') or not client.is_file():
         raise ValueError('Select the official tunnel-client executable')
+    if os.name != 'nt' and not os.access(client, os.X_OK):
+        raise ValueError('Select an executable tunnel-client')
     tunnel = values['tunnel_id'].strip()
     if not tunnel.startswith('tunnel_') or not tunnel.replace('_', '').isalnum():
         raise ValueError('Invalid tunnel id')
