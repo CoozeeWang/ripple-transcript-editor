@@ -22,8 +22,8 @@ if not re.fullmatch(r"[1-9][0-9]*", build):
 if int(build) < 9:
     raise SystemExit("RIPPLE_BUILD_NUMBER must exceed the existing internal build number 8")
 version = json.loads(Path(config_path).read_text(encoding="utf-8"))["version"]
-if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}", version):
-    raise SystemExit("Tauri version must have two or three numeric components for macOS")
+if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}(?:-beta\.[1-9][0-9]*)?", version):
+    raise SystemExit("Tauri version must be numeric or use a beta.N prerelease suffix")
 old_plist = Path(app_path) / "Contents/Info.plist"
 if old_plist.exists():
     with old_plist.open("rb") as stream:
@@ -75,7 +75,8 @@ metadata = {
     "CFBundleIconFile": icon_name,
     "CFBundlePackageType": "APPL",
     "CFBundleVersion": build,
-    "CFBundleShortVersionString": version,
+    "CFBundleShortVersionString": version.split("-", 1)[0],
+    "RippleVersion": version,
     "RippleGitCommit": commit,
     "NSHighResolutionCapable": True,
 }
@@ -83,7 +84,7 @@ with Path(path).open("wb") as stream:
     plistlib.dump(metadata, stream)
 with Path(path).open("rb") as stream:
     actual = plistlib.load(stream)
-for key in ("CFBundleVersion", "CFBundleShortVersionString", "RippleGitCommit"):
+for key in ("CFBundleVersion", "CFBundleShortVersionString", "RippleVersion", "RippleGitCommit"):
     if actual[key] != metadata[key]:
         raise SystemExit(f"Packaged {key} does not match the requested build")
 PY
