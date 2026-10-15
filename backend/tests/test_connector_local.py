@@ -170,8 +170,8 @@ def test_workbuddy_refresh_updates_only_existing_ripple_entry(tmp_path):
 
 
 def test_status_ignores_automatic_credentials_and_tracks_saved_clients(tmp_path, monkeypatch):
-    from app.connector_local import configuration_status
     from app.connector_config import delete_client
+    from app.connector_local import configuration_status
     monkeypatch.setattr(connector, 'DATA_ROOT', tmp_path)
     broker = connector.Broker()
     broker.initialize()
@@ -213,3 +213,27 @@ def test_bad_status_file_marks_only_affected_client_unknown(tmp_path):
     target.unlink()
     target.symlink_to(directory / 'workbuddy.key')
     assert configuration_status(tmp_path, target)['configured']['workbuddy'] is None
+
+
+def test_claude_export_forwards_virtual_host_streams(tmp_path):
+    """Claude UtilityProcess streams need not be inheritable OS descriptors."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required for the Claude launcher transport regression")
+    resources = tmp_path / "Synthetic App 空格" / "backend"
+    python = bundled_python(resources)
+    python.parent.mkdir(parents=True)
+    python.touch()
+    target = tmp_path / "Ripple.mcpb"
+    export_installation(tmp_path / "synthetic-data", resources, "claude", target)
+    with zipfile.ZipFile(target) as package:
+        script = package.read("server/index.js").decode()
+    # Exercise the actual exported launcher with a synthetic child configuration.
+    launcher = tmp_path / "launcher.cjs"
+    launcher.write_text(script.split(";\n", 1)[1], encoding="utf-8")
+    subprocess.run([node, str(Path(__file__).parent / "fixtures/claude_stdio_host.cjs"),
+                    str(launcher)], check=True, timeout=20)
