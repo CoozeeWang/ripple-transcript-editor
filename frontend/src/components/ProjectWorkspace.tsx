@@ -40,6 +40,7 @@ export function ProjectWorkspace() {
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
   const [deleteTarget,setDeleteTarget]=useState<{recording:ProjectRecording;modelId?:string;name:string;hasDocuments:boolean;sessionId:string}|null>(null);
   const [project, setProject] = useState<OpenProject | null>(null);
+  const [mediaRevision, setMediaRevision] = useState(0);
   const assertRecordingMutable = (session: string, recording: string) => {
     if (aiConnector?.state.targetLocked('', recording, session, project?.data.id)) throw Error(msg('aiEditing.inUse'));
   };
@@ -279,7 +280,7 @@ export function ProjectWorkspace() {
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
         {importNotice.length>0&&<div className="project-import-notices" role="status"><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setImportNotice([])}>×</button>{importNotice.map((note,index)=><p key={index}>{note.name}{language === 'en' ? ': ' : '：'}{note.keys.map(key => msg(key)).join(language === 'en' ? ' ' : '')}</p>)}</div>}
-        <ProjectBoard key={project.data.id} project={project} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={id=>{setError('');setImportNotice([]);setInterviewId(id);}}
+        <ProjectBoard key={project.data.id} project={project} mediaRevision={mediaRevision} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={id=>{setError('');setImportNotice([]);setInterviewId(id);}}
           save={interviews => { void run(async () => {
             const snapshot = current.current!;
             setProject({ ...snapshot, data: { ...snapshot.data, interviews } });
@@ -315,7 +316,7 @@ export function ProjectWorkspace() {
           remove={(recording,model,hasDocuments=false)=>{setError('');setDeleteTarget({recording,modelId:model?.id,name:model?.label||model?.sourceName||model?.engine||recording.name,hasDocuments,sessionId:interviewId??project.data.interviews[0].id});}}
           detach={async (recording, modelId) => { assertRecordingMutable(interviewId!,recording.id); const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}
           associate={(recording,model,anchor) => { setError('');setInterviewId(interviewId ?? project.data.interviews[0].id); setAssociation({ source: recording.id, modelId:model.id, name:model.label||model.sourceName||model.engine,anchor }); }}
-          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) { assertRecordingMutable(interviewId!,recording.id); await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); } }); }} />
+          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) { assertRecordingMutable(interviewId!,recording.id); await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); setMediaRevision(value => value + 1); } }); }} />
             {interview && legacyCandidates?.interviewId === interview.id && legacyCandidates.items.map((candidate, index) => <div className="project-section project-import-existing" key={`${candidate.recordingId}:${index}`}>
               <strong>{msg('ProjectWorkspace.m0938')}</strong>
               <p>{candidate.directory.name}</p>

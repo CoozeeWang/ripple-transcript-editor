@@ -17,7 +17,7 @@ import { InlineEdit } from './InlineEdit';
 import { adjacentSessionRow, focusSessionRowFromClick } from './sessionRowKeyboard';
 import { ProjectIcon } from './ProjectIcon';
 interface Props {
- project: OpenProject; selected: string | null; busy: boolean;
+ project: OpenProject; mediaRevision?: number; selected: string | null; busy: boolean;
  select: (id: string)=>void; save: (interviews: ProjectInterview[])=>void;
  add: (id?: string)=>void; importDocuments: (id: string, files: FileSystemFileHandle[], kind?: 'audio' | 'manuscript', audioId?: string, referenceable?: boolean)=>Promise<void>; createSession: (session: ProjectInterview)=>Promise<void>; open: (recording: ProjectRecording, modelId?: string, editId?: string)=>void;
  run: (work:()=>Promise<void>)=>Promise<void>;
@@ -30,7 +30,7 @@ function manifestReadError(error: unknown): string {
  if (error instanceof DOMException || !(error instanceof Error)) return msg('ProjectBoard.m0720');
  return error.message;
 }
-export function ProjectBoard({project,selected,busy,select,save,importDocuments,createSession,open,run,associate,detach,remove,relink}:Props){
+export function ProjectBoard({project,mediaRevision=0,selected,busy,select,save,importDocuments,createSession,open,run,associate,detach,remove,relink}:Props){
   useInterfaceLanguage();
  const runManuscript=(work:()=>Promise<void>)=>run(()=>mutateProjectManuscript(project,work));
  const original=(m:TranscriptModel)=>!!m.designatedOriginal || (m.sourceKind!=='import'&&!!m.original);
@@ -41,7 +41,8 @@ export function ProjectBoard({project,selected,busy,select,save,importDocuments,
  useEffect(()=>registerEditorDraft(()=>adding),[adding]);
  const newSession=()=>{setDraft({title:'',date:'',location:'',people:[],notes:''});setDateError(false);setAdding(true);};
  const session=project.data.interviews.find(s=>s.id===selected);
- const mediaIdentity=JSON.stringify([session?.id,session?.recordings.filter(r=>r.storage!=='none').map(r=>[r.id,r.file,r.storage,r.fingerprint])]);
+ // Local file authorization can change without changing any saved recording field.
+ const mediaIdentity=JSON.stringify([project.data.id,mediaRevision,session?.id,session?.recordings.filter(r=>r.storage!=='none').map(r=>[r.id,r.file,r.storage,r.fingerprint])]);
  const mediaContext=useRef({project,session});
  useEffect(()=>{mediaContext.current={project,session};},[project,session]);
  useEffect(()=>{let cancelled=false;const {project,session}=mediaContext.current;void Promise.all((session?.recordings??[]).filter(r=>r.storage!=='none').map(async r=>{try{await checkProjectMedia(project,session!.id,r);return null;}catch(error){return [r.id,mediaFailure(error).reason] as const;}})).then(ids=>{if(!cancelled)setUnavailable(new Map(ids.filter((item):item is readonly [string,MediaFailureReason]=>item!==null)));});return()=>{cancelled=true;};},[mediaIdentity]);

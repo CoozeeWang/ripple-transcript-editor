@@ -805,3 +805,38 @@ it('designates the explicit base revision even while a later AI revision is acti
  expect((await readModelOriginal(dir,recording.file,made.model.id))?.transcript.segments[0].text).toBe('Base synthetic words');
  await expect(setModelOriginal(dir,recording.file,made.model.id,true,'missing')).rejects.toThrow();
 });
+
+it('reports a lost local reference handle as permission recovery, without claiming the source file is missing', async () => {
+ const {p,source,recording,interview}=await fixture('reference');
+ handles.delete(`media:${p.data.id}:${recording.id}`);
+ await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'permission'});
+ expect(await source.files.get('interview.wav')!.text()).toBe('original audio');
+});
+it.each([['NotAllowedError','permission'],['NotFoundError','missing'],['NotReadableError','unreadable'],['SecurityError','permission']])('gives an actionable named export failure for %s',async(name,reason)=>{
+ const {p,recording,interview}=await fixture('reference');
+ const key=`media:${p.data.id}:${recording.id}`;const original=handles.get(key) as FileSystemFileHandle;
+ handles.set(key,{...original,getFile:async()=>{throw new DOMException('Synthetic OS failure',name);}});
+ await expect(checkedMediaFile(p,interview.id,recording)).rejects.toMatchObject({reason,message:expect.stringContaining(recording.name)});
+ await expect(checkedMediaFile(p,interview.id,recording)).rejects.toThrow(/重新|找到|检查/);
+});
+it('keeps the old audio association if a recovery selection cannot be read',async()=>{
+ const {p,recording,interview}=await fixture('reference');const key=`media:${p.data.id}:${recording.id}`;const original=handles.get(key);
+ const candidate={kind:'file',name:'synthetic-recovery.wav',getFile:async()=>{throw new DOMException('Synthetic OS denial','NotAllowedError');}} as unknown as FileSystemFileHandle;
+ await expect(relinkMedia(p,interview.id,recording,candidate)).rejects.toMatchObject({reason:'permission'});
+ expect(handles.get(key)).toBe(original);expect((await openProject(p.directory)).data).toEqual(p.data);
+});
+it('keeps export recovery feedback readable in English',async()=>{
+ const {p,recording,interview}=await fixture('reference');handles.delete(`media:${p.data.id}:${recording.id}`);
+ await setInterfaceLanguage('en');
+ try { await expect(checkedMediaFile(p,interview.id,recording)).rejects.toMatchObject({reason:'permission',message:expect.stringContaining(recording.name)});
+ await expect(checkedMediaFile(p,interview.id,recording)).rejects.toThrow(/folder button|permission/); }
+ finally { await setInterfaceLanguage('zh-CN'); }
+});
+it('preserves the previous association when a recovery file becomes unreadable during fingerprinting',async()=>{
+ const {p,recording,interview}=await fixture('reference');const key=`media:${p.data.id}:${recording.id}`;const previous=handles.get(key);
+ const file=new File(['synthetic recovery'],'synthetic.wav');
+ vi.spyOn(file,'slice').mockReturnValue({arrayBuffer:async()=>{throw new DOMException('Synthetic read failure','NotReadableError');}} as unknown as Blob);
+ const candidate={kind:'file',name:file.name,getFile:async()=>file} as unknown as FileSystemFileHandle;
+ await expect(relinkMedia(p,interview.id,recording,candidate)).rejects.toMatchObject({reason:'unreadable'});
+ expect(handles.get(key)).toBe(previous);expect((await openProject(p.directory)).data).toEqual(p.data);
+});

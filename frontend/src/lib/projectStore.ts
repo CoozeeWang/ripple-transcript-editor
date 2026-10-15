@@ -219,13 +219,15 @@ export async function resolveMedia(project: OpenProject, interviewId: string, re
     return (await dir.getDirectoryHandle('media')).getFileHandle(recording.file);
   }
   const handle = await handleValue<FileSystemFileHandle>(`media:${project.data.id}:${recording.id}`);
-  if (!handle) throw new ProjectMediaUnavailable(msg('projectStore.mediaMissing'), 'missing');
+  // A lost machine-local handle says nothing about whether the external file exists.
+  if (!handle) throw new ProjectMediaUnavailable(msg('projectStore.mediaPermission'), 'permission');
   return handle;
 }
 export async function relinkMedia(project: OpenProject, interviewId: string, recording: ProjectRecording, handle: FileSystemFileHandle): Promise<OpenProject> {
   return checkedTrashMutation(project,async()=>{
-  const file = await handle.getFile();
-  const fingerprint = await mediaFingerprint(file);
+  let file: File; let fingerprint: string;
+  try { file = await handle.getFile(); fingerprint = await mediaFingerprint(file); }
+  catch (error) { throw mediaFailure(error); }
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (!AUDIO_EXT.includes(ext)) throw new Error(msg('projectStore.m1405'));
   if (recording.storage !== 'none' && fingerprint !== recording.fingerprint) throw new Error(msg('projectStore.m1406'));
@@ -817,7 +819,10 @@ export function referenceAudioNotice(recording:ProjectRecording, interviewTitle:
  return msg('projectStore.m1466', { v0: recording.name, v1: interviewTitle, v2: manuscripts.length?manuscripts.join("、"):msg('projectStore.m1467') });
 }
 export async function checkedMediaFile(project:OpenProject, interviewId:string, recording:ProjectRecording):Promise<File>{
- const file=await(await resolveMedia(project,interviewId,recording)).getFile();
- if(await mediaFingerprint(file)!==recording.fingerprint)throw new Error(msg('projectStore.m1468', { v0: recording.name }));
- return file;
+ try { return await readProjectMedia(project,interviewId,recording); }
+ catch(error) {
+   const failure=mediaFailure(error);
+   const keys={permission:'projectStore.mediaExportPermission',missing:'projectStore.mediaExportMissing',changed:'projectStore.mediaExportChanged',unreadable:'projectStore.mediaExportUnreadable'};
+   throw new ProjectMediaUnavailable(msg(keys[failure.reason],{name:recording.name}),failure.reason);
+ }
 }
