@@ -41,7 +41,7 @@ export class AIEditOwnership {
     if ([...this.entries.values()].some(task => task.key === key && blocksHumanEditing(task) && task.task_id !== id))
       throw Error('manuscript_locked_by_other_ai_end_editing_first');
     // Only the newest notice for a target remains; terminal receipts stay queryable.
-    for (const task of this.entries.values()) if (task.key === key && !blocksHumanEditing(task)) task.dismissed = true;
+    for (const task of this.entries.values()) if (!blocksHumanEditing(task)) task.dismissed = true;
     const previous = this.entries.get(id);
     if (previous && previous.state !== 'paused') throw Error('editing_task_ended_prepare_again');
     this.entries.set(id, { task_id: id, client, key, target: doc.target, version: doc.label, version_id: doc.version.id, kind,

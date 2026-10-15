@@ -42,7 +42,28 @@ function loadFresh(name: string) {
 }
 
 vi.mock("./localStore", async original=>({...await original<typeof local>(),readModelOriginal:vi.fn()}));
-afterEach(() => { fixture.directory=null;cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { fixture.directory=null;cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); });
+
+it('expires loaded segment-count success, restarts on reopening and preserves load errors and text', () => {
+  vi.useFakeTimers();
+  render(<App />);
+  load('Synthetic.wav');
+  expect(document.querySelector('.process-notice')?.textContent).toContain('1');
+  act(() => vi.advanceTimersByTime(3000));
+  load('Synthetic.wav');
+  act(() => vi.advanceTimersByTime(3999));
+  expect(document.querySelector('.process-notice')).toBeTruthy();
+  act(() => vi.advanceTimersByTime(1));
+  expect(document.querySelector('.process-notice')).toBeNull();
+  expect(screen.getByText('Synthetic.wav的内容')).toBeTruthy();
+  load('Synthetic.wav');
+  const close = document.querySelector('.process-notice button')!;
+  fireEvent.click(close);
+  expect(document.querySelector('.process-notice')).toBeNull();
+  act(() => fixture.folder!.onLoadError('Synthetic read failure; retry', true));
+  act(() => vi.advanceTimersByTime(10000));
+  expect(screen.getByRole('alert').textContent).toContain('Synthetic read failure');
+});
 
 it("uses the complete recording filename for a new project's manuscript without changing the session", () => {
   const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",

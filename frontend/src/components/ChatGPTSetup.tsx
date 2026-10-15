@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from '../hooks/useTransientState';
+import { FeedbackNotice } from './FeedbackNotice';
 import { Trans } from 'react-i18next';
 import { interfaceLanguage, msg, useInterfaceLanguage } from '../i18n';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
@@ -19,9 +21,9 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const [key, setKey] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [status, setStatus] = useTransientState<'idle' | 'saving' | 'saved' | 'error'>('idle', 'idle', value => value === 'saved' ? SUCCESS_FEEDBACK_MS : null);
   const [linkError, setLinkError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useTransientState(false, false);
   const [copyError, setCopyError] = useState(false);
   const [platform, setPlatform] = useState<ClientPlatform | null>(null);
   const [download, setDownload] = useState<ClientDownload | null>(null);
@@ -30,7 +32,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const [addError, setAddError] = useState(false);
-  const [promptCopied, setPromptCopied] = useState(false);
+  const [promptCopied, setPromptCopied] = useTransientState(false, false);
   const [promptCopyError, setPromptCopyError] = useState(false);
   useEffect(() => {
     let disposed = false;
@@ -40,7 +42,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
     }).catch(() => { if (!disposed) { setStatus('error'); setEditing(true); } })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, []);
+  }, [setStatus]);
   useEffect(() => {
     let disposed = false;
     const hostInfo = invoke<ClientPlatform>('connector_client_platform').then(host => { if (!disposed) setPlatform(host); return host; });
@@ -65,7 +67,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   return <div className="connector-setup">
     <div className="cred-profile connector-setup-card connector-guided-card" aria-busy={loading}>
       <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.guidedTitle')}</span></div>
-      <p className="settings-hint" role="status">{loading ? msg('connector.loadingSetup') : saved.configured ? msg('connector.configured') : ''}</p>
+      <p className="settings-hint" role="status">{loading ? msg('connector.loadingSetup') : saved.configured ? msg('connector.configurationPresent') : ''}</p>
       <ol className="connector-guided-steps">
         <li>
           <label className="connector-step-label" htmlFor="chatgpt-tunnel">{msg('connector.tunnelId')}</label>
@@ -108,7 +110,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
               <span className="settings-hint">{msg('connector.savePrerequisite')}</span>
             </> : <button type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
           </div>}
-          {status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{msg(`connector.setup_${status}`)}</p>}
+          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{msg(`connector.setup_${status}`)}</p>}
         </li>
         <li>
           <span className="connector-step-label">{msg('connector.guidedChatGPTTitle')}</span>
@@ -122,9 +124,9 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
             try { await navigator.clipboard.writeText(saved.tunnel_id); setCopied(true); }
             catch { setCopyError(true); }
           }}>{msg('connector.copyTunnel')}</button></div>
-          {added && <p className="settings-hint" role="status">{msg('connector.added_chatgpt')}</p>}
+          {added && <FeedbackNotice text={msg('connector.added_chatgpt')} onDismiss={() => setAdded(false)}/>}
           {addError && <p className="settings-hint connector-error" role="alert">{msg('connector.addError_chatgpt')}</p>}
-          {copied && <p className="settings-hint" role="status">{msg('connector.tunnelCopied')}</p>}
+          {copied && <FeedbackNotice text={msg('connector.tunnelCopied')} onDismiss={() => setCopied(false)}/>}
           {copyError && <p className="settings-hint connector-error" role="alert">{msg('connector.copyFailed')}</p>}
           <details className="connector-step-help"><summary>{msg('connector.existingConnectionTitle')}</summary><p className="settings-hint">{msg('connector.existingConnection')}</p></details>
         </li>
@@ -134,6 +136,6 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
     <details className="connector-step-help"><summary>{msg('connector.aiSetupTitle')}</summary><p className="settings-hint">{msg('connector.aiSetupHint')}</p><p className="settings-hint connector-guidance connector-setup-prompt">{msg('connector.aiSetupPrompt')}</p><div className="cred-profile__actions"><button type="button" className="cred-btn" onClick={async()=>{
       setPromptCopied(false); setPromptCopyError(false);
       try {await navigator.clipboard.writeText(msg('connector.aiSetupPrompt')); setPromptCopied(true);} catch {setPromptCopyError(true);}
-    }}>{msg('connector.copySetupPrompt')}</button></div>{promptCopied && <p className="settings-hint" role="status">{msg('connector.setupPromptCopied')}</p>}{promptCopyError && <p className="settings-hint connector-error" role="alert">{msg('connector.setupPromptCopyFailed')}</p>}</details>
+    }}>{msg('connector.copySetupPrompt')}</button></div>{promptCopied && <FeedbackNotice text={msg('connector.setupPromptCopied')} onDismiss={() => setPromptCopied(false)}/>}{promptCopyError && <p className="settings-hint connector-error" role="alert">{msg('connector.setupPromptCopyFailed')}</p>}</details>
   </div>;
 }

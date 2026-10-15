@@ -6,6 +6,8 @@ import { defaultMetadata, readManifest, readModelEdit, readModelOriginal, saniti
 import { recordingDirectory, checkedMediaFile, savePortableProject, type OpenProject } from '../lib/projectStore';
 import { exportFormats, canExportSubtitles, downloadBlob, transcriptBlob, type ExportFormat } from '../lib/export';
 import { ProjectIcon } from './ProjectIcon';
+import { useTransientState } from '../hooks/useTransientState';
+import { FeedbackNotice } from './FeedbackNotice';
 import type { InterviewMetadata, Transcript } from '../types';
 type Entry = { id: string; session: string; recording: string; document?: string; name: string; versionLabel?: string; current: boolean; reference?: string; audio?: () => Promise<File>; transcript?: Transcript; metadata?: InterviewMetadata; engine?: string };
 function audioExportName(name: string, file: string) {
@@ -27,7 +29,7 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useTransientState('', '');
   const lock = useRef(false);
   useEffect(() => {
     const modal = dialog.current;
@@ -194,7 +196,7 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
       })}
 
     </>}
-    {error && <p role="alert" className="form-error">{uiMessage(error)}</p>}{notice && <p role="status" className="settings-hint">{uiMessage(notice)}</p>}
+    {error && <p role="alert" className="form-error">{uiMessage(error)}</p>}{notice && <FeedbackNotice text={notice} onDismiss={() => setNotice('')}/>}
     </div><div className="project-actions audio-project-footer"><button className="button button--secondary" disabled={busy} onClick={() => mode === 'materials' ? onClose() : setMode('materials')}>{mode === 'materials' ? msg('ProjectExportDialog.m0760') : msg('ProjectExportDialog.m0761')}</button>{mode !== 'choice' && <button className="button button--primary" disabled={busy || (mode === 'project' ? !title.trim() : loading || loadFailed || (!chosen.length && !!visibleEntries.length) || invalidSubtitle)} onClick={() => { if (mode === 'materials' && !visibleEntries.length) setMode('project'); else if (mode === 'materials' && allSelected) setMode('choice'); else void exportFiles(); }}>{busy ? msg('ProjectExportDialog.m0762') : mode === 'project' ? msg('ProjectExportDialog.m0763') : !loading && !loadFailed && !visibleEntries.length ? msg('ProjectExportDialog.m0764') : msg('ProjectExportDialog.m0765')}</button>}</div>
   </dialog>;
 }

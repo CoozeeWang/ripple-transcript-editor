@@ -105,3 +105,14 @@ it('does not carry a completed task into another manuscript version',()=>{
   const {container}=render(<ContinuationProgress tasks={[{...task,state:'completed',is_current:false,staged:0}]} error="" onAction={vi.fn()}/>);
   expect(container.textContent).toBe('');
 });
+it('hides completed history locally without cancelling or deleting saved journals; new recovery remains visible', () => {
+  const action = vi.fn();
+  const completed = { ...task, state: 'completed' as const, staged: 0 };
+  const { rerender, container } = render(<ContinuationProgress tasks={[completed]} error="" onAction={action}/>);
+  fireEvent.click(screen.getByRole('button', { name: '关闭提示' }));
+  expect(container.textContent).toBe('');
+  expect(action).not.toHaveBeenCalled();
+  expect(completed.saved_segments).toBe(24);
+  rerender(<ContinuationProgress tasks={[completed, { ...task, task_id: 'new-recovery' }]} error="" onAction={action}/>);
+  expect(screen.getByRole('button', { name: '重读本批继续' })).toBeTruthy();
+});

@@ -1,4 +1,5 @@
 import { visibleAIActivities } from './lib/aiEditOwnership';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
@@ -179,7 +180,7 @@ function App(projectProps: ProjectEditorProps = {}) {
 const [hasLoadedTranscript, setHasLoadedTranscript] = useState(false);
 // 当前是否在查看引擎原始稿（只读模式，所有编辑控件禁用）。
 const [viewingOriginal, setViewingOriginal] = useState(false);
-  const [processStatus, setProcessStatus] = useState<ProcessStatus>("idle");
+  const [processStatus, updateProcessStatus] = useState<ProcessStatus>("idle");
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
   const openMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -190,7 +191,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // 统一浮层关闭契约：Esc + 浮层外部 pointerdown。
   useDismissable(openMenuRef, openMenuOpen, () => setOpenMenuOpen(false));
   useDismissable(exportMenuRef, exportMenuOpen, () => setExportMenuOpen(false));
-  const [processMessage, setProcessMessage] = useState("");
+  const [processMessage, setProcessMessage] = useTransientState('', '', () => processStatus === 'done' ? SUCCESS_FEEDBACK_MS : null);
+  const setProcessStatus = useCallback((status: ProcessStatus) => {
+    setProcessMessage('');
+    updateProcessStatus(status);
+  }, [setProcessMessage]);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [annotationView, setAnnotationView] = useState<"selected" | "all">("selected");
   // 批注栏页签：批注 / 高亮。高亮页是全文清单，没有「当前片段 / 全部」这层切换。
@@ -309,6 +314,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     canChangeDocument: () => canChangeDocumentRef.current(),
     beforeChange: () => beforeChangeRef.current(),
     onLoadStart: () => {
+      setProcessMessage('');
       setOpeningPosition(null);
       setSaveStatus("loading");
       setLoadError("");
@@ -917,6 +923,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setAudioUrl(url);
       await refreshAudioList(dir);
       setSaveStatus("saved");
+      setProcessStatus('done');
       setProcessMessage(msg('App.m0016'));
     } catch (error) {
       recordProblem("rename", error);
@@ -1060,11 +1067,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       )}
         <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
           ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
-          : task.version_id === aiVersionId} onDismiss={async id => { await connector.taskAction('dismiss_editing', id); setProcessMessage(''); setProcessStatus('ready'); transcriptPanelRef.current?.focus(); }} onEnd={async id => { await connector.taskAction('end_editing', id); setProcessMessage(''); setProcessStatus('ready'); transcriptPanelRef.current?.focus(); }}>
+          : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
           {connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled') && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
         </AIEditingNotice>
       {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice
+          onDismiss={() => { setProcessMessage(''); transcriptPanelRef.current?.focus(); }}
           text={processNoticeText}
           status={activeStatus}
           phase={transcribePhase}

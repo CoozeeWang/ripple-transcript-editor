@@ -1690,7 +1690,8 @@
     "maximize": "最大化"
   },
   "notice": {
-    "dismiss": "关闭提示"
+    "dismiss": "关闭提示",
+    "diagnosticsExported": "诊断信息已导出。"
   },
   "continuation": {
     "caution": "编辑期间请谨慎手动修改，重叠内容会暂停。",

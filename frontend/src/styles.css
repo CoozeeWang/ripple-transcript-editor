@@ -706,6 +706,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 
 .process-notice p { margin: 0; }
 .process-notice__body { min-width: 0; }
+.process-notice__body p { overflow-wrap: anywhere; }
 .process-notice__hint { color: #6b6960; opacity: 0.9; }
 .process-notice__actions { display: flex; align-items: center; gap: 4px; }
 .process-progress {
@@ -728,6 +729,16 @@ button.brand:disabled { opacity: .5; cursor: default; }
   font-size: 0.7rem;
   font-weight: 700;
 }
+.feedback-notice { display: flex; align-items: center; gap: 8px; }
+.feedback-notice > span { min-width: 0; overflow-wrap: anywhere; }
+.feedback-notice.feedback-notice--error { color: var(--color-danger); }
+.feedback-dismiss, .process-notice .feedback-dismiss {
+  flex: none; margin-left: auto; min-width: 28px; min-height: 28px; padding: 2px 6px;
+  border: 0; border-radius: 4px; background: transparent; color: inherit;
+  font: 400 18px/1 var(--font-sans); cursor: pointer;
+}
+.feedback-dismiss:hover { background: var(--color-surface-warm); }
+.feedback-dismiss:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 2px; }
 .process-notice--uploading > span, .process-notice--transcribing > span {
   animation: status-pulse 1.2s ease-in-out infinite;
   background: #b08342;

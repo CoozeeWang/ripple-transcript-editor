@@ -92,6 +92,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
         {status === "error" && hint && <p className="process-notice__hint">{uiMessage(hint)}</p>}
       </div>
       <div className="process-notice__actions">
+        {status !== 'transcribing' && status !== 'error' && props.onDismiss && <button type="button" className="feedback-dismiss" aria-label={msg('notice.dismiss')} onClick={props.onDismiss}>×</button>}
         {status === "transcribing" && (
           <button type="button" disabled={phase === "saving"} onClick={cancelTranscription}>
             {msg('ProcessNotice.m0654')}</button>

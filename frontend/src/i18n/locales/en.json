@@ -1690,7 +1690,8 @@
     "maximize": "Maximize"
   },
   "notice": {
-    "dismiss": "Dismiss message"
+    "dismiss": "Dismiss message",
+    "diagnosticsExported": "Diagnostics exported."
   },
   "continuation": {
     "caution": "Edit manually with care; overlapping changes pause the batch.",

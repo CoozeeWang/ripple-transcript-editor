@@ -1,4 +1,4 @@
-import { msg, uiMessage, useInterfaceLanguage, interfaceLanguage } from '../i18n';
+import { msg, useInterfaceLanguage, interfaceLanguage } from '../i18n';
 import { useEffect, useState } from "react";
 import { diagnosticEnvironment, diagnosticsPersistent, DIAGNOSTICS_EVENT, operations, reasons,
   problemSummary, readProblems, type Problem } from "../lib/diagnostics";
@@ -6,6 +6,8 @@ import { CopyProblem } from "./CopyProblem";
 import { readTranscriptionTimings, TRANSCRIPTION_TIMINGS_EVENT } from "../lib/transcriptionTimings";
 import { DiagnosticCopyIcon } from "./DiagnosticCopyIcon";
 import { DiagnosticExportIcon } from "./DiagnosticExportIcon";
+import { useTransientState } from '../hooks/useTransientState';
+import { FeedbackNotice } from './FeedbackNotice';
 
 interface ServiceProblem { id: string; time: string; operation: string; status: number; reason?: keyof typeof reasons }
 const serviceLabels = (): Record<string, string> => ({ ...operations, get service() { return msg('DiagnosticsSettings.m0392'); } });
@@ -30,7 +32,8 @@ export function DiagnosticsSettings() {
   const [service, setService] = useState<ServiceProblem[]>([]);
   const [loading, setLoading] = useState(true);
   const [serviceState, setServiceState] = useState(msg('DiagnosticsSettings.m0399'));
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState('');
+  const [success, setSuccess] = useTransientState('', '');
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     const update = () => { setLocal(readProblems()); setTranscriptionTimings(readTranscriptionTimings()); };
@@ -65,6 +68,7 @@ export function DiagnosticsSettings() {
     <div className="diagnostic-page-header">
     <p className="settings-hint">{msg('DiagnosticsSettings.m0417')}</p>
         <button type="button" className="cred-btn diagnostic-export diagnostic-icon" aria-label={msg('DiagnosticsSettings.m0418')} title={msg('DiagnosticsSettings.m0419')} disabled={loading} onClick={() => {
+          setNotice(''); setSuccess('');
           try {
             const report = { ...diagnosticEnvironment(), serviceState, localStorageAvailable: diagnosticsPersistent(),
               local: readProblems(), service, transcriptionTimings: readTranscriptionTimings() };
@@ -73,11 +77,12 @@ export function DiagnosticsSettings() {
             link.download = msg('DiagnosticsSettings.m0420', { v0: new Date().toISOString().slice(0, 10) });
             document.body.append(link); link.click(); link.remove();
             window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-            setNotice("");
+            setSuccess(msg('notice.diagnosticsExported'));
           } catch { setNotice(msg('DiagnosticsSettings.m0421')); }
         }}><DiagnosticExportIcon /></button>
     </div>
-    {notice && <p className="settings-hint" role="status">{uiMessage(notice)}</p>}
+    {notice && <FeedbackNotice text={notice} error onDismiss={() => setNotice('')}/>}
+    {success && <FeedbackNotice text={success} onDismiss={() => setSuccess('')}/>}
     <section className="settings-block">
       <div className="diagnostic-toolbar">
         <h3>{msg('DiagnosticsSettings.m0422')}</h3>
@@ -93,7 +98,8 @@ export function DiagnosticsSettings() {
       {!!records.length && <ul className="diagnostic-list diagnostic-problems">{records.map(p => <li key={`${p.source}:${p.id}`}>
         <div className="diagnostic-problem-info"><p>{p.title}</p><small>{new Date(p.time).toLocaleString(interfaceLanguage())} · {p.source}{p.local && p.local.count > 1 ? msg('DiagnosticsSettings.m0428', { v0: p.local.count }) : ""}</small></div>
         {p.local ? <CopyProblem problem={p.local} iconOnly /> : <button type="button" className="cred-btn diagnostic-icon" aria-label={msg('DiagnosticsSettings.m0429')} title={msg('DiagnosticsSettings.m0430')} onClick={async () => {
-          try { await navigator.clipboard.writeText(msg('DiagnosticsSettings.m0431', { v0: diagnosticEnvironment().version, v1: p.id, v2: p.time, v3: p.title, v4: p.status })); setNotice(""); }
+          setNotice(''); setSuccess('');
+          try { await navigator.clipboard.writeText(msg('DiagnosticsSettings.m0431', { v0: diagnosticEnvironment().version, v1: p.id, v2: p.time, v3: p.title, v4: p.status })); setSuccess(msg('CopyProblem.m0381')); }
           catch { setNotice(msg('DiagnosticsSettings.m0432')); }
         }}><DiagnosticCopyIcon /></button>}
       </li>)}</ul>}
