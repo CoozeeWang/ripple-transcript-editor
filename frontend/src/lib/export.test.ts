@@ -259,3 +259,30 @@ it('preserves literal manuscript text after real GFM parsing', async () => {
   for (const line of note.split('\n').filter(Boolean)) expect(doc.querySelector('blockquote')?.textContent).toContain(line);
   expect(doc.querySelectorAll('ul')).toHaveLength(1);
 });
+
+it.each([
+  ['zh-CN', ['日期：2026/10/15', '地点：Synthetic location', '参与者：Synthetic speaker', '话题：Synthetic topic', '音频：synthetic.wav', '备注：First note\nSecond note']],
+  ['en', ['Date: 2026/10/15', 'Location: Synthetic location', 'Participants: Synthetic speaker', 'Topics: Synthetic topic', 'Audio: synthetic.wav', 'Notes: First note\nSecond note']],
+] as const)('includes the same interview information in Word and PDF for %s', async (language, fields) => {
+  try {
+    await setInterfaceLanguage(language);
+    const { JSDOM } = await import('jsdom');
+    const { default: JSZip } = await import('jszip');
+    const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [{ id: 's', name: 'Synthetic speaker' }], segments: [{ id: 's1', speaker_id: 's', start: 0, end: 2, text: 'Synthetic body', annotations: [{ id: 'a', text: 'Synthetic annotation', createdAt: '2026-10-15' }] }] }, { id: 'synthetic', title: '合成标题 Synthetic title', recorded_at: '2026-10-15', location: 'Synthetic location', topics: ['Synthetic topic'], participants: [], notes: 'First note\nSecond note', created_at: '', updated_at: '' });
+    const before = JSON.stringify(model);
+    const archive = await JSZip.loadAsync(await (await renderDocx(model)).arrayBuffer());
+    const xml = await archive.file('word/document.xml')!.async('string');
+    const document = new JSDOM(xml, { contentType: 'application/xml' }).window.document;
+    const paragraphs = [...document.getElementsByTagName('w:p')].map(p => [...p.getElementsByTagName('w:r')].map(r => [...r.children].map(c => c.tagName === 'w:br' ? '\n' : c.tagName === 'w:t' ? c.textContent : '').join('')).join(''));
+    expect(paragraphs.slice(0, 7)).toEqual([model.title, ...fields]);
+    expect(paragraphs.slice(7)).toEqual(['Synthetic speaker [00:00:00]', 'Synthetic body']);
+    const pdf = new JSDOM(renderPdfHtml(model)).window.document;
+    expect(pdf.querySelector('h1')?.textContent).toBe(model.title);
+    expect([...pdf.querySelectorAll('table.meta tr')].map(row => [...row.children].map(cell => cell.textContent).join('：').replace('：', language === 'en' ? ': ' : '：'))).toEqual(fields);
+    expect(await archive.file('word/comments.xml')!.async('string')).toContain('Synthetic annotation');
+    const noNotes = await JSZip.loadAsync(await (await renderDocx({ ...model, notes: '' })).arrayBuffer());
+    const noNotesDocument = new JSDOM(await noNotes.file('word/document.xml')!.async('string'), { contentType: 'application/xml' }).window.document;
+    expect(noNotesDocument.getElementsByTagName('w:p')).toHaveLength(8);
+    expect(JSON.stringify(model)).toBe(before);
+  } finally { await setInterfaceLanguage('zh-CN'); }
+});

@@ -155,8 +155,7 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
-export function renderPdfHtml(m: ExportModel): string {
+function exportMetadata(m: ExportModel): Array<[string, string]> {
   const meta: Array<[string, string]> = [
     [msg('export.m1323'), m.date],
     [msg('export.m1324'), m.location],
@@ -165,6 +164,12 @@ export function renderPdfHtml(m: ExportModel): string {
     [msg('export.m1327'), m.audioFile],
   ];
   if (m.notes) meta.push([msg('export.m1328'), m.notes]);
+  return meta;
+}
+
+// PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
+export function renderPdfHtml(m: ExportModel): string {
+  const meta = exportMetadata(m);
   const metaHtml = meta
     .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
     .join("");
@@ -239,7 +244,20 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
     children: unknown[];
   }> = [];
 
-  const paragraphChildren: unknown[] = [];
+  const paragraphChildren: unknown[] = [new Paragraph({
+    style: "Title", keepNext: true, spacing: { after: 200 },
+    children: [new TextRun({ text: m.title, bold: true, size: 36, color: "000000" })],
+  })];
+  const separator = interfaceLanguage() === 'en' ? ': ' : '：';
+  for (const [label, value] of exportMetadata(m)) {
+    paragraphChildren.push(new Paragraph({
+      spacing: { after: 60, line: 280 },
+      children: [
+        new TextRun({ text: label + separator, bold: true }),
+        ...value.split(/\r\n?|\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined })),
+      ],
+    }));
+  }
   let commentId = 0;
 
   m.segments.forEach((seg) => {
@@ -275,6 +293,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   });
 
   const doc = new Document({
+    title: m.title,
     comments: { children: commentConfigs as never },
     sections: [{ children: paragraphChildren as never }],
   });
