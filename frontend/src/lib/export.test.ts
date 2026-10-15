@@ -239,3 +239,23 @@ it('uses locale punctuation in format labels while keeping export format IDs sta
   expect(english.filter(item=>['docx','json','md'].includes(item[1])).map(item=>item[0])).toEqual(['Word (.docx)','JSON (.json)','Markdown (.md)']);
  } finally { await setInterfaceLanguage('zh-CN'); }
 });
+
+it('preserves literal manuscript text after real GFM parsing', async () => {
+  const { marked } = await import('marked');
+  const { JSDOM } = await import('jsdom');
+  const body = '*literal* _text_ [link](https://example.invalid) <tag> &amp; \\path\n# literal heading\n- literal list\n1. literal item\n    indented text\n| a | b |\n| - | - |';
+  const note = 'First *note*\n\n# still a note <tag>';
+  const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 1 }, speakers: [{ id: 's', name: 'Synthetic *speaker*' }], segments: [{ id: 's', speaker_id: 's', start: 0, end: 1, text: body, annotations: [{ id: 'a', text: note, createdAt: '2026-01-01' }] }] }, null);
+  model.title = 'Synthetic <title>\n# literal title';
+  model.notes = 'Synthetic note\n# literal metadata';
+  const doc = new JSDOM(await marked.parse(renderMarkdown(model), { gfm: true })).window.document;
+  expect(doc.querySelectorAll('h1')).toHaveLength(1);
+  expect(doc.querySelector('h1')?.textContent).toBe('Synthetic <title> # literal title');
+  expect(doc.querySelectorAll('a, em, code, pre, table, tag, script')).toHaveLength(0);
+  expect(doc.querySelectorAll('strong')).toHaveLength(1);
+  expect(doc.querySelector('strong')?.textContent).toBe('Synthetic *speaker*');
+  for (const line of body.split('\n')) expect(doc.body.textContent).toContain(line);
+  expect(doc.querySelectorAll('blockquote')).toHaveLength(1);
+  for (const line of note.split('\n').filter(Boolean)) expect(doc.querySelector('blockquote')?.textContent).toContain(line);
+  expect(doc.querySelectorAll('ul')).toHaveLength(1);
+});

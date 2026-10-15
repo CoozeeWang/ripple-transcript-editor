@@ -99,19 +99,30 @@ export function buildExportModel(
   };
 }
 
+/** Manuscript fields are plain text, even when they contain Markdown or HTML syntax. */
+function markdownText(text: string): string {
+  return text.replace(/\r\n?/g, "\n").split("\n").map(line =>
+    line.replace(/[!-/:-@[-`{-~]/g, "\\$&")
+      .replace(/^[ \t]+/, whitespace => [...whitespace].map(char => char === "\t" ? "&#9;" : "&#32;").join("")),
+  ).join("\n");
+}
+
 export function renderMarkdown(m: ExportModel): string {
-  const lines: string[] = ["# " + m.title, ""];
-  lines.push(msg('export.m1309', { v0: m.date }));
-  lines.push(msg('export.m1310', { v0: m.location }));
-  lines.push(msg('export.m1311', { v0: m.participants }));
-  lines.push(msg('export.m1312', { v0: m.topics }));
-  lines.push(msg('export.m1313', { v0: m.audioFile }));
-  if (m.notes) lines.push(msg('export.m1314', { v0: m.notes }));
+  const field = (value: string) => markdownText(value).replace(/\n/g, "  \n  ");
+  const lines: string[] = ["# " + markdownText(m.title.replace(/\s+/g, " ")), ""];
+  lines.push(msg('export.m1309', { v0: field(m.date) }));
+  lines.push(msg('export.m1310', { v0: field(m.location) }));
+  lines.push(msg('export.m1311', { v0: field(m.participants) }));
+  lines.push(msg('export.m1312', { v0: field(m.topics) }));
+  lines.push(msg('export.m1313', { v0: field(m.audioFile) }));
+  if (m.notes) lines.push(msg('export.m1314', { v0: field(m.notes) }));
   lines.push("", "---", "");
   for (const seg of m.segments) {
-    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text.replace(/\r\n?/g, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/\n+/g, "\n\n")}`);
+    const body = markdownText(seg.text.replace(/<br\s*\/?>/gi, "\n")).replace(/\n+/g, "\n\n");
+    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${body}`);
     for (const a of seg.annotations) {
-      lines.push(msg('export.m1315', { v0: a.date, v1: a.text }));
+      // Separate the quote from the body, and keep every note line inside it.
+      lines.push("", msg('export.m1315', { v0: markdownText(a.date), v1: markdownText(a.text).replace(/\n/g, "\n> ") }));
     }
     lines.push("");
   }
