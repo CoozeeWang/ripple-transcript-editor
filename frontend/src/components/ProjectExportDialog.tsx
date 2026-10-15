@@ -27,7 +27,6 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const lock = useRef(false);
   useEffect(() => {
     const modal = dialog.current;
@@ -83,12 +82,11 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
   const toggle = (ids: string[], checked: boolean) => setSelected(old => { const next = new Set(old); for (const id of ids) if (checked) next.add(id); else next.delete(id); return next; });
   const exportFiles = async (kind = mode) => {
     if (lock.current) return;
-    lock.current = true; setBusy(true); setError(''); setNotice('');
+    lock.current = true; setBusy(true); setError('');
     try {
       if (kind === 'project') {
         const parent = await (window as unknown as { showDirectoryPicker: (o: { mode: string }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ mode: 'readwrite' });
-        const copy = await savePortableProject(project, parent, title);
-        setNotice(msg('ProjectExportDialog.m0724', { v0: copy.directory.name }));
+        await savePortableProject(project, parent, title);
       } else {
         if (!chosen.length || invalidSubtitle) throw new Error(msg('ProjectExportDialog.m0725'));
         const { default: JSZip } = await import('jszip');
@@ -126,8 +124,8 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
           }
         }
         if (count) await downloadBlob(await zip.generateAsync({ type: 'blob' }), msg('ProjectExportDialog.m0729', { v0: sanitizeForFilename(project.data.title) }));
-        setNotice(msg('ProjectExportDialog.m0732'));
       }
+      onClose();
     } catch (e) { if ((e as Error).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectExportDialog.m0733')); }
     finally { lock.current = false; setBusy(false); }
   };
@@ -194,7 +192,7 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
       })}
 
     </>}
-    {error && <p role="alert" className="form-error">{uiMessage(error)}</p>}{notice && <p role="status" className="settings-hint">{uiMessage(notice)}</p>}
+    {error && <p role="alert" className="form-error">{uiMessage(error)}</p>}
     </div><div className="project-actions audio-project-footer"><button className="button button--secondary" disabled={busy} onClick={() => mode === 'materials' ? onClose() : setMode('materials')}>{mode === 'materials' ? msg('ProjectExportDialog.m0760') : msg('ProjectExportDialog.m0761')}</button>{mode !== 'choice' && <button className="button button--primary" disabled={busy || (mode === 'project' ? !title.trim() : loading || loadFailed || (!chosen.length && !!visibleEntries.length) || invalidSubtitle)} onClick={() => { if (mode === 'materials' && !visibleEntries.length) setMode('project'); else if (mode === 'materials' && allSelected) setMode('choice'); else void exportFiles(); }}>{busy ? msg('ProjectExportDialog.m0762') : mode === 'project' ? msg('ProjectExportDialog.m0763') : !loading && !loadFailed && !visibleEntries.length ? msg('ProjectExportDialog.m0764') : msg('ProjectExportDialog.m0765')}</button>}</div>
   </dialog>;
 }

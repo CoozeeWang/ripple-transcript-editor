@@ -3,6 +3,7 @@
 #[cfg(all(not(debug_assertions), not(feature = "custom-protocol")))]
 compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
 
+mod file_transfer;
 mod project_icon;
 mod backend_runtime;
 mod native_menu;
@@ -12,9 +13,8 @@ mod media;
 mod connector_config;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
-use std::collections::HashMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -32,8 +32,7 @@ static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct Backend(Mutex<Option<Child>>);
 struct ConnectorTunnel(Mutex<Option<Child>>);
-struct WriteSession { target: PathBuf, temporary: tempfile::NamedTempFile }
-struct Writes(Mutex<HashMap<u64, WriteSession>>);
+use file_transfer::Writes;
 #[derive(Serialize)]
 struct NativeEntry { name: String, kind: &'static str }
 #[derive(Serialize)]
@@ -195,48 +194,30 @@ async fn fs_media_url(app: tauri::AppHandle, state: tauri::State<'_, Grants>, ro
 }
 
 #[tauri::command]
-fn fs_read_chunk(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, offset: u64, length: usize) -> Result<Vec<u8>, String> {
-    if length > 4 * 1024 * 1024 { return Err("读取块过大".into()); }
+fn fs_read_chunk(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, offset: u64, length: usize) -> Result<tauri::ipc::Response, String> {
     let path = grant_path(&state, &root, &parts, false)?;
-    let mut file = File::open(path).map_err(io_error)?;
-    file.seek(SeekFrom::Start(offset)).map_err(io_error)?;
-    let mut bytes = vec![0; length];
-    let read = file.read(&mut bytes).map_err(io_error)?;
-    bytes.truncate(read);
-    Ok(bytes)
+    file_transfer::read_chunk(&path, offset, length).map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]
 fn fs_begin_write(grants: tauri::State<'_, Grants>, writes: tauri::State<'_, Writes>, root: String, parts: Vec<String>) -> Result<u64, String> {
     let target = grant_path(&grants, &root, &parts, true)?;
-    if target.exists() && !target.is_file() { return Err("目标不是文件".into()); }
-    let parent = target.parent().ok_or("目标缺少父文件夹")?;
-    let temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
-    let id = WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    writes.0.lock().map_err(|_| "写入锁不可用")?.insert(id, WriteSession { target, temporary });
-    Ok(id)
+    writes.begin(target)
 }
 
 #[tauri::command]
-fn fs_write_chunk(writes: tauri::State<'_, Writes>, id: u64, bytes: Vec<u8>) -> Result<(), String> {
-    if bytes.len() > 4 * 1024 * 1024 { return Err("写入块过大".into()); }
-    let mut writes = writes.0.lock().map_err(|_| "写入锁不可用")?;
-    let session = writes.get_mut(&id).ok_or("写入已结束")?;
-    session.temporary.write_all(&bytes).map_err(|e| e.to_string())
+fn fs_write_chunk(writes: tauri::State<'_, Writes>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    writes.append_request(request.body(), request.headers())
 }
 
 #[tauri::command]
 fn fs_commit_write(writes: tauri::State<'_, Writes>, id: u64) -> Result<(), String> {
-    let session = writes.0.lock().map_err(|_| "写入锁不可用")?.remove(&id).ok_or("写入已结束")?;
-    session.temporary.as_file().sync_all().map_err(|e| e.to_string())?;
-    session.temporary.persist(&session.target).map_err(|e| e.to_string())?;
-    Ok(())
+    writes.commit(id)
 }
 
 #[tauri::command]
 fn fs_abort_write(writes: tauri::State<'_, Writes>, id: u64) -> Result<(), String> {
-    writes.0.lock().map_err(|_| "写入锁不可用")?.remove(&id);
-    Ok(())
+    writes.abort(id)
 }
 
 #[tauri::command]
@@ -607,7 +588,7 @@ fn main() {
         for window in &mut context.config_mut().app.windows { window.create = false; }
     }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
-        .manage(Writes(Mutex::new(HashMap::new())))
+        .manage(Writes::default())
         .manage(ConnectorTunnel(Mutex::new(None)))
         .setup(|app| {
             app.manage(Grants::load(app_data(app.handle())?.join("file-permissions-v1.json")).map_err(std::io::Error::other)?);

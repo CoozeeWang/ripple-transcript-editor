@@ -252,3 +252,17 @@ it('shows engine original and every revision and opens the original explicitly',
  fireEvent.click(screen.getByRole('button',{name:'打开 转录稿 修改稿 v1'}));expect(open).toHaveBeenLastCalledWith(recording,'engine','e1');
  expect(screen.getByRole('button',{name:'打开 转录稿 AI 辅助 01'})).toBeTruthy();
 });
+
+it('clears a stale offline notice after a successful relink with unchanged recording identity',async()=>{
+ const store=await import('../lib/projectStore');
+ vi.mocked(store.checkProjectMedia).mockRejectedValueOnce(new DOMException('Synthetic denial','NotAllowedError')).mockResolvedValue(undefined);
+ const recording={id:'r',file:'a.wav',name:'Synthetic audio',storage:'reference' as const,fingerprint:'synthetic'};
+ const project={directory:{name:'synthetic'},data:{id:'p',interviews:[{id:'s',title:'Synthetic session',recordings:[recording]}]}} as unknown as OpenProject;
+ const props={selected:'s',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>work(),legacy:()=>{},relink:()=>{},associate:()=>{}};
+ const ui=render(<ProjectBoard {...props} project={project} mediaRevision={0}/>);
+ await screen.findByText(/音频访问权限需要恢复/);
+ // Same file name, storage, ID and fingerprint; only the local authorization changed.
+ ui.rerender(<ProjectBoard {...props} project={project} mediaRevision={1}/>);
+ await waitFor(()=>expect(store.checkProjectMedia).toHaveBeenCalledTimes(2));
+ await waitFor(()=>expect(screen.queryByText(/音频访问权限需要恢复/)).toBeNull());
+});

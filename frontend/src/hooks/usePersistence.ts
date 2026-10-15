@@ -14,6 +14,8 @@ import type { SaveStatus } from "./useTranscription";
 /** 保存/持久化跨领域依赖：saveStatus 是全局共享核心（加载/转录/编辑都在写），
  *  保留在 App 由本 hook 通过 deps 读写；本 hook 只拥有 toast 与保存计时器。 */
 export interface UsePersistenceDeps {
+  /** Exact references published only after reading or successfully persisting a document. */
+  persistedContent?: { transcript: Transcript; metadata: InterviewMetadata } | null;
   dirHandleRef: { current: FileSystemDirectoryHandle | null };
   initialLoadRef: { current: boolean };
   hasLoadedTranscript: boolean;
@@ -42,6 +44,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
   type Snapshot = { dir: FileSystemDirectoryHandle; audio: string; model: string; edit: string; data: EditedFile };
   const pending = useRef<Snapshot | null>(null);
   const lastWritten = useRef<Snapshot | null>(null);
+  const adoptedContent = useRef<UsePersistenceDeps["persistedContent"]>(null);
   const timer = useRef<number | null>(null);
   const writing = useRef<Promise<void>>(Promise.resolve());
   const snapshot = (): Snapshot | null => {
@@ -59,14 +62,26 @@ export function usePersistence(deps: UsePersistenceDeps) {
   };
   const sameDocument = (a: Snapshot, b: Snapshot | null) => !!b &&
     a.dir === b.dir && a.audio === b.audio && a.model === b.model && a.edit === b.edit;
+  const adoptLoadedContent = () => {
+    const d = latest.current;
+    if (d.initialLoadRef.current || !d.persistedContent || adoptedContent.current === d.persistedContent) return;
+    adoptedContent.current = d.persistedContent;
+    const task = snapshot();
+    // A shared "saved" status is not evidence. Only the exact loaded pair can
+    // establish a baseline; an edit made before load completion still needs saving.
+    if (task && task.data.transcript === d.persistedContent.transcript &&
+        task.data.metadata === d.persistedContent.metadata) lastWritten.current = task;
+  };
+  const unchanged = (task: Snapshot) => {
+    const saved = lastWritten.current;
+    return saved && sameDocument(task, saved) && task.data.transcript === saved.data.transcript &&
+      task.data.metadata === saved.data.metadata;
+  };
   const write = (task: Snapshot) => {
     const run = writing.current.catch(() => {}).then(async () => {
-      if (sameDocument(task, snapshot())) latest.current.setSaveStatus("saving");
+      if (!unchanged(task) && sameDocument(task, snapshot())) latest.current.setSaveStatus("saving");
       try {
-        const saved = lastWritten.current;
-        const unchanged = saved && sameDocument(task, saved) &&
-          task.data.transcript === saved.data.transcript && task.data.metadata === saved.data.metadata;
-        if (!unchanged) {
+        if (!unchanged(task)) {
           if (task.edit === "draft") await latest.current.saveAudioDraft?.({ metadata: task.data.metadata, speakers: task.data.transcript.speakers });
           else if (task.edit === "original") await saveInterviewDetails(task.dir,task.audio,task.data.metadata);
           else await saveActiveEdit(task.dir, task.audio, task.model, task.edit, task.data);
@@ -94,6 +109,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
   const flushPendingSave = async () => {
     for (;;) {
       flushEditorDrafts();
+      adoptLoadedContent();
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = null;
       const task = snapshot();
@@ -108,12 +124,13 @@ export function usePersistence(deps: UsePersistenceDeps) {
   };
 
   useEffect(() => {
+    adoptLoadedContent();
     const task = snapshot();
     const previous = pending.current;
     // A document replacement must not discard its outstanding snapshot.
     if (previous && !sameDocument(previous, task)) void write(previous).catch(() => {});
-    pending.current = task;
-    if (!task) return;
+    pending.current = task && !unchanged(task) ? task : null;
+    if (!pending.current || !task) return;
     timer.current = window.setTimeout(() => {
       timer.current = null;
       void write(task).catch(() => {});
@@ -125,7 +142,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
     // Values below identify both the document and the content to save.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deps.transcript, deps.metadata, deps.selectedAudio, deps.activeModelId,
-      deps.models, deps.viewingOriginal, deps.hasLoadedTranscript]);
+      deps.models, deps.viewingOriginal, deps.hasLoadedTranscript, deps.persistedContent]);
 
   useEffect(() => {
     const dirty = () => { latest.current.setSaveStatus("unsaved"); };

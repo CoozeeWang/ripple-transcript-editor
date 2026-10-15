@@ -1,13 +1,18 @@
 /** File System Access compatibility for Ripple's local Tauri window. */
+import { msg } from '../i18n';
 
 type Entry = { name: string; kind: 'file' | 'directory' };
 type NativeKind = Entry['kind'];
 type Descriptor = { __rippleNativeHandle: true; root: string; parts: string[]; kind: NativeKind };
 
-function invoke<T>(command: string, args: Record<string, unknown>): Promise<T> {
-  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
+type InvokeArgs = Record<string, unknown> | Uint8Array;
+type InvokeOptions = { headers: Record<string, string> };
+const CHUNK_SIZE = 1024 * 1024;
+
+function invoke<T>(command: string, args: InvokeArgs, ...options: [] | [InvokeOptions]): Promise<T> {
+  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: InvokeArgs, ...options: [] | [InvokeOptions]) => Promise<T> } } }).__TAURI__;
   if (!tauri?.core) throw new Error('Native file bridge unavailable');
-  return tauri.core.invoke(command, args).catch(error => {
+  return tauri.core.invoke(command, args, ...options).catch(error => {
     if (error === 'selection_cancelled') throw new DOMException('Selection cancelled', 'AbortError');
     if (error === 'permission_required') throw new DOMException('File access needs permission', 'NotAllowedError');
     if (error === 'file_missing') throw new DOMException('Selected file is missing', 'NotFoundError');
@@ -66,7 +71,7 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
       chunks.length = 0;
       size = 0;
-      if (session) await invoke('fs_write_chunk', { id: await session, bytes: Array.from(bytes) });
+      if (session) await invoke('fs_write_chunk', bytes, { headers: { 'x-ripple-write-id': String(await session) } });
       else chunks.push(bytes);
     };
     super({
@@ -74,11 +79,12 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
         const bytes = typeof data === 'string' ? new TextEncoder().encode(data)
           : data instanceof Blob ? new Uint8Array(await data.arrayBuffer())
           : new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
-        for (let start = 0; start < bytes.length; start += 1024 * 1024) {
-          const piece = bytes.subarray(start, start + 1024 * 1024);
+        for (let start = 0; start < bytes.length;) {
+          const piece = bytes.subarray(start, start + (session ? CHUNK_SIZE - size : CHUNK_SIZE));
+          start += piece.length;
           chunks.push(new Uint8Array(piece));
           size += piece.length;
-          if (session && size >= 1024 * 1024) await flush();
+          if (session && size >= CHUNK_SIZE) await flush();
         }
       },
       async close() {
@@ -136,9 +142,14 @@ export class NativeFileHandle extends NativeHandle {
     }
     const size = await invoke<number>('fs_size', { root: this.root, parts: this.parts });
     const chunks: Uint8Array<ArrayBuffer>[] = [];
-    for (let offset = 0; offset < size; offset += 1024 * 1024) {
-      const bytes = await invoke<number[]>('fs_read_chunk', { root: this.root, parts: this.parts, offset, length: Math.min(1024 * 1024, size - offset) });
-      chunks.push(new Uint8Array(bytes));
+    for (let offset = 0; offset < size; offset += CHUNK_SIZE) {
+      const length = Math.min(CHUNK_SIZE, size - offset);
+      // Tauri returns an ArrayBuffer over binary IPC. Its platform fallback can
+      // still return a number array; both carry the exact original bytes.
+      const response = await invoke<ArrayBuffer | number[]>('fs_read_chunk', { root: this.root, parts: this.parts, offset, length });
+      const bytes = new Uint8Array(response);
+      if (bytes.length !== length) throw new Error(msg('desktopFs.readChanged'));
+      chunks.push(bytes);
     }
     return new File(chunks, this.name);
   }

@@ -458,3 +458,22 @@ it('keeps the welcome page and recent entry when recovery is cancelled', async (
  expect(screen.queryByRole('heading',{name:'测试项目'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'取消'})); expect(screen.queryByText(/访问权限需要恢复/)).toBeNull();
 });
+
+it('refreshes recovered audio only after a successful selection, keeping cancellation harmless',async()=>{
+ const recording={...project.data.interviews[0].recordings[0],file:'synthetic.wav',fingerprint:'synthetic',storage:'reference' as const};
+ const linked={...project,data:{...project.data,interviews:[{...project.data.interviews[0],recordings:[recording]}]}};
+ vi.mocked(store.openProject).mockResolvedValue(linked);
+ const check=vi.spyOn(store,'checkProjectMedia').mockRejectedValueOnce(new DOMException('Synthetic permission loss','NotAllowedError')).mockResolvedValue(undefined);
+ const relink=vi.spyOn(store,'relinkMedia').mockResolvedValue({...linked,data:{...linked.data,revision:1}});
+ const selected={name:'synthetic.wav'} as FileSystemFileHandle;
+ Object.assign(window,{showOpenFilePicker:vi.fn().mockRejectedValueOnce(new DOMException('Synthetic cancel','AbortError')).mockResolvedValueOnce([selected])});
+ render(<ProjectWorkspace/>);fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ await screen.findByText(/音频访问权限需要恢复/);
+ fireEvent.click(screen.getByRole('button',{name:'找到 录音.wav 的原音频'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'找到 录音.wav 的原音频'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(relink).not.toHaveBeenCalled();expect(check).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('button',{name:'找到 录音.wav 的原音频'}));
+ await waitFor(()=>expect(relink).toHaveBeenCalledWith(linked,'i',recording,selected));
+ await waitFor(()=>expect(screen.queryByText(/音频访问权限需要恢复/)).toBeNull());
+ expect(check).toHaveBeenCalledTimes(2);
+});

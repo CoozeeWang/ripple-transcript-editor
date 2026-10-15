@@ -70,12 +70,13 @@ it('exports a portable project without modifying or reopening the source project
   const destination = { name: '备份' };
   Object.assign(window, { showDirectoryPicker: vi.fn(async () => destination) });
   vi.mocked(store.savePortableProject).mockResolvedValue({ directory: { name: '研究 项目副本.ripple' } } as store.OpenProject);
-  render(<ProjectExportDialog project={project} onClose={vi.fn()}/>);
+  const onClose = vi.fn();
+  render(<ProjectExportDialog project={project} onClose={onClose}/>);
   await screen.findByLabelText('定稿.docx');
   fireEvent.click(screen.getByRole('button', { name: '导出所选材料' }));
   fireEvent.click(screen.getByRole('button', { name: /Ripple 项目/ }));
   fireEvent.click(screen.getByRole('button', { name: '选择位置并导出' }));
-  await screen.findByText('已导出：研究 项目副本.ripple');
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(store.savePortableProject).toHaveBeenCalledWith(project, destination, '研究 副本');
 });
 it('does not offer PDF in material archives', async () => {
@@ -165,4 +166,35 @@ it('returns focus to the export entry after closing', async () => {
     ui.unmount();
     expect(document.activeElement).toBe(opener);
   } finally { opener.remove(); }
+});
+
+
+it('closes material export only after saving finishes', async () => {
+  let finish!: () => void;
+  vi.mocked(exporter.downloadBlob).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const onClose = vi.fn();
+  render(<ProjectExportDialog project={project} onClose={onClose}/>);
+  await screen.findByLabelText('定稿.docx');
+  fireEvent.click(screen.getByRole('button', { name: '导出所选材料' }));
+  fireEvent.click(screen.getByRole('button', { name: /材料压缩包（ZIP）/ }));
+  await waitFor(() => expect(finish).toBeDefined());
+  expect(onClose).not.toHaveBeenCalled();
+  expect((screen.getByRole('button', { name: '关闭导出窗口' }) as HTMLButtonElement).disabled).toBe(true);
+  finish();
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+});
+
+it.each(['AbortError', 'NotReadableError'])('keeps the export dialog open after %s and allows retry', async name => {
+  vi.mocked(exporter.downloadBlob).mockRejectedValueOnce(Object.assign(new Error('Synthetic save failure'), { name }));
+  const onClose = vi.fn();
+  render(<ProjectExportDialog project={project} onClose={onClose}/>);
+  await screen.findByLabelText('定稿.docx');
+  fireEvent.click(screen.getByRole('button', { name: '导出所选材料' }));
+  fireEvent.click(screen.getByRole('button', { name: /材料压缩包（ZIP）/ }));
+  await waitFor(() => expect((screen.getByRole('button', { name: /材料压缩包（ZIP）/ }) as HTMLButtonElement).disabled).toBe(false));
+  expect(onClose).not.toHaveBeenCalled();
+  if (name === 'AbortError') expect(screen.queryByRole('alert')).toBeNull();
+  else expect(screen.getByRole('alert').textContent).toBe('Synthetic save failure');
+  fireEvent.click(screen.getByRole('button', { name: /材料压缩包（ZIP）/ }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
 });

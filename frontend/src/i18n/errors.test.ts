@@ -19,7 +19,12 @@ it('exports translated labels without changing manuscript content or JSON data',
   const json = buildJsonPayload(transcript, undefined);
   await setInterfaceLanguage('en');
   const model = buildExportModel(transcript,null);
-  expect(renderMarkdown(model)).toContain('Audio: 中文音频.wav');
+  const { marked } = await import('marked');
+  const { JSDOM } = await import('jsdom');
+  const markdownDocument = new JSDOM(await marked.parse(renderMarkdown(model))).window.document;
+  expect(markdownDocument.body.textContent).toContain('Audio: 中文音频.wav');
+  expect(markdownDocument.body.textContent).toContain('用户原文 <script> & AI generated');
+  expect(markdownDocument.querySelector('script')).toBeNull();
   expect(renderTxt(model)).toContain('用户原文 <script> & AI generated');
   expect(renderPdfHtml(model)).toContain('<button onclick="window.print()">Print</button>');
   expect(renderPdfHtml(model)).toContain('&lt;script&gt;');

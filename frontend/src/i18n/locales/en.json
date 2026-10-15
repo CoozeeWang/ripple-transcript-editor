@@ -1,4 +1,7 @@
 {
+  "desktopFs": {
+    "readChanged": "File changed while reading. Reopen it and try again."
+  },
   "audioPlayback": {
     "unsupportedAdts": "“{{v0}}” uses AAC encoding or frames that Ripple cannot play yet. The original file was not changed. Check it in another player. If you convert it to m4a or mp3, add the converted file as new audio and associate the existing transcript; it can’t restore the original audio link."
   },
@@ -639,6 +642,10 @@
     "m1466": "Audio: {{v0}}  \nSession: {{v1}}  \nThis audio is linked to an external file. The audio file itself isn’t included in the project.  \nLinked transcripts: {{v2}}  \nThe transcripts remain under this audio in the project. Choose “Locate original audio” in Ripple to restore playback.",
     "m1467": "None",
     "m1468": "Audio content has changed: {{v0}}. Locate the original audio.",
+    "mediaExportPermission": "Couldn’t export audio “{{name}}”: audio access needs permission. Use the folder button on the audio card to select the original file again, then retry.",
+    "mediaExportMissing": "Couldn’t export audio “{{name}}”: the original file cannot be found. Locate and relink the original audio, then retry.",
+    "mediaExportChanged": "Couldn’t export audio “{{name}}”: the audio content has changed. Relink a file with the original audio content, then retry.",
+    "mediaExportUnreadable": "Couldn’t export audio “{{name}}”: the file cannot be read. Check that it is accessible, or relink the original audio, then retry.",
     "mediaPermission": "Audio access needs permission. Use the folder button on the audio card to select the original file again. Transcripts remain available. Originals stay read-only.",
     "mediaMissing": "The original audio cannot be found. Use the folder button on the audio card to locate it. Transcripts remain available. Originals stay read-only.",
     "mediaChanged": "The audio content has changed. Relink a file with the original audio content. Transcripts remain available. Originals stay read-only.",
@@ -1690,7 +1697,8 @@
     "maximize": "Maximize"
   },
   "notice": {
-    "dismiss": "Dismiss message"
+    "dismiss": "Dismiss message",
+    "diagnosticsExported": "Diagnostics exported."
   },
   "continuation": {
     "caution": "Edit manually with care; overlapping changes pause the batch.",

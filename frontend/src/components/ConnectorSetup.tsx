@@ -4,6 +4,8 @@ import { interfaceLanguage, msg, useInterfaceLanguage } from '../i18n';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
 import { ChatGPTSetup } from './ChatGPTSetup';
 import { trapDialogFocus } from '../lib/dialogFocus';
+import { useTransientState } from '../hooks/useTransientState';
+import { FeedbackNotice } from './FeedbackNotice';
 
 type Client = 'chatgpt' | 'claude' | 'workbuddy';
 type ClientStatus = {client:Client; configured:Record<Client, boolean | null>};
@@ -19,7 +21,7 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   const [exported, setExported] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Client | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  const [deleted, setDeleted] = useState(false);
+  const [deleted, setDeleted] = useTransientState(false, false);
   const [revision, setRevision] = useState(0);
   const [configured,setConfigured]=useState<ClientStatus['configured'] | null>(null);
   const selectRef=useRef<HTMLSelectElement>(null);
@@ -75,8 +77,8 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
         {client !== 'chatgpt' && <button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button>}
         {configured?.[client] === true && <button ref={deleteButtonRef} type="button" className="cred-btn cred-btn--danger" disabled={busy} onClick={() => {setConfirmDelete(client); setDeleteError('');}}>{msg('connector.deleteConfiguration',{client:clientName})}</button>}
       </div>
-      {deleted && <p className="settings-hint" role="status">{msg('connector.configurationDeleted', {client:clientName})}</p>}
-      {exported && <p className="settings-hint" role="status">{msg(`connector.added_${exported}`)}</p>}
+      {deleted && <FeedbackNotice text={msg('connector.configurationDeleted', {client:clientName})} onDismiss={() => setDeleted(false)}/>}
+      {exported && <FeedbackNotice text={msg(`connector.added_${exported}`)} onDismiss={() => setExported('')}/>}
       {error && <p className="settings-hint connector-error" role="alert">{msg(`connector.addError_${client}`)}</p>}
     </div>
     {client === 'chatgpt' && !busy && <ChatGPTSetup key={revision} onSaved={() => {setTunnelReady(false);void refreshConfiguration(); onSaved?.();}} tunnelReady={tunnelReady}/>}

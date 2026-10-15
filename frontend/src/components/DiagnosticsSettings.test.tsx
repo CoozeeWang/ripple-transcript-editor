@@ -1,10 +1,23 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { DiagnosticsSettings } from './DiagnosticsSettings';
 import { CopyProblem } from './CopyProblem';
 import { recordProblem } from '../lib/diagnostics';
-afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+it('expires copied feedback but retains copy failure, with a local dismiss action', async () => {
+  const writeText=vi.fn(async()=>{});
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+  render(<CopyProblem problem={recordProblem('save')} />);
+  vi.useFakeTimers();
+  await act(async()=>fireEvent.click(screen.getByText('复制错误详情')));
+  expect(screen.getByText('已复制')).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(4000));expect(screen.queryByText('已复制')).toBeNull();
+  writeText.mockRejectedValueOnce(Error('synthetic_denied'));
+  await act(async()=>fireEvent.click(screen.getByText('复制错误详情')));
+  act(()=>vi.advanceTimersByTime(10000));expect(screen.getByRole('alert').textContent).toContain('复制失败');
+  fireEvent.click(screen.getByRole('button',{name:'关闭提示'}));expect(screen.queryByRole('alert')).toBeNull();
+});
 it('shows recent local problems even if the backend is unavailable', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
   recordProblem('rename', new DOMException('private filename', 'NotAllowedError'));

@@ -99,19 +99,30 @@ export function buildExportModel(
   };
 }
 
+/** Manuscript fields are plain text, even when they contain Markdown or HTML syntax. */
+function markdownText(text: string): string {
+  return text.replace(/\r\n?/g, "\n").split("\n").map(line =>
+    line.replace(/[!-/:-@[-`{-~]/g, "\\$&")
+      .replace(/^[ \t]+/, whitespace => [...whitespace].map(char => char === "\t" ? "&#9;" : "&#32;").join("")),
+  ).join("\n");
+}
+
 export function renderMarkdown(m: ExportModel): string {
-  const lines: string[] = ["# " + m.title, ""];
-  lines.push(msg('export.m1309', { v0: m.date }));
-  lines.push(msg('export.m1310', { v0: m.location }));
-  lines.push(msg('export.m1311', { v0: m.participants }));
-  lines.push(msg('export.m1312', { v0: m.topics }));
-  lines.push(msg('export.m1313', { v0: m.audioFile }));
-  if (m.notes) lines.push(msg('export.m1314', { v0: m.notes }));
+  const field = (value: string) => markdownText(value).replace(/\n/g, "  \n  ");
+  const lines: string[] = ["# " + markdownText(m.title.replace(/\s+/g, " ")), ""];
+  lines.push(msg('export.m1309', { v0: field(m.date) }));
+  lines.push(msg('export.m1310', { v0: field(m.location) }));
+  lines.push(msg('export.m1311', { v0: field(m.participants) }));
+  lines.push(msg('export.m1312', { v0: field(m.topics) }));
+  lines.push(msg('export.m1313', { v0: field(m.audioFile) }));
+  if (m.notes) lines.push(msg('export.m1314', { v0: field(m.notes) }));
   lines.push("", "---", "");
   for (const seg of m.segments) {
-    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text.replace(/\r\n?/g, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/\n+/g, "\n\n")}`);
+    const body = markdownText(seg.text.replace(/<br\s*\/?>/gi, "\n")).replace(/\n+/g, "\n\n");
+    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${body}`);
     for (const a of seg.annotations) {
-      lines.push(msg('export.m1315', { v0: a.date, v1: a.text }));
+      // Separate the quote from the body, and keep every note line inside it.
+      lines.push("", msg('export.m1315', { v0: markdownText(a.date), v1: markdownText(a.text).replace(/\n/g, "\n> ") }));
     }
     lines.push("");
   }
@@ -144,8 +155,7 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
-export function renderPdfHtml(m: ExportModel): string {
+function exportMetadata(m: ExportModel): Array<[string, string]> {
   const meta: Array<[string, string]> = [
     [msg('export.m1323'), m.date],
     [msg('export.m1324'), m.location],
@@ -154,6 +164,12 @@ export function renderPdfHtml(m: ExportModel): string {
     [msg('export.m1327'), m.audioFile],
   ];
   if (m.notes) meta.push([msg('export.m1328'), m.notes]);
+  return meta;
+}
+
+// PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
+export function renderPdfHtml(m: ExportModel): string {
+  const meta = exportMetadata(m);
   const metaHtml = meta
     .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
     .join("");
@@ -228,7 +244,20 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
     children: unknown[];
   }> = [];
 
-  const paragraphChildren: unknown[] = [];
+  const paragraphChildren: unknown[] = [new Paragraph({
+    style: "Title", keepNext: true, spacing: { after: 200 },
+    children: [new TextRun({ text: m.title, bold: true, size: 36, color: "000000" })],
+  })];
+  const separator = interfaceLanguage() === 'en' ? ': ' : '：';
+  for (const [label, value] of exportMetadata(m)) {
+    paragraphChildren.push(new Paragraph({
+      spacing: { after: 60, line: 280 },
+      children: [
+        new TextRun({ text: label + separator, bold: true }),
+        ...value.split(/\r\n?|\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined })),
+      ],
+    }));
+  }
   let commentId = 0;
 
   m.segments.forEach((seg) => {
@@ -264,6 +293,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   });
 
   const doc = new Document({
+    title: m.title,
     comments: { children: commentConfigs as never },
     sections: [{ children: paragraphChildren as never }],
   });

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { AIEditOwnership, blocksHumanEditing, ownsEditing } from './aiEditOwnership';
+import { AIEditOwnership, blocksHumanEditing, ownsEditing, visibleAIActivities } from './aiEditOwnership';
 import type { ConnectorDocument } from './aiConnector';
 const doc = { identity: 'synthetic', label: 'Synthetic v1', version: { id: 'm:e' } } as ConnectorDocument;
 describe('AI write ownership', () => {
+  it('replaces a saved success on a new target and keeps receipts and other protected tasks', () => {
+    const own = new AIEditOwnership(() => {});
+    own.acquire('saved', 'chatgpt', doc, 'text', 2);
+    own.update('saved', { state: 'completed', saved: 2 });
+    own.acquire('protected', 'claude', { ...doc, identity: 'other' }, 'marks', 1);
+    own.update('protected', { state: 'failed' });
+    expect(visibleAIActivities(own.values()).map(task => task.task_id)).toEqual(['protected']);
+    own.acquire('new', 'workbuddy', { ...doc, identity: 'third' }, 'text', 3);
+    expect(own.get('saved')?.saved).toBe(2);
+    own.dismiss('protected');
+    expect(blocksHumanEditing(own.get('protected')!)).toBe(true);
+    expect(visibleAIActivities(own.values()).map(task => task.task_id)).toEqual(['protected', 'new']);
+  });
   it('locks only the exact target, checks clients, and never implicitly revives ended tasks', () => {
     const own = new AIEditOwnership(() => {});
     own.acquire('one', 'chatgpt', doc, 'marks', 2);

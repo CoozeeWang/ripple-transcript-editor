@@ -1,4 +1,5 @@
 import { visibleAIActivities } from './lib/aiEditOwnership';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
@@ -117,12 +118,18 @@ function App(projectProps: ProjectEditorProps = {}) {
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
   const { transcript, reset: resetHistory, commit, undo, redo, canUndo, canRedo } =
     useTranscriptHistory<Transcript>();
+  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
+  const [persistedContent, setPersistedContent] = useState<{ transcript: Transcript; metadata: InterviewMetadata } | null>(null);
   const resetDocumentViewRef = useRef<() => void>(() => {});
   // 所有成功载入/替换文稿的路径共用这个入口；普通编辑和撤销不重置视图。
-  const reset = useCallback((value: Transcript) => {
+  const reset = useCallback((value: Transcript, savedMetadata?: InterviewMetadata | null) => {
+    const loadedMetadata = savedMetadata && projectProps.recordingLabel
+      ? { ...savedMetadata, title: projectProps.recordingLabel } : savedMetadata;
+    if (loadedMetadata) setMetadataState(loadedMetadata);
+    setPersistedContent(loadedMetadata ? { transcript: value, metadata: loadedMetadata } : null);
     resetDocumentViewRef.current();
     resetHistory(value);
-  }, [resetHistory]);
+  }, [resetHistory, projectProps.recordingLabel]);
   const {
     providers,
     selectedProviderId,
@@ -169,7 +176,6 @@ function App(projectProps: ProjectEditorProps = {}) {
     setSettingsOpen(true);
   };
   useDismissable(recentMenuRef, recentMenuOpen, () => setRecentMenuOpen(false));
-  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
   const setMetadata = useCallback((value: React.SetStateAction<InterviewMetadata | null>) => {
     setMetadataState(current => {
       const next = typeof value === 'function' ? value(current) : value;
@@ -179,7 +185,7 @@ function App(projectProps: ProjectEditorProps = {}) {
 const [hasLoadedTranscript, setHasLoadedTranscript] = useState(false);
 // 当前是否在查看引擎原始稿（只读模式，所有编辑控件禁用）。
 const [viewingOriginal, setViewingOriginal] = useState(false);
-  const [processStatus, setProcessStatus] = useState<ProcessStatus>("idle");
+  const [processStatus, updateProcessStatus] = useState<ProcessStatus>("idle");
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
   const openMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -190,7 +196,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // 统一浮层关闭契约：Esc + 浮层外部 pointerdown。
   useDismissable(openMenuRef, openMenuOpen, () => setOpenMenuOpen(false));
   useDismissable(exportMenuRef, exportMenuOpen, () => setExportMenuOpen(false));
-  const [processMessage, setProcessMessage] = useState("");
+  const [processMessage, setProcessMessage] = useTransientState('', '', () => processStatus === 'done' ? SUCCESS_FEEDBACK_MS : null);
+  const setProcessStatus = useCallback((status: ProcessStatus) => {
+    setProcessMessage('');
+    updateProcessStatus(status);
+  }, [setProcessMessage]);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [annotationView, setAnnotationView] = useState<"selected" | "all">("selected");
   // 批注栏页签：批注 / 高亮。高亮页是全文清单，没有「当前片段 / 全部」这层切换。
@@ -309,6 +319,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     canChangeDocument: () => canChangeDocumentRef.current(),
     beforeChange: () => beforeChangeRef.current(),
     onLoadStart: () => {
+      setProcessMessage('');
       setOpeningPosition(null);
       setSaveStatus("loading");
       setLoadError("");
@@ -332,10 +343,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         const initialMetadata = projectProps.recordingDraft?.metadata
           ?? projectProps.interviewMetadata
           ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name));
-        setMetadata(projectProps.recordingDraft || !projectProps.recordingLabel || manifest
+        const loadedMetadata = projectProps.recordingDraft || !projectProps.recordingLabel || manifest
           ? initialMetadata
-          : { ...initialMetadata, title: projectProps.recordingLabel });
-        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] });
+          : { ...initialMetadata, title: projectProps.recordingLabel };
+        setMetadata(loadedMetadata);
+        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] }, loadedMetadata);
         setHasLoadedTranscript(false);
         applyManifestRef.current(null);
         setProcessStatus("ready");
@@ -345,7 +357,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       }
       applyManifestRef.current(manifest);
       setMetadata(edited.metadata);
-      reset(edited.transcript);
+      reset(edited.transcript, edited.metadata);
       const openingId = openingSegmentId(edited.transcript);
       setSelectedSegmentId(openingId);
       setOpeningPosition({ id: openingId });
@@ -541,6 +553,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     handleSave,
     flushPendingSave,
   } = usePersistence({
+    persistedContent,
     dirHandleRef,
     initialLoadRef,
     hasLoadedTranscript,
@@ -917,6 +930,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setAudioUrl(url);
       await refreshAudioList(dir);
       setSaveStatus("saved");
+      setProcessStatus('done');
       setProcessMessage(msg('App.m0016'));
     } catch (error) {
       recordProblem("rename", error);
@@ -1060,11 +1074,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       )}
         <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
           ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
-          : task.version_id === aiVersionId} onDismiss={async id => { await connector.taskAction('dismiss_editing', id); setProcessMessage(''); setProcessStatus('ready'); transcriptPanelRef.current?.focus(); }} onEnd={async id => { await connector.taskAction('end_editing', id); setProcessMessage(''); setProcessStatus('ready'); transcriptPanelRef.current?.focus(); }}>
+          : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
           {connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled') && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
         </AIEditingNotice>
       {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice
+          onDismiss={() => { setProcessMessage(''); transcriptPanelRef.current?.focus(); }}
           text={processNoticeText}
           status={activeStatus}
           phase={transcribePhase}

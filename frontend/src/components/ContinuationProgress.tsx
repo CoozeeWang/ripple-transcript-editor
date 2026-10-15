@@ -13,7 +13,8 @@ function currentTask(tasks:Progress[]) {
 export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embedded?:boolean;tasks:Progress[];error:string;onAction:(operation:string,task?:string)=>Promise<unknown>}) {
   useInterfaceLanguage();const [busy,setBusy]=useState(false);
   const [preview,setPreview]=useState<{task:string;proposals:{index:number;action:string;current_text:string|null;after:string}[]}|null>(null);
-  const task=currentTask(tasks);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const task=currentTask(tasks.filter(task => task.state !== 'completed' || !hidden.includes(task.task_id)));
   const canOperate=!!task&&(task.is_current||!!task.project_target);
   if(!task&&!error)return null;
   if(embedded&&!error&&task?.state!=='paused'&&!task?.staged&&!task?.held_batches)return null;
@@ -36,6 +37,7 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
       <div className="continuation-progress-actions">
         {(!embedded||task?.state==='paused'||error)&&<button className="cred-btn" type="button" disabled={busy} onClick={()=>void run('tasks')}>{msg('continuation.refresh')}</button>}
         {task&&<>
+          {!embedded&&task.state==='completed'&&!task.staged&&!task.held_batches&&<button type="button" className="feedback-dismiss" aria-label={msg('notice.dismiss')} onClick={() => setHidden(ids => [...ids, ...tasks.filter(item => item.state === 'completed').map(item => item.task_id)])}>×</button>}
           {(task.staged>0||task.held_batches>0)&&<button type="button" className="cred-btn" disabled={busy||!canOperate} onClick={()=>void showProposals(task.task_id)}>{msg('continuation.viewPending')}</button>}
           {!embedded&&task.state==='draft'&&<button type="button" className="cred-btn" disabled={busy||!canOperate} onClick={()=>void run('pause',task.task_id)}>{msg('continuation.pause')}</button>}
           {task.state==='paused'&&task.reason!=='planned_segment_changed'&&<button type="button" className="cred-btn" disabled={busy||!canOperate} onClick={()=>void run('resume',task.task_id)}>{msg('continuation.resume')}</button>}
