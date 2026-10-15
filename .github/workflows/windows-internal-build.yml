@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '60'
+      RIPPLE_BUILD_NUMBER: '61'
     steps:
       - uses: actions/checkout@v4
         with:

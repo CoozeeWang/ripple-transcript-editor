@@ -55,6 +55,7 @@ def test_exports_use_bundled_runtime_and_exclude_secret_values(tmp_path):
         assert package.testzip() is None
         manifest = json.loads(package.read("manifest.json"))
         assert manifest["server"]["type"] == "node"
+        assert manifest["version"] == "1.0.1"
         assert manifest["compatibility"]["platforms"] == ["win32" if os.name == "nt" else "darwin"]
         script = package.read("server/index.js").decode()
         assert secret not in script

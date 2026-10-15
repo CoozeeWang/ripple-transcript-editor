@@ -105,7 +105,7 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         write_private(target, json.dumps({"mcpServers": {"Ripple": {"type": "stdio", **config}}}, ensure_ascii=False, indent=2))
         enable_client(data, client)
         return
-    manifest = {"manifest_version": "0.3", "name": "ripple", "display_name": "Ripple", "version": "1.0.0",
+    manifest = {"manifest_version": "0.3", "name": "ripple", "display_name": "Ripple", "version": "1.0.1",
                 "description": "Read, analyze and edit the current Ripple interview. 读取、分析与编辑 Ripple 当前访谈。",
                 "author": {"name": "Ripple"}, "compatibility": {"platforms": ["win32" if os.name == "nt" else "darwin"]},
                 "server": {"type": "node", "entry_point": "server/index.js",
