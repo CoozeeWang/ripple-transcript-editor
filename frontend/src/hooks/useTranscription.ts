@@ -71,7 +71,7 @@ export interface UseTranscriptionDeps {
   setProcessStatus: (s: ProcessStatus) => void;
   setProcessMessage: (m: string) => void;
   setMetadata: (m: InterviewMetadata | null) => void;
-  reset: (t: Transcript) => void;
+  reset: (t: Transcript, savedMetadata?: InterviewMetadata | null) => void;
   setSelectedSegmentId: (id: string) => void;
   setHasLoadedTranscript: (b: boolean) => void;
   setSaveStatus: (s: SaveStatus) => void;
@@ -196,7 +196,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
       }
       deps.setViewingOriginal?.(true);
       deps.setMetadata(edited.metadata);
-      deps.reset(edited.transcript);
+      deps.reset(edited.transcript, edited.metadata);
       deps.setSelectedSegmentId(edited.transcript.segments[0]?.id ?? "");
       deps.applyManifest(manifest, model.id);
       deps.setHasLoadedTranscript(true);

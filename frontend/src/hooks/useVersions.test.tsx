@@ -283,7 +283,7 @@ it("keeps the old save target until the fallback manuscript has finished loading
  let work!:Promise<void>;await act(async()=>{work=ui.result.current.confirmDelete();});
  expect(ui.result.current.activeModel?.activeEditId).toBe("e1");expect(deps.reset).not.toHaveBeenCalled();
  await act(async()=>{read.resolve({kind:"te-edited",audio:"a.m4a",metadata:METADATA,transcript:transcriptWith("剩余稿件")});await work;});
- expect(ui.result.current.activeModel?.activeEditId).toBe("e2");expect(deps.reset).toHaveBeenCalledWith(transcriptWith("剩余稿件"));
+ expect(ui.result.current.activeModel?.activeEditId).toBe("e2");expect(deps.reset).toHaveBeenCalledWith(transcriptWith("剩余稿件"), METADATA);
 });
 it("does not replace the current document after a slow version creation finishes in another interview",async()=>{
  const deps=hookDeps();const ui=renderHook(p=>useVersions(p),{initialProps:deps});

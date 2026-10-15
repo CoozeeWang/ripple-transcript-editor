@@ -58,7 +58,7 @@ export interface UseVersionsDeps {
   selectedAudio: string | null;
   transcript: Transcript | null;
   metadata: InterviewMetadata | null;
-  reset: (t: Transcript) => void;
+  reset: (t: Transcript, savedMetadata?: InterviewMetadata | null) => void;
   setMetadata: (m: InterviewMetadata | null) => void;
   setSelectedSegmentId: (id: string) => void;
   setHasLoadedTranscript: (b: boolean) => void;
@@ -170,7 +170,7 @@ export function useVersions(deps: UseVersionsDeps) {
     setModels(nextModels);
     setActiveModelId(modelId);
     deps.setMetadata(edited.metadata);
-    deps.reset(edited.transcript);
+    deps.reset(edited.transcript, edited.metadata);
     deps.setSelectedSegmentId(edited.transcript.segments[0]?.id ?? "");
     deps.setHasLoadedTranscript(true);
     deps.setViewingOriginal(false);
@@ -192,7 +192,7 @@ export function useVersions(deps: UseVersionsDeps) {
     if (!original || !isCurrent()) return;
     setActiveModelId(modelId);
     // 原稿 JSON 不存元数据，沿用当前 metadata（描述同一段音频）
-    deps.reset(original.transcript);
+    deps.reset(original.transcript, deps.metadata);
     deps.setSelectedSegmentId(original.transcript.segments[0]?.id ?? "");
     deps.setHasLoadedTranscript(true);
     deps.setViewingOriginal(true);
@@ -235,7 +235,7 @@ export function useVersions(deps: UseVersionsDeps) {
       setModels(result.manifest.models);
       setActiveModelId(result.model.id);
       deps.setMetadata(result.edited.metadata);
-      deps.reset(result.edited.transcript);
+      deps.reset(result.edited.transcript, result.edited.metadata);
       deps.setSelectedSegmentId(transcript.lastEditedSegmentId ?? transcript.segments[0]?.id ?? "");
       deps.setHasLoadedTranscript(true);
       deps.setProcessStatus("done");
@@ -270,7 +270,7 @@ export function useVersions(deps: UseVersionsDeps) {
         });
         if (!isCurrent()) return;
         setModels(result.manifest.models); setActiveModelId(result.model.id);
-        deps.setMetadata(result.edited.metadata); deps.reset(result.edited.transcript);
+        deps.setMetadata(result.edited.metadata); deps.reset(result.edited.transcript, result.edited.metadata);
         deps.setSelectedSegmentId(result.edited.transcript.segments[0]?.id ?? "");
         deps.setHasLoadedTranscript(true); deps.setViewingOriginal(false);
         setNamingOpen(false); return;
@@ -368,7 +368,7 @@ export function useVersions(deps: UseVersionsDeps) {
       if (replacement) {
         setActiveModelId(replacement.modelId);
         if (replacement.metadata) deps.setMetadata(replacement.metadata);
-        deps.reset(replacement.transcript);
+        deps.reset(replacement.transcript, replacement.metadata ?? deps.metadata);
         deps.setSelectedSegmentId(replacement.transcript.segments[0]?.id ?? "");
         deps.setHasLoadedTranscript(true); deps.setViewingOriginal(replacement.original);
         deps.setProcessStatus('done');

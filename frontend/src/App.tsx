@@ -118,12 +118,18 @@ function App(projectProps: ProjectEditorProps = {}) {
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
   const { transcript, reset: resetHistory, commit, undo, redo, canUndo, canRedo } =
     useTranscriptHistory<Transcript>();
+  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
+  const [persistedContent, setPersistedContent] = useState<{ transcript: Transcript; metadata: InterviewMetadata } | null>(null);
   const resetDocumentViewRef = useRef<() => void>(() => {});
   // 所有成功载入/替换文稿的路径共用这个入口；普通编辑和撤销不重置视图。
-  const reset = useCallback((value: Transcript) => {
+  const reset = useCallback((value: Transcript, savedMetadata?: InterviewMetadata | null) => {
+    const loadedMetadata = savedMetadata && projectProps.recordingLabel
+      ? { ...savedMetadata, title: projectProps.recordingLabel } : savedMetadata;
+    if (loadedMetadata) setMetadataState(loadedMetadata);
+    setPersistedContent(loadedMetadata ? { transcript: value, metadata: loadedMetadata } : null);
     resetDocumentViewRef.current();
     resetHistory(value);
-  }, [resetHistory]);
+  }, [resetHistory, projectProps.recordingLabel]);
   const {
     providers,
     selectedProviderId,
@@ -170,7 +176,6 @@ function App(projectProps: ProjectEditorProps = {}) {
     setSettingsOpen(true);
   };
   useDismissable(recentMenuRef, recentMenuOpen, () => setRecentMenuOpen(false));
-  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
   const setMetadata = useCallback((value: React.SetStateAction<InterviewMetadata | null>) => {
     setMetadataState(current => {
       const next = typeof value === 'function' ? value(current) : value;
@@ -338,10 +343,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         const initialMetadata = projectProps.recordingDraft?.metadata
           ?? projectProps.interviewMetadata
           ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name));
-        setMetadata(projectProps.recordingDraft || !projectProps.recordingLabel || manifest
+        const loadedMetadata = projectProps.recordingDraft || !projectProps.recordingLabel || manifest
           ? initialMetadata
-          : { ...initialMetadata, title: projectProps.recordingLabel });
-        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] });
+          : { ...initialMetadata, title: projectProps.recordingLabel };
+        setMetadata(loadedMetadata);
+        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] }, loadedMetadata);
         setHasLoadedTranscript(false);
         applyManifestRef.current(null);
         setProcessStatus("ready");
@@ -351,7 +357,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       }
       applyManifestRef.current(manifest);
       setMetadata(edited.metadata);
-      reset(edited.transcript);
+      reset(edited.transcript, edited.metadata);
       const openingId = openingSegmentId(edited.transcript);
       setSelectedSegmentId(openingId);
       setOpeningPosition({ id: openingId });
@@ -547,6 +553,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     handleSave,
     flushPendingSave,
   } = usePersistence({
+    persistedContent,
     dirHandleRef,
     initialLoadRef,
     hasLoadedTranscript,
