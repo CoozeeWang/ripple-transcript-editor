@@ -9,9 +9,10 @@ function render(ui: ReactNode) {
   return { ...result, rerender: (next: ReactNode) => result.rerender(<AIConnectorProvider>{next}</AIConnectorProvider>) };
 }
 import * as local from "./localStore";
+import type { UsePersistenceDeps } from "./hooks/usePersistence";
 import type { UseFolderDeps } from "./hooks/useFolder";
 
-const fixture = vi.hoisted(() => ({ folder: null as UseFolderDeps | null, directory: null as FileSystemDirectoryHandle | null, flush: vi.fn(async () => {}) }));
+const fixture = vi.hoisted(() => ({ persistence: null as UsePersistenceDeps | null, folder: null as UseFolderDeps | null, directory: null as FileSystemDirectoryHandle | null, flush: vi.fn(async () => {}) }));
 vi.mock("./hooks/useFolder", () => ({ useFolder: (deps: UseFolderDeps) => {
   fixture.folder = deps;
   return { dirHandle: null, dirHandleRef: { current: fixture.directory }, startPref: { type: "last" },
@@ -24,7 +25,7 @@ vi.mock("./hooks/useFolder", () => ({ useFolder: (deps: UseFolderDeps) => {
 vi.mock("./hooks/useProviders", () => ({ useProviders: () => ({ providers: [],
   selectedProviderId: "", setSelectedProviderId: vi.fn(), defaultProviderId: null,
   activeProviderName: "", setActiveProviderName: vi.fn() }) }));
-vi.mock("./hooks/usePersistence", () => ({ usePersistence: () => ({ flushPendingSave: fixture.flush }) }));
+vi.mock("./hooks/usePersistence", () => ({ usePersistence: (deps: UsePersistenceDeps) => { fixture.persistence = deps; return { flushPendingSave: fixture.flush }; } }));
 vi.mock("./hooks/useOpeningPosition", () => ({ useOpeningPosition: () => {} }));
 
 function load(name: string, title = name) {
@@ -160,4 +161,18 @@ it('opens the explicitly selected engine original instead of the last editing re
  expect(local.readModelOriginal).toHaveBeenCalledWith(fixture.directory,'synthetic.wav','engine');
  expect(screen.getByText('Original synthetic words')).toBeTruthy();expect(screen.queryByText('AI synthetic words')).toBeNull();
  expect(screen.getByText(/当前转录稿为只读/)).toBeTruthy();
+});
+
+// Recording labels can differ from the title inside an imported file. The
+// normalized display metadata and persistence baseline must be the same object.
+it("publishes the exact loaded metadata and transcript references after applying the recording label", () => {
+  render(<App recordingLabel="Synthetic recording" />);
+  load("synthetic.wav", "Synthetic imported title");
+  const current = fixture.persistence!;
+  expect(current.metadata?.title).toBe("Synthetic recording");
+  expect(current.persistedContent?.metadata).toBe(current.metadata);
+  expect(current.persistedContent?.transcript).toBe(current.transcript);
+  loadFresh("synthetic.wav");
+  expect(fixture.persistence!.persistedContent?.metadata).toBe(fixture.persistence!.metadata);
+  expect(fixture.persistence!.persistedContent?.transcript).toBe(fixture.persistence!.transcript);
 });

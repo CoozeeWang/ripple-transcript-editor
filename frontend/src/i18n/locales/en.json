@@ -1,4 +1,7 @@
 {
+  "desktopFs": {
+    "readChanged": "File changed while reading. Reopen it and try again."
+  },
   "audioPlayback": {
     "unsupportedAdts": "“{{v0}}” uses AAC encoding or frames that Ripple cannot play yet. The original file was not changed. Check it in another player. If you convert it to m4a or mp3, add the converted file as new audio and associate the existing transcript; it can’t restore the original audio link."
   },
