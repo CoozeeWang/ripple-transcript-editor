@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '61'
+      RIPPLE_BUILD_NUMBER: '62'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +48,16 @@ jobs:
         run: uv run --project backend --locked python -m unittest discover -s desktop/tests -p 'test_*.py' -v
       - name: Build frontend
         run: npm --prefix frontend run build
+      - name: Download official tunnel-client for offline command validation
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'tunnel-client-v0.0.16-windows-amd64.zip'
+          Invoke-WebRequest 'https://github.com/openai/tunnel-client/releases/download/v0.0.16/tunnel-client-v0.0.16-windows-amd64.zip' -OutFile $archive
+          $directory = Join-Path $env:RUNNER_TEMP 'ripple-synthetic-tunnel-client'
+          Expand-Archive $archive $directory
+          $clients = @(Get-ChildItem $directory -Recurse -Filter tunnel-client.exe)
+          if ($clients.Count -ne 1) { throw 'Expected one official tunnel executable' }
+          "RIPPLE_TEST_TUNNEL_CLIENT=$($clients[0].FullName)" >> $env:GITHUB_ENV
       - name: Stage and verify relocatable backend
         shell: pwsh
         run: |
@@ -60,6 +70,8 @@ jobs:
           $env:RIPPLE_DATA_DIR = "$stage/data"
           & "$stage/python/python.exe" "$stage/verify.py"
           if ($LASTEXITCODE) { throw 'Relocated backend failed' }
+          & "$stage/python/python.exe" desktop/verify-mcp-runtime.py $stage --tunnel-client $env:RIPPLE_TEST_TUNNEL_CLIENT
+          if ($LASTEXITCODE) { throw 'Packaged MCP startup or protocol verification failed' }
           Remove-Item "$stage/data" -Recurse -Force
           Remove-Item "$stage/verify.py"
           Remove-Item Env:PYTHONPATH

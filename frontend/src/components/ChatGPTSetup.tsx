@@ -23,6 +23,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useTransientState<'idle' | 'saving' | 'saved' | 'error'>('idle', 'idle', value => value === 'saved' ? SUCCESS_FEEDBACK_MS : null);
   const [linkError, setLinkError] = useState('');
+  const [failureCode, setFailureCode] = useState('');
   const [copied, setCopied] = useTransientState(false, false);
   const [copyError, setCopyError] = useState(false);
   const [platform, setPlatform] = useState<ClientPlatform | null>(null);
@@ -64,6 +65,13 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const isMac = platform?.os === 'macos';
   const chip = platform?.arch === 'aarch64' || platform?.arch === 'arm64' ? 'arm64' : platform?.arch === 'x86_64' || platform?.arch === 'amd64' ? 'amd64' : 'unknown';
   const deviceKey = platform && ['macos', 'windows', 'linux'].includes(platform.os) && chip !== 'unknown' ? `connector.device_${platform.os}_${chip}` : 'connector.device_unknown';
+  const setupErrors: Record<string, string> = {
+    setup_client_invalid: msg('connector.setupClientInvalid'),
+    setup_tunnel_invalid: msg('connector.setupTunnelInvalid'),
+    setup_key_invalid: msg('connector.setupKeyInvalid'),
+    setup_write_failed: msg('connector.setupWriteFailed'),
+    setup_input_invalid: msg('connector.setupInputInvalid'),
+  };
   return <div className="connector-setup">
     <div className="cred-profile connector-setup-card connector-guided-card" aria-busy={loading}>
       <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.guidedTitle')}</span></div>
@@ -102,7 +110,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
                 setStatus('saving'); setCopied(false);
                 void invoke('connector_setup', { clientPath: client, tunnelId: tunnel.trim(), runtimeKey: key })
                   .then(() => { setSaved({ client_path: client, tunnel_id: tunnel.trim(), has_key: true, configured: true }); setKey(''); setEditing(false); setStatus('saved'); onSaved?.(); })
-                  .catch(() => { setKey(''); setStatus('error'); });
+                  .catch(error => { setKey(''); setFailureCode(String(error)); setStatus('error'); });
               }}>{msg('connector.saveSetup')}</button>
               {saved.configured && <button type="button" className="cred-btn" disabled={status === 'saving'} onClick={() => {
                 setClient(saved.client_path); setTunnel(saved.tunnel_id); setKey(''); setEditing(false); setStatus('idle'); setLinkError(''); setCopied(false);
@@ -110,7 +118,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
               <span className="settings-hint">{msg('connector.savePrerequisite')}</span>
             </> : <button type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
           </div>}
-          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{msg(`connector.setup_${status}`)}</p>}
+          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{status === 'error' ? setupErrors[failureCode] ?? msg('connector.setup_error') : msg(`connector.setup_${status}`)}</p>}
         </li>
         <li>
           <span className="connector-step-label">{msg('connector.guidedChatGPTTitle')}</span>

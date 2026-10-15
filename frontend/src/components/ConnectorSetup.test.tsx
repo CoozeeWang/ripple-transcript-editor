@@ -18,7 +18,7 @@ it('opens the selected client installer without claiming AI connection',async()=
  const {ui,invoke}=fixture();
  await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
  fireEvent.click(ui.getByText('添加到 Claude'));
- await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('请确认安装'));
+ await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('请在 Claude 中确认安装'));
  expect(invoke).toHaveBeenCalledWith('connector_client_add',{client:'claude',language:'zh-CN'});
  expect(invoke.mock.calls.flat()).not.toContain('connector_pair_begin');
 });
@@ -146,4 +146,48 @@ it('uses beta and named delete actions in English, with unknown status hidden sa
  fireEvent.click(ui.getByRole('button',{name:'Add to Claude'}));
  await waitFor(()=>expect(ui.getByRole('option',{name:'Claude Desktop (beta) · Status unavailable'})).toBeTruthy());
  expect(ui.queryByRole('button',{name:'Delete Claude connection configuration'})).toBeNull();
+});
+
+it.each(['zh-CN','en'] as const)('offers manual Claude import when Windows has no association (%s)', async language => {
+ await setInterfaceLanguage(language);
+ const {ui,invoke}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_client_add'?Promise.resolve('claude_manual'):original(command));
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Add to Claude':'添加到 Claude'}));
+ await waitFor(()=>expect(ui.getByRole('status').textContent).toContain(language==='en'?'no usable extension file association':'没有可用的扩展文件关联'));
+ const details=ui.container.querySelector('details')!;
+ expect(details.open).toBe(true);
+ expect(details.textContent).toContain('Ripple.mcpb');
+ const reveal=ui.getByRole('button',{name:language==='en'?'Open extension folder':'打开扩展所在文件夹'}) as HTMLButtonElement;
+ await waitFor(()=>expect(reveal.disabled).toBe(false));fireEvent.click(reveal);
+ await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connector_client_reveal',undefined));
+ expect(details.open).toBe(true);
+});
+
+it('keeps export cancellation silent, prevents duplicate operations and never claims an AI connection',async()=>{
+ const {ui,invoke}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ let done:(value:boolean)=>void=()=>{};
+ const pending=new Promise<boolean>(resolve=>{done=resolve;});
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_client_export'?pending:original(command));
+ fireEvent.click(ui.getByRole('button',{name:'导出 Claude 扩展'}));
+ expect((ui.getByRole('button',{name:'添加到 Claude'}) as HTMLButtonElement).disabled).toBe(true);
+ expect((ui.getByRole('button',{name:'导出 Claude 扩展'}) as HTMLButtonElement).disabled).toBe(true);
+ await act(async()=>done(false));
+ await waitFor(()=>expect((ui.getByRole('button',{name:'导出 Claude 扩展'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(ui.queryByRole('status')).toBeNull();
+ expect(ui.queryByRole('alert')).toBeNull();
+});
+
+it.each(['export_failed','claude_open_failed'])('gives a stage-specific manual recovery for %s without exposing native details',async code=>{
+ const {ui,invoke}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_client_add'?Promise.reject(code):original(command));
+ fireEvent.click(ui.getByRole('button',{name:'添加到 Claude'}));
+ await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain(code==='export_failed'?'生成或导出失败':'扩展已生成'));
+ expect(ui.container.querySelector('details')!.open).toBe(true);
+ expect(ui.queryByRole('status')).toBeNull();
 });

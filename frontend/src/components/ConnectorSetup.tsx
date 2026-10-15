@@ -18,6 +18,8 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   const [client, setClient] = useState<Client>('chatgpt');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [manualOpen, setManualOpen] = useState(false);
   const [exported, setExported] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Client | null>(null);
   const [deleteError, setDeleteError] = useState('');
@@ -39,14 +41,24 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
     catch {setConfigured(null);}
   }
   async function select(value: Client) {
-    setBusy(true); setError(false); setExported(''); setDeleted(false);
+    setManualOpen(false);
+    setBusy(true); setError(false); setActionError(''); setExported(''); setDeleted(false);
     try {await invoke('connector_client_select', {client: value}); setClient(value);await refreshConfiguration();}
     catch {setError(true);} finally {setBusy(false);}
   }
   async function addClient() {
-    setBusy(true); setError(false); setExported(''); setDeleted(false);
-    try {const result = await invoke<string>('connector_client_add', {client, language: interfaceLanguage()}); setExported(result === 'cancelled' ? '' : result);await refreshConfiguration();}
-    catch {setError(true);} finally {setBusy(false);}
+    setBusy(true); setError(false); setActionError(''); setExported(''); setDeleted(false);
+    try {const result = await invoke<string>('connector_client_add', {client, language: interfaceLanguage()}); setExported(result === 'cancelled' ? '' : result);if(result === 'claude_manual')setManualOpen(true);await refreshConfiguration();}
+    catch (error) {setError(true);if(client === 'claude')setManualOpen(true);setActionError(String(error) === 'export_failed' ? 'export' : String(error) === 'claude_open_failed' ? 'open' : '');await refreshConfiguration();} finally {setBusy(false);}
+  }
+  async function claudeManual(action: 'export' | 'reveal') {
+    setBusy(true); setError(false); setActionError(''); setExported('');
+    try {
+      if (action === 'export') {
+        if (await invoke<boolean>('connector_client_export', {client:'claude'})) setExported('claude_exported');
+      } else { await invoke('connector_client_reveal'); }
+      await refreshConfiguration();
+    } catch {setError(true);setActionError(action);} finally {setBusy(false);}
   }
   async function deleteClient(target: Client) {
     setBusy(true); setDeleteError(''); setDeleted(false);
@@ -79,7 +91,15 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
       </div>
       {deleted && <FeedbackNotice text={msg('connector.configurationDeleted', {client:clientName})} onDismiss={() => setDeleted(false)}/>}
       {exported && <FeedbackNotice text={msg(`connector.added_${exported}`)} onDismiss={() => setExported('')}/>}
-      {error && <p className="settings-hint connector-error" role="alert">{msg(`connector.addError_${client}`)}</p>}
+      {error && <p className="settings-hint connector-error" role="alert">{actionError === 'export' ? msg('connector.claudeExportError') : actionError === 'open' ? msg('connector.claudeOpenError') : actionError === 'reveal' ? msg('connector.claudeRevealError') : msg(`connector.addError_${client}`)}</p>}
+      {client === 'claude' && <details className="connector-step-help" open={manualOpen} onToggle={event => setManualOpen(event.currentTarget.open)}>
+        <summary>{msg('connector.claudeManualTitle')}</summary>
+        <p className="settings-hint">{msg('connector.claudeManualSteps')}</p>
+        <div className="cred-profile__actions">
+          <button type="button" className="cred-btn" disabled={busy} onClick={() => void claudeManual('export')}>{msg('connector.claudeExport')}</button>
+          <button type="button" className="cred-btn" disabled={busy || configured?.claude !== true} onClick={() => void claudeManual('reveal')}>{msg('connector.claudeReveal')}</button>
+        </div>
+      </details>}
     </div>
     {client === 'chatgpt' && !busy && <ChatGPTSetup key={revision} onSaved={() => {setTunnelReady(false);void refreshConfiguration(); onSaved?.();}} tunnelReady={tunnelReady}/>}
     {confirmDelete && <DeleteConnectorDialog clientName={clientName} busy={busy} error={deleteError} opener={deleteButtonRef} fallback={selectRef}

@@ -3,6 +3,15 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
+pub fn setup_error(output: &[u8]) -> String {
+    let value: serde_json::Value = serde_json::from_slice(output).unwrap_or_default();
+    match value.get("error").and_then(|v| v.as_str()) {
+        Some(code @ ("setup_client_invalid" | "setup_tunnel_invalid" | "setup_key_invalid"
+            | "setup_write_failed" | "setup_input_invalid")) => code.into(),
+        _ => "setup_failed".into(),
+    }
+}
+
 pub fn delete_request(port: u16, key: &str, client: &str) -> Result<(), String> {
     if !matches!(client, "chatgpt" | "claude" | "workbuddy") {
         return Err("invalid_client".into());
@@ -37,6 +46,12 @@ pub fn delete_request(port: u16, key: &str, client: &str) -> Result<(), String> 
 mod tests {
     use super::*;
     use std::net::TcpListener;
+    #[test]
+    fn setup_errors_only_forward_known_codes() {
+        assert_eq!(setup_error(br#"{"error":"setup_client_invalid"}"#), "setup_client_invalid");
+        assert_eq!(setup_error(br#"{"error":"synthetic secret or path"}"#), "setup_failed");
+        assert_eq!(setup_error(b"traceback or non-JSON"), "setup_failed");
+    }
     fn response(status: &str, body: &str) -> Result<(), String> {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();

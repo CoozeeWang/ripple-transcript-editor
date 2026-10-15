@@ -11,6 +11,7 @@ mod grants;
 mod pdf_print;
 mod media;
 mod connector_config;
+mod install_target;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
@@ -349,18 +350,16 @@ async fn connector_client_export(app: tauri::AppHandle, client: String) -> Resul
 
 
 fn open_install_target(target: &str, application: Option<&str>) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let status = {
-        let mut command = Command::new("open");
-        if let Some(name) = application { command.args(["-a", name]); }
-        if !target.is_empty() { command.arg(target); }
-        command.status()
-    };
-    #[cfg(target_os = "windows")]
-    let status = { let _ = application; Command::new("explorer").arg(target).status() };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let status = { let _ = application; Command::new("xdg-open").arg(target).status() };
-    match status { Ok(result) if result.success() => Ok(()), _ => Err("open_install_failed".into()) }
+    install_target::open(target, application)
+}
+
+#[tauri::command]
+async fn connector_client_reveal(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let directory = app_data(&app).map_err(|_| "data_unavailable")?.join("connector");
+        if !directory.join("Ripple.mcpb").is_file() { return Err("export_failed".into()); }
+        open_install_target(&directory.to_string_lossy(), None)
+    }).await.map_err(|_| "open_install_failed".to_string())?
 }
 
 #[tauri::command]
@@ -374,8 +373,11 @@ async fn connector_client_add(app: tauri::AppHandle, client: String, language: S
         if client == "claude" {
             let target = app_data(&app).map_err(|_| "data_unavailable")?.join("connector/Ripple.mcpb");
             if !local_command(&app, "export", "claude")?.arg("--target").arg(&target).status().map_err(|_| "export_failed")?.success() { return Err("export_failed".into()); }
-            open_install_target(&target.to_string_lossy(), Some("Claude"))?;
-            return Ok("claude".into());
+            return match open_install_target(&target.to_string_lossy(), Some("Claude")) {
+                Ok(()) => Ok("claude".into()),
+                Err(error) if error == "open_no_association" => Ok("claude_manual".into()),
+                Err(_) => Err("claude_open_failed".into()),
+            };
         }
         let text = if language.starts_with("zh") {
             "将 Ripple 添加到 WorkBuddy？会先备份已有配置，再添加连接；其他连接将保留，已有的 Ripple 配置将更新。完成后请在 WorkBuddy 中启用 Ripple，必要时重启 WorkBuddy。"
@@ -402,13 +404,7 @@ async fn connector_pick_client(app: tauri::AppHandle) -> Result<String, String> 
 #[tauri::command]
 fn connector_open_platform() -> Result<(), String> {
     let url = "https://platform.openai.com/settings/organization/tunnels";
-    #[cfg(target_os = "macos")]
-    let status = Command::new("open").arg(url).status();
-    #[cfg(target_os = "windows")]
-    let status = Command::new("cmd").args(["/C", "start", "", url]).status();
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let status = Command::new("xdg-open").arg(url).status();
-    match status { Ok(result) if result.success() => Ok(()), _ => Err("open_platform_failed".into()) }
+    open_install_target(url, None).map_err(|_| "open_platform_failed".into())
 }
 
 /// Read the host architecture, including an Intel build running under Rosetta.
@@ -474,10 +470,11 @@ fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String
     let mut child = backend_runtime::background_command(backend_runtime::python(&resources))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .args(["-m", "app.connector_setup"]).arg(&data).arg(&resources)
-        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "setup_failed")?;
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|_| "setup_failed")?;
     let payload = serde_json::json!({"client_path":client_path,"tunnel_id":tunnel_id,"runtime_key":runtime_key});
     child.stdin.take().ok_or("setup_failed")?.write_all(payload.to_string().as_bytes()).map_err(|_| "setup_failed")?;
-    if child.wait().map_err(|_| "setup_failed")?.success() { Ok(()) } else { Err("setup_failed_check_fields".into()) }
+    let output = child.wait_with_output().map_err(|_| "setup_failed")?;
+    if output.status.success() { Ok(()) } else { Err(connector_config::setup_error(&output.stdout)) }
 }
 
 #[tauri::command]
@@ -610,7 +607,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
         .on_window_event(|window, event| {
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());

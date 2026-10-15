@@ -27,6 +27,10 @@ $resourceInfo = Get-Content "$destination/build-info.json" -Raw | ConvertFrom-Js
 if ($resourceInfo.commit -ne $info.commit) { throw 'Resource and executable provenance disagree' }
 if (Test-Path "$destination/backend/data") { throw 'Staging probe data must not ship' }
 if (-not (Test-Path "$destination/backend/python/python.exe")) { throw 'Bundled Python missing' }
+$artifact = "$PSScriptRoot/dist/windows-artifact"
+New-Item $artifact -ItemType Directory -Force | Out-Null
+& "$destination/backend/python/python.exe" "$PSScriptRoot/verify-mcp-runtime.py" "$destination/backend" --output "$artifact/mcp-runtime-verification.json" --tunnel-client $env:RIPPLE_TEST_TUNNEL_CLIENT
+if ($LASTEXITCODE) { throw 'Installed MCP adapter initialization, handshake or synthetic read failed' }
 
 function Wait-Healthy {
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
@@ -59,8 +63,6 @@ try {
 $app = Start-Process $exe -PassThru
 try { Wait-Healthy } finally { if (-not $app.HasExited) { $app.Kill(); $app.WaitForExit() } }
 Wait-Stopped
-$artifact = "$PSScriptRoot/dist/windows-artifact"
-New-Item $artifact -ItemType Directory -Force | Out-Null
 $name = "Ripple-$($info.version)-b$($info.build)-$($info.commit.Substring(0,7))-Windows-x64-setup.exe"
 Copy-Item $installers[0].FullName (Join-Path $artifact $name)
 $hash = (Get-FileHash (Join-Path $artifact $name) -Algorithm SHA256).Hash.ToLower()
