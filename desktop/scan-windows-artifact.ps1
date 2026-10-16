@@ -34,12 +34,19 @@ try {
     }
     $report.installerScanExit = Scan-Artifact $installer.FullName 'installer-scan'
     if ($report.installerScanExit -ne 0) { $report.verdict='detection_or_scan_error'; throw 'Installer scan needs investigation' }
-    $payload = Join-Path $env:RUNNER_TEMP 'ripple-static-payload-analysis'
+    $payload = Join-Path $env:RUNNER_TEMP ("ripple-static-payload-" + [Guid]::NewGuid().ToString('N'))
     & 7z x -y "-o$payload" $installer.FullName | Out-File (Join-Path $ReportDirectory 'extraction.txt') -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'Static archive extraction did not complete' }
     $files = @(Get-ChildItem $payload -Recurse -File)
     $report.extractedFileCount = $files.Count
     if ($files.Count -lt 10) { throw 'Static payload extraction is incomplete' }
+    # Hash every payload file, including Python source and distribution metadata.
+    # Compare text reports only; never execute a program from the inspected payload.
+    $manifest = @($files | ForEach-Object {
+        @{name=[IO.Path]::GetRelativePath($payload,$_.FullName);size=$_.Length;
+          sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+    })
+    $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $ReportDirectory 'payload-inventory.json') -Encoding utf8
     $inventory = @($files | Where-Object {$_.Extension -in '.exe','.dll','.pyd'} | ForEach-Object {
         @{name=[IO.Path]::GetRelativePath($payload,$_.FullName);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant();
           signatureStatus=[string](Get-AuthenticodeSignature $_.FullName).Status}
