@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '66'
+      RIPPLE_BUILD_NUMBER: '67'
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +52,17 @@ jobs:
           if ($LASTEXITCODE) { throw 'Frontend dependencies failed' }
           npm --prefix desktop ci
           if ($LASTEXITCODE) { throw 'Desktop dependencies failed' }
+      - name: Safe-upgrade script syntax and Windows API binding
+        shell: powershell
+        run: |
+          foreach ($script in @('desktop/src-tauri/windows/prepare-upgrade.ps1', 'desktop/verify-windows-upgrade.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count) { throw $parseErrors[0].Message }
+          }
+          . ./desktop/src-tauri/windows/prepare-upgrade.ps1 -LibraryOnly
+          Initialize-LockOwners
       - name: Backend tests on Windows NTFS
         working-directory: backend
         run: uv run --locked pytest -q

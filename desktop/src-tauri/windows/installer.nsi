@@ -1,4 +1,4 @@
-﻿; Derived from tauri-apps/tauri tauri-cli-v2.11.4, MIT/Apache-2.0.
+; Derived from tauri-apps/tauri tauri-cli-v2.11.4, MIT/Apache-2.0.
 ; Ripple changes: preflight before old uninstall/copy, no forced app close, no skipped files.
 Unicode true
 AllowSkipFiles off
@@ -326,7 +326,21 @@ Function PageLeaveReinstall
     ${EndIf}
   ${EndIf}
   reinst_uninstall:
+    ; The previous uninstaller targets its registered directory, even when /D changes.
+    ; Never run a legacy uninstaller against an unchecked installation.
+    ${If} $WixMode = 1
+      ${If} $LANGUAGE == 2052
+        MessageBox MB_ICONEXCLAMATION "请先保存并退出 Ripple，再手动移除旧安装后重试。"
+      ${Else}
+        MessageBox MB_ICONEXCLAMATION "Save and exit Ripple, then remove the legacy installation manually before retrying."
+      ${EndIf}
+      SetErrorLevel 20
+      Quit
+    ${EndIf}
+    Push $INSTDIR
+    ReadRegStr $INSTDIR SHCTX "${MANUPRODUCTKEY}" ""
     Call RipplePrepareUpgrade
+    Pop $INSTDIR
     HideWindow
     ClearErrors
     ${If} $WixMode = 1

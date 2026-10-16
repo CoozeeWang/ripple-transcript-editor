@@ -49,7 +49,9 @@ try {
  Assert ((Get-FileHash $exe).Hash -eq $before) 'Blocked preflight modified installation'
 } finally { if(-not $writer.HasExited){$writer.Kill();$writer.WaitForExit()};$writer.Dispose() }
 # Unknown file lock: fail before any replacement; releasing it allows retry.
-$locked=Join-Path $Installation 'backend/python/_asyncio.pyd'
+$modules = @(Get-ChildItem (Join-Path $Installation 'backend/python') -Recurse -Filter '_asyncio.pyd')
+Assert ($modules.Count -eq 1) 'Expected one bundled asyncio module'
+$locked=$modules[0].FullName
 $stream=[IO.File]::Open($locked,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
 try {
  $blocked=$false
