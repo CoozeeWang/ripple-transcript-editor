@@ -2,12 +2,58 @@
 param([string]$InstallDirectory, [string]$Language = '1033', [switch]$LibraryOnly)
 $ErrorActionPreference = 'Stop'
 
+function Initialize-ProcessInspection {
+    if ('RippleUpgradeImages' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class RippleUpgradeImages {
+ [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+ [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, ExactSpelling=true, SetLastError=true)] static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder path, ref uint size);
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, ExactSpelling=true, SetLastError=true)] static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, ExactSpelling=true, SetLastError=true)] static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint size, uint flags);
+ public static string ProcessImagePath(uint pid) {
+  // Query-only access, including across 32/64-bit processes; never enable debug privilege.
+  IntPtr h=OpenProcess(0x1000,false,pid); if(h==IntPtr.Zero) return null;
+  try { uint size=32768; var path=new StringBuilder((int)size);
+   return QueryFullProcessImageNameW(h,0,path,ref size) ? path.ToString() : null;
+  } finally { CloseHandle(h); }
+ }
+ public static string CanonicalFile(string path) {
+  if(string.IsNullOrEmpty(path)) return null;
+  // Metadata access only; share read/write/delete so inspection does not hold an upgrade lock.
+  using(var h=CreateFileW(path.Replace('/','\\'),0,7,IntPtr.Zero,3,0,IntPtr.Zero)) {
+   if(h.IsInvalid) return null;
+   var value=new StringBuilder(32768);
+   uint length=GetFinalPathNameByHandleW(h,value,(uint)value.Capacity,0);
+   return length>0 && length<value.Capacity ? value.ToString() : null;
+  }
+ }
+}
+'@
+}
+function Test-RippleImagePath([string]$Actual, [string]$Expected) {
+    if (-not $Actual) { return $false }
+    if ($Actual -ieq $Expected) { return $true }
+    Initialize-ProcessInspection
+    $actualFile = [RippleUpgradeImages]::CanonicalFile($Actual)
+    $expectedFile = [RippleUpgradeImages]::CanonicalFile($Expected)
+    return $actualFile -and $expectedFile -and ($actualFile -ieq $expectedFile)
+}
 function Get-RippleProcessKind($Process, [string]$Root) {
     $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
     $exe = [string]$Process.ExecutablePath
-    if (-not $exe) { return 'outside' }
-    if ($exe -ieq "$rootPath\ripple-desktop.exe") { return 'writer' }
-    if ($exe -ine "$rootPath\backend\python\python.exe") { return 'outside' }
+    # WMI ExecutablePath requires debug privilege in some launch contexts. A null
+    # property is not evidence that this is another installation's executable.
+    if (-not $exe -and $Process.Name -in @('python.exe', 'ripple-desktop.exe')) {
+        Initialize-ProcessInspection
+        $exe = [RippleUpgradeImages]::ProcessImagePath([uint32]$Process.ProcessId)
+    }
+    if (Test-RippleImagePath $exe "$rootPath\ripple-desktop.exe") { return 'writer' }
+    if (-not (Test-RippleImagePath $exe "$rootPath\backend\python\python.exe")) { return 'outside' }
     # Exact module mode only; -c, script paths and unrelated MCPs must not be killed.
     if ([string]$Process.CommandLine -match '(?i)^\s*(?:"[^"]+"|\S+)\s+(?:-B\s+)?-m\s+app\.connector_mcp(?:\s|$)') { return 'adapter' }
     return 'writer'
@@ -78,6 +124,8 @@ function Invoke-RippleUpgradeGate([string]$Root) {
     if (-not (Test-Path -LiteralPath $Root)) { return }
     $rootItem = Get-Item -LiteralPath $Root
     if ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked installation directory; cannot inspect safely.' }
+    $resources = @(Get-ChildItem -LiteralPath $Root -Recurse -Force)
+    if (@($resources | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Linked resource; cannot inspect safely.' }
     $processes = @(Get-RippleProcesses $Root)
     $writers = @($processes | Where-Object { (Get-RippleProcessKind $_ $Root) -eq 'writer' })
     if ($writers.Count) { throw "Ripple may still be saving. Save and exit normally, then retry. $(Get-SourceLabel $writers[0])" }
@@ -85,8 +133,6 @@ function Invoke-RippleUpgradeGate([string]$Root) {
     # Do not fight a client's restart loop or stop its host. Let the user disable only Ripple.
     $remaining = @(Get-RippleProcesses $Root)
     if ($remaining.Count) { throw "Ripple process restarted or remains active. $(Get-SourceLabel $remaining[0])" }
-    $resources = @(Get-ChildItem -LiteralPath $Root -Recurse -Force)
-    if (@($resources | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Linked resource; cannot inspect safely.' }
     foreach ($file in $resources | Where-Object { -not $_.PSIsContainer }) {
         if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked resource; cannot inspect safely.' }
         try {

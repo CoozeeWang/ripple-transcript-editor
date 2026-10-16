@@ -1,4 +1,4 @@
-# Targeted disposable-runner upgrade regression. No real client settings or data.
+﻿# Targeted disposable-runner upgrade regression. No real client settings or data.
 param([Parameter(Mandatory=$true)][string]$Installation, [Parameter(Mandatory=$true)][string]$Installer)
 $ErrorActionPreference = 'Stop'
 if (-not $env:CI) { throw 'Requires a disposable CI runner' }
@@ -14,6 +14,16 @@ $fake.CommandLine='python.exe -m app.connector_mcp_other'
 Assert ((Get-RippleProcessKind $fake $Installation) -eq 'writer') 'Other module eligible for termination'
 $fake.ExecutablePath="$Installation-other\backend\python\python.exe"
 Assert ((Get-RippleProcessKind $fake $Installation) -eq 'outside') 'Other installation eligible for termination'
+# b69 could miss a known installation when WMI omits ExecutablePath or uses a
+# different Windows spelling. These comparisons must not accept another runtime.
+Initialize-ProcessInspection
+$fake.ExecutablePath = $python.Replace('\', '/')
+$fake.CommandLine = 'python.exe -m app.connector_mcp'
+Assert ((Get-RippleProcessKind $fake $Installation) -eq 'adapter') 'Mixed path separators missed owned adapter'
+$fake.ExecutablePath = '\\?\' + $python
+Assert ((Get-RippleProcessKind $fake $Installation) -eq 'adapter') 'Extended image path missed owned adapter'
+$fake.CommandLine = $null
+Assert ((Get-RippleProcessKind $fake $Installation) -eq 'writer') 'Missing command line qualified for termination'
 $temp = Join-Path $env:RUNNER_TEMP 'ripple-synthetic-upgrade-client'
 New-Item $temp -ItemType Directory -Force | Out-Null
 $key = Join-Path $temp 'synthetic.key'
@@ -61,26 +71,107 @@ try {
  Assert ((Get-FileHash $exe).Hash -eq $before) 'Locked preflight modified installation'
 } finally { $stream.Dispose() }
 Invoke-RippleUpgradeGate $Installation
-# Reproduce client-owned adapter loading _asyncio.pyd while the editor is closed.
-$adapter=Start-SyntheticPython "-m app.connector_mcp --credential-file `"$key`""
-try {
- $loaded=$false
+# Exercise the exact exported Claude Node launcher, keeping a synthetic host alive
+# to prove the gate stops only Python, not the client hosting the launcher.
+$connectorDirectory=Join-Path $temp 'connector'
+New-Item $connectorDirectory -ItemType Directory -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $connectorDirectory 'claude.key'),[IO.File]::ReadAllText($key))
+$bundle=Join-Path $temp 'Ripple.mcpb'
+$export=Start-SyntheticPython "-m app.connector_local export --data `"$temp`" --resources `"$Installation/backend`" --client claude --target `"$bundle`""
+try { Assert ($export.WaitForExit(15000) -and $export.ExitCode -eq 0) 'Synthetic Claude export failed' }
+finally { if(-not $export.HasExited){$export.Kill();$export.WaitForExit()};$export.Dispose() }
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip=[IO.Compression.ZipFile]::OpenRead($bundle)
+$launcher=Join-Path $temp 'claude-launcher.cjs'
+try { [IO.Compression.ZipFileExtensions]::ExtractToFile($zip.GetEntry('server/index.js'),$launcher,$true) }
+finally { $zip.Dispose() }
+$hostScript=Join-Path $temp 'synthetic-claude-host.cjs'
+[IO.File]::WriteAllText($hostScript,'require(process.argv[2]); setInterval(() => {}, 1000);')
+function Start-SyntheticClaude {
+ $start=[Diagnostics.ProcessStartInfo]::new((Get-Command node).Source,"`"$hostScript`" `"$launcher`"")
+ $start.UseShellExecute=$false;$start.CreateNoWindow=$true
+ $start.RedirectStandardInput=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+ return [Diagnostics.Process]::Start($start)
+}
+function Find-LoadedClaudeAdapter($ClientHost) {
  for($i=0;$i -lt 60;$i++) {
-  $adapter.Refresh()
-  if($adapter.HasExited){throw 'Synthetic adapter exited before upgrade'}
-  try { $loaded=@($adapter.Modules | Where-Object { $_.ModuleName -ieq '_asyncio.pyd' }).Count -gt 0 } catch { }
-  if($loaded){break};Start-Sleep -Milliseconds 250
+  if($ClientHost.HasExited){throw 'Synthetic Claude host exited early'}
+  $candidates=@(CimCmdlets\Get-CimInstance Win32_Process -Filter "ParentProcessId=$($ClientHost.Id)" | Where-Object { (Get-RippleProcessKind $_ $Installation) -eq 'adapter' })
+  if($candidates.Count -eq 1) {
+   $pythonProcess=[Diagnostics.Process]::GetProcessById([int]$candidates[0].ProcessId)
+   $loaded=$false
+   try { $pythonProcess.Refresh();$loaded=@($pythonProcess.Modules | Where-Object {$_.ModuleName -ieq '_asyncio.pyd'}).Count -gt 0 } catch { }
+   if($loaded){return $pythonProcess};$pythonProcess.Dispose()
+  }
+  Start-Sleep -Milliseconds 250
  }
- if (-not $loaded) {
-  $moduleNames = @($adapter.Modules | Where-Object { $_.ModuleName -match 'python|asyncio|\.pyd$' } | ForEach-Object { $_.ModuleName }) -join ', '
-  throw "Adapter did not load the reported locked module; observed: $moduleNames"
+ throw 'Exported Claude adapter did not load asyncio'
+}
+# Inject only the missing WMI path property. The fallback must retrieve the real
+# OS image path by PID; command line, parent and creation time remain genuine.
+$script:missingImagePid=0
+function Get-CimInstance {
+ param([string]$ClassName,[string]$Filter)
+ foreach($entry in @(CimCmdlets\Get-CimInstance @PSBoundParameters)) {
+  if($entry.ProcessId -eq $script:missingImagePid) {
+   $copy=$entry | Select-Object Name,ProcessId,ParentProcessId,CreationDate,CommandLine,ExecutablePath
+   $copy.ExecutablePath=$null
+   $copy
+  } else { $entry }
  }
+}
+$clientHost=Start-SyntheticClaude
+$adapter=$null
+try {
+ $adapter=Find-LoadedClaudeAdapter $clientHost
+ $script:missingImagePid=$adapter.Id
+ $missing=CimCmdlets\Get-CimInstance Win32_Process -Filter "ProcessId=$($adapter.Id)" | Select-Object Name,ProcessId,ParentProcessId,CreationDate,CommandLine,ExecutablePath
+ $missing.ExecutablePath=$null
+ Assert ((Get-RippleProcessKind $missing $Installation) -eq 'adapter') 'Null WMI path bypassed known adapter'
+ # NSIS normally launches 32-bit Windows PowerShell. Exercise its query of this
+ # live 64-bit Python too, not just the workflow's 64-bit PowerShell process.
+ $crossScript=Join-Path $temp 'inspect-cross-architecture.ps1'
+ [IO.File]::WriteAllText($crossScript,@'
+$ErrorActionPreference='Stop'
+. $env:RIPPLE_TEST_UPGRADE_GATE -LibraryOnly
+$p=Get-CimInstance Win32_Process -Filter "ProcessId=$env:RIPPLE_TEST_ADAPTER_PID" | Select-Object Name,ProcessId,CreationDate,CommandLine,ExecutablePath
+$p.ExecutablePath=$null
+if ((Get-RippleProcessKind $p $env:RIPPLE_TEST_INSTALLATION) -ne 'adapter') { throw 'Cross-architecture null image lookup failed' }
+'@)
+ $start=[Diagnostics.ProcessStartInfo]::new("$env:WINDIR\SysWOW64\WindowsPowerShell\v1.0\powershell.exe","-NoLogo -NoProfile -NonInteractive -File `"$crossScript`"")
+ $start.UseShellExecute=$false;$start.CreateNoWindow=$true
+ $start.EnvironmentVariables['RIPPLE_TEST_UPGRADE_GATE']=$gate
+ $start.EnvironmentVariables['RIPPLE_TEST_ADAPTER_PID']=[string]$adapter.Id
+ $start.EnvironmentVariables['RIPPLE_TEST_INSTALLATION']=$Installation
+ $cross=[Diagnostics.Process]::Start($start)
+ try { Assert ($cross.WaitForExit(15000) -and $cross.ExitCode -eq 0) '32-bit process-image fallback failed' }
+ finally {if(-not $cross.HasExited){$cross.Kill();$cross.WaitForExit()};$cross.Dispose()}
+ Invoke-RippleUpgradeGate $Installation
+ Assert ($adapter.WaitForExit(5000)) 'Null WMI image path adapter not released'
+ Assert (-not $clientHost.HasExited) 'Synthetic client host was terminated'
+} finally {
+ $script:missingImagePid=0
+ if($adapter){if(-not $adapter.HasExited){$adapter.Kill();$adapter.WaitForExit()};$adapter.Dispose()}
+ if(-not $clientHost.HasExited){$clientHost.Kill();$clientHost.WaitForExit()};$clientHost.Dispose()
+}
+Remove-Item Function:Get-CimInstance
+# Run the actual installer with the exported Claude adapter still holding asyncio.
+$clientHost=Start-SyntheticClaude
+$adapter=$null
+try {
+ $adapter=Find-LoadedClaudeAdapter $clientHost
  $upgrade=Start-Process $Installer -ArgumentList "/S /UPDATE /D=$Installation" -Wait -PassThru
- Assert ($upgrade.ExitCode -eq 0) 'Upgrade failed with live adapter'
- Assert ($adapter.WaitForExit(5000)) 'Owned adapter was not released'
+ Assert ($upgrade.ExitCode -eq 0) 'Upgrade failed with exported Claude adapter'
+ Assert ($adapter.WaitForExit(5000)) 'Exported Claude adapter was not released'
+ Assert (-not $clientHost.HasExited) 'Upgrade terminated the synthetic client host'
  Assert (Test-Path $exe) 'Upgrade lost the desktop executable'
  Assert ([IO.File]::ReadAllText($sentinel) -eq $originalInfo) 'Safe retry did not replace the old resource'
-} finally {if(-not $adapter.HasExited){$adapter.Kill();$adapter.WaitForExit()};$adapter.Dispose()}
+} finally {
+ if($adapter){if(-not $adapter.HasExited){$adapter.Kill();$adapter.WaitForExit()};$adapter.Dispose()}
+ if(-not $clientHost.HasExited){$clientHost.Kill();$clientHost.WaitForExit()};$clientHost.Dispose()
+}
 @{writerRefused=$true;unknownLockRefused=$true;retryAfterRelease=$true;adapterAsyncioLoaded=$true;
- upgradeWithAdapter=$true;otherInstallationExcluded=$true;commandStringExcluded=$true;
+ upgradeWithExportedClaudeAdapter=$true;clientHostPreserved=$true;nullWmiImageFallback=$true;
+ crossArchitectureImageLookup=$true;extendedImagePath=$true;mixedImageSeparators=$true;missingCommandLineRefused=$true;
+ otherInstallationExcluded=$true;commandStringExcluded=$true;
  externalClientAutoReconnect='pending real Claude/WorkBuddy acceptance'} | ConvertTo-Json

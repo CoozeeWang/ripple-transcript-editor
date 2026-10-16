@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '69'
+      RIPPLE_BUILD_NUMBER: '70'
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +63,7 @@ jobs:
           }
           . ./desktop/src-tauri/windows/prepare-upgrade.ps1 -LibraryOnly
           Initialize-LockOwners
+          Initialize-ProcessInspection
       - name: Backend tests on Windows NTFS
         working-directory: backend
         run: uv run --locked pytest -q
