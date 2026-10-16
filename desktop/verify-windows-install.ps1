@@ -31,6 +31,8 @@ if (-not (Test-Path "$destination/backend/python/python.exe")) { throw 'Bundled 
 if ($LASTEXITCODE) { throw 'Installed backend contains build caches or probe data' }
 $artifact = "$PSScriptRoot/dist/windows-artifact"
 New-Item $artifact -ItemType Directory -Force | Out-Null
+& "$PSScriptRoot/verify-windows-upgrade.ps1" -Installation $destination -Installer $installers[0].FullName | Set-Content "$artifact/upgrade-verification.json" -Encoding utf8
+if ($LASTEXITCODE) { throw 'Targeted safe-upgrade verification failed' }
 & "$destination/backend/python/python.exe" "$PSScriptRoot/verify-mcp-runtime.py" "$destination/backend" --output "$artifact/mcp-runtime-verification.json" --tunnel-client $env:RIPPLE_TEST_TUNNEL_CLIENT
 if ($LASTEXITCODE) { throw 'Installed MCP adapter initialization, handshake or synthetic read failed' }
 

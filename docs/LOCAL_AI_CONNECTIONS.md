@@ -39,3 +39,9 @@ A ready local broker/transport does not prove that the AI application installed 
 macOS is the initial packaged target. Windows native packaging and real-client acceptance must be recorded separately. Installation export or protocol tests do not establish a real Claude/WorkBuddy account acceptance result. No model subscription or third-party service price is included in Ripple's local connection.
 
 Windows 自动打开 Claude 扩展前会查询 `.mcpb` 的有效打开程序；无关联、第三方选择器或未识别的处理程序均转为手动安装，不修改默认应用。手动安装说明和导出入口始终可用，添加后展开说明。Claude 的本机配置、打开请求、实际安装与读取连接分别核验；扩展是否安装请在 Claude 内确认。官方手动安装路径见 [Claude 桌面扩展说明](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)。
+
+### Windows upgrades with an active connector
+
+Save unfinished manuscript changes and exit Ripple normally before upgrading. The installer checks for this installation's desktop, backend and adapter processes before replacing files. It stops only Ripple's own adapters after potential writers have exited; it does not close Claude, WorkBuddy or other MCP services. If an adapter immediately returns, temporarily disable only the Ripple connector in its client and choose Retry. Unresolved file locks show the resource and, where Windows can identify it, its owning application/PID. Cancel leaves the preflight without replacing files; files cannot be skipped with Ignore.
+
+After installation, open Ripple first. If a client does not reconnect automatically, click its reconnect action, re-enable its Ripple connector, or restart that client. Keep existing connection settings and keys. The AI in a chat cannot repair a disconnected transport itself.
