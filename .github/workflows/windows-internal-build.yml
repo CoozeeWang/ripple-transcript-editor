@@ -9,6 +9,11 @@ on:
       - 'frontend/**'
       - 'mock-data/**'
   workflow_dispatch:
+    inputs:
+      scan_b63_only:
+        description: 'Analyze the existing Chrome-blocked b63 artifact without running its installer'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,6 +24,7 @@ concurrency:
 
 jobs:
   installer:
+    if: ${{ !inputs.scan_b63_only }}
     runs-on: windows-2022
     timeout-minutes: 45
     env:
@@ -96,4 +102,29 @@ jobs:
           name: Ripple-Windows-x64-b${{ env.RIPPLE_BUILD_NUMBER }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: desktop/dist/windows-artifact/*
           if-no-files-found: error
+          retention-days: 14
+  scan-existing-b63:
+    if: ${{ inputs.scan_b63_only }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 38855805897
+          name: Ripple-Windows-x64-b63-34e5c31836acfa6e37bfb89c0a9ec6e94791ec89
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ripple-security-input
+      - name: Statically scan exact b63 installer and extracted payload
+        shell: pwsh
+        run: desktop/scan-windows-artifact.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/ripple-security-input" -ReportDirectory "$env:RUNNER_TEMP/ripple-security-report" -ExpectedSha256 '2861bed27e52b7597f0b2511c8fe4022cddad217b699e1a430d1a8db6d52024d'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Ripple-b63-security-analysis-${{ github.run_id }}
+          path: ${{ runner.temp }}/ripple-security-report/*
+          if-no-files-found: warn
           retention-days: 14
