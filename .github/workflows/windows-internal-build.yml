@@ -160,6 +160,14 @@ jobs:
           desktop/scan-windows-artifact.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/ripple-compare-b63" -ReportDirectory "$env:RUNNER_TEMP/ripple-compare-report/b63" -ExpectedSha256 '2861bed27e52b7597f0b2511c8fe4022cddad217b699e1a430d1a8db6d52024d'
           python desktop/compare-windows-artifacts.py "$env:RUNNER_TEMP/ripple-compare-report/b62/payload-inventory.json" "$env:RUNNER_TEMP/ripple-compare-report/b63/payload-inventory.json" "$env:RUNNER_TEMP/ripple-compare-report/comparison.json"
           if ($LASTEXITCODE) { throw 'Payload comparison failed' }
+          # Publish aggregate facts and product filenames only, not file hashes.
+          $comparison = Get-Content "$env:RUNNER_TEMP/ripple-compare-report/comparison.json" -Raw | ConvertFrom-Json
+          $summary = [ordered]@{oldFileCount=$comparison.oldFileCount;newFileCount=$comparison.newFileCount;
+            identicalFileCount=$comparison.identicalFileCount;added=$comparison.added;removed=$comparison.removed;
+            changed=$comparison.changed;binaryChanges=$comparison.binaryChanges;
+            packageVersionsIdentical=(@(Compare-Object $comparison.oldPackages $comparison.newPackages).Count -eq 0)} | ConvertTo-Json -Depth 6
+          $summary
+          "## Static b62 / b63 comparison`n`nAggregate facts and product filenames only. No file hashes. No inspected installer was executed. This is not a Chrome verdict.`n`n``````json`n$summary`n``````" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
