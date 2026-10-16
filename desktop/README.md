@@ -2,6 +2,8 @@
 
 This contains the Ripple frontend in a Tauri window and a bundled local Python backend. It is the formal desktop source; built applications and native acceptance records remain outside this repository. Use synthetic or user-approved local material for acceptance.
 
+Windows internal builds suppress Python bytecode generation while verifying the staged runtime. Before creating an installer, `stage-backend.py --check-clean` rejects generated caches and staging probe data; installed-runtime checks repeat this assertion. A static Defender scan of the installer and extracted payload runs before installation smoke tests. These checks do not establish a Google Safe Browsing verdict or replace acceptance on a user's Windows machine.
+
 Build locally:
 
 ```sh

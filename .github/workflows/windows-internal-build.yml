@@ -33,7 +33,8 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '63'
+      RIPPLE_BUILD_NUMBER: '64'
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,6 +87,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'Packaged MCP startup or protocol verification failed' }
           Remove-Item "$stage/data" -Recurse -Force
           Remove-Item "$stage/verify.py"
+          & "$stage/python/python.exe" -B desktop/stage-backend.py --check-clean $stage
+          if ($LASTEXITCODE) { throw 'Generated files contaminated the backend payload' }
           Remove-Item Env:PYTHONPATH
           Remove-Item Env:RIPPLE_DATA_DIR
           $env:RIPPLE_APP_VERSION = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
@@ -98,6 +101,19 @@ jobs:
       - name: Build Windows x64 NSIS installer
         working-directory: desktop/src-tauri
         run: ../node_modules/.bin/tauri.cmd build --target x86_64-pc-windows-msvc --features custom-protocol --bundles nsis
+      - name: Scan clean installer statically before installation tests
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem 'desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe')
+          if ($installers.Count -ne 1) { throw 'Expected one candidate installer' }
+          $inputDirectory = Join-Path $env:RUNNER_TEMP 'ripple-candidate-security-input'
+          New-Item $inputDirectory -ItemType Directory | Out-Null
+          Copy-Item $installers[0].FullName $inputDirectory
+          $hash = (Get-FileHash $installers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{installer=$installers[0].Name;sha256=$hash;build=$env:RIPPLE_BUILD_NUMBER;commit=$env:RIPPLE_SOURCE_COMMIT} | ConvertTo-Json | Set-Content "$inputDirectory/build-verification.json" -Encoding utf8
+          desktop/scan-windows-artifact.ps1 -ArtifactDirectory $inputDirectory -ReportDirectory "$env:RUNNER_TEMP/ripple-candidate-security-report" -ExpectedSha256 $hash
+          $scan = Get-Content "$env:RUNNER_TEMP/ripple-candidate-security-report/security-analysis.json" -Raw | ConvertFrom-Json
+          if (-not $scan.completed -or $scan.verdict -ne 'no_detection_in_this_defender_scan') { throw 'Candidate security scan incomplete' }
       - name: Install and verify packaged runtime
         shell: pwsh
         run: desktop/verify-windows-install.ps1
@@ -106,6 +122,13 @@ jobs:
           name: Ripple-Windows-x64-b${{ env.RIPPLE_BUILD_NUMBER }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: desktop/dist/windows-artifact/*
           if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Ripple-Windows-b${{ env.RIPPLE_BUILD_NUMBER }}-security-analysis-${{ github.run_id }}
+          path: ${{ runner.temp }}/ripple-candidate-security-report/*
+          if-no-files-found: ignore
           retention-days: 14
   scan-existing-b63:
     if: ${{ inputs.scan_b63_only }}

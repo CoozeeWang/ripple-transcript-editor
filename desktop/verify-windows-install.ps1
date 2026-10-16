@@ -27,6 +27,8 @@ $resourceInfo = Get-Content "$destination/build-info.json" -Raw | ConvertFrom-Js
 if ($resourceInfo.commit -ne $info.commit) { throw 'Resource and executable provenance disagree' }
 if (Test-Path "$destination/backend/data") { throw 'Staging probe data must not ship' }
 if (-not (Test-Path "$destination/backend/python/python.exe")) { throw 'Bundled Python missing' }
+& "$destination/backend/python/python.exe" -B "$PSScriptRoot/stage-backend.py" --check-clean "$destination/backend"
+if ($LASTEXITCODE) { throw 'Installed backend contains build caches or probe data' }
 $artifact = "$PSScriptRoot/dist/windows-artifact"
 New-Item $artifact -ItemType Directory -Force | Out-Null
 & "$destination/backend/python/python.exe" "$PSScriptRoot/verify-mcp-runtime.py" "$destination/backend" --output "$artifact/mcp-runtime-verification.json" --tunnel-client $env:RIPPLE_TEST_TUNNEL_CLIENT
@@ -70,4 +72,5 @@ $hash = (Get-FileHash (Join-Path $artifact $name) -Algorithm SHA256).Hash.ToLowe
 @{version=$info.version;build=$info.build;commit=$info.commit;architecture='x64';runner=$env:ImageOS;
   installer=$name;sha256=$hash;releaseProtocol=$true;bundledBackendHealth=200;windowOpened=$true;
   normalExit=$true;abnormalExit=$true;syntheticUnicodeInstallPath=$true;
+  noGeneratedBytecode=$true;noStagingProbeData=$true;
   windows10UserAcceptance='pending';nativeVisualAcceptance='pending'} | ConvertTo-Json | Set-Content "$artifact/build-verification.json" -Encoding utf8

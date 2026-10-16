@@ -7,6 +7,17 @@ if (-not $env:CI) { throw 'Artifact security analysis requires a disposable CI r
 New-Item $ReportDirectory -ItemType Directory -Force | Out-Null
 $report = @{completed=$false;verdict='unavailable';installerExecuted=$false;securitySettingsChanged=$false;
   browserVerdict='not assessed';startedAt=[DateTime]::UtcNow.ToString('o')}
+function Get-DefenderStatus {
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        try { return Get-MpComputerStatus -ErrorAction Stop }
+        catch {
+            if ($attempt -eq 2) { throw }
+            # A newly provisioned runner's WMI provider may not be ready yet.
+            # Retry observation only; never disable protection or ignore failure.
+            Start-Sleep -Seconds 2
+        }
+    }
+}
 try {
     $build = Get-Content (Join-Path $ArtifactDirectory 'build-verification.json') -Raw | ConvertFrom-Json
     $installer = Get-Item (Join-Path $ArtifactDirectory $build.installer)
@@ -14,13 +25,13 @@ try {
     if ($hash -ne $build.sha256 -or $hash -ne $ExpectedSha256) { throw 'Installer identity mismatch' }
     $report.installer = @{name=$installer.Name;sha256=$hash;build=$build.build;commit=$build.commit;
         signatureStatus=[string](Get-AuthenticodeSignature $installer.FullName).Status}
-    $status = Get-MpComputerStatus
+    $status = Get-DefenderStatus
     $report.defender = @{antivirusEnabled=$status.AntivirusEnabled;engineVersion=$status.AMEngineVersion;
         signatureVersion=$status.AntivirusSignatureVersion;signatureUpdated=$status.AntivirusSignatureLastUpdated}
     if (-not $status.AntivirusEnabled) { throw 'Defender antivirus is not available on this runner' }
     try { Update-MpSignature; $report.signatureUpdate='success' }
     catch { $report.signatureUpdate='failed; existing signature retained' }
-    $status = Get-MpComputerStatus
+    $status = Get-DefenderStatus
     $report.defender.signatureVersion=$status.AntivirusSignatureVersion
     $report.defender.signatureUpdated=$status.AntivirusSignatureLastUpdated
     if ($status.AntivirusSignatureLastUpdated -lt (Get-Date).AddDays(-3)) { throw 'Defender signatures are stale' }
