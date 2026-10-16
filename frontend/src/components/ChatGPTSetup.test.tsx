@@ -14,7 +14,7 @@ function fixture(ready=false){
  const writeText=vi.fn(async()=>{});Object.defineProperty(navigator,'clipboard',{value:{writeText},configurable:true});
  const onSaved=vi.fn();const ui=render(<ChatGPTSetup tunnelReady={ready} onSaved={onSaved}/>);return {ui,invoke,writeText,onSaved};
 }
-it.each(['zh-CN','en'] as const)('focuses a persistent visible alert after an invalid executable, retaining saved configuration (%s)',async language=>{
+it.each(['zh-CN','en'] as const)('keeps a persistent passive alert after an invalid executable, retaining saved configuration (%s)',async language=>{
  await setInterfaceLanguage(language);
  const {ui,invoke,onSaved}=fixture();
  const edit=language==='en'?'Edit configuration':'修改配置', save=language==='en'?'Save configuration':'保存配置';
@@ -24,11 +24,16 @@ it.each(['zh-CN','en'] as const)('focuses a persistent visible alert after an in
  invoke.mockImplementation(command=>command==='connector_pick_client'?Promise.resolve('C:\\Synthetic 用户\\not-tunnel-client.exe'):command==='connector_setup'?Promise.reject('setup_client_invalid'):original(command));
  fireEvent.click(ui.getByRole('button',{name:language==='en'?'Choose tunnel client':'选择连接程序'}));
  await waitFor(()=>expect((ui.getByLabelText(language==='en'?'Tunnel client':'连接程序（tunnel-client）') as HTMLInputElement).value).toBe('not-tunnel-client.exe'));
- fireEvent.click(ui.getByText(save));
- await waitFor(()=>expect(ui.getByRole('alert')).toBe(document.activeElement));
+ const saveButton=ui.getByRole('button',{name:save});saveButton.focus();
+ fireEvent.click(saveButton);
+ await waitFor(()=>expect(ui.getByRole('alert')).toBeTruthy());
+ expect(ui.getByRole('alert').hasAttribute('tabindex')).toBe(false);
+ expect(ui.getByRole('alert').classList.contains('connector-setup-error')).toBe(false);
+ expect(document.activeElement).not.toBe(ui.getByRole('alert'));
  const retry=ui.getByRole('button',{name:save});
  retry.focus();fireEvent.click(retry);
- await waitFor(()=>expect(ui.getByRole('alert')).toBe(document.activeElement));
+ await waitFor(()=>expect(ui.getByRole('alert')).toBeTruthy());
+ expect(document.activeElement).not.toBe(ui.getByRole('alert'));
  expect(onSaved).not.toHaveBeenCalled();
  expect(ui.getByRole('alert').textContent).not.toContain('setup_client_invalid');
  expect(ui.getByText(save).hasAttribute('disabled')).toBe(false);

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { interfaceLanguage, msg, useInterfaceLanguage } from '../i18n';
 import { nativeDesktopAvailable } from '../lib/desktopFs';
-import { ChatGPTSetup } from './ChatGPTSetup';
+import { ChatGPTSetup, type ChatGPTSetupHandle } from './ChatGPTSetup';
 import { trapDialogFocus } from '../lib/dialogFocus';
 import { useTransientState } from '../hooks/useTransientState';
 import { FeedbackNotice } from './FeedbackNotice';
@@ -25,6 +25,8 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
   const [deleteError, setDeleteError] = useState('');
   const [deleted, setDeleted] = useTransientState(false, false);
   const [revision, setRevision] = useState(0);
+  const [chatgptEditing, setChatgptEditing] = useState(false);
+  const chatgptSetupRef = useRef<ChatGPTSetupHandle>(null);
   const [configured,setConfigured]=useState<ClientStatus['configured'] | null>(null);
   const selectRef=useRef<HTMLSelectElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
@@ -41,6 +43,7 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
     catch {setConfigured(null);}
   }
   async function select(value: Client) {
+    setChatgptEditing(false);
     setManualOpen(value === 'claude');
     setBusy(true); setError(false); setActionError(''); setExported(''); setDeleted(false);
     try {await invoke('connector_client_select', {client: value}); setClient(value);await refreshConfiguration();}
@@ -89,6 +92,7 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
       </>}
       <div className="cred-profile__actions connector-config-actions">
         {client !== 'chatgpt' && <button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={() => void addClient()}>{msg(`connector.${client}Add`)}</button>}
+        {client === 'chatgpt' && configured?.chatgpt === true && <button type="button" className="cred-btn" disabled={busy || chatgptEditing} onClick={() => chatgptSetupRef.current?.edit()}>{msg('connector.editSetup')}</button>}
         {configured?.[client] === true && <button ref={deleteButtonRef} type="button" className="cred-btn cred-btn--danger" disabled={busy} onClick={() => {setConfirmDelete(client); setDeleteError('');}}>{msg('connector.deleteConfiguration',{client:clientName})}</button>}
       </div>
       {deleted && <FeedbackNotice text={msg('connector.configurationDeleted', {client:clientName})} onDismiss={() => setDeleted(false)}/>}
@@ -104,7 +108,7 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
         </div>
       </details>}
     </div>
-    {client === 'chatgpt' && !busy && <ChatGPTSetup key={revision} onSaved={() => {setTunnelReady(false);void refreshConfiguration(); onSaved?.();}} tunnelReady={tunnelReady}/>}
+    {client === 'chatgpt' && !busy && <ChatGPTSetup key={revision} ref={chatgptSetupRef} onEditingChange={setChatgptEditing} onSaved={() => {setTunnelReady(false);void refreshConfiguration(); onSaved?.();}} tunnelReady={tunnelReady}/>}
     {enabled && confirmDelete && <DeleteConnectorDialog clientName={clientName} busy={busy} error={deleteError} opener={deleteButtonRef} fallback={selectRef}
       onCancel={() => {setConfirmDelete(null); setDeleteError('');}}
       onDelete={() => void deleteClient(confirmDelete)} />}

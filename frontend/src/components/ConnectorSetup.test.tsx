@@ -218,3 +218,25 @@ it.each(['zh-CN','en'] as const)('shows manual Claude recovery before adding and
  await waitFor(()=>expect(details.open).toBe(true));
  expect(details.textContent).toContain('Ripple.mcpb');
 });
+
+// Both edit triggers control the same mounted form and retain the draft until Cancel.
+it.each(['zh-CN','en'] as const)('shares ChatGPT editing state across the adjacent and existing entry (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {ui,invoke}=fixture('chatgpt');
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_setup_status'?Promise.resolve({client_path:'/synthetic/tunnel-client',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}):original(command));
+ const edit=language==='en'?'Edit configuration':'修改配置';
+ await waitFor(()=>expect(ui.getAllByRole('button',{name:edit})).toHaveLength(2));
+ const adjacent=ui.getAllByRole('button',{name:edit})[0];
+ expect(adjacent.nextElementSibling?.textContent).toMatch(/删除|Delete/);
+ fireEvent.click(adjacent);
+ const tunnel=ui.getByLabelText(language==='en'?'Tunnel ID':'隧道标识（Tunnel ID）') as HTMLInputElement;
+ await waitFor(()=>expect(tunnel.readOnly).toBe(false));
+ expect((adjacent as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.change(tunnel,{target:{value:'tunnel_synthetic_draft'}});
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Cancel':'取消'}));
+ expect(tunnel.value).toBe('tunnel_synthetic');expect(tunnel.readOnly).toBe(true);
+ fireEvent.click(ui.getAllByRole('button',{name:edit})[1]);
+ expect(tunnel.readOnly).toBe(false);
+ expect(invoke.mock.calls.some(([name])=>name==='connector_setup')).toBe(false);
+});
