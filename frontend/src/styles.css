@@ -3180,6 +3180,8 @@ html[lang="en"] .annotation-panel .panel-tabs__count { min-width: 14px; height: 
 .settings-mcp .connector-setup-card > .settings-hint { margin: 8px 0; }
 .settings-mcp .connector-guidance { white-space: pre-line; overflow-wrap: anywhere; }
 .settings-mcp { display: grid; gap: 12px; }
+.settings-mcp .connector-settings-controls { min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-mcp .connector-settings-controls:disabled { opacity: .5; }
 .settings-mcp .connector-setup { display: grid; gap: 12px; }
 .settings-mcp .connector-client-selection { display: grid; gap: 8px; }
 .settings-mcp .connector-client-selection > .cred-profile__fields { margin: 0; }

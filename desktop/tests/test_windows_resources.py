@@ -21,6 +21,25 @@ class WindowsResourcesTest(unittest.TestCase):
         self.assertEqual(nsis['installerIcon'], 'icons/icon.ico')
         self.assertEqual(nsis['uninstallerIcon'], 'icons/icon.ico')
 
+    def test_upgrade_guard_precedes_uninstall_and_copy_without_ignore_or_forced_close(self):
+        config = json.loads((ROOT / 'src-tauri/tauri.windows.conf.json').read_text())
+        nsis = config['bundle']['windows']['nsis']
+        template = (ROOT / 'src-tauri' / nsis['template']).read_text(encoding='utf-8-sig')
+        before_uninstall = template.index('Call RipplePrepareUpgrade', template.index('reinst_uninstall:'))
+        self.assertLess(before_uninstall, template.index("ExecWait '$R1'", before_uninstall))
+        old_directory = template.index('ReadRegStr $INSTDIR SHCTX')
+        old_guard = template.index('Call RipplePrepareUpgrade', old_directory)
+        self.assertLess(before_uninstall, old_directory)
+        self.assertLess(old_directory, old_guard)
+        self.assertLess(old_guard, template.index("ExecWait '$R1'", old_guard))
+        self.assertIn('Pop $INSTDIR', template[old_guard:])
+        install = template[template.index('Section Install'):]
+        self.assertLess(install.index('Call RipplePrepareUpgrade'), install.index('File "${MAINBINARYSRCPATH}"'))
+        self.assertIn('AllowSkipFiles off', template)
+        self.assertNotIn('!insertmacro CheckIfAppIsRunning', template)
+        self.assertIn('Call un.RipplePrepareUpgrade', template)
+        self.assertIn('NSIS_HOOK_PREUNINSTALL', (ROOT / 'src-tauri' / nsis['installerHooks']).read_text(encoding='utf-8-sig'))
+
     def test_release_binary_uses_windows_gui_subsystem(self):
         source = (ROOT / 'src-tauri/src/main.rs').read_text(encoding='utf-8')
         self.assertIn('cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")', source)

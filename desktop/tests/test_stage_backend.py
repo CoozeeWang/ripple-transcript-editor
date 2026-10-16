@@ -48,3 +48,34 @@ class StageBackendTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.stage_backend(self.root / "repo", stage)
         self.assertFalse(stage.exists())
+
+    def test_packaging_guard_rejects_caches_created_after_staging(self):
+        stage = self.root / "stage"
+        with patch.object(module.subprocess, "check_output", return_value=json.dumps(self.info)):
+            module.stage_backend(self.root / "repo", stage)
+        with self.assertRaisesRegex(ValueError, "probe"):
+            module.assert_clean_backend(stage)
+        (stage / "data").rmdir()
+        (stage / "verify.py").unlink()
+        module.assert_clean_backend(stage)
+        cache = stage / "site-packages/__pycache__"
+        cache.mkdir()
+        (cache / "synthetic.cpython-312.pyc").write_bytes(b"synthetic bytecode")
+        with self.assertRaisesRegex(ValueError, "bytecode"):
+            module.assert_clean_backend(stage)
+        (cache / "synthetic.cpython-312.pyc").unlink()
+        cache.rmdir()
+        (stage / "backend/app/legacy.pyo").write_bytes(b"synthetic bytecode")
+        with self.assertRaisesRegex(ValueError, "bytecode"):
+            module.assert_clean_backend(stage)
+
+    def test_staging_does_not_copy_existing_source_caches(self):
+        cache = self.root / "packages/__pycache__"
+        cache.mkdir()
+        (cache / "synthetic.pyc").write_bytes(b"not source")
+        (self.root / "python/legacy.pyo").write_bytes(b"not source")
+        stage = self.root / "clean"
+        with patch.object(module.subprocess, "check_output", return_value=json.dumps(self.info)):
+            module.stage_backend(self.root / "repo", stage)
+        self.assertFalse((stage / "site-packages/__pycache__").exists())
+        self.assertFalse((stage / "python/legacy.pyo").exists())

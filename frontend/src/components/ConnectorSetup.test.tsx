@@ -7,18 +7,31 @@ vi.mock('../lib/desktopFs', () => ({ nativeDesktopAvailable: () => true }));
 vi.mock('../lib/tunnelClientRelease', async original => ({...await original<typeof import('../lib/tunnelClientRelease')>(), latestTunnelRelease:vi.fn(async()=>({tag_name:'v0.0.99',draft:false,prerelease:false,assets:[]}))}));
 beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); await setInterfaceLanguage('zh-CN'); });
-function fixture(client = 'claude', configured = {chatgpt:true,claude:true,workbuddy:true}) {
+function fixture(client = 'claude', configured = {chatgpt:true,claude:true,workbuddy:true}, enabled = true) {
  const invoke=vi.fn(async(command:string):Promise<unknown>=>command==='connector_client_status'?{client,configured}:command==='connector_client_add'?client:command==='connector_setup_status'?{client_path:'',tunnel_id:'',has_key:false,configured:false}:command==='connector_client_platform'?{os:'macos',arch:'aarch64'}:false);
  (window as unknown as {__TAURI__: unknown}).__TAURI__={core:{invoke}};
  const onSaved=vi.fn();
- const ui=render(<ConnectorSetup onSaved={onSaved}/>);
+ const ui=render(<ConnectorSetup onSaved={onSaved} enabled={enabled}/>);
  return {ui,invoke,onSaved};
 }
+it.each(['chatgpt','claude','workbuddy'])('disables the entire %s configuration while MCP is off and restores it on enable',async client=>{
+ const {ui,invoke}=fixture(client,undefined,false);
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe(client));
+ const controls=ui.container.querySelector('fieldset')!;
+ expect(controls.disabled).toBe(true);
+ expect(controls.querySelector('[inert]')).toBeTruthy();
+ for(const element of controls.querySelectorAll('button, input, select')) expect(element.matches(':disabled')).toBe(true);
+ expect(invoke.mock.calls.some(([name])=>['connector_client_add','connector_setup','connector_client_delete','connector_client_export'].includes(name))).toBe(false);
+ ui.rerender(<ConnectorSetup enabled/>);
+ expect(controls.disabled).toBe(false);
+ expect(controls.querySelector('[inert]')).toBeNull();
+ expect(ui.getByRole('combobox').matches(':disabled')).toBe(false);
+});
 it('opens the selected client installer without claiming AI connection',async()=>{
  const {ui,invoke}=fixture();
  await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
  fireEvent.click(ui.getByText('添加到 Claude'));
- await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('请确认安装'));
+ await waitFor(()=>expect(ui.getByRole('status').textContent).toContain('请在 Claude 中确认安装'));
  expect(invoke).toHaveBeenCalledWith('connector_client_add',{client:'claude',language:'zh-CN'});
  expect(invoke.mock.calls.flat()).not.toContain('connector_pair_begin');
 });
@@ -146,4 +159,99 @@ it('uses beta and named delete actions in English, with unknown status hidden sa
  fireEvent.click(ui.getByRole('button',{name:'Add to Claude'}));
  await waitFor(()=>expect(ui.getByRole('option',{name:'Claude Desktop (beta) · Status unavailable'})).toBeTruthy());
  expect(ui.queryByRole('button',{name:'Delete Claude connection configuration'})).toBeNull();
+});
+
+it.each(['zh-CN','en'] as const)('offers manual Claude import when Windows has no association (%s)', async language => {
+ await setInterfaceLanguage(language);
+ const {ui,invoke}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_client_add'?Promise.resolve('claude_manual'):original(command));
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Add to Claude':'添加到 Claude'}));
+ await waitFor(()=>expect(ui.getByRole('status').textContent).toContain(language==='en'?'no extension association pointing to Claude':'未找到指向 Claude 的扩展关联'));
+ const details=ui.container.querySelector('details')!;
+ expect(details.open).toBe(true);
+ expect(details.textContent).toContain('Ripple.mcpb');
+ const reveal=ui.getByRole('button',{name:language==='en'?'Open extension folder':'打开扩展所在文件夹'}) as HTMLButtonElement;
+ await waitFor(()=>expect(reveal.disabled).toBe(false));fireEvent.click(reveal);
+ await waitFor(()=>expect(invoke).toHaveBeenCalledWith('connector_client_reveal',undefined));
+ expect(details.open).toBe(true);
+});
+
+it('keeps export cancellation silent, prevents duplicate operations and never claims an AI connection',async()=>{
+ const {ui,invoke}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ let done:(value:boolean)=>void=()=>{};
+ const pending=new Promise<boolean>(resolve=>{done=resolve;});
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_client_export'?pending:original(command));
+ fireEvent.click(ui.getByRole('button',{name:'导出 Claude 扩展'}));
+ expect((ui.getByRole('button',{name:'添加到 Claude'}) as HTMLButtonElement).disabled).toBe(true);
+ expect((ui.getByRole('button',{name:'导出 Claude 扩展'}) as HTMLButtonElement).disabled).toBe(true);
+ await act(async()=>done(false));
+ await waitFor(()=>expect((ui.getByRole('button',{name:'导出 Claude 扩展'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(ui.queryByRole('status')).toBeNull();
+ expect(ui.queryByRole('alert')).toBeNull();
+});
+
+it.each(['export_failed','claude_open_failed'])('gives a stage-specific manual recovery for %s without exposing native details',async code=>{
+ const {ui,invoke}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false));
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_client_add'?Promise.reject(code):original(command));
+ fireEvent.click(ui.getByRole('button',{name:'添加到 Claude'}));
+ await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain(code==='export_failed'?'生成或导出失败':'扩展已生成'));
+ expect(ui.container.querySelector('details')!.open).toBe(true);
+ expect(ui.queryByRole('status')).toBeNull();
+});
+
+it.each(['zh-CN','en'] as const)('shows manual Claude recovery before adding and reopens it after dispatch (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {ui}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
+ const details=ui.container.querySelector('details')!;
+ expect(details.open).toBe(true);
+ expect(details.textContent).toContain(language==='en'?'does not mean Claude installed':'不代表 Claude 已安装');
+ fireEvent.click(ui.getByText(language==='en'?'Install the Claude extension manually':'手动安装 Claude 扩展'));
+ await waitFor(()=>expect(details.open).toBe(false));
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Add to Claude':'添加到 Claude'}));
+ await waitFor(()=>expect(details.open).toBe(true));
+ expect(details.textContent).toContain('Ripple.mcpb');
+});
+
+// Both edit triggers control the same mounted form and retain the draft until Cancel.
+it.each(['zh-CN','en'] as const)('shares ChatGPT editing state across the adjacent and existing entry (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {ui,invoke}=fixture('chatgpt');
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_setup_status'?Promise.resolve({client_path:'/synthetic/tunnel-client',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}):original(command));
+ const edit=language==='en'?'Edit configuration':'修改配置';
+ await waitFor(()=>expect(ui.getAllByRole('button',{name:edit})).toHaveLength(2));
+ const adjacent=ui.getAllByRole('button',{name:edit})[0];
+ expect(adjacent.nextElementSibling?.textContent).toMatch(/删除|Delete/);
+ await waitFor(()=>expect((adjacent as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(adjacent);
+ const tunnel=ui.getByLabelText(language==='en'?'Tunnel ID':'隧道标识（Tunnel ID）') as HTMLInputElement;
+ await waitFor(()=>expect(tunnel.readOnly).toBe(false));
+ expect((adjacent as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.change(tunnel,{target:{value:'tunnel_synthetic_draft'}});
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Cancel':'取消'}));
+ expect(tunnel.value).toBe('tunnel_synthetic');expect(tunnel.readOnly).toBe(true);
+ fireEvent.click(ui.getAllByRole('button',{name:edit})[1]);
+ expect(tunnel.readOnly).toBe(false);
+ expect(invoke.mock.calls.some(([name])=>name==='connector_setup')).toBe(false);
+});
+
+it('keeps the adjacent edit entry disabled until saved configuration is loaded',async()=>{
+ let finish:(value:unknown)=>void=()=>{};
+ const pending=new Promise(resolve=>{finish=resolve;});
+ const invoke=vi.fn(async(command:string)=>command==='connector_client_status'?{client:'chatgpt',configured:{chatgpt:true,claude:false,workbuddy:false}}:command==='connector_setup_status'?pending:command==='connector_client_platform'?{os:'windows',arch:'x86_64'}:false);
+ (window as unknown as {__TAURI__:unknown}).__TAURI__={core:{invoke}};
+ const ui=render(<ConnectorSetup/>);
+ const entry=await ui.findByRole('button',{name:'修改配置'});
+ expect((entry as HTMLButtonElement).disabled).toBe(true);
+ await act(async()=>finish({client_path:'C:\\Synthetic\\tunnel-client.exe',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}));
+ await waitFor(()=>expect((entry as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(entry);
+ expect((ui.getByLabelText('隧道标识（Tunnel ID）') as HTMLInputElement).readOnly).toBe(false);
 });

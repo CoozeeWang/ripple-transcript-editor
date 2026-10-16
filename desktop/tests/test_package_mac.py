@@ -73,6 +73,20 @@ class PackageMacTest(unittest.TestCase):
         self.assertEqual(metadata["RippleGitCommit"], expected_commit)
         subprocess.run(["plutil", "-lint", str(self.app / "Contents/Info.plist")], check=True, capture_output=True)
 
+    def test_beta_version_keeps_full_label_and_numeric_macos_version(self):
+        config = self.root / "desktop/src-tauri/tauri.conf.json"
+        config.write_text(json.dumps({"version": "0.2.0-beta.1"}))
+        self.assertEqual(self.package("60").returncode, 0)
+        metadata = plistlib.loads((self.app / "Contents/Info.plist").read_bytes())
+        self.assertEqual(metadata["CFBundleShortVersionString"], "0.2.0")
+        self.assertEqual(metadata["RippleVersion"], "0.2.0-beta.1")
+        self.assertEqual(metadata["CFBundleVersion"], "60")
+        original = (self.app / "Contents/Info.plist").read_bytes()
+        for invalid in ("0.2.0-beta.0", "0.2.0-beta", "bad-version"):
+            config.write_text(json.dumps({"version": invalid}))
+            self.assertNotEqual(self.package("61").returncode, 0)
+            self.assertEqual((self.app / "Contents/Info.plist").read_bytes(), original)
+
     def test_missing_invalid_or_reused_build_is_rejected_before_overwrite(self):
         for build in (None, "0", "07", "7", "8", "9x"):
             self.assertNotEqual(self.package(build).returncode, 0)

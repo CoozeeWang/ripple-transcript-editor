@@ -6,6 +6,10 @@ Ripple does not operate or require a shared public connection server. Local conn
 
 ## ChatGPT web
 
+Use a separate tunnel for each computer when running Ripple simultaneously. Sharing one tunnel between computers can send a summary request to one computer and its page request to another, invalidating the snapshot.
+
+On Windows, Ripple's tunnel process inherits explicit HTTP/HTTPS/ALL_PROXY environment variables. When none is present, it reads the current user's static Windows Internet proxy and applies its HTTPS endpoint to the tunnel child only, preserving local loopback access and proxy exclusions. This does not change system settings or save proxy credentials. PAC auto-configuration scripts are not resolved by this fallback; use a static system proxy, an explicit HTTPS_PROXY, or your network administrator's approved route when needed. A successful local readiness check alone does not prove cloud polling or an actual ChatGPT tool call.
+
 Ripple’s current acceptance covers ChatGPT web. Desktop availability and invocation must be verified separately, even when using the same personal tunnel.
 
 Use your own OpenAI Secure MCP Tunnel. Create it on the OpenAI connection platform, download the official tunnel-client, then select the executable and enter the Tunnel ID and Runtime API key in Ripple. The ID identifies the tunnel; the runtime key authorizes that transport and is not a model API key. Existing configuration is reused, including its protected key. Add Ripple in ChatGPT using that tunnel. This is a personal/private connection, not a publicly distributed ChatGPT plugin. See [personal tunnel setup](AI_CONNECTOR.md) and [OpenAI's tunnel documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
@@ -33,3 +37,11 @@ Deletion does not uninstall extensions or remove registrations inside ChatGPT, C
 A ready local broker/transport does not prove that the AI application installed or called it. Verify with an actual read request before attempting edits. All clients share the same 20 tools and current-project boundary. Specify the exact interview, recording and version; AI asks when the version is missing rather than selecting a default. Project tools can edit an unopened manuscript without switching the editor. Before editing, ask whether to update the current editable version or create a new one. Incremental tasks save each batch into the same agreed target version. Annotations and highlights retain human marks. Unknown writes must be checked via task status before retrying.
 
 macOS is the initial packaged target. Windows native packaging and real-client acceptance must be recorded separately. Installation export or protocol tests do not establish a real Claude/WorkBuddy account acceptance result. No model subscription or third-party service price is included in Ripple's local connection.
+
+Windows 自动打开 Claude 扩展前会查询 `.mcpb` 的有效打开程序；无关联、第三方选择器或未识别的处理程序均转为手动安装，不修改默认应用。手动安装说明和导出入口始终可用，添加后展开说明。Claude 的本机配置、打开请求、实际安装与读取连接分别核验；扩展是否安装请在 Claude 内确认。官方手动安装路径见 [Claude 桌面扩展说明](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)。
+
+### Windows upgrades with an active connector
+
+Save unfinished manuscript changes and exit Ripple normally before upgrading. The installer checks for this installation's desktop, backend and adapter processes before replacing files. It stops only Ripple's own adapters after potential writers have exited; it does not close Claude, WorkBuddy or other MCP services. If an adapter immediately returns, temporarily disable only the Ripple connector in its client and choose Retry. Unresolved file locks show the resource and, where Windows can identify it, its owning application/PID. Cancel leaves the preflight without replacing files; files cannot be skipped with Ignore.
+
+After installation, open Ripple first. If a client does not reconnect automatically, click its reconnect action, re-enable its Ripple connector, or restart that client. Keep existing connection settings and keys. The AI in a chat cannot repair a disconnected transport itself.

@@ -5,7 +5,6 @@ No output secrets. This does not create accounts, tunnels or keys, or download b
 import json
 import os
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
@@ -13,15 +12,24 @@ from .bundled_runtime import bundled_python
 from .private_files import protect_private_fd
 
 
+class SetupError(ValueError):
+    """Only fixed public error codes cross the desktop subprocess boundary."""
+
+
 def save_setup(data_root: Path, resources: Path, values: dict):
+    if not isinstance(values, dict) or any(not isinstance(values.get(name), str)
+                                          for name in ('client_path', 'tunnel_id')):
+        raise SetupError('setup_input_invalid')
     client = Path(values['client_path']).expanduser().resolve()
     if client.name not in ('tunnel-client', 'tunnel-client.exe') or not client.is_file():
-        raise ValueError('Select the official tunnel-client executable')
+        raise SetupError('setup_client_invalid')
     if os.name != 'nt' and not os.access(client, os.X_OK):
-        raise ValueError('Select an executable tunnel-client')
+        raise SetupError('setup_client_invalid')
     tunnel = values['tunnel_id'].strip()
     if not tunnel.startswith('tunnel_') or not tunnel.replace('_', '').isalnum():
-        raise ValueError('Invalid tunnel id')
+        raise SetupError('setup_tunnel_invalid')
+    if not isinstance(values.get('runtime_key', ''), str):
+        raise SetupError('setup_key_invalid')
     directory = data_root / 'connector'
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if directory.is_symlink():
@@ -34,14 +42,16 @@ def save_setup(data_root: Path, resources: Path, values: dict):
         if len(key) % 2 == 0 and key[:len(key)//2] == key[len(key)//2:]:
             key = key[:len(key)//2]
         if any(c.isspace() for c in key) or len(key) < 32:
-            raise ValueError('Invalid runtime key')
+            raise SetupError('setup_key_invalid')
         write_private(key_file, key)
     elif not key_file.is_file():
-        raise ValueError('Runtime key required')
+        raise SetupError('setup_key_invalid')
     python = bundled_python(resources)
     arguments = [str(python), '-m', 'app.connector_mcp', '--url', os.environ.get('RIPPLE_CONNECTOR_URL', 'http://127.0.0.1:18701'), '--credential-file', str(directory / 'client.key')]
-    command = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
-    # JSON scalars are valid YAML; commands use platform shell quoting.
+    # tunnel-client parses this string using shell-word rules on every platform,
+    # before invoking a process without a shell. Windows CRT quoting would lose
+    # backslashes here. JSON encodes the YAML scalar; shlex quotes its contents.
+    command = shlex.join(arguments)
     profile = ('config_version: 1\ncontrol_plane:\n  base_url: "https://api.openai.com"\n'
                f'  tunnel_id: {json.dumps(tunnel)}\n  api_key: {json.dumps("file:" + str(key_file))}\n'
                'health:\n  listen_addr: "127.0.0.1:0"\n'
@@ -64,7 +74,11 @@ def write_private(path: Path, value: str):
 
 if __name__ == '__main__':
     try:
-        save_setup(Path(sys.argv[1]), Path(sys.argv[2]), json.load(sys.stdin))
-    except (OSError, ValueError, KeyError, TypeError, IndexError):
-        print('Connector setup failed. Check the selected client, tunnel id and runtime key.', file=sys.stderr)
+        # Rust writes UTF-8 bytes. Windows stdin may otherwise decode them as GBK.
+        values = json.loads(sys.stdin.buffer.read().decode('utf-8'))
+        save_setup(Path(sys.argv[1]), Path(sys.argv[2]), values)
+    except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+        code = str(error) if isinstance(error, SetupError) else (
+            'setup_write_failed' if isinstance(error, OSError) else 'setup_input_invalid')
+        print(json.dumps({'error': code}))
         sys.exit(1)

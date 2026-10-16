@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from '../hooks/useTransientState';
 import { FeedbackNotice } from './FeedbackNotice';
 import { Trans } from 'react-i18next';
@@ -13,7 +13,8 @@ async function invoke<T>(command: string, args?: Record<string, string>): Promis
   if (!nativeDesktopAvailable()) throw new Error('desktop_required');
   return (window as unknown as { __TAURI__: { core: { invoke: (name: string, args?: Record<string, string>) => Promise<T> } } }).__TAURI__.core.invoke(command, args);
 }
-export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () => void; tunnelReady?: boolean }) {
+export interface ChatGPTSetupHandle { edit: () => void }
+export const ChatGPTSetup = forwardRef<ChatGPTSetupHandle, {onSaved?: () => void; tunnelReady?: boolean; onEditAvailabilityChange?: (value: boolean) => void}>(function ChatGPTSetup({onSaved, tunnelReady = false, onEditAvailabilityChange}, ref) {
   useInterfaceLanguage();
   const [saved, setSaved] = useState(empty);
   const [client, setClient] = useState('');
@@ -23,6 +24,18 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useTransientState<'idle' | 'saving' | 'saved' | 'error'>('idle', 'idle', value => value === 'saved' ? SUCCESS_FEEDBACK_MS : null);
   const [linkError, setLinkError] = useState('');
+  const [failureCode, setFailureCode] = useState('');
+  const editRef = useRef<HTMLButtonElement>(null);
+  const returnToEdit = useRef(false);
+  useEffect(() => {
+    if (!editing && returnToEdit.current) {
+      returnToEdit.current = false;
+      editRef.current?.focus();
+    }
+  }, [editing]);
+  function beginEditing() { if (loading || status === 'saving') return; setEditing(true); setStatus('idle'); }
+  useImperativeHandle(ref, () => ({edit: beginEditing}));
+  useEffect(() => { onEditAvailabilityChange?.(!loading && !editing && saved.configured && status !== 'saving'); }, [editing, loading, saved.configured, status, onEditAvailabilityChange]);
   const [copied, setCopied] = useTransientState(false, false);
   const [copyError, setCopyError] = useState(false);
   const [platform, setPlatform] = useState<ClientPlatform | null>(null);
@@ -64,6 +77,13 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const isMac = platform?.os === 'macos';
   const chip = platform?.arch === 'aarch64' || platform?.arch === 'arm64' ? 'arm64' : platform?.arch === 'x86_64' || platform?.arch === 'amd64' ? 'amd64' : 'unknown';
   const deviceKey = platform && ['macos', 'windows', 'linux'].includes(platform.os) && chip !== 'unknown' ? `connector.device_${platform.os}_${chip}` : 'connector.device_unknown';
+  const setupErrors: Record<string, string> = {
+    setup_client_invalid: msg('connector.setupClientInvalid'),
+    setup_tunnel_invalid: msg('connector.setupTunnelInvalid'),
+    setup_key_invalid: msg('connector.setupKeyInvalid'),
+    setup_write_failed: msg('connector.setupWriteFailed'),
+    setup_input_invalid: msg('connector.setupInputInvalid'),
+  };
   return <div className="connector-setup">
     <div className="cred-profile connector-setup-card connector-guided-card" aria-busy={loading}>
       <div className="cred-profile__head"><span className="cred-profile__name">{msg('connector.guidedTitle')}</span></div>
@@ -78,7 +98,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
           <label className="connector-step-label" htmlFor="chatgpt-client">{msg('connector.clientLabel')}</label>
           <div className="cred-field__input"><input id="chatgpt-client" readOnly value={client.split(/[\\/]/).at(-1) ?? ''} placeholder={msg('connector.clientPlaceholder')}/>
             {editing && <button type="button" className="cred-btn" disabled={loading || status === 'saving'} onClick={() => {
-              void invoke<string>('connector_pick_client').then(setClient).catch(error => { if (error !== 'client_selection_cancelled') setStatus('error'); });
+              void invoke<string>('connector_pick_client').then(value => {setClient(value);setStatus('idle');}).catch(error => { if (error !== 'client_selection_cancelled') {setFailureCode('setup_client_invalid');setStatus('error');} });
             }}>{msg('connector.chooseClient')}</button>}</div>
           <div className="connector-device-row">
             <span className="settings-hint connector-device">{msg('connector.deviceRecommendation', {device:msg(deviceKey)})}</span>
@@ -102,15 +122,16 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
                 setStatus('saving'); setCopied(false);
                 void invoke('connector_setup', { clientPath: client, tunnelId: tunnel.trim(), runtimeKey: key })
                   .then(() => { setSaved({ client_path: client, tunnel_id: tunnel.trim(), has_key: true, configured: true }); setKey(''); setEditing(false); setStatus('saved'); onSaved?.(); })
-                  .catch(() => { setKey(''); setStatus('error'); });
+                  .catch(error => { setKey(''); setFailureCode(String(error)); setStatus('error'); });
               }}>{msg('connector.saveSetup')}</button>
               {saved.configured && <button type="button" className="cred-btn" disabled={status === 'saving'} onClick={() => {
+                returnToEdit.current = true;
                 setClient(saved.client_path); setTunnel(saved.tunnel_id); setKey(''); setEditing(false); setStatus('idle'); setLinkError(''); setCopied(false);
               }}>{msg('connector.cancelSetup')}</button>}
               <span className="settings-hint">{msg('connector.savePrerequisite')}</span>
-            </> : <button type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
+            </> : <button ref={editRef} type="button" className="cred-btn" onClick={beginEditing}>{msg('connector.editSetup')}</button>}
           </div>}
-          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{msg(`connector.setup_${status}`)}</p>}
+          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role={status === 'error' ? 'alert' : 'status'}>{status === 'error' ? setupErrors[failureCode] ?? msg('connector.setup_error') : msg(`connector.setup_${status}`)}</p>}
         </li>
         <li>
           <span className="connector-step-label">{msg('connector.guidedChatGPTTitle')}</span>
@@ -138,4 +159,4 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
       try {await navigator.clipboard.writeText(msg('connector.aiSetupPrompt')); setPromptCopied(true);} catch {setPromptCopyError(true);}
     }}>{msg('connector.copySetupPrompt')}</button></div>{promptCopied && <FeedbackNotice text={msg('connector.setupPromptCopied')} onDismiss={() => setPromptCopied(false)}/>}{promptCopyError && <p className="settings-hint connector-error" role="alert">{msg('connector.setupPromptCopyFailed')}</p>}</details>
   </div>;
-}
+});

@@ -9,6 +9,15 @@ on:
       - 'frontend/**'
       - 'mock-data/**'
   workflow_dispatch:
+    inputs:
+      scan_b63_only:
+        description: 'Analyze the existing Chrome-blocked b63 artifact without running its installer'
+        type: boolean
+        default: false
+      compare_b62_b63:
+        description: 'Statically compare and scan the exact b62 and b63 installers; do not execute either'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,11 +28,13 @@ concurrency:
 
 jobs:
   installer:
+    if: ${{ !inputs.scan_b63_only && !inputs.compare_b62_b63 }}
     runs-on: windows-2022
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '56'
+      RIPPLE_BUILD_NUMBER: '70'
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +52,18 @@ jobs:
           if ($LASTEXITCODE) { throw 'Frontend dependencies failed' }
           npm --prefix desktop ci
           if ($LASTEXITCODE) { throw 'Desktop dependencies failed' }
+      - name: Safe-upgrade script syntax and Windows API binding
+        shell: powershell
+        run: |
+          foreach ($script in @('desktop/src-tauri/windows/prepare-upgrade.ps1', 'desktop/verify-windows-upgrade.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count) { throw $parseErrors[0].Message }
+          }
+          . ./desktop/src-tauri/windows/prepare-upgrade.ps1 -LibraryOnly
+          Initialize-LockOwners
+          Initialize-ProcessInspection
       - name: Backend tests on Windows NTFS
         working-directory: backend
         run: uv run --locked pytest -q
@@ -48,6 +71,18 @@ jobs:
         run: uv run --project backend --locked python -m unittest discover -s desktop/tests -p 'test_*.py' -v
       - name: Build frontend
         run: npm --prefix frontend run build
+      - name: MCP configuration UI regression tests
+        run: npm --prefix frontend test -- src/components/ConnectorSetup.test.tsx src/components/ChatGPTSetup.test.tsx
+      - name: Download official tunnel-client for offline command validation
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'tunnel-client-v0.0.16-windows-amd64.zip'
+          Invoke-WebRequest 'https://github.com/openai/tunnel-client/releases/download/v0.0.16/tunnel-client-v0.0.16-windows-amd64.zip' -OutFile $archive
+          $directory = Join-Path $env:RUNNER_TEMP 'ripple-synthetic-tunnel-client'
+          Expand-Archive $archive $directory
+          $clients = @(Get-ChildItem $directory -Recurse -Filter tunnel-client.exe)
+          if ($clients.Count -ne 1) { throw 'Expected one official tunnel executable' }
+          "RIPPLE_TEST_TUNNEL_CLIENT=$($clients[0].FullName)" >> $env:GITHUB_ENV
       - name: Stage and verify relocatable backend
         shell: pwsh
         run: |
@@ -60,8 +95,12 @@ jobs:
           $env:RIPPLE_DATA_DIR = "$stage/data"
           & "$stage/python/python.exe" "$stage/verify.py"
           if ($LASTEXITCODE) { throw 'Relocated backend failed' }
+          & "$stage/python/python.exe" desktop/verify-mcp-runtime.py $stage --tunnel-client $env:RIPPLE_TEST_TUNNEL_CLIENT
+          if ($LASTEXITCODE) { throw 'Packaged MCP startup or protocol verification failed' }
           Remove-Item "$stage/data" -Recurse -Force
           Remove-Item "$stage/verify.py"
+          & "$stage/python/python.exe" -B desktop/stage-backend.py --check-clean $stage
+          if ($LASTEXITCODE) { throw 'Generated files contaminated the backend payload' }
           Remove-Item Env:PYTHONPATH
           Remove-Item Env:RIPPLE_DATA_DIR
           $env:RIPPLE_APP_VERSION = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
@@ -74,6 +113,19 @@ jobs:
       - name: Build Windows x64 NSIS installer
         working-directory: desktop/src-tauri
         run: ../node_modules/.bin/tauri.cmd build --target x86_64-pc-windows-msvc --features custom-protocol --bundles nsis
+      - name: Scan clean installer statically before installation tests
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem 'desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe')
+          if ($installers.Count -ne 1) { throw 'Expected one candidate installer' }
+          $inputDirectory = Join-Path $env:RUNNER_TEMP 'ripple-candidate-security-input'
+          New-Item $inputDirectory -ItemType Directory | Out-Null
+          Copy-Item $installers[0].FullName $inputDirectory
+          $hash = (Get-FileHash $installers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{installer=$installers[0].Name;sha256=$hash;build=$env:RIPPLE_BUILD_NUMBER;commit=$env:RIPPLE_SOURCE_COMMIT} | ConvertTo-Json | Set-Content "$inputDirectory/build-verification.json" -Encoding utf8
+          desktop/scan-windows-artifact.ps1 -ArtifactDirectory $inputDirectory -ReportDirectory "$env:RUNNER_TEMP/ripple-candidate-security-report" -ExpectedSha256 $hash
+          $scan = Get-Content "$env:RUNNER_TEMP/ripple-candidate-security-report/security-analysis.json" -Raw | ConvertFrom-Json
+          if (-not $scan.completed -or $scan.verdict -ne 'no_detection_in_this_defender_scan') { throw 'Candidate security scan incomplete' }
       - name: Install and verify packaged runtime
         shell: pwsh
         run: desktop/verify-windows-install.ps1
@@ -82,4 +134,79 @@ jobs:
           name: Ripple-Windows-x64-b${{ env.RIPPLE_BUILD_NUMBER }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: desktop/dist/windows-artifact/*
           if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Ripple-Windows-b${{ env.RIPPLE_BUILD_NUMBER }}-security-analysis-${{ github.run_id }}
+          path: ${{ runner.temp }}/ripple-candidate-security-report/*
+          if-no-files-found: ignore
+          retention-days: 14
+  scan-existing-b63:
+    if: ${{ inputs.scan_b63_only }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 38855805897
+          name: Ripple-Windows-x64-b63-34e5c31836acfa6e37bfb89c0a9ec6e94791ec89
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ripple-security-input
+      - name: Statically scan exact b63 installer and extracted payload
+        shell: pwsh
+        run: desktop/scan-windows-artifact.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/ripple-security-input" -ReportDirectory "$env:RUNNER_TEMP/ripple-security-report" -ExpectedSha256 '2861bed27e52b7597f0b2511c8fe4022cddad217b699e1a430d1a8db6d52024d'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Ripple-b63-security-analysis-${{ github.run_id }}
+          path: ${{ runner.temp }}/ripple-security-report/*
+          if-no-files-found: warn
+          retention-days: 14
+  compare-existing-installers:
+    if: ${{ inputs.compare_b62_b63 }}
+    runs-on: windows-2022
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 38749023473
+          name: Ripple-Windows-x64-b62-87a137b12ad83312a67cdec6d117033ce88b4aa0
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ripple-compare-b62
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 38855805897
+          name: Ripple-Windows-x64-b63-34e5c31836acfa6e37bfb89c0a9ec6e94791ec89
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ripple-compare-b63
+      - name: Scan and inventory exact installers without executing them
+        shell: pwsh
+        run: |
+          desktop/scan-windows-artifact.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/ripple-compare-b62" -ReportDirectory "$env:RUNNER_TEMP/ripple-compare-report/b62" -ExpectedSha256 '92498b79a86fe6e20e9b2b762458411b5d3684bcd415fea5807a16334882cd84'
+          desktop/scan-windows-artifact.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/ripple-compare-b63" -ReportDirectory "$env:RUNNER_TEMP/ripple-compare-report/b63" -ExpectedSha256 '2861bed27e52b7597f0b2511c8fe4022cddad217b699e1a430d1a8db6d52024d'
+          python desktop/compare-windows-artifacts.py "$env:RUNNER_TEMP/ripple-compare-report/b62/payload-inventory.json" "$env:RUNNER_TEMP/ripple-compare-report/b63/payload-inventory.json" "$env:RUNNER_TEMP/ripple-compare-report/comparison.json"
+          if ($LASTEXITCODE) { throw 'Payload comparison failed' }
+          # Publish aggregate facts and product filenames only, not file hashes.
+          $comparison = Get-Content "$env:RUNNER_TEMP/ripple-compare-report/comparison.json" -Raw | ConvertFrom-Json
+          $summary = [ordered]@{oldFileCount=$comparison.oldFileCount;newFileCount=$comparison.newFileCount;
+            identicalFileCount=$comparison.identicalFileCount;added=$comparison.added;removed=$comparison.removed;
+            changed=$comparison.changed;binaryChanges=$comparison.binaryChanges;
+            packageVersionsIdentical=(@(Compare-Object $comparison.oldPackages $comparison.newPackages).Count -eq 0)} | ConvertTo-Json -Depth 6
+          $summary
+          "## Static b62 / b63 comparison`n`nAggregate facts and product filenames only. No file hashes. No inspected installer was executed. This is not a Chrome verdict.`n`n``````json`n$summary`n``````" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Ripple-b62-b63-comparison-${{ github.run_id }}
+          path: ${{ runner.temp }}/ripple-compare-report/**
+          if-no-files-found: warn
           retention-days: 14

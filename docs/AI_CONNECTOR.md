@@ -63,10 +63,16 @@ Use `interview_marks_status` to recover uncertain outcomes. A failed save keeps 
 In Settings → AI-assisted editing → MCP connection, select the AI software:
 
 - **Add to WorkBuddy**: confirm adding Ripple. Existing configuration is backed up and other connections are retained. Open “Experts · Skills · Connectors → Connectors → Custom connectors” in WorkBuddy, find Ripple and enable it. If it is missing, restart WorkBuddy and check again. Once enabled, ask directly in a conversation; no selection from the “+” menu is needed. An invalid configuration is left untouched. Backups are saved next to the WorkBuddy configuration with a `mcp.json.ripple-backup-` prefix.
-- **Add to Claude (Beta)**: Ripple opens its generated MCPB in Claude Desktop. Confirm installation there. Claude Desktop must be installed.
+- **Add to Claude (Beta)**: Ripple generates a local MCPB and requests opening it in Claude Desktop. Confirm installation there. Windows may have no `.mcpb` file association even when Claude is installed. In that case, use **Install the Claude extension manually**: export the extension or open its folder, then in Claude choose **Settings → Extensions → Advanced settings → Install Extension…** and select `Ripple.mcpb`. This is also available when automatic opening fails. No registry change or credential editing is needed. A dispatched open request does not prove that the installer appeared or the extension was installed.
 - **Open ChatGPT to add**: opens ChatGPT Plugins. Complete the existing tunnel setup first, copy the Tunnel ID, then choose “Add custom MCP server” and “Tunnel” in ChatGPT. Existing connections do not need to be added again.
 
 Keep Ripple open with MCP enabled. Adding configuration or opening an installer does not verify a successful AI tool call. After moving the Ripple App, add it again to update local paths. These buttons are currently delivered and tested as a macOS internal build; Windows client installation remains pending native validation.
+
+### Packaged Windows startup checks
+
+All packaged Python entry points initialize the dependency directory as a Python site directory before importing MCP. This processes the bundled pywin32 `.pth` and DLL bootstrap; adding the directory to `PYTHONPATH` alone is insufficient. Configuration JSON from the native window uses explicit UTF-8 bytes independently of the Windows console code page. Save failures return fixed stage codes, never raw exceptions, paths or keys.
+
+The Windows build pipeline runs `desktop/verify-mcp-runtime.py` both on staged resources and on the installed resources under a synthetic Unicode/space path. It uses the generated WorkBuddy JSON, Claude Node launcher, and ChatGPT profile's MCP command to perform `initialize`, `tools/list` and an authenticated synthetic Unicode read, twice per entry point. Windows also checks pywin32 imports. This is a packaged-adapter regression gate with a synthetic loopback server; it does not install third-party clients, connect to OpenAI's cloud, or replace actual client GUI and project read/write acceptance.
 
 ## Incremental continuation
 

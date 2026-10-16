@@ -105,17 +105,14 @@ def export_installation(data: Path, resources: Path, client: str, target: Path):
         write_private(target, json.dumps({"mcpServers": {"Ripple": {"type": "stdio", **config}}}, ensure_ascii=False, indent=2))
         enable_client(data, client)
         return
-    manifest = {"manifest_version": "0.3", "name": "ripple", "display_name": "Ripple", "version": "1.0.0",
+    manifest = {"manifest_version": "0.3", "name": "ripple", "display_name": "Ripple", "version": "1.0.1",
                 "description": "Read, analyze and edit the current Ripple interview. 读取、分析与编辑 Ripple 当前访谈。",
                 "author": {"name": "Ripple"}, "compatibility": {"platforms": ["win32" if os.name == "nt" else "darwin"]},
                 "server": {"type": "node", "entry_point": "server/index.js",
                            "mcp_config": {"command": "node", "args": ["${__dirname}/server/index.js"]}}}
     # Node is supplied by Claude Desktop. Python and dependencies stay in the Ripple bundle.
-    script = ("const {spawn}=require('node:child_process');\nconst c=" + json.dumps(config) + ";\n"
-              "const p=spawn(c.command,c.args,{env:{...process.env,...c.env},stdio:'inherit'});\n"
-              "p.on('error',()=>{console.error('Open Ripple and re-export its extension.');process.exit(1)});\n"
-              "p.on('exit',code=>process.exit(code??1));\n"
-              "for(const s of ['SIGTERM','SIGINT'])process.on(s,()=>p.kill(s));\n")
+    script = ("const c=" + json.dumps(config) + ";\n"
+              + Path(__file__).with_name("claude_stdio.cjs").read_text(encoding="utf-8"))
     # Private export contains this user's executable paths, never credentials or documents.
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "wb") as output:

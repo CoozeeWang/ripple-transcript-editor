@@ -105,7 +105,7 @@ def test_setup_rejects_non_executable_before_saving_any_configuration(tmp_path):
     client.write_text('Synthetic non-executable fixture, never run')
     client.chmod(0o600)
     root = tmp_path / 'data'
-    with pytest.raises(ValueError, match='executable'):
+    with pytest.raises(ValueError, match='setup_client_invalid'):
         save_setup(root, tmp_path, {'client_path': str(client), 'tunnel_id': 'tunnel_synthetic',
                                    'runtime_key': 'synthetic-key-' * 4})
     assert not (root / 'connector').exists()
