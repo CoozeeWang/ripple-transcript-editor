@@ -25,6 +25,14 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const [linkError, setLinkError] = useState('');
   const [failureCode, setFailureCode] = useState('');
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const returnToEdit = useRef(false);
+  useEffect(() => {
+    if (!editing && returnToEdit.current) {
+      returnToEdit.current = false;
+      editRef.current?.focus();
+    }
+  }, [editing]);
   useEffect(() => {
     if (status !== 'error') return;
     errorRef.current?.focus();
@@ -119,12 +127,13 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
                   .catch(error => { setKey(''); setFailureCode(String(error)); setStatus('error'); });
               }}>{msg('connector.saveSetup')}</button>
               {saved.configured && <button type="button" className="cred-btn" disabled={status === 'saving'} onClick={() => {
+                returnToEdit.current = true;
                 setClient(saved.client_path); setTunnel(saved.tunnel_id); setKey(''); setEditing(false); setStatus('idle'); setLinkError(''); setCopied(false);
               }}>{msg('connector.cancelSetup')}</button>}
               <span className="settings-hint">{msg('connector.savePrerequisite')}</span>
-            </> : <button type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
+            </> : <button ref={editRef} type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
           </div>}
-          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p ref={errorRef} tabIndex={status === 'error' ? -1 : undefined} className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role={status === 'error' ? 'alert' : 'status'}>{status === 'error' ? setupErrors[failureCode] ?? msg('connector.setup_error') : msg(`connector.setup_${status}`)}</p>}
+          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p ref={errorRef} tabIndex={status === 'error' ? -1 : undefined} className={`settings-hint${status === 'error' ? ' connector-error connector-setup-error' : ''}`} role={status === 'error' ? 'alert' : 'status'}>{status === 'error' ? setupErrors[failureCode] ?? msg('connector.setup_error') : msg(`connector.setup_${status}`)}</p>}
         </li>
         <li>
           <span className="connector-step-label">{msg('connector.guidedChatGPTTitle')}</span>

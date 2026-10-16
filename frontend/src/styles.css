@@ -2724,6 +2724,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .settings-mcp .connector-setup a { color: var(--color-accent); width: fit-content; text-underline-offset: 3px; }
 .settings-mcp .connector-setup a:focus-visible, .settings-mcp summary:focus-visible { outline: 1px solid var(--color-focus); outline-offset: 3px; }
 .settings-mcp .connector-error { color: var(--color-danger); }
+.settings-mcp .connector-setup-error:focus { outline: 1px solid var(--color-focus); outline-offset: 3px; border-radius: 4px; }
 .settings-mcp summary { cursor: pointer; }
 
 

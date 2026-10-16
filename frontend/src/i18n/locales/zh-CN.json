@@ -1680,8 +1680,9 @@
     "claudeExportError": "扩展生成或导出失败。请检查保存位置的写入权限与可用空间，再重试。",
     "claudeOpenError": "扩展已生成，但无法自动打开。请使用下方手动安装步骤；这不代表 Claude 未安装。",
     "claudeRevealError": "无法打开扩展文件夹。请使用“导出 Claude 扩展”保存到自己选择的位置，再手动导入。",
-    "added_claude_manual": "扩展已生成，但 Windows 没有可用的扩展文件关联。请按下方说明在 Claude 内手动安装。",
-    "added_claude_exported": "扩展已导出。请在 Claude 的扩展设置中选择该文件并确认安装；导出不代表连接已建立。"
+    "added_claude_manual": "扩展已生成，但 Windows 未找到指向 Claude 的扩展关联。请按下方说明在 Claude 内手动安装。",
+    "added_claude_exported": "扩展已导出。请在 Claude 的扩展设置中选择该文件并确认安装；导出不代表连接已建立。",
+    "claudeLocalConfigurationHint": "本机已配置只表示 Ripple 的本机设置已保存，不代表 Claude 已安装扩展或已连接。请在 Claude 中确认安装，再进行一次读取验证。"
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。"

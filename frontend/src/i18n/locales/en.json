@@ -1680,8 +1680,9 @@
     "claudeExportError": "The extension could not be generated or exported. Check write access and free space at the save location, then retry.",
     "claudeOpenError": "The extension was generated, but could not be opened automatically. Use the manual installation steps below; this does not establish that Claude is missing.",
     "claudeRevealError": "The extension folder could not be opened. Use Export Claude extension to save it to a location you choose, then import it manually.",
-    "added_claude_manual": "The extension was generated, but Windows has no usable extension file association. Install it inside Claude using the instructions below.",
-    "added_claude_exported": "Extension exported. Choose the file in Claude extension settings and confirm installation; export does not establish a connection."
+    "added_claude_manual": "Extension generated, but Windows has no extension association pointing to Claude. Install it inside Claude using the instructions below.",
+    "added_claude_exported": "Extension exported. Choose the file in Claude extension settings and confirm installation; export does not establish a connection.",
+    "claudeLocalConfigurationHint": "Configured locally means Ripple saved its local settings. It does not mean Claude installed the extension or connected. Confirm installation in Claude, then verify a read."
   },
   "desktopRuntime": {
     "backendUnavailable": "Ripple’s local service couldn’t start. Restart Ripple or check the application logs."

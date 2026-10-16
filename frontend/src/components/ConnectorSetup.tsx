@@ -32,7 +32,7 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
   useEffect(()=>{let disposed=false;const check=()=>{void invoke<boolean>('connector_tunnel_ready').then(value=>{if(!disposed)setTunnelReady(value);}).catch(()=>{if(!disposed)setTunnelReady(false);});};if(client==='chatgpt')check();const timer=client==='chatgpt'?setInterval(check,5000):undefined;return()=>{disposed=true;clearInterval(timer);};},[client,revision]);
   useEffect(() => {
     let disposed = false;
-    void invoke<ClientStatus>('connector_client_status').then(value => {if (!disposed) {setClient(value.client);setConfigured(value.configured);}})
+    void invoke<ClientStatus>('connector_client_status').then(value => {if (!disposed) {setClient(value.client);setManualOpen(value.client === 'claude');setConfigured(value.configured);}})
       .catch(() => {if (!disposed) setError(true);}).finally(() => {if (!disposed) setBusy(false);});
     return () => {disposed = true;};
   }, []);
@@ -41,12 +41,13 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
     catch {setConfigured(null);}
   }
   async function select(value: Client) {
-    setManualOpen(false);
+    setManualOpen(value === 'claude');
     setBusy(true); setError(false); setActionError(''); setExported(''); setDeleted(false);
     try {await invoke('connector_client_select', {client: value}); setClient(value);await refreshConfiguration();}
     catch {setError(true);} finally {setBusy(false);}
   }
   async function addClient() {
+    if (client === 'claude') setManualOpen(true);
     setBusy(true); setError(false); setActionError(''); setExported(''); setDeleted(false);
     try {const result = await invoke<string>('connector_client_add', {client, language: interfaceLanguage()}); setExported(result === 'cancelled' ? '' : result);if(result === 'claude_manual')setManualOpen(true);await refreshConfiguration();}
     catch (error) {setError(true);if(client === 'claude')setManualOpen(true);setActionError(String(error) === 'export_failed' ? 'export' : String(error) === 'claude_open_failed' ? 'open' : '');await refreshConfiguration();} finally {setBusy(false);}
@@ -95,6 +96,7 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
       {error && <p className="settings-hint connector-error" role="alert">{actionError === 'export' ? msg('connector.claudeExportError') : actionError === 'open' ? msg('connector.claudeOpenError') : actionError === 'reveal' ? msg('connector.claudeRevealError') : msg(`connector.addError_${client}`)}</p>}
       {client === 'claude' && <details className="connector-step-help" open={manualOpen} onToggle={event => setManualOpen(event.currentTarget.open)}>
         <summary>{msg('connector.claudeManualTitle')}</summary>
+        <p className="settings-hint">{msg('connector.claudeLocalConfigurationHint')}</p>
         <p className="settings-hint">{msg('connector.claudeManualSteps')}</p>
         <div className="cred-profile__actions">
           <button type="button" className="cred-btn" disabled={busy} onClick={() => void claudeManual('export')}>{msg('connector.claudeExport')}</button>

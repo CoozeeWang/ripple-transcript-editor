@@ -168,7 +168,7 @@ it.each(['zh-CN','en'] as const)('offers manual Claude import when Windows has n
  const original=invoke.getMockImplementation()!;
  invoke.mockImplementation(command=>command==='connector_client_add'?Promise.resolve('claude_manual'):original(command));
  fireEvent.click(ui.getByRole('button',{name:language==='en'?'Add to Claude':'添加到 Claude'}));
- await waitFor(()=>expect(ui.getByRole('status').textContent).toContain(language==='en'?'no usable extension file association':'没有可用的扩展文件关联'));
+ await waitFor(()=>expect(ui.getByRole('status').textContent).toContain(language==='en'?'no extension association pointing to Claude':'未找到指向 Claude 的扩展关联'));
  const details=ui.container.querySelector('details')!;
  expect(details.open).toBe(true);
  expect(details.textContent).toContain('Ripple.mcpb');
@@ -203,4 +203,18 @@ it.each(['export_failed','claude_open_failed'])('gives a stage-specific manual r
  await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain(code==='export_failed'?'生成或导出失败':'扩展已生成'));
  expect(ui.container.querySelector('details')!.open).toBe(true);
  expect(ui.queryByRole('status')).toBeNull();
+});
+
+it.each(['zh-CN','en'] as const)('shows manual Claude recovery before adding and reopens it after dispatch (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {ui}=fixture();
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
+ const details=ui.container.querySelector('details')!;
+ expect(details.open).toBe(true);
+ expect(details.textContent).toContain(language==='en'?'does not mean Claude installed':'不代表 Claude 已安装');
+ fireEvent.click(ui.getByText(language==='en'?'Install the Claude extension manually':'手动安装 Claude 扩展'));
+ await waitFor(()=>expect(details.open).toBe(false));
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Add to Claude':'添加到 Claude'}));
+ await waitFor(()=>expect(details.open).toBe(true));
+ expect(details.textContent).toContain('Ripple.mcpb');
 });

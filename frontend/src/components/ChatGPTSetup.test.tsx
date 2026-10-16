@@ -26,12 +26,16 @@ it.each(['zh-CN','en'] as const)('focuses a persistent visible alert after an in
  await waitFor(()=>expect((ui.getByLabelText(language==='en'?'Tunnel client':'连接程序（tunnel-client）') as HTMLInputElement).value).toBe('not-tunnel-client.exe'));
  fireEvent.click(ui.getByText(save));
  await waitFor(()=>expect(ui.getByRole('alert')).toBe(document.activeElement));
+ const retry=ui.getByRole('button',{name:save});
+ retry.focus();fireEvent.click(retry);
+ await waitFor(()=>expect(ui.getByRole('alert')).toBe(document.activeElement));
  expect(onSaved).not.toHaveBeenCalled();
  expect(ui.getByRole('alert').textContent).not.toContain('setup_client_invalid');
  expect(ui.getByText(save).hasAttribute('disabled')).toBe(false);
  fireEvent.click(ui.getByText(language==='en'?'Cancel':'取消'));
  expect((ui.getByLabelText(language==='en'?'Tunnel client':'连接程序（tunnel-client）') as HTMLInputElement).value).toBe('tunnel-client');
  expect(ui.queryByRole('alert')).toBeNull();
+ expect(document.activeElement).toBe(ui.getByRole('button',{name:edit}));
 });
 it.each(['zh-CN','en'] as const)('reports a safe configuration-write stage and clears entered keys (%s)',async language=>{
  await setInterfaceLanguage(language);
