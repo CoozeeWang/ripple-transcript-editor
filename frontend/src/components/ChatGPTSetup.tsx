@@ -14,7 +14,7 @@ async function invoke<T>(command: string, args?: Record<string, string>): Promis
   return (window as unknown as { __TAURI__: { core: { invoke: (name: string, args?: Record<string, string>) => Promise<T> } } }).__TAURI__.core.invoke(command, args);
 }
 export interface ChatGPTSetupHandle { edit: () => void }
-export const ChatGPTSetup = forwardRef<ChatGPTSetupHandle, {onSaved?: () => void; tunnelReady?: boolean; onEditingChange?: (value: boolean) => void}>(function ChatGPTSetup({onSaved, tunnelReady = false, onEditingChange}, ref) {
+export const ChatGPTSetup = forwardRef<ChatGPTSetupHandle, {onSaved?: () => void; tunnelReady?: boolean; onEditAvailabilityChange?: (value: boolean) => void}>(function ChatGPTSetup({onSaved, tunnelReady = false, onEditAvailabilityChange}, ref) {
   useInterfaceLanguage();
   const [saved, setSaved] = useState(empty);
   const [client, setClient] = useState('');
@@ -33,9 +33,9 @@ export const ChatGPTSetup = forwardRef<ChatGPTSetupHandle, {onSaved?: () => void
       editRef.current?.focus();
     }
   }, [editing]);
-  function beginEditing() { setEditing(true); setStatus('idle'); }
+  function beginEditing() { if (loading || status === 'saving') return; setEditing(true); setStatus('idle'); }
   useImperativeHandle(ref, () => ({edit: beginEditing}));
-  useEffect(() => { onEditingChange?.(editing); }, [editing, onEditingChange]);
+  useEffect(() => { onEditAvailabilityChange?.(!loading && !editing && saved.configured && status !== 'saving'); }, [editing, loading, saved.configured, status, onEditAvailabilityChange]);
   const [copied, setCopied] = useTransientState(false, false);
   const [copyError, setCopyError] = useState(false);
   const [platform, setPlatform] = useState<ClientPlatform | null>(null);

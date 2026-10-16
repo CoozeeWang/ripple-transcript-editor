@@ -229,6 +229,7 @@ it.each(['zh-CN','en'] as const)('shares ChatGPT editing state across the adjace
  await waitFor(()=>expect(ui.getAllByRole('button',{name:edit})).toHaveLength(2));
  const adjacent=ui.getAllByRole('button',{name:edit})[0];
  expect(adjacent.nextElementSibling?.textContent).toMatch(/删除|Delete/);
+ await waitFor(()=>expect((adjacent as HTMLButtonElement).disabled).toBe(false));
  fireEvent.click(adjacent);
  const tunnel=ui.getByLabelText(language==='en'?'Tunnel ID':'隧道标识（Tunnel ID）') as HTMLInputElement;
  await waitFor(()=>expect(tunnel.readOnly).toBe(false));
@@ -239,4 +240,18 @@ it.each(['zh-CN','en'] as const)('shares ChatGPT editing state across the adjace
  fireEvent.click(ui.getAllByRole('button',{name:edit})[1]);
  expect(tunnel.readOnly).toBe(false);
  expect(invoke.mock.calls.some(([name])=>name==='connector_setup')).toBe(false);
+});
+
+it('keeps the adjacent edit entry disabled until saved configuration is loaded',async()=>{
+ let finish:(value:unknown)=>void=()=>{};
+ const pending=new Promise(resolve=>{finish=resolve;});
+ const invoke=vi.fn(async(command:string)=>command==='connector_client_status'?{client:'chatgpt',configured:{chatgpt:true,claude:false,workbuddy:false}}:command==='connector_setup_status'?pending:command==='connector_client_platform'?{os:'windows',arch:'x86_64'}:false);
+ (window as unknown as {__TAURI__:unknown}).__TAURI__={core:{invoke}};
+ const ui=render(<ConnectorSetup/>);
+ const entry=await ui.findByRole('button',{name:'修改配置'});
+ expect((entry as HTMLButtonElement).disabled).toBe(true);
+ await act(async()=>finish({client_path:'C:\\Synthetic\\tunnel-client.exe',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}));
+ await waitFor(()=>expect((entry as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(entry);
+ expect((ui.getByLabelText('隧道标识（Tunnel ID）') as HTMLInputElement).readOnly).toBe(false);
 });
