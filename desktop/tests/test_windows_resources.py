@@ -28,8 +28,11 @@ class WindowsResourcesTest(unittest.TestCase):
         before_uninstall = template.index('Call RipplePrepareUpgrade', template.index('reinst_uninstall:'))
         self.assertLess(before_uninstall, template.index("ExecWait '$R1'", before_uninstall))
         old_directory = template.index('ReadRegStr $INSTDIR SHCTX')
-        self.assertLess(old_directory, before_uninstall)
-        self.assertIn('Pop $INSTDIR', template[before_uninstall:])
+        old_guard = template.index('Call RipplePrepareUpgrade', old_directory)
+        self.assertLess(before_uninstall, old_directory)
+        self.assertLess(old_directory, old_guard)
+        self.assertLess(old_guard, template.index("ExecWait '$R1'", old_guard))
+        self.assertIn('Pop $INSTDIR', template[old_guard:])
         install = template[template.index('Section Install'):]
         self.assertLess(install.index('Call RipplePrepareUpgrade'), install.index('File "${MAINBINARYSRCPATH}"'))
         self.assertIn('AllowSkipFiles off', template)

@@ -21,9 +21,9 @@ Function ${PREFIX}RipplePrepareUpgrade
         Quit
       ${EndIf}
       ${If} $LANGUAGE == 2052
-        StrCpy $2 "尚未替换文件。$\r$\n$1$\r$\n$\r$\n请先在 Ripple 保存未完成内容并正常退出；如果客户端反复启动连接器，只停用该客户端的 Ripple 连接器，然后重试。取消将保留原安装。"
+        StrCpy $2 "尚未替换文件。$\r$\n$1$\r$\n$\r$\n请先在 Ripple 保存未完成内容并正常退出；如果客户端反复启动连接器，只停用该客户端的 Ripple 连接器，然后重试。取消将停止本次安装，不会跳过占用文件。"
       ${Else}
-        StrCpy $2 "No files have been replaced.$\r$\n$1$\r$\n$\r$\nSave unfinished work in Ripple and exit normally. If a client keeps restarting its adapter, disable only its Ripple connector, then retry. Cancel keeps the existing installation."
+        StrCpy $2 "No files have been replaced.$\r$\n$1$\r$\n$\r$\nSave unfinished work in Ripple and exit normally. If a client keeps restarting its adapter, disable only its Ripple connector, then retry. Cancel stops this operation without skipping occupied files."
       ${EndIf}
       MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$2" IDRETRY ripple_retry
       SetErrorLevel 20

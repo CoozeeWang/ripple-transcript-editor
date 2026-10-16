@@ -337,6 +337,8 @@ Function PageLeaveReinstall
       SetErrorLevel 20
       Quit
     ${EndIf}
+    ; Check both the destination and registered old directory before removing anything.
+    Call RipplePrepareUpgrade
     Push $INSTDIR
     ReadRegStr $INSTDIR SHCTX "${MANUPRODUCTKEY}" ""
     Call RipplePrepareUpgrade

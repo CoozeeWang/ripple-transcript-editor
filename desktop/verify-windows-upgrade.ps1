@@ -66,11 +66,15 @@ $adapter=Start-SyntheticPython "-m app.connector_mcp --credential-file `"$key`""
 try {
  $loaded=$false
  for($i=0;$i -lt 60;$i++) {
+  $adapter.Refresh()
   if($adapter.HasExited){throw 'Synthetic adapter exited before upgrade'}
   try { $loaded=@($adapter.Modules | Where-Object { $_.ModuleName -ieq '_asyncio.pyd' }).Count -gt 0 } catch { }
   if($loaded){break};Start-Sleep -Milliseconds 250
  }
- Assert $loaded 'Adapter did not load the reported locked module'
+ if (-not $loaded) {
+  $moduleNames = @($adapter.Modules | Where-Object { $_.ModuleName -match 'python|asyncio|\.pyd$' } | ForEach-Object { $_.ModuleName }) -join ', '
+  throw "Adapter did not load the reported locked module; observed: $moduleNames"
+ }
  $upgrade=Start-Process $Installer -ArgumentList "/S /UPDATE /D=$Installation" -Wait -PassThru
  Assert ($upgrade.ExitCode -eq 0) 'Upgrade failed with live adapter'
  Assert ($adapter.WaitForExit(5000)) 'Owned adapter was not released'
