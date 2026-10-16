@@ -6,6 +6,10 @@ Ripple does not operate or require a shared public connection server. Local conn
 
 ## ChatGPT web
 
+Use a separate tunnel for each computer when running Ripple simultaneously. Sharing one tunnel between computers can send a summary request to one computer and its page request to another, invalidating the snapshot.
+
+On Windows, Ripple's tunnel process inherits explicit HTTP/HTTPS/ALL_PROXY environment variables. When none is present, it reads the current user's static Windows Internet proxy and applies its HTTPS endpoint to the tunnel child only, preserving local loopback access and proxy exclusions. This does not change system settings or save proxy credentials. PAC auto-configuration scripts are not resolved by this fallback; use a static system proxy, an explicit HTTPS_PROXY, or your network administrator's approved route when needed. A successful local readiness check alone does not prove cloud polling or an actual ChatGPT tool call.
+
 Ripple’s current acceptance covers ChatGPT web. Desktop availability and invocation must be verified separately, even when using the same personal tunnel.
 
 Use your own OpenAI Secure MCP Tunnel. Create it on the OpenAI connection platform, download the official tunnel-client, then select the executable and enter the Tunnel ID and Runtime API key in Ripple. The ID identifies the tunnel; the runtime key authorizes that transport and is not a model API key. Existing configuration is reused, including its protected key. Add Ripple in ChatGPT using that tunnel. This is a personal/private connection, not a publicly distributed ChatGPT plugin. See [personal tunnel setup](AI_CONNECTOR.md) and [OpenAI's tunnel documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).

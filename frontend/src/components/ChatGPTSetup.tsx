@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from '../hooks/useTransientState';
 import { FeedbackNotice } from './FeedbackNotice';
 import { Trans } from 'react-i18next';
@@ -24,6 +24,12 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
   const [status, setStatus] = useTransientState<'idle' | 'saving' | 'saved' | 'error'>('idle', 'idle', value => value === 'saved' ? SUCCESS_FEEDBACK_MS : null);
   const [linkError, setLinkError] = useState('');
   const [failureCode, setFailureCode] = useState('');
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (status !== 'error') return;
+    errorRef.current?.focus();
+    errorRef.current?.scrollIntoView?.({block: 'nearest'});
+  }, [status, failureCode]);
   const [copied, setCopied] = useTransientState(false, false);
   const [copyError, setCopyError] = useState(false);
   const [platform, setPlatform] = useState<ClientPlatform | null>(null);
@@ -86,7 +92,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
           <label className="connector-step-label" htmlFor="chatgpt-client">{msg('connector.clientLabel')}</label>
           <div className="cred-field__input"><input id="chatgpt-client" readOnly value={client.split(/[\\/]/).at(-1) ?? ''} placeholder={msg('connector.clientPlaceholder')}/>
             {editing && <button type="button" className="cred-btn" disabled={loading || status === 'saving'} onClick={() => {
-              void invoke<string>('connector_pick_client').then(setClient).catch(error => { if (error !== 'client_selection_cancelled') setStatus('error'); });
+              void invoke<string>('connector_pick_client').then(value => {setClient(value);setStatus('idle');}).catch(error => { if (error !== 'client_selection_cancelled') {setFailureCode('setup_client_invalid');setStatus('error');} });
             }}>{msg('connector.chooseClient')}</button>}</div>
           <div className="connector-device-row">
             <span className="settings-hint connector-device">{msg('connector.deviceRecommendation', {device:msg(deviceKey)})}</span>
@@ -118,7 +124,7 @@ export function ChatGPTSetup({ onSaved, tunnelReady = false }: { onSaved?: () =>
               <span className="settings-hint">{msg('connector.savePrerequisite')}</span>
             </> : <button type="button" className="cred-btn" onClick={() => { setEditing(true); setStatus('idle'); }}>{msg('connector.editSetup')}</button>}
           </div>}
-          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role="status">{status === 'error' ? setupErrors[failureCode] ?? msg('connector.setup_error') : msg(`connector.setup_${status}`)}</p>}
+          {status === 'saved' ? <FeedbackNotice text={msg('connector.setup_saved')} onDismiss={() => setStatus('idle')}/> : status !== 'idle' && <p ref={errorRef} tabIndex={status === 'error' ? -1 : undefined} className={`settings-hint${status === 'error' ? ' connector-error' : ''}`} role={status === 'error' ? 'alert' : 'status'}>{status === 'error' ? setupErrors[failureCode] ?? msg('connector.setup_error') : msg(`connector.setup_${status}`)}</p>}
         </li>
         <li>
           <span className="connector-step-label">{msg('connector.guidedChatGPTTitle')}</span>

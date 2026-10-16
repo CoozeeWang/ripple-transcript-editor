@@ -6,6 +6,7 @@ compile_error!("Daily builds require --features custom-protocol; otherwise Tauri
 mod file_transfer;
 mod project_icon;
 mod backend_runtime;
+mod tunnel_proxy;
 mod native_menu;
 mod grants;
 mod pdf_print;
@@ -495,7 +496,9 @@ fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, Connect
     let _ = fs::remove_file(data.join("health.url"));
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let child = backend_runtime::background_command(client).args(["run", "--config"]).arg(data.join("tunnel.yaml"))
+    let mut command = backend_runtime::background_command(client);
+    tunnel_proxy::apply(&mut command);
+    let child = command.args(["run", "--config"]).arg(data.join("tunnel.yaml"))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
         .env("RIPPLE_DATA_DIR", app_data(&app).map_err(|_| "data_unavailable")?)
         .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;

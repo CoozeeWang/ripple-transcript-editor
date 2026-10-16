@@ -9,11 +9,30 @@ vi.mock('../lib/tunnelClientRelease',async original=>({...await original<typeof 
 const release={tag_name:'v0.0.99',draft:false,prerelease:false,assets:[{name:'tunnel-client-v0.0.99-darwin-arm64.zip',state:'uploaded',browser_download_url:'https://github.com/openai/tunnel-client/releases/download/v0.0.99/tunnel-client-v0.0.99-darwin-arm64.zip'}]};
 beforeEach(()=>vi.mocked(latestTunnelRelease).mockResolvedValue(release));afterEach(async()=>{cleanup();vi.restoreAllMocks();vi.useRealTimers();await setInterfaceLanguage('zh-CN');});
 function fixture(ready=false){
- const invoke=vi.fn(async(command:string)=>command==='connector_setup_status'?{client_path:'/synthetic/tunnel-client',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}:command==='connector_client_platform'?{os:'macos',arch:'aarch64'}:command==='connector_client_add'?'chatgpt':undefined);
+ const invoke=vi.fn(async(command:string):Promise<unknown>=>command==='connector_setup_status'?{client_path:'/synthetic/tunnel-client',tunnel_id:'tunnel_synthetic',has_key:true,configured:true}:command==='connector_client_platform'?{os:'macos',arch:'aarch64'}:command==='connector_client_add'?'chatgpt':undefined);
  (window as unknown as {__TAURI__:unknown}).__TAURI__={core:{invoke}};
  const writeText=vi.fn(async()=>{});Object.defineProperty(navigator,'clipboard',{value:{writeText},configurable:true});
  const onSaved=vi.fn();const ui=render(<ChatGPTSetup tunnelReady={ready} onSaved={onSaved}/>);return {ui,invoke,writeText,onSaved};
 }
+it.each(['zh-CN','en'] as const)('focuses a persistent visible alert after an invalid executable, retaining saved configuration (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {ui,invoke,onSaved}=fixture();
+ const edit=language==='en'?'Edit configuration':'修改配置', save=language==='en'?'Save configuration':'保存配置';
+ await waitFor(()=>expect(ui.getByText(edit)).toBeTruthy());
+ fireEvent.click(ui.getByText(edit));
+ const original=invoke.getMockImplementation()!;
+ invoke.mockImplementation(command=>command==='connector_pick_client'?Promise.resolve('C:\\Synthetic 用户\\not-tunnel-client.exe'):command==='connector_setup'?Promise.reject('setup_client_invalid'):original(command));
+ fireEvent.click(ui.getByRole('button',{name:language==='en'?'Choose tunnel client':'选择连接程序'}));
+ await waitFor(()=>expect((ui.getByLabelText(language==='en'?'Tunnel client':'连接程序（tunnel-client）') as HTMLInputElement).value).toBe('not-tunnel-client.exe'));
+ fireEvent.click(ui.getByText(save));
+ await waitFor(()=>expect(ui.getByRole('alert')).toBe(document.activeElement));
+ expect(onSaved).not.toHaveBeenCalled();
+ expect(ui.getByRole('alert').textContent).not.toContain('setup_client_invalid');
+ expect(ui.getByText(save).hasAttribute('disabled')).toBe(false);
+ fireEvent.click(ui.getByText(language==='en'?'Cancel':'取消'));
+ expect((ui.getByLabelText(language==='en'?'Tunnel client':'连接程序（tunnel-client）') as HTMLInputElement).value).toBe('tunnel-client');
+ expect(ui.queryByRole('alert')).toBeNull();
+});
 it.each(['zh-CN','en'] as const)('reports a safe configuration-write stage and clears entered keys (%s)',async language=>{
  await setInterfaceLanguage(language);
  const {ui,invoke}=fixture();

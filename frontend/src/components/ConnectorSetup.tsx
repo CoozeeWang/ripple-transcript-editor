@@ -13,7 +13,7 @@ async function invoke<T>(command: string, args?: Record<string, string>): Promis
   if (!nativeDesktopAvailable()) throw new Error('desktop_required');
   return (window as unknown as {__TAURI__: {core: {invoke: (command: string, args?: Record<string, string>) => Promise<T>}}}).__TAURI__.core.invoke(command, args);
 }
-export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
+export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void; enabled?: boolean}) {
   useInterfaceLanguage();
   const [client, setClient] = useState<Client>('chatgpt');
   const [busy, setBusy] = useState(true);
@@ -74,7 +74,8 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
   }
   const clientName = client === 'chatgpt' ? 'ChatGPT' : client === 'claude' ? 'Claude' : 'WorkBuddy';
   const configurationLabel=(target:Client)=>msg(!configured ? 'connector.configurationUnknown' : configured[target] === true ? 'connector.configurationPresent' : configured[target] === false ? 'connector.configurationAbsent' : 'connector.configurationUnknown');
-  return <div className="connector-setup" aria-busy={busy}>
+  return <fieldset className="connector-settings-controls" disabled={!enabled}>
+    <div className="connector-setup" aria-busy={busy} inert={!enabled}>
     <div className="connector-client-selection">
       <div className="cred-profile__fields"><label className="cred-field">
         <span className="cred-field__label">{msg('connector.software')}</span>
@@ -102,10 +103,10 @@ export function ConnectorSetup({onSaved}: {onSaved?: () => void}) {
       </details>}
     </div>
     {client === 'chatgpt' && !busy && <ChatGPTSetup key={revision} onSaved={() => {setTunnelReady(false);void refreshConfiguration(); onSaved?.();}} tunnelReady={tunnelReady}/>}
-    {confirmDelete && <DeleteConnectorDialog clientName={clientName} busy={busy} error={deleteError} opener={deleteButtonRef} fallback={selectRef}
+    {enabled && confirmDelete && <DeleteConnectorDialog clientName={clientName} busy={busy} error={deleteError} opener={deleteButtonRef} fallback={selectRef}
       onCancel={() => {setConfirmDelete(null); setDeleteError('');}}
       onDelete={() => void deleteClient(confirmDelete)} />}
-  </div>;
+  </div></fieldset>;
 }
 
 function DeleteConnectorDialog({clientName,busy,error,opener,fallback,onCancel,onDelete}: {

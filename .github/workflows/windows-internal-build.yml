@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '62'
+      RIPPLE_BUILD_NUMBER: '63'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +48,8 @@ jobs:
         run: uv run --project backend --locked python -m unittest discover -s desktop/tests -p 'test_*.py' -v
       - name: Build frontend
         run: npm --prefix frontend run build
+      - name: MCP configuration UI regression tests
+        run: npm --prefix frontend test -- src/components/ConnectorSetup.test.tsx src/components/ChatGPTSetup.test.tsx
       - name: Download official tunnel-client for offline command validation
         shell: pwsh
         run: |

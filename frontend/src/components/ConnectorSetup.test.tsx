@@ -7,13 +7,26 @@ vi.mock('../lib/desktopFs', () => ({ nativeDesktopAvailable: () => true }));
 vi.mock('../lib/tunnelClientRelease', async original => ({...await original<typeof import('../lib/tunnelClientRelease')>(), latestTunnelRelease:vi.fn(async()=>({tag_name:'v0.0.99',draft:false,prerelease:false,assets:[]}))}));
 beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); await setInterfaceLanguage('zh-CN'); });
-function fixture(client = 'claude', configured = {chatgpt:true,claude:true,workbuddy:true}) {
+function fixture(client = 'claude', configured = {chatgpt:true,claude:true,workbuddy:true}, enabled = true) {
  const invoke=vi.fn(async(command:string):Promise<unknown>=>command==='connector_client_status'?{client,configured}:command==='connector_client_add'?client:command==='connector_setup_status'?{client_path:'',tunnel_id:'',has_key:false,configured:false}:command==='connector_client_platform'?{os:'macos',arch:'aarch64'}:false);
  (window as unknown as {__TAURI__: unknown}).__TAURI__={core:{invoke}};
  const onSaved=vi.fn();
- const ui=render(<ConnectorSetup onSaved={onSaved}/>);
+ const ui=render(<ConnectorSetup onSaved={onSaved} enabled={enabled}/>);
  return {ui,invoke,onSaved};
 }
+it.each(['chatgpt','claude','workbuddy'])('disables the entire %s configuration while MCP is off and restores it on enable',async client=>{
+ const {ui,invoke}=fixture(client,undefined,false);
+ await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe(client));
+ const controls=ui.container.querySelector('fieldset')!;
+ expect(controls.disabled).toBe(true);
+ expect(controls.querySelector('[inert]')).toBeTruthy();
+ for(const element of controls.querySelectorAll('button, input, select')) expect(element.matches(':disabled')).toBe(true);
+ expect(invoke.mock.calls.some(([name])=>['connector_client_add','connector_setup','connector_client_delete','connector_client_export'].includes(name))).toBe(false);
+ ui.rerender(<ConnectorSetup enabled/>);
+ expect(controls.disabled).toBe(false);
+ expect(controls.querySelector('[inert]')).toBeNull();
+ expect(ui.getByRole('combobox').matches(':disabled')).toBe(false);
+});
 it('opens the selected client installer without claiming AI connection',async()=>{
  const {ui,invoke}=fixture();
  await waitFor(()=>expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('claude'));
