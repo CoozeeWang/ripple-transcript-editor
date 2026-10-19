@@ -15,6 +15,7 @@ mod connector_config;
 mod install_target;
 mod updates;
 mod update_install;
+mod update_releases;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
 use std::fs::{self, OpenOptions};

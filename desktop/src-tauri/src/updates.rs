@@ -5,7 +5,6 @@ use tauri::{AppHandle, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
 
-const ENDPOINT: &str = "https://github.com/CoozeeWang/ripple-transcript-editor/releases/latest/download/latest.json";
 const RELEASES: &str = "https://github.com/CoozeeWang/ripple-transcript-editor/releases";
 const PUBLIC_KEY: &str = include_str!("../update-public.key.pub");
 const MAX_DOWNLOAD: u64 = 512 * 1024 * 1024;
@@ -112,6 +111,36 @@ fn verify_package(bytes: &[u8], signature: &str, public_key: &str, version: &str
     Ok(())
 }
 
+enum Checked { Available(Box<Update>), Current, Unavailable }
+async fn check_releases(app: &AppHandle) -> Result<Checked, &'static str> {
+    let client = crate::update_releases::client(Duration::from_secs(20))?;
+    let catalogs = crate::update_releases::discover(&client).await?;
+    if catalogs.is_empty() { return Ok(Checked::Unavailable); }
+    let current = app.package_info().version.to_string();
+    let mut found_newer = false;
+    for catalog in catalogs.into_iter().filter(|c| newer(&c.version.to_string(), &current)) {
+        found_newer = true;
+        let exit_app = app.clone();
+        let updater = app.updater_builder().pubkey(PUBLIC_KEY.trim())
+            .on_before_exit(move || { crate::stop_backend(&exit_app); exit_app.cleanup_before_exit(); })
+            .timeout(Duration::from_secs(20)).endpoints(vec![catalog.url.clone()])
+            .map_err(|_| "update_check_failed")?.build().map_err(|_| "update_check_failed")?;
+        match updater.check().await {
+            Ok(Some(update)) => {
+                let same_release = update.download_url.path().rsplit_once('/').map(|p|p.0)
+                    == catalog.url.path().rsplit_once('/').map(|p|p.0);
+                if update.version != catalog.version.to_string() || update.signature.trim().is_empty()
+                    || !same_release || !allowed_package(&update.download_url, cfg!(target_os = "macos")) { return Err("update_invalid_package"); }
+                return Ok(Checked::Available(Box::new(update)));
+            }
+            Ok(None) => return Err("update_invalid_package"),
+            Err(tauri_plugin_updater::Error::ReleaseNotFound | tauri_plugin_updater::Error::TargetNotFound(_) | tauri_plugin_updater::Error::TargetsNotFound(_)) => continue,
+            Err(_) => return Err("update_check_failed"),
+        }
+    }
+    Ok(if found_newer { Checked::Unavailable } else { Checked::Current })
+}
+
 #[tauri::command]
 pub fn update_status(state: State<'_, Updates>) -> Result<UpdateInfo, String> {
     Ok(state.pending.lock().map_err(|_| "update_busy")?.info.clone())
@@ -124,25 +153,17 @@ pub async fn update_check(app: AppHandle, state: State<'_, Updates>) -> Result<U
         if locked(p.info.phase) || p.verified.is_some() { return Err("update_busy".into()); }
         p.info.phase = "checking"; p.info.error = None; p.info.available_version = None; p.info.notes = None; p.candidate = None;
     }
-    let result = async {
-        let exit_app = app.clone();
-        let builder = app.updater_builder().pubkey(PUBLIC_KEY.trim())
-            .on_before_exit(move || { crate::stop_backend(&exit_app); exit_app.cleanup_before_exit(); })
-            .timeout(Duration::from_secs(20)).endpoints(vec![Url::parse(ENDPOINT).expect("fixed update endpoint")])?;
-        builder.build()?.check().await
-    }.await;
+    let result = tokio::time::timeout(Duration::from_secs(60), check_releases(&app)).await.unwrap_or(Err("update_check_failed"));
     let mut p = state.pending.lock().map_err(|_| "update_busy")?;
     match result {
-        Ok(Some(update)) if newer(&update.version, &p.info.current_version) && !update.signature.trim().is_empty()
-            && allowed_package(&update.download_url, cfg!(target_os = "macos")) => {
+        Ok(Checked::Available(update)) => {
             p.info.available_version = Some(update.version.clone());
             p.info.notes = update.body.as_deref().map(|s| s.chars().take(16000).collect());
-            p.info.phase = "available"; p.candidate = Some(update);
+            p.info.phase = "available"; p.candidate = Some(*update);
         }
-        Ok(None) => p.info.phase = "current",
-        Ok(Some(_)) => { p.info.phase = "error"; p.info.error = Some("update_invalid_package"); }
-        Err(tauri_plugin_updater::Error::ReleaseNotFound | tauri_plugin_updater::Error::TargetNotFound(_) | tauri_plugin_updater::Error::TargetsNotFound(_)) => p.info.phase = "unavailable",
-        Err(_) => { p.info.phase = "error"; p.info.error = Some("update_check_failed"); }
+        Ok(Checked::Current) => p.info.phase = "current",
+        Ok(Checked::Unavailable) => p.info.phase = "unavailable",
+        Err(code) => { p.info.phase = "error"; p.info.error = Some(code); }
     }
     Ok(p.info.clone())
 }
@@ -158,8 +179,8 @@ pub async fn update_download(state: State<'_, Updates>) -> Result<UpdateInfo, St
     // Bound bytes before appending. A timer around the plugin's Vec download is
     // insufficient when a ready stream yields many chunks in the same poll.
     let download = async {
-        let mut response = reqwest::Client::builder().timeout(Duration::from_secs(600))
-            .build().map_err(|_| "update_download_failed")?.get(update.download_url.clone())
+        let mut response = crate::update_releases::client(Duration::from_secs(600))
+            .map_err(|_| "update_download_failed")?.get(update.download_url.clone())
             .header("Accept", "application/octet-stream").header("User-Agent", "Ripple-Updater")
             .send().await.map_err(|_| "update_download_failed")?.error_for_status().map_err(|_| "update_download_failed")?;
         let total = response.content_length().filter(|n| *n > 0);
@@ -342,6 +363,13 @@ async fn install_verified(app: AppHandle, candidate: Update, bytes: Vec<u8>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shipped_plugin_configuration_deserializes_before_builder_overrides() {
+        let app: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let config: tauri_plugin_updater::Config = serde_json::from_value(app["plugins"]["updater"].clone()).expect("plugin config must load before builder pubkey override");
+        assert_eq!(config.pubkey.trim(), PUBLIC_KEY.trim());
+        assert!(config.require_signed_version);
+    }
     #[cfg(target_os = "macos")]
     #[test]
     #[ignore = "requires an explicitly prepared private synthetic signed bundle"]
