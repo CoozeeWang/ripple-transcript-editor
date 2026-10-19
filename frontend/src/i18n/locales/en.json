@@ -1769,7 +1769,7 @@
     "select": "Select {{name}}",
     "action": "Move to another session",
     "title": "Move recordings",
-    "summary": "Move {{count}} recordings, with all original transcripts, edited versions and annotations, from “{{source}}” to another session.",
+    "summary": "Original transcripts, edited versions and annotations move with the recordings.",
     "destination": "Destination session",
     "choose": "Choose a destination session",
     "metadata": "Existing dates, locations, participants and notes in the recordings and transcripts are preserved. Destination session details will not overwrite them.",
@@ -1780,6 +1780,10 @@
     "invalidSelection": "Select recordings from one session and another existing destination session, then try again.",
     "failed": "The move did not finish. Check access to the project folder and available disk space, then try again. The original session materials are preserved.",
     "selected": "{{count}} recordings selected",
-    "clear": "Clear selection"
+    "clear": "Clear selection",
+    "actionFor": "Move {{name}} to another session",
+    "actionSelected": "Move {{count}} selected recordings to another session",
+    "selection": "Recordings: {{count}}",
+    "origin": "From {{source}}"
   }
 }

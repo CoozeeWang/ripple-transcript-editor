@@ -2,6 +2,7 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
+import { msg } from '../i18n';
 import { ProjectBoard } from './ProjectBoard';
 import * as local from '../localStore';
 import type { OpenProject } from '../lib/projectStore';
@@ -276,10 +277,10 @@ it('selects several recordings and sends one confirmed move with their associate
  render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}} moveRecordings={move}/>);
  fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic A'}));
  fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic B'}));
- fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('button',{name:'将 Synthetic A 移动到其他场次'}));
  expect(move).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'取消',exact:true}));
- const trigger=screen.getByRole('button',{name:'移动到其他场次'});
+ fireEvent.click(screen.getByRole('button',{name:/^取消$/}));
+ const trigger=screen.getByRole('button',{name:'将 Synthetic A 移动到其他场次'});
  expect(document.activeElement).toBe(trigger);
  fireEvent.click(trigger);
  fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
@@ -300,11 +301,31 @@ it('keeps the confirmed source and count stable while the saved project refreshe
  const props={project,selected:'s',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>{await work();},legacy:()=>{},relink:()=>{},associate:()=>{},moveRecordings:move};
  const view=render(<ProjectBoard {...props}/>);
  fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic audio'}));
- fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('button',{name:'将 Synthetic audio 移动到其他场次'}));
  fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
  fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
  view.rerender(<ProjectBoard {...props} busy project={{...project,data:{...project.data,interviews:[{...source,recordings:[]},{...target,recordings:[recording]}]}} as OpenProject}/>);
- expect(screen.getByRole('dialog').textContent).toContain('将 1 条录音');
+ expect(screen.getByRole('dialog').textContent).toContain('Synthetic audio');
  expect(screen.getByRole('dialog').textContent).toContain('Synthetic source');
  await act(async()=>finish());
+});
+
+it('places each move icon immediately before trash and moves an unselected recording directly',async()=>{
+ HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+ vi.mocked(local.readManifest).mockResolvedValue({models:[]} as never);
+ const recordings=[{id:'r1',file:'a.wav',name:'Synthetic A',storage:'copy'},{id:'r2',file:'b.wav',name:'Synthetic B',storage:'copy'}];
+ const project={data:{id:'p',interviews:[{id:'s',title:'Synthetic source',recordings},{id:'t',title:'Synthetic destination',recordings:[]}]}} as OpenProject;
+ const move=vi.fn().mockResolvedValue(undefined);
+ render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}} remove={()=>{}} moveRecordings={move}/>);
+ const trigger=screen.getByRole('button',{name:'将 Synthetic B 移动到其他场次'});
+ expect(trigger.closest('.setup-audio-heading')?.textContent).toContain('Synthetic B');
+ expect(trigger.nextElementSibling?.getAttribute('data-tip')).toBe(msg('ProjectBoard.m0709'));
+ expect(trigger.querySelector('svg')).toBeTruthy();
+ expect(screen.queryByText('已选 0 条录音')).toBeNull();
+ fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic A'}));
+ fireEvent.click(trigger);
+ expect(screen.getByRole('dialog').textContent).toContain('Synthetic B');
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ await waitFor(()=>expect(move).toHaveBeenCalledWith('s','t',['r2']));
 });

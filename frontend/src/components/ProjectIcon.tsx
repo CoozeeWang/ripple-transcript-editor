@@ -1,9 +1,10 @@
-export type ProjectIconKind = 'project' | 'original' | 'trash' | 'rename' | 'copy' | 'audio' | 'document' | 'mic' | 'ignore' | 'plus' | 'play' | 'preview' | 'grip' | 'folder' | 'calendar' | 'location' | 'people' | 'unlink';
+export type ProjectIconKind = 'project' | 'original' | 'trash' | 'rename' | 'copy' | 'audio' | 'document' | 'mic' | 'ignore' | 'plus' | 'play' | 'preview' | 'grip' | 'folder' | 'calendar' | 'location' | 'people' | 'unlink' | 'move';
 export function ProjectIcon({ kind }: { kind: ProjectIconKind }) {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {kind === 'project' && <><path d="M7 3h10M5 7h14" /><rect x="3" y="11" width="18" height="10" rx="2" /></>}
     {kind === 'original' && <path d="M6 3h12v19l-6-4-6 4z"/>}
     {kind === 'audio' && <path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" />}
+    {kind === 'move' && <><path d="M14 8V4H3v16h11v-4M9 12h12m-4-4 4 4-4 4"/></>}
     {kind === 'trash' && <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></>}
     {kind === 'rename'  && <path d="m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 14z"/>}
     {kind === 'copy' && <><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></>}

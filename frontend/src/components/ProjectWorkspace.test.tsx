@@ -490,7 +490,7 @@ it('publishes a completed move and focuses its destination session',async()=>{
  render(<ProjectWorkspace/>);
  fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
  fireEvent.click(await screen.findByRole('checkbox',{name:'选择 录音.wav'}));
- fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('button',{name:'将 录音.wav 移动到其他场次'}));
  fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
  fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
  await waitFor(()=>expect(store.moveProjectRecordings).toHaveBeenCalledWith(two,'i','destination',['r']));
@@ -506,7 +506,7 @@ it('refuses to move a recording while an AI task owns its manuscript',async()=>{
  render(<ConnectorContext.Provider value={{state:{targetLocked}} as never}><ProjectWorkspace/></ConnectorContext.Provider>);
  fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
  fireEvent.click(await screen.findByRole('checkbox',{name:'选择 录音.wav'}));
- fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('button',{name:'将 录音.wav 移动到其他场次'}));
  fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
  fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
  expect(await screen.findByRole('alert')).toBeTruthy();

@@ -1769,7 +1769,7 @@
     "select": "选择 {{name}}",
     "action": "移动到其他场次",
     "title": "移动录音",
-    "summary": "将 {{count}} 条录音及其全部原始转录稿、编辑版本和批注从“{{source}}”移到其他场次。",
+    "summary": "原始转录稿、编辑版本和批注会一起移动。",
     "destination": "目标场次",
     "choose": "请选择目标场次",
     "metadata": "录音和稿件原有的日期、地点、参与人及备注会保留，不会被目标场次的信息覆盖。",
@@ -1780,6 +1780,10 @@
     "invalidSelection": "请选择同一场次中的录音及另一个现有目标场次，然后重试。",
     "failed": "移动未完成。请检查项目文件夹的访问权限和可用空间，再重试；原场次中的材料仍保留。",
     "selected": "已选 {{count}} 条录音",
-    "clear": "取消选择"
+    "clear": "取消选择",
+    "actionFor": "将 {{name}} 移动到其他场次",
+    "actionSelected": "移动所选 {{count}} 条录音到其他场次",
+    "selection": "{{count}} 条录音",
+    "origin": "来自 {{source}}"
   }
 }

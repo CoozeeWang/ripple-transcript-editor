@@ -300,8 +300,26 @@ body:has(.project-home--welcome) { min-width: 0; }
 .recording-move-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; }
 .recording-move-toolbar > span { color:var(--color-text-3); font-size:.86rem; }
 .setup-audio-heading input.ripple-checkbox.recording-move-checkbox { margin-top:7px; }
-.recording-move-destinations { display:block; min-inline-size:0; width:100%; box-sizing:border-box; border:0; padding:8px 0; margin:12px 0; max-height:30vh; overflow:auto; }
-.recording-move-destinations label { display:flex; align-items:center; gap:8px; margin-top:8px; overflow-wrap:anywhere; }
-.recording-move-destinations legend { font-weight:500; }
-
-.recording-move-destinations input[type="radio"] { width:16px; height:16px; min-width:16px; padding:0; margin:0; flex:none; accent-color:var(--color-brand); }
+.recording-move-dialog { max-width:480px; font-size:14px; font-weight:400; line-height:1.6; }
+.recording-move-dialog .dialog-header { margin-bottom:16px; }
+.recording-move-dialog .dialog-header h2 { margin:0; }
+.recording-move-body { min-height:0; overflow:auto; overscroll-behavior:contain; }
+.recording-move-material { display:flex; align-items:flex-start; gap:10px; }
+.recording-move-material > svg { flex:none; margin-top:3px; color:var(--color-text-3); }
+.recording-move-material > div { min-width:0; }
+.recording-move-name { margin:0; font-size:14px; font-weight:500; overflow-wrap:anywhere; }
+.recording-move-origin { margin:3px 0 0; color:var(--color-text-3); font-size:12px; overflow-wrap:anywhere; }
+.recording-move-names { max-height:96px; overflow:auto; margin:8px 0 0; padding-left:28px; font-size:12px; color:var(--color-text-3); overflow-wrap:anywhere; }
+.recording-move-summary { margin:12px 0 20px; color:var(--color-text-2); font-size:13px; }
+.recording-move-destinations.trash-delete-options { display:block; min-inline-size:0; width:100%; box-sizing:border-box; border:0; padding:0; margin:0 0 16px; }
+.recording-move-destinations legend { margin-bottom:8px; padding:0; font-size:13px; font-weight:500; }
+.recording-move-destinations label { padding:10px 12px; border:1px solid var(--color-border); border-radius:8px; cursor:pointer; }
+.recording-move-destinations label + label { margin-top:8px; }
+.recording-move-destinations label:hover { background:var(--color-hover); }
+.recording-move-destinations label.is-selected { border-color:var(--color-brand); background:var(--color-accent-tint); }
+.recording-move-destinations:disabled label { cursor:default; opacity:.6; }
+.recording-move-destinations:disabled label:hover { background:transparent; }
+.recording-move-destinations:disabled label.is-selected { background:var(--color-accent-tint); }
+.recording-move-dialog .settings-hint { font-size:12px; line-height:1.6; }
+.recording-move-feedback { margin:12px 0 0; font-size:13px; overflow-wrap:anywhere; }
+.recording-move-dialog .audio-project-footer { flex-shrink:0; margin-top:20px; }
