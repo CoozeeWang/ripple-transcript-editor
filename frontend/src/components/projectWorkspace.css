@@ -299,7 +299,9 @@ body:has(.project-home--welcome) { min-width: 0; }
 
 .recording-move-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; }
 .recording-move-toolbar > span { color:var(--color-text-3); font-size:.86rem; }
-.recording-move-checkbox { flex:none; margin-top:7px; }
+.setup-audio-heading input.ripple-checkbox.recording-move-checkbox { margin-top:7px; }
 .recording-move-destinations { display:block; min-inline-size:0; width:100%; box-sizing:border-box; border:0; padding:8px 0; margin:12px 0; max-height:30vh; overflow:auto; }
 .recording-move-destinations label { display:flex; align-items:center; gap:8px; margin-top:8px; overflow-wrap:anywhere; }
 .recording-move-destinations legend { font-weight:500; }
+
+.recording-move-destinations input[type="radio"] { width:16px; height:16px; min-width:16px; padding:0; margin:0; flex:none; accent-color:var(--color-brand); }
