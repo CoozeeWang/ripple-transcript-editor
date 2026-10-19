@@ -1,4 +1,3 @@
-import { UpdateSettings } from './UpdateSettings';
 import { ConnectorSetup } from './ConnectorSetup';
 import { msg, useInterfaceLanguage, setInterfaceLanguage, interfaceLanguage } from '../i18n';
 import { ProjectPreferenceSettings } from './ProjectPreferenceSettings';
@@ -30,7 +29,6 @@ export interface SettingsModalProps {
 
 export function SettingsModal(props: SettingsModalProps) {
   useInterfaceLanguage();
-  const [updateCritical,setUpdateCritical] = useState(false);
   const [restoreInterview, setRestoreInterview] = useState(() => loadBooleanPreference(RESTORE_PROJECT_INTERVIEW, true));
   const [restorePosition, setRestorePosition] = useState(() => loadBooleanPreference(RESTORE_EDIT_POSITION_KEY, false));
   const {
@@ -62,16 +60,16 @@ export function SettingsModal(props: SettingsModalProps) {
         className="interview-dialog interview-dialog--settings"
         aria-labelledby="settings-title"
         onKeyDown={trapDialogFocus}
-        onCancel={event => { event.preventDefault(); if (!updateCritical) setSettingsOpen(false); }}
+        onCancel={event => { event.preventDefault(); setSettingsOpen(false); }}
         onClick={event => {
-          if (updateCritical || event.target !== event.currentTarget) return;
+          if (event.target !== event.currentTarget) return;
           const rect = event.currentTarget.getBoundingClientRect();
           if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) setSettingsOpen(false);
         }}
       >
         <div className="dialog-header">
           <h2 id="settings-title">{msg('SettingsModal.m0972')}</h2>
-          <button type="button" className="dialog-close" disabled={updateCritical} onClick={() => setSettingsOpen(false)} aria-label={msg('SettingsModal.m0973')}>
+          <button type="button" className="dialog-close" onClick={() => setSettingsOpen(false)} aria-label={msg('SettingsModal.m0973')}>
             ×
           </button>
         </div>
@@ -91,7 +89,7 @@ export function SettingsModal(props: SettingsModalProps) {
             aria-controls="settings-panel-prefs"
             aria-selected={settingsTab === "prefs"} tabIndex={settingsTab === "prefs" ? 0 : -1}
             className={`settings-tab${settingsTab === "prefs" ? " settings-tab--active" : ""}`}
-            disabled={updateCritical} onClick={() => setSettingsTab("prefs")}
+            onClick={() => setSettingsTab("prefs")}
           >
             {msg('SettingsModal.m0975')}</button>
           <button
@@ -101,15 +99,15 @@ export function SettingsModal(props: SettingsModalProps) {
             aria-controls="settings-panel-engines"
             aria-selected={settingsTab === "engines"} tabIndex={settingsTab === "engines" ? 0 : -1}
             className={`settings-tab${settingsTab === "engines" ? " settings-tab--active" : ""}`}
-            disabled={updateCritical} onClick={() => setSettingsTab("engines")}
+            onClick={() => setSettingsTab("engines")}
           >
             {msg('SettingsModal.m0976')}</button>
           <button type="button" role="tab" id="settings-tab-ai" aria-controls="settings-panel-ai"
             aria-selected={settingsTab === "ai"} tabIndex={settingsTab === "ai" ? 0 : -1} className={`settings-tab${settingsTab === "ai" ? " settings-tab--active" : ""}`}
-            disabled={updateCritical} onClick={() => setSettingsTab("ai")}>{msg('SettingsModal.m0977')}</button>
+            onClick={() => setSettingsTab("ai")}>{msg('SettingsModal.m0977')}</button>
           <button type="button" role="tab" id="settings-tab-diagnostics" aria-controls="settings-panel-diagnostics"
             aria-selected={settingsTab === "diagnostics"} tabIndex={settingsTab === "diagnostics" ? 0 : -1} className={`settings-tab${settingsTab === "diagnostics" ? " settings-tab--active" : ""}`}
-            disabled={updateCritical} onClick={() => setSettingsTab("diagnostics")}>{msg('SettingsModal.m0979')}</button>
+            onClick={() => setSettingsTab("diagnostics")}>{msg('SettingsModal.m0979')}</button>
         </div>
         {/* 各面板按 tab 条件渲染，而不是常驻 + hidden：这样打开设置时不会为了
             一个播放速度去拉 6 个引擎的凭据列表；代价是切到引擎页会重新加载，
@@ -129,7 +127,6 @@ export function SettingsModal(props: SettingsModalProps) {
               </label>
               <p className="settings-hint">{msg('language.hint')}</p>
             </section>
-            <UpdateSettings onCriticalChange={setUpdateCritical}/>
             <ProjectPreferenceSettings />
             <section className="settings-block">
               <div className="settings-heading"><div><h3>{msg('SettingsModal.m0980')}</h3><p>{msg('SettingsModal.m0981')}</p></div></div>

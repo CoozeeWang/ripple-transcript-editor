@@ -1,6 +1,6 @@
 # Desktop updates
 
-The installed app provides **Settings → General → Software update**. Checking, downloading and quitting to install are separate actions. Startup does not query the update service. The browser preview does not install desktop updates.
+The installed app provides **Ripple → Check for Updates…** on macOS and **Help → Check for Updates…** on Windows. This opens one standalone update window, including from the welcome screen. General settings contains no duplicate update section. Opening the window first checks for updates; reopening an existing check, download or result preserves its state. Closing this window leaves the editor and backend running; downloads continue. Checking, downloading and quitting to install are separate actions. Startup does not query the update service. The browser preview does not install desktop updates.
 
 ## Source and release versions
 
@@ -16,7 +16,7 @@ The native process fixes the repository, endpoint and public key. It accepts onl
 
 Downloads are bounded to 512 MiB before each chunk is appended. Verification uses the same minisign primitive and authenticated version-comment format as Tauri's updater. The private signing key authenticates both package bytes and the announced version, so an old signed package cannot be relabeled as a new version. A wrong signature, version or platform cannot reach installation. The manifest itself is not signed; HTTPS and the authenticated package/version remain the trust boundary.
 
-Before quitting, the editor flushes pending changes. Unfinished project forms, transcription, imports and AI editing block installation. Save failure leaves Ripple open. On Mac, another client using the installed bundle also blocks replacement; disable that client's Ripple connector and retry. No unrelated client is terminated.
+Before quitting, the update window requests a token-matched save/busy acknowledgement from the main editor; a missing response or timeout blocks installation. Critical preparation prevents closing either window or quitting. The editor flushes pending changes. Unfinished project forms, transcription, imports and AI editing block installation. Save failure leaves Ripple open. On Mac, another client using the installed bundle also blocks replacement; disable that client's Ripple connector and retry. No unrelated client is terminated.
 
 Mac stages a single verified `.app`, checks its identity, product version and code signature, then waits for the owning app to quit. Darwin `RENAME_SWAP` exchanges the complete installed and prepared bundles atomically. Unsupported volumes fail without a non-atomic fallback. Post-swap validation failure swaps the original back. The previous bundle remains beside the installed app as `.Ripple-<transaction>.previous.app`; an interrupted operation may retain it under `.prepared.app`. The private application-data `updates/result.json` records the transaction paths for recovery. Backups are retained and are not automatically deleted. A temporary helper copy and staging data remain in that private update directory for diagnosis.
 

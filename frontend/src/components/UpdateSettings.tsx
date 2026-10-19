@@ -13,7 +13,7 @@ function failure(error: unknown) {
   };
   return msg(keys[code] ?? 'desktopUpdate.failed');
 }
-export function UpdateSettings({onCriticalChange}:{onCriticalChange:(critical:boolean)=>void}) {
+export function UpdateSettings({onCriticalChange,autoCheck=false}:{onCriticalChange:(critical:boolean)=>void;autoCheck?:boolean}) {
   const language = useInterfaceLanguage();
   const [info,setInfo] = useState<DesktopUpdateInfo|null>(null);
   const [error,setError] = useState('');
@@ -29,16 +29,26 @@ export function UpdateSettings({onCriticalChange}:{onCriticalChange:(critical:bo
   const supported = desktopUpdatesAvailable();
   useEffect(() => {
     alive.current = true;
+    let disposed=false;
     const token=sequence.current;
-    if (supported) void desktopUpdates.status().then(next=>{if(alive.current&&sequence.current===token)setInfo(next);}).catch(e=>{if(alive.current&&sequence.current===token)setError(failure(e));});
-    return () => { alive.current=false; };
-  },[supported]);
+    if (supported) void desktopUpdates.status().then(async next=>{
+      if(disposed||!alive.current||sequence.current!==token)return;
+      setInfo(next);
+      if(autoCheck&&next.phase==='idle'&&!action.current){
+        action.current=true;sequence.current++;setWorking(true);setInfo({...next,phase:'checking'});
+        try { const checked=await desktopUpdates.check();if(!disposed&&alive.current)setInfo(checked); }
+        catch(e){if(!disposed&&alive.current)setError(failure(e));}
+        finally{action.current=false;if(!disposed&&alive.current)setWorking(false);}
+      }
+    }).catch(e=>{if(!disposed&&alive.current&&sequence.current===token)setError(failure(e));});
+    return () => { disposed=true;alive.current=false; };
+  },[supported,autoCheck]);
   useEffect(()=>{
     if(confirm)cancelRef.current?.focus();else if(wasConfirm.current)prepareRef.current?.focus();
     wasConfirm.current=confirm;
   },[confirm]);
   useEffect(()=>{
-    if(!supported || !['downloading','verifying'].includes(info?.phase??''))return;
+    if(!supported || !['checking','downloading','verifying'].includes(info?.phase??''))return;
     let disposed=false;
     const token=sequence.current;
     const timer=window.setInterval(()=>{ void desktopUpdates.status().then(next=>{if(!disposed&&alive.current&&sequence.current===token)setInfo(next);}).catch(()=>{}); },250);

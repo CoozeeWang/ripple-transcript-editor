@@ -14,6 +14,7 @@ mod media;
 mod connector_config;
 mod install_target;
 mod updates;
+mod update_window;
 mod update_install;
 mod update_releases;
 use grants::{Grant, Grants, io_error};
@@ -607,6 +608,7 @@ fn main() {
         .manage(ConnectorTunnel(Mutex::new(None)))
         .setup(|app| {
             app.manage(updates::Updates::new(app.handle()));
+            app.manage(update_window::UpdateWindow::default());
             app.manage(Grants::load(app_data(app.handle())?.join("file-permissions-v1.json")).map_err(std::io::Error::other)?);
             if development(app.handle()) {
                 if std::env::var("RIPPLE_DESKTOP_DEV").as_deref() != Ok("1") { return Err("Use start-dev.command".into()); }
@@ -623,11 +625,21 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![updates::update_status, updates::update_check, updates::update_download, updates::update_cancel, updates::update_install, updates::update_open_releases, updates::update_dismiss_result, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+        .invoke_handler(tauri::generate_handler![update_window::update_prepare, update_window::update_prepared, update_window::update_close, updates::update_status, updates::update_check, updates::update_download, updates::update_cancel, updates::update_install, updates::update_open_releases, updates::update_dismiss_result, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == native_menu::UPDATE_ID {
+                if let Err(error) = update_window::open(app) { eprintln!("Update window failed: {error}"); }
+            }
+        })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.app_handle().state::<update_window::UpdateWindow>().busy() {
+                    api.prevent_close(); return;
+                }
+            }
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());
                 window.app_handle().exit(0);
@@ -635,8 +647,11 @@ fn main() {
         })
         .build(context).expect("Ripple failed to start")
         .run(|app, event| {
-            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
-                stop_backend(app);
+            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+                if app.state::<update_window::UpdateWindow>().busy() && !updates::installing(app) {
+                    api.prevent_exit(); return;
+                }
             }
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) { stop_backend(app); }
         });
 }

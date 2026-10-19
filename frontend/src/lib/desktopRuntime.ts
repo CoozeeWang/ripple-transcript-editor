@@ -1,3 +1,4 @@
+import { installDesktopUpdateBridge } from './desktopUpdates';
 import { installNativeMenuLanguage } from './nativeMenu';
 import { msg } from '../i18n';
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
@@ -28,7 +29,9 @@ export async function installDesktopRuntime(): Promise<void> {
 
   const invoke = (window as unknown as { __TAURI__: { core: { invoke: (name: string, args?: Record<string, unknown>) => Promise<boolean> } } }).__TAURI__.core.invoke;
   removeMenuLanguage?.();
+  const removeUpdateBridge = await installDesktopUpdateBridge();
   removeMenuLanguage = installNativeMenuLanguage(invoke);
+  if (import.meta.hot) import.meta.hot.dispose(removeUpdateBridge);
   if (import.meta.hot) import.meta.hot.dispose(() => removeMenuLanguage?.());
   for (let attempt = 0; attempt < 100; attempt++) {
     if (await invoke('backend_ready')) return;

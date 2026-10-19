@@ -36,7 +36,8 @@
     "downloadFailed": "下载或签名校验未完成，请重新下载。现用版未更改。",
     "invalidPackage": "更新包与当前应用不匹配或未通过校验。请重新检查更新；现用版未更改。",
     "installFailed": "尚未完成安装。请检查应用安装位置的权限并重新下载；现用版或恢复副本仍保留。",
-    "failed": "更新操作未完成，请重试或从官方发布页下载安装。"
+    "failed": "更新操作未完成，请重试或从官方发布页下载安装。",
+    "close": "关闭"
   },
   "desktopFs": {
     "readChanged": "文件在读取期间发生变化。请重新打开后重试。"
@@ -1748,7 +1749,9 @@
     "fullscreen": "切换全屏",
     "minimize": "最小化",
     "zoom": "缩放",
-    "maximize": "最大化"
+    "maximize": "最大化",
+    "checkUpdates": "检查更新…",
+    "updateTitle": "软件更新"
   },
   "notice": {
     "dismiss": "关闭提示",

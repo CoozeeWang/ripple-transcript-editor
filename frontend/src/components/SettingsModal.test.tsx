@@ -5,11 +5,11 @@ import { SettingsModal } from './SettingsModal';
 
 afterEach(() => vi.restoreAllMocks());
 
-test('AI settings exposes only the external MCP connection', () => {
+test.each(['prefs','ai'] as const)('%s settings contains no desktop update entry', tab => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn() });
   const ref = { current: null };
   render(<SettingsModal
-    settingsTab="ai"
+    settingsTab={tab}
     setSettingsTab={() => {}}
     settingsRef={ref}
     setSettingsOpen={() => {}}
@@ -21,6 +21,8 @@ test('AI settings exposes only the external MCP connection', () => {
     setSkipSeconds={() => {}}
   />);
 
+  expect(screen.queryByRole('button',{name:'检查更新'})).toBeNull();
+  expect(screen.queryByText('软件更新')).toBeNull();
   expect(document.querySelector('#settings-tab-plans')).toBeNull();
   expect(screen.queryByText('Ripple 内置编辑')).toBeNull();
 });

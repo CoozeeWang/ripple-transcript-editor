@@ -1,6 +1,6 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "windows": ["main", "print-preview-*"],
+  "windows": ["main", "desktop-update", "print-preview-*"],
   "permissions": ["core:default"]
 }

@@ -36,7 +36,8 @@
     "downloadFailed": "The download or signature verification did not finish. Download again. Your current app is unchanged.",
     "invalidPackage": "The update does not match this app or did not pass verification. Check for updates again. Your current app is unchanged.",
     "installFailed": "Installation did not finish. Check access to the installation folder and download again. The current app or its recovery copy is preserved.",
-    "failed": "The update action did not finish. Try again or download from the official releases."
+    "failed": "The update action did not finish. Try again or download from the official releases.",
+    "close": "Close"
   },
   "desktopFs": {
     "readChanged": "File changed while reading. Reopen it and try again."
@@ -1748,7 +1749,9 @@
     "fullscreen": "Toggle Full Screen",
     "minimize": "Minimize",
     "zoom": "Zoom",
-    "maximize": "Maximize"
+    "maximize": "Maximize",
+    "checkUpdates": "Check for Updates…",
+    "updateTitle": "Software update"
   },
   "notice": {
     "dismiss": "Dismiss message",

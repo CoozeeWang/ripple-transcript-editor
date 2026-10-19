@@ -33,7 +33,7 @@ On macOS, creating or opening a valid `.ripple` project automatically sets its F
 
 ## Desktop updates
 
-The installed app offers a user-initiated check, download and install flow in Settings → General. See [update source, signing, preservation and release preparation](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger public updates; publishing a signed catalog is a separate release action.
+The installed app offers a user-initiated check, download and install flow from Ripple → Check for Updates… on Mac or Help → Check for Updates… on Windows, in a standalone update window. See [update source, signing, preservation and release preparation](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger public updates; publishing a signed catalog is a separate release action.
 
 ## Native development on macOS
 

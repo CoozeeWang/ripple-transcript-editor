@@ -1,7 +1,7 @@
 //! User-initiated updates. The renderer never chooses URLs, paths, or signing keys.
 use serde::Serialize;
 use std::{fs, path::{Path, PathBuf}, sync::{Mutex, atomic::{AtomicBool, Ordering}}, time::Duration};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
 
@@ -320,7 +320,16 @@ fn prepare_mac(app: &AppHandle, bytes: &[u8], version: &str) -> Result<(PathBuf,
 }
 
 #[tauri::command]
-pub async fn update_install(app: AppHandle, state: State<'_, Updates>) -> Result<(), String> {
+pub async fn update_install(app: AppHandle, window: tauri::WebviewWindow, state: State<'_, Updates>) -> Result<(), String> {
+    app.state::<crate::update_window::UpdateWindow>().begin_install(window.label())?;
+    let result = install_prepared(app.clone(), state).await;
+    if result.is_err() { crate::update_window::release(&app); }
+    result
+}
+pub fn installing(app: &AppHandle) -> bool {
+    app.state::<Updates>().pending.lock().map(|p|p.info.phase == "installing").unwrap_or(false)
+}
+async fn install_prepared(app: AppHandle, state: State<'_, Updates>) -> Result<(), String> {
     let (candidate, bytes) = {
         let mut p = state.pending.lock().map_err(|_| "update_busy")?;
         if p.info.phase != "ready" { return Err("update_download_first".into()); }

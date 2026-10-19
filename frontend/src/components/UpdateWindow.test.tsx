@@ -1,0 +1,25 @@
+// @vitest-environment jsdom
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {StrictMode} from 'react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {UpdateWindow} from './UpdateWindow';
+import {setInterfaceLanguage} from '../i18n';
+const initial={currentVersion:'0.2.0-beta.1',build:'78',phase:'idle',availableVersion:null,notes:null,downloaded:0,total:null,error:null,result:null};
+const invoke=vi.fn(async(command:string):Promise<unknown>=>command==='update_check'?{...initial,phase:'unavailable'}:{...initial});
+beforeEach(async()=>{await setInterfaceLanguage('zh-CN');invoke.mockClear();Object.assign(window,{__TAURI__:{core:{invoke}}});});
+afterEach(()=>{cleanup();delete (window as unknown as {__TAURI__?:unknown}).__TAURI__;});
+it('starts one check on first open even under StrictMode and Escape closes only this window',async()=>{
+  render(<StrictMode><UpdateWindow/></StrictMode>);
+  await screen.findByText('暂未提供可安装的更新。可查看官方发布页。');
+  expect(invoke.mock.calls.filter(([name])=>name==='update_check')).toHaveLength(1);
+  fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'});
+  await waitFor(()=>expect(invoke).toHaveBeenCalledWith('update_close'));
+});
+it('reopens a downloaded state without checking or downloading again',async()=>{
+  await setInterfaceLanguage('en');invoke.mockResolvedValueOnce({...initial,phase:'ready',availableVersion:'0.2.0'});
+  render(<UpdateWindow/>);fireEvent.click(await screen.findByRole('button',{name:'Prepare to install'}));
+  expect(document.activeElement).toBe(screen.getByRole('button',{name:'Not now'}));
+  fireEvent.keyDown(screen.getByRole('button',{name:'Not now'}),{key:'Escape'});
+  await screen.findByRole('button',{name:'Prepare to install'});
+  expect(invoke.mock.calls.some(([name])=>['update_check','update_close','update_install'].includes(name))).toBe(false);
+});
