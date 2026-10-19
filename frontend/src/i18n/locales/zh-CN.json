@@ -13,6 +13,7 @@
     "downloading": "正在下载更新…",
     "verifying": "正在校验更新包…",
     "ready": "更新包已下载并通过校验，等待你决定何时安装。",
+    "preparingInstall": "正在保存并检查是否可以安装更新…",
     "installing": "正在准备退出并安装…",
     "downloaded": "已下载 {{amount}} MB",
     "download": "下载更新",

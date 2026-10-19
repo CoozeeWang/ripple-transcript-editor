@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProjectExportDialog } from './ProjectExportDialog';
+import { setInterfaceLanguage } from '../i18n';
 import * as store from '../lib/projectStore';
 import * as local from '../localStore';
 import * as exporter from '../lib/export';
@@ -24,6 +25,17 @@ beforeEach(() => {
   vi.mocked(local.readModelEdit).mockResolvedValue({ kind: 'te-edited', audio: 'a.m4a', transcript, metadata: local.defaultMetadata('访谈') } as Awaited<ReturnType<typeof local.readModelEdit>>);
 });
 afterEach(cleanup);
+it.each(['zh-CN','en'] as const)('restores the explicit export entry even when a mouse click did not focus it in %s',async language=>{
+  await setInterfaceLanguage(language);
+  const opener=document.createElement('button');document.body.append(opener);
+  const unrelated=document.createElement('button');document.body.append(unrelated);unrelated.focus();
+  try {
+    const ui=render(<ProjectExportDialog project={project} onClose={vi.fn()} returnFocusRef={{current:opener}}/>);
+    await screen.findByLabelText('定稿.docx');
+    ui.unmount();
+    expect(document.activeElement).toBe(opener);
+  } finally {opener.remove();unrelated.remove();await setInterfaceLanguage('zh-CN');}
+});
 it('exports selected current versions and original-format audio into session folders', async () => {
   render(<ProjectExportDialog project={project} onClose={vi.fn()}/>);
   await screen.findByLabelText('定稿.docx');

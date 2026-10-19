@@ -1,7 +1,7 @@
 import { connectorVersions } from '../lib/connectorVersions';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { trapDialogFocus } from '../lib/dialogFocus';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { defaultMetadata, readManifest, readModelEdit, readModelOriginal, sanitizeForFilename } from '../localStore';
 import { recordingDirectory, checkedMediaFile, savePortableProject, type OpenProject } from '../lib/projectStore';
 import { exportFormats, canExportSubtitles, downloadBlob, transcriptBlob, type ExportFormat } from '../lib/export';
@@ -13,7 +13,7 @@ function audioExportName(name: string, file: string) {
   const stem = name.replace(/\.(m4a|mp3|wav|aac|flac|ogg|opus|aiff?|wma|mp4|webm)$/i, '');
   return stem + extension;
 }
-export function ProjectExportDialog({ project, onClose }: { project: OpenProject; onClose: () => void }) {
+export function ProjectExportDialog({ project, onClose, returnFocusRef }: { project: OpenProject; onClose: () => void; returnFocusRef?: RefObject<HTMLElement | null> }) {
   useInterfaceLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const [mode, setMode] = useState('materials');
@@ -31,12 +31,15 @@ export function ProjectExportDialog({ project, onClose }: { project: OpenProject
   useEffect(() => {
     const modal = dialog.current;
     const previous = document.activeElement;
+    const target = returnFocusRef?.current;
     modal?.showModal();
     return () => {
       if (modal?.open) modal.close();
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      // A mouse click in macOS WebKit need not focus the trigger.
+      if (target?.isConnected) target.focus();
+      else if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, []);
+  }, [returnFocusRef]);
   useEffect(() => {
     let cancelled = false;
     void (async () => {

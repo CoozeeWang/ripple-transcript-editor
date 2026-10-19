@@ -77,6 +77,7 @@ export function ProjectWorkspace() {
   const [editingDescription, setEditingDescription] = useState<string | null>(null);
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [archiving, setArchiving] = useState(false);
+  const exportButton = useRef<HTMLButtonElement>(null);
   const [importNotice, setImportNotice] = useState<{ name: string; keys: string[] }[]>([]);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [importStage, setImportStage] = useState<ProjectImportStage | null>(null);
@@ -269,7 +270,7 @@ export function ProjectWorkspace() {
         <div className="setup-title project-saved-title" hidden={materialTarget !== undefined}><ProjectIcon kind="project" /><div className="project-title-content"><div className="project-title-row"><div className="project-title-heading"><h1><InlineEdit doubleClick disabled={busy} value={project.data.title} ariaLabel={msg('ProjectWorkspace.m0922')} onCommit={next => { void run(async () => { if (!next.trim()) throw new Error(msg('ProjectWorkspace.m0923')); await publish(await saveProject(project, { ...project.data, title: next.trim() })); }); }} /></h1>
           </div><div className="project-title-actions">
           <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ActionIcon kind="trash"/></button>
-          {project.data.interviews.length > 0 && <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
+          {project.data.interviews.length > 0 && <button ref={exportButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
             <ActionIcon kind="export"/>
           </button>}</div>
         </div>
@@ -348,6 +349,6 @@ export function ProjectWorkspace() {
         </>}
       </>}
     </section>
-    {project && archiving && <ProjectExportDialog project={project} onClose={() => setArchiving(false)} />}
+    {project && archiving && <ProjectExportDialog project={project} returnFocusRef={exportButton} onClose={() => setArchiving(false)} />}
   </main>;
 }

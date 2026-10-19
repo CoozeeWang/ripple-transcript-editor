@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { UpdateSettings } from './UpdateSettings';
 import { cancelDesktopUpdatePreparation, registerDesktopUpdateGuard, type DesktopUpdateInfo } from '../lib/desktopUpdates';
@@ -81,4 +81,62 @@ it('refreshes native state after install failure so the user can download again'
   await screen.findByRole('alert');
   expect(screen.getByRole('alert').textContent).toContain('Ripple 连接器');
   expect(screen.getByRole('button',{name:'下载更新'})).toBeTruthy();
+});
+it('keeps a recovery action if installation and the subsequent status refresh both fail',async()=>{
+  await ready();
+  invoke.mockRejectedValueOnce(Error('update_install_failed')).mockRejectedValueOnce(Error('synthetic_status_unavailable'));
+  fireEvent.click(screen.getByRole('button',{name:'退出并安装'}));
+  await screen.findByRole('alert');
+  const retry=screen.getByRole('button',{name:'下载更新'});
+  expect(retry.hasAttribute('disabled')).toBe(false);
+  expect(document.activeElement).toBe(retry);
+});
+
+it.each(['zh-CN','en'] as const)('rechecks a rejected package instead of downloading the stale candidate in %s',async language=>{
+  await setInterfaceLanguage(language);
+  state={...initial,phase:'error',availableVersion:'0.2.0',error:'update_invalid_package'};
+  let finish!:(info:DesktopUpdateInfo)=>void;
+  invoke.mockImplementationOnce(async()=>({...state}));
+  invoke.mockImplementationOnce(command=>{
+    expect(command).toBe('update_check');
+    return new Promise(resolve=>{finish=resolve;});
+  });
+  render(<UpdateSettings onCriticalChange={vi.fn()}/>);
+  await screen.findByRole('alert');
+  const check=screen.getByRole('button',{name:language==='en'?'Check for updates':'检查更新'});
+  expect(screen.queryByRole('button',{name:language==='en'?'Download update':'下载更新'})).toBeNull();
+  fireEvent.click(check);
+  expect(check.hasAttribute('disabled')).toBe(true);
+  expect(screen.queryByRole('alert')).toBeNull();
+  await act(async()=>finish({...initial,phase:'available',availableVersion:'0.2.1'}));
+  await screen.findByRole('button',{name:language==='en'?'Download update':'下载更新'});
+  expect(invoke.mock.calls.some(([name])=>name==='update_download')).toBe(false);
+});
+
+it.each(['zh-CN','en'] as const)('announces save checks while preparing, then installation, and restores a safe retry in %s',async language=>{
+  await setInterfaceLanguage(language);
+  state={...initial,phase:'ready',availableVersion:'0.2.0'};
+  let prepared!:()=>void, failInstall!:(reason:Error)=>void;
+  const remove=registerDesktopUpdateGuard(()=>new Promise<void>(resolve=>{prepared=resolve;}));
+  try {
+    render(<UpdateSettings onCriticalChange={vi.fn()}/>);
+    fireEvent.click(await screen.findByRole('button',{name:language==='en'?'Prepare to install':'准备安装'}));
+    fireEvent.click(screen.getByRole('button',{name:language==='en'?'Quit and install':'退出并安装'}));
+    const status=await screen.findByText(language==='en'?'Saving your work and checking whether the update can be installed…':'正在保存并检查是否可以安装更新…');
+    expect(document.activeElement).toBe(status);
+    expect(screen.queryByText(language==='en'?'The update has been downloaded and verified. Install whenever you are ready.':'更新包已下载并通过校验，等待你决定何时安装。')).toBeNull();
+    expect(screen.queryByRole('group')).toBeNull();
+    expect(invoke.mock.calls.some(([name])=>name==='update_install')).toBe(false);
+    invoke.mockImplementationOnce(command=>{
+      expect(command).toBe('update_install');
+      return new Promise((_resolve,reject)=>{failInstall=reject;});
+    });
+    await act(async()=>prepared());
+    await screen.findByText(language==='en'?'Preparing to quit and install…':'正在准备退出并安装…');
+    await act(async()=>failInstall(Error('update_unsaved_project')));
+    await screen.findByRole('alert');
+    const retry=screen.getByRole('button',{name:language==='en'?'Prepare to install':'准备安装'});
+    expect(retry.hasAttribute('disabled')).toBe(false);
+    expect(document.activeElement).toBe(retry);
+  } finally {remove();}
 });

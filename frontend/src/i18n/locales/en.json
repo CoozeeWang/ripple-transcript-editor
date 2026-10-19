@@ -13,6 +13,7 @@
     "downloading": "Downloading update…",
     "verifying": "Verifying update…",
     "ready": "The update has been downloaded and verified. Install whenever you are ready.",
+    "preparingInstall": "Saving your work and checking whether the update can be installed…",
     "installing": "Preparing to quit and install…",
     "downloaded": "Downloaded {{amount}} MB",
     "download": "Download update",
