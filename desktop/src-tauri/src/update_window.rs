@@ -47,7 +47,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     let english = language == "en";
     let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html?updateWindow=1".into()))
         .title(if english { "Software update" } else { "软件更新" })
-        .inner_size(560.0, 440.0).min_inner_size(480.0, 340.0)
+        .inner_size(560.0, 380.0).min_inner_size(480.0, 340.0)
         .initialization_script(format!("window.__RIPPLE_UPDATE_WINDOW__ = {};", serde_json::json!({"language":if english {"en"} else {"zh-CN"}})))
         .disable_drag_drop_handler().on_navigation(navigation).center();
     #[cfg(target_os="macos")]

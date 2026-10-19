@@ -12,7 +12,8 @@ it('starts one check on first open even under StrictMode and Escape closes only 
   render(<StrictMode><UpdateWindow/></StrictMode>);
   await screen.findByText('暂未提供可安装的更新。可查看官方发布页。');
   expect(invoke.mock.calls.filter(([name])=>name==='update_check')).toHaveLength(1);
-  fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'});
+  expect(document.activeElement).toBe(screen.getByRole('button',{name:'关闭'}));
+  fireEvent.keyDown(document.activeElement!,{key:'Escape'});
   await waitFor(()=>expect(invoke).toHaveBeenCalledWith('update_close'));
 });
 it('reopens a downloaded state without checking or downloading again',async()=>{

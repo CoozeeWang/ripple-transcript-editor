@@ -13,7 +13,7 @@ function failure(error: unknown) {
   };
   return msg(keys[code] ?? 'desktopUpdate.failed');
 }
-export function UpdateSettings({onCriticalChange,autoCheck=false}:{onCriticalChange:(critical:boolean)=>void;autoCheck?:boolean}) {
+export function UpdateSettings({onCriticalChange,autoCheck=false,onClose}:{onCriticalChange:(critical:boolean)=>void;autoCheck?:boolean;onClose?:()=>void}) {
   const language = useInterfaceLanguage();
   const [info,setInfo] = useState<DesktopUpdateInfo|null>(null);
   const [error,setError] = useState('');
@@ -90,31 +90,40 @@ export function UpdateSettings({onCriticalChange,autoCheck=false}:{onCriticalCha
   };
   const result=info?.result;
   return <section className="settings-block desktop-update-settings" aria-labelledby="desktop-update-title">
-    <div className="settings-heading"><div><h3 id="desktop-update-title">{msg('desktopUpdate.title')}</h3>
-      <p>{info?msg(info.build?'desktopUpdate.versionBuild':'desktopUpdate.version',{version:info.currentVersion,build:info.build??''}):msg('desktopUpdate.reading')}</p>
-    </div><button type="button" className="cred-btn" disabled={busy||info?.phase==='ready'} onClick={()=>void run(async()=>{setInfo(previous=>previous?{...previous,phase:'checking',availableVersion:null,notes:null,error:null}:previous);return desktopUpdates.check();})}>{msg('desktopUpdate.check')}</button></div>
-    {info?.availableVersion&&<p className="desktop-update-version">{msg('desktopUpdate.available',{version:info.availableVersion})}</p>}
-    {info?.notes&&<details className="desktop-update-notes"><summary>{msg('desktopUpdate.notes')}</summary><p>{info.notes}</p></details>}
-    {status()&&<p className="settings-hint" role="status">{status()}</p>}
-    {info?.phase==='downloading'&&<div className="desktop-update-progress">
-      {info.total!==null&&<progress aria-label={msg('desktopUpdate.downloading')} max={info.total} value={Math.min(info.downloaded,info.total)}/>}
-      <p className="settings-hint">{msg('desktopUpdate.downloaded',{amount:new Intl.NumberFormat(language,{maximumFractionDigits:1}).format(info.downloaded/1048576)})}</p>
-    </div>}
-    {(error||info?.error)&&<p className="form-error" role="alert">{error||failure(info?.error)}</p>}
-    {result&&<div className="desktop-update-result" role="status"><p className="settings-hint">{msg(result.status==='installed'?'desktopUpdate.installed':result.status==='rolled_back'?'desktopUpdate.rolledBack':result.status==='blocked'?'desktopUpdate.connectionInUse':'desktopUpdate.previousFailed',{version:result.version})}</p>
-      <button type="button" className="cred-btn" disabled={busy} onClick={()=>void run(async()=>{await desktopUpdates.dismissResult();return desktopUpdates.status();})}>{msg('desktopUpdate.dismiss')}</button>
-    </div>}
-    {confirm?<div className="desktop-update-confirm" role="group" aria-labelledby="desktop-update-confirm-title" onKeyDown={event=>{
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!critical)setConfirm(false);}
-    }}>
-      <p id="desktop-update-confirm-title">{msg('desktopUpdate.confirmTitle')}</p><p className="settings-hint">{msg('desktopUpdate.preservation')}</p>
-      <div className="desktop-update-actions"><button ref={cancelRef} type="button" className="cred-btn" disabled={critical} onClick={()=>setConfirm(false)}>{msg('desktopUpdate.later')}</button>
-        <button type="button" className="cred-btn" disabled={busy} onClick={()=>void install()}>{msg('desktopUpdate.install')}</button></div>
-    </div>:info&&info.phase!=='idle'&&<div className="desktop-update-actions">
-      {info?.availableVersion&&info.phase!=='ready'&&<button type="button" className="cred-btn" disabled={busy} onClick={()=>void run(async()=>{setInfo(previous=>previous?{...previous,phase:'downloading',downloaded:0,total:null,error:null}:previous);return desktopUpdates.download();})}>{msg('desktopUpdate.download')}</button>}
-      {info?.phase==='ready'&&<button ref={prepareRef} type="button" className="cred-btn" disabled={busy} onClick={()=>setConfirm(true)}>{msg('desktopUpdate.reviewInstall')}</button>}
-      {['downloading','ready'].includes(info?.phase??'')&&<button type="button" className="cred-btn" disabled={critical} onClick={()=>{void desktopUpdates.cancel().then(()=>desktopUpdates.status()).then(next=>{if(alive.current)setInfo(next);}).catch(e=>{if(alive.current)setError(failure(e));});}}>{msg('desktopUpdate.cancel')}</button>}
-      <button type="button" className="cred-btn" disabled={busy} onClick={()=>void run(()=>desktopUpdates.releases())}>{msg('desktopUpdate.releases')}</button>
-    </div>}
+    <div className="desktop-update-scroll">
+      <header className="desktop-update-header"><h1 id="desktop-update-title">{msg('desktopUpdate.title')}</h1>
+        <p>{info?msg(info.build?'desktopUpdate.versionBuild':'desktopUpdate.version',{version:info.currentVersion,build:info.build??''}):msg('desktopUpdate.reading')}</p>
+      </header>
+      <div className="desktop-update-body">
+        {info?.availableVersion&&<p className="desktop-update-version">{msg('desktopUpdate.available',{version:info.availableVersion})}</p>}
+        {(!confirm||critical)&&status()&&<p className="settings-hint" role="status">{status()}</p>}
+        {info?.phase==='downloading'&&<div className="desktop-update-progress">
+          {info.total!==null&&<progress aria-label={msg('desktopUpdate.downloading')} max={info.total} value={Math.min(info.downloaded,info.total)}/>}
+          <p className="settings-hint">{msg('desktopUpdate.downloaded',{amount:new Intl.NumberFormat(language,{maximumFractionDigits:1}).format(info.downloaded/1048576)})}</p>
+        </div>}
+        {(error||info?.error)&&<p className="form-error" role="alert">{error||failure(info?.error)}</p>}
+        {!confirm&&info?.notes&&<details className="desktop-update-notes"><summary>{msg('desktopUpdate.notes')}</summary><p>{info.notes}</p></details>}
+        {result&&<div className="desktop-update-result" role="status"><p className="settings-hint">{msg(result.status==='installed'?'desktopUpdate.installed':result.status==='rolled_back'?'desktopUpdate.rolledBack':result.status==='blocked'?'desktopUpdate.connectionInUse':'desktopUpdate.previousFailed',{version:result.version})}</p>
+          <button type="button" className="cred-btn" disabled={busy} onClick={()=>void run(async()=>{await desktopUpdates.dismissResult();return desktopUpdates.status();})}>{msg('desktopUpdate.dismiss')}</button>
+        </div>}
+        {confirm&&<div className="desktop-update-confirm" role="group" aria-labelledby="desktop-update-confirm-title" onKeyDown={event=>{
+          if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!critical)setConfirm(false);}
+        }}>
+          <p id="desktop-update-confirm-title">{msg('desktopUpdate.confirmTitle')}</p><p className="settings-hint">{msg('desktopUpdate.preservation')}</p>
+          <div className="desktop-update-actions"><button ref={cancelRef} type="button" className="cred-btn" disabled={critical} onClick={()=>setConfirm(false)}>{msg('desktopUpdate.later')}</button>
+            <button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={()=>void install()}>{msg('desktopUpdate.install')}</button></div>
+        </div>}
+      </div>
+    </div>
+    <footer className="desktop-update-controls">
+      <button type="button" className="desktop-update-release-link" disabled={busy} onClick={()=>void run(()=>desktopUpdates.releases())}>{msg('desktopUpdate.releases')}</button>
+      {!confirm&&<div className="desktop-update-actions">
+        {['downloading','ready'].includes(info?.phase??'')&&<button type="button" className="cred-btn" disabled={critical} onClick={()=>{void desktopUpdates.cancel().then(()=>desktopUpdates.status()).then(next=>{if(alive.current)setInfo(next);}).catch(e=>{if(alive.current)setError(failure(e));});}}>{msg('desktopUpdate.cancel')}</button>}
+        {onClose&&<button type="button" className="cred-btn" autoFocus disabled={critical} onClick={onClose}>{msg('desktopUpdate.close')}</button>}
+        {info?.phase==='ready'?<button ref={prepareRef} type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={()=>setConfirm(true)}>{msg('desktopUpdate.reviewInstall')}</button>
+          :info?.availableVersion&&info.phase!=='checking'?<button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={()=>void run(async()=>{setInfo(previous=>previous?{...previous,phase:'downloading',downloaded:0,total:null,error:null}:previous);return desktopUpdates.download();})}>{msg('desktopUpdate.download')}</button>
+          :<button type="button" className="cred-btn cred-btn--primary" disabled={busy} onClick={()=>void run(async()=>{setInfo(previous=>previous?{...previous,phase:'checking',availableVersion:null,notes:null,error:null}:previous);return desktopUpdates.check();})}>{msg('desktopUpdate.check')}</button>}
+      </div>}
+    </footer>
   </section>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { msg, setInterfaceLanguage, useInterfaceLanguage } from '../i18n';
+import { setInterfaceLanguage, useInterfaceLanguage } from '../i18n';
 import { desktopUpdateInvoke } from '../lib/desktopUpdates';
 import { trapDialogFocus } from '../lib/dialogFocus';
 import { UpdateSettings } from './UpdateSettings';
@@ -17,7 +17,6 @@ export function UpdateWindow() {
   },[]);
   return <main className="desktop-update-window" role="dialog" aria-labelledby="desktop-update-title" tabIndex={-1}
     onKeyDown={event=>{trapDialogFocus(event);if(event.key==='Escape'&&!event.defaultPrevented){event.preventDefault();close();}}}>
-    <div className="desktop-update-content"><UpdateSettings autoCheck onCriticalChange={setCritical}/></div>
-    <footer className="desktop-update-footer"><button type="button" className="cred-btn" disabled={critical} onClick={close}>{msg('desktopUpdate.close')}</button></footer>
+    <UpdateSettings autoCheck onCriticalChange={setCritical} onClose={close}/>
   </main>;
 }
