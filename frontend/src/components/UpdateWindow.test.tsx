@@ -16,11 +16,11 @@ it('starts one check on first open even under StrictMode and Escape closes only 
   fireEvent.keyDown(document.activeElement!,{key:'Escape'});
   await waitFor(()=>expect(invoke).toHaveBeenCalledWith('update_close'));
 });
-it('reopens a downloaded state without checking or downloading again',async()=>{
+it('reopens a downloaded state without starting installation and Escape closes the window',async()=>{
   await setInterfaceLanguage('en');invoke.mockResolvedValueOnce({...initial,phase:'ready',availableVersion:'0.2.0'});
-  render(<UpdateWindow/>);fireEvent.click(await screen.findByRole('button',{name:'Prepare to install'}));
-  expect(document.activeElement).toBe(screen.getByRole('button',{name:'Not now'}));
-  fireEvent.keyDown(screen.getByRole('button',{name:'Not now'}),{key:'Escape'});
-  await screen.findByRole('button',{name:'Prepare to install'});
-  expect(invoke.mock.calls.some(([name])=>['update_check','update_close','update_install'].includes(name))).toBe(false);
+  render(<UpdateWindow/>);await screen.findByRole('button',{name:'Update and restart…'});
+  expect(document.activeElement).toBe(screen.getByRole('button',{name:'Close'}));
+  fireEvent.keyDown(screen.getByRole('button',{name:'Close'}),{key:'Escape'});
+  await waitFor(()=>expect(invoke).toHaveBeenCalledWith('update_close'));
+  expect(invoke.mock.calls.some(([name])=>['update_check','update_download','update_install'].includes(name))).toBe(false);
 });

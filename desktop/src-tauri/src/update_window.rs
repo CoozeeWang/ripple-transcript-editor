@@ -67,16 +67,20 @@ pub async fn update_prepare(app: AppHandle, window: WebviewWindow, state: State<
     let (sender, receiver) = oneshot::channel();
     *state.pending.lock().map_err(|_| "update_busy")? = Some(Pending { token, reply: sender });
     let result = match app.emit_to("main", "desktop-update-prepare", token) {
-        Ok(()) => match tokio::time::timeout(std::time::Duration::from_secs(30), receiver).await {
-            Ok(Ok(result)) => result,
-            _ => Err("update_work_in_progress".into()),
-        },
+        Ok(()) => wait_for_preparation(receiver, std::time::Duration::from_secs(30)).await,
         Err(_) => Err("update_work_in_progress".into()),
     };
     if result.is_ok() {
         *state.phase.lock().map_err(|_| "update_busy")? = "prepared";
     } else { release(&app); }
     result
+}
+async fn wait_for_preparation(receiver: oneshot::Receiver<Reply>, timeout: std::time::Duration) -> Reply {
+    match tokio::time::timeout(timeout, receiver).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err("update_work_in_progress".into()),
+        Err(_) => Err("update_prepare_timeout".into()),
+    }
 }
 fn reply(pending: &mut Option<Pending>, caller: &str, token: u64, error: Option<String>) -> Result<(), String> {
     if caller != "main" || pending.as_ref().map(|p|p.token) != Some(token) { return Err("update_work_in_progress".into()); }
@@ -95,6 +99,18 @@ pub fn update_close(window: WebviewWindow, state: State<'_, UpdateWindow>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn preparation_timeout_is_distinct_and_rejects_late_acknowledgement() {
+        let (sender, receiver) = oneshot::channel();
+        let mut pending = Some(Pending {token:7,reply:sender});
+        assert_eq!(wait_for_preparation(receiver,std::time::Duration::from_millis(1)).await,
+            Err("update_prepare_timeout".into()));
+        assert!(reply(&mut pending,"main",7,None).is_err());
+        let (sender, receiver) = oneshot::channel();
+        drop(sender);
+        assert_eq!(wait_for_preparation(receiver,std::time::Duration::from_secs(1)).await,
+            Err("update_work_in_progress".into()));
+    }
     #[test]
     fn update_window_only_loads_its_bundled_page() {
         assert!(navigation(&"tauri://localhost/index.html?updateWindow=1".parse().unwrap()));
