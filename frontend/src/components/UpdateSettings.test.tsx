@@ -17,7 +17,6 @@ beforeEach(async()=>{
     if(command==='update_check')state={...candidate};
     if(command==='update_download')state={...state,phase:'ready',downloaded:1024};
     if(command==='update_cancel')state={...state,phase:'available'};
-    if(command==='update_dismiss_result')state={...state,result:null};
     return {...state};
   });
   Object.assign(window,{__TAURI__:{core:{invoke}}});

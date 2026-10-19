@@ -21,7 +21,6 @@
     "installed": "Updated to {{version}}. You can continue using your projects and settings.",
     "rolledBack": "The update did not finish. The previous app was restored. Choose “Check for updates” to try again, or download an installer from “Official releases” below.",
     "previousFailed": "The previous update did not finish. View the official releases, or check access to the installation folder and try again.",
-    "dismiss": "Dismiss",
     "development": "Check and install updates from the installed Ripple application.",
     "workInProgress": "Work is still being processed or saved. Wait for it to finish before installing.",
     "unsavedProject": "Save the current edits or project form before installing. Ripple has not quit.",

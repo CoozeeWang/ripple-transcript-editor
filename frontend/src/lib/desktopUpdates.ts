@@ -37,7 +37,6 @@ export const desktopUpdates = {
   cancel: () => desktopUpdateInvoke<void>('update_cancel'),
   install: () => desktopUpdateInvoke<void>('update_install'),
   releases: () => desktopUpdateInvoke<void>('update_open_releases'),
-  dismissResult: () => desktopUpdateInvoke<void>('update_dismiss_result'),
 };
 
 // Only the main editor owns draft/save guards. The auxiliary window must ask it.

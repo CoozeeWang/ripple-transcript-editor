@@ -136,7 +136,6 @@ export function UpdateSettings({onCriticalChange,autoCheck=false,onClose}:{onCri
         {!recovering&&!critical&&info?.notes&&<details className="desktop-update-notes"><summary>{msg('desktopUpdate.notes')}</summary><p>{info.notes}</p></details>}
         {result&&<div className="desktop-update-result" role={result.status==='recovery_required'?'alert':'status'}><div className="desktop-update-result-copy"><p className={result.status==='recovery_required'?'form-error':'settings-hint'}>{msg(result.status==='installed'?'desktopUpdate.installed':result.status==='rolled_back'?'desktopUpdate.rolledBack':result.status==='recovery_required'?'desktopUpdate.rollbackFailed':result.status==='blocked'?'desktopUpdate.connectionInUse':'desktopUpdate.previousFailed',{version:result.version})}</p>
           {result.status==='recovery_required'&&<p className="settings-hint">{msg('desktopUpdate.recoveryGuide')}</p>}</div>
-          <button type="button" className="cred-btn" disabled={busy} onClick={()=>void run(async()=>{await desktopUpdates.dismissResult();return desktopUpdates.status();})}>{msg('desktopUpdate.dismiss')}</button>
         </div>}
       </div>
     </div>
