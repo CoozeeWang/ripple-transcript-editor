@@ -278,6 +278,10 @@ it('selects several recordings and sends one confirmed move with their associate
  fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic B'}));
  fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
  expect(move).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'取消',exact:true}));
+ const trigger=screen.getByRole('button',{name:'移动到其他场次'});
+ expect(document.activeElement).toBe(trigger);
+ fireEvent.click(trigger);
  fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
  fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
  await waitFor(()=>expect(move).toHaveBeenCalledWith('s','target',['r1','r2']));
