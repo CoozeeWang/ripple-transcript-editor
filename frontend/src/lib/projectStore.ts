@@ -443,18 +443,18 @@ async function validateSourceAudio(parent: FileSystemDirectoryHandle, manifest: 
     if (fingerprint !== manifest.audioFingerprint) throw new Error(msg('projectStore.m1424'));
   }
 }
-async function validateManuscript(directory: FileSystemDirectoryHandle, manifest: TranscriptManifest) {
-  if (manifest.schemaVersion !== 2 || !Array.isArray(manifest.models) || !manifest.models.length) throw new Error(msg('projectStore.m1425'));
+async function validateManuscript(directory: FileSystemDirectoryHandle, manifest: TranscriptManifest, allowReadOnly = false) {
+  if (manifest.schemaVersion !== 2 || !Array.isArray(manifest.models) || (!allowReadOnly && !manifest.models.length)) throw new Error(msg('projectStore.m1425'));
   const ids = new Set<string>();
   for (const model of manifest.models) {
-    if (!model || !id(model.id) || ids.has(model.id) || !Array.isArray(model.edits) || !model.edits.length || typeof model.engine !== 'string') throw new Error(msg('projectStore.m1426'));
+    if (!model || !id(model.id) || ids.has(model.id) || !Array.isArray(model.edits) || (!model.edits.length && !(allowReadOnly && model.original)) || typeof model.engine !== 'string') throw new Error(msg('projectStore.m1426'));
     ids.add(model.id);
     const edits = new Set<string>();
     for (const edit of model.edits) {
       if (!edit || !id(edit.id) || edits.has(edit.id)) throw new Error(msg('projectStore.m1427'));
       edits.add(edit.id);
     }
-    if (!edits.has(model.activeEditId) || model.edits.some(e => e.comparisonBaseId && !edits.has(e.comparisonBaseId))) throw new Error(msg('projectStore.m1428'));
+    if ((model.edits.length ? !edits.has(model.activeEditId) : !!model.activeEditId) || model.edits.some(e => e.comparisonBaseId && !edits.has(e.comparisonBaseId))) throw new Error(msg('projectStore.m1428'));
     for (const file of [...(model.original ? [model.original] : []), ...model.edits.map(e => e.file)]) {
       if (!safeName(file)) throw new Error(msg('projectStore.m1429'));
       const text = await readText(directory, file);
@@ -464,7 +464,7 @@ async function validateManuscript(directory: FileSystemDirectoryHandle, manifest
           || data.transcript.segments.some((s: { text?: unknown }) => !s || typeof s.text !== 'string')) throw new Error(msg('projectStore.m1431', { v0: file }));
     }
   }
-  if (!ids.has(manifest.activeModelId)) throw new Error(msg('projectStore.m1432'));
+  if (manifest.models.length ? !ids.has(manifest.activeModelId) : !!manifest.activeModelId) throw new Error(msg('projectStore.m1432'));
 }
 /** Stage a complete copy, then publish its pointer in the project index. Never replace existing manuscripts. */
 export async function importExistingManuscript(project: OpenProject, interviewId: string, recording: ProjectRecording, source: ExistingManuscript): Promise<OpenProject> {
@@ -701,6 +701,48 @@ async function checkedTrashMutation<T>(project: OpenProject, work: () => Promise
     return await work();
   } finally { release(); }
 }
+/** Stage the complete batch before publishing a single index change. Originals remain recovery snapshots. */
+export async function moveProjectRecordings(project: OpenProject, sourceId: string, targetId: string, recordingIds: string[]): Promise<OpenProject> {
+  return checkedTrashMutation(project, async () => {
+    const source = project.data.interviews.find(session => session.id === sourceId);
+    const target = project.data.interviews.find(session => session.id === targetId);
+    const ids = new Set(recordingIds);
+    const recordings = source?.recordings.filter(recording => ids.has(recording.id)) ?? [];
+    if (!source || !target || sourceId === targetId || !ids.size || ids.size !== recordingIds.length
+        || recordings.length !== ids.size || recordings.some(recording => recording.storage === 'none')) {
+      throw new Error(msg('recordingMove.invalidSelection'));
+    }
+    const destination = await interviewDirectory(project, targetId, true);
+    const moved: ProjectRecording[] = [];
+    for (const recording of recordings) {
+      const snapshot = await manuscriptSnapshot(project, sourceId, recording);
+      if (!snapshot && recording.manuscriptDirectory) throw new Error(msg('projectStore.m1458'));
+      if (snapshot) await validateManuscript(snapshot.folder, snapshot.manifest, true);
+      // Unique staging names make interrupted copies harmless and keep retries independent.
+      const file = `${crypto.randomUUID()}.${recording.file.split('.').pop()}`;
+      let manuscriptDirectory: string | undefined;
+      if (snapshot) {
+        manuscriptDirectory = await stageModels(destination, snapshot.folder, { ...snapshot.manifest, audio: file });
+      }
+      if (recording.storage === 'copy') {
+        const audio = await readProjectMedia(project, sourceId, recording);
+        const media = await destination.getDirectoryHandle('media', { create: true });
+        const handle = await media.getFileHandle(file, { create: true });
+        await audio.stream().pipeTo(await handle.createWritable());
+        if (await mediaFingerprint(await handle.getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1412'));
+      }
+      // External handles are keyed by project/recording ID, so referenced audio stays linked,
+      // including offline audio. Freeze inherited details before changing the parent session.
+      moved.push({ ...recording, file, manuscriptDirectory,
+        draft: recording.draft ?? { metadata: { ...(source.metadata ?? defaultMetadata(recording.name)), id: recording.id, title: recording.name }, speakers: [] } });
+    }
+    // AI hosts re-read the index: after this commit the old session no longer owns these IDs.
+    return saveProject(project, { ...project.data, interviews: project.data.interviews.map(session =>
+      session.id === sourceId ? { ...session, recordings: session.recordings.filter(recording => !ids.has(recording.id)) }
+        : session.id === targetId ? { ...session, recordings: [...session.recordings, ...moved] } : session) });
+  });
+}
+
 async function manuscriptSnapshot(project: OpenProject, interviewId: string, recording: ProjectRecording) {
   const directory = await interviewDirectory(project, interviewId);
   let folder: FileSystemDirectoryHandle;

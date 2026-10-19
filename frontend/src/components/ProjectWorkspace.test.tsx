@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { ConnectorContext } from '../hooks/connectorContext';
 import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
 import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
 vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onExportProjectFiles?: () => void; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
-vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
+vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
 const project = { directory: { name: '测试.ripple' }, data: { id: 'p', title: '测试项目', description: '', revision: 0, interviews: [{ id: 'i', title: '第一次访谈', recordings: [{ id: 'r', name: '录音.wav', storage: 'copy' }] }] } } as store.OpenProject;
 beforeEach(() => {
@@ -213,6 +214,7 @@ it('removes the short success notice after four seconds', async () => {
   const timer = vi.spyOn(window, 'setTimeout');
   fireEvent.click(await screen.findByRole('button', { name: '加入音频' }));
   await screen.findByText('音频已加入项目。');
+  await waitFor(() => expect(timer.mock.calls.some(([, delay]) => delay === 4000)).toBe(true));
   const dismiss = timer.mock.calls.find(([, delay]) => delay === 4000)?.[0];
   expect(typeof dismiss).toBe('function');
   await act(async () => { if (typeof dismiss === 'function') dismiss(); });
@@ -476,4 +478,39 @@ it('refreshes recovered audio only after a successful selection, keeping cancell
  await waitFor(()=>expect(relink).toHaveBeenCalledWith(linked,'i',recording,selected));
  await waitFor(()=>expect(screen.queryByText(/音频访问权限需要恢复/)).toBeNull());
  expect(check).toHaveBeenCalledTimes(2);
+});
+
+
+it('publishes a completed move and focuses its destination session',async()=>{
+ localStorage.clear();
+ const two={...project,data:{...project.data,interviews:[...project.data.interviews,{id:'destination',title:'Synthetic destination',recordings:[]}]}};
+ const moved={...two,data:{...two.data,revision:1,interviews:[{...two.data.interviews[0],recordings:[]},{...two.data.interviews[1],recordings:two.data.interviews[0].recordings}]}};
+ vi.mocked(store.openProject).mockResolvedValueOnce(two);
+ vi.mocked(store.moveProjectRecordings).mockResolvedValueOnce(moved);
+ render(<ProjectWorkspace/>);
+ fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ fireEvent.click(await screen.findByRole('checkbox',{name:'选择 录音.wav'}));
+ fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ await waitFor(()=>expect(store.moveProjectRecordings).toHaveBeenCalledWith(two,'i','destination',['r']));
+ expect(await screen.findByText('录音及关联稿件已移到“Synthetic destination”。')).toBeTruthy();
+ await waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[data-session-id="destination"]')));
+});
+
+it('refuses to move a recording while an AI task owns its manuscript',async()=>{
+ localStorage.clear();
+ const two={...project,data:{...project.data,interviews:[...project.data.interviews,{id:'destination',title:'Synthetic destination',recordings:[]}]}};
+ vi.mocked(store.openProject).mockResolvedValueOnce(two);
+ const targetLocked=vi.fn(()=>true);
+ render(<ConnectorContext.Provider value={{state:{targetLocked}} as never}><ProjectWorkspace/></ConnectorContext.Provider>);
+ fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ fireEvent.click(await screen.findByRole('checkbox',{name:'选择 录音.wav'}));
+ fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ expect(await screen.findByRole('alert')).toBeTruthy();
+ expect(store.moveProjectRecordings).not.toHaveBeenCalled();
+ expect(targetLocked).toHaveBeenCalledWith('','r','i','p');
+ expect(screen.getByRole('dialog')).toBeTruthy();
 });

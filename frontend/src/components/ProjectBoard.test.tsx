@@ -266,3 +266,20 @@ it('clears a stale offline notice after a successful relink with unchanged recor
  await waitFor(()=>expect(store.checkProjectMedia).toHaveBeenCalledTimes(2));
  await waitFor(()=>expect(screen.queryByText(/音频访问权限需要恢复/)).toBeNull());
 });
+
+it('selects several recordings and sends one confirmed move with their associated manuscripts',async()=>{
+ HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+ vi.mocked(local.readManifest).mockResolvedValue({models:[]} as never);
+ const recordings=[{id:'r1',file:'a.wav',name:'Synthetic A',storage:'copy'},{id:'r2',file:'b.wav',name:'Synthetic B',storage:'reference'}];
+ const project={data:{id:'p',interviews:[{id:'s',title:'Synthetic source',recordings},{id:'target',title:'Synthetic destination',recordings:[]}]}} as OpenProject;
+ const move=vi.fn().mockResolvedValue(undefined);
+ render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}} moveRecordings={move}/>);
+ fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic A'}));
+ fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic B'}));
+ fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ expect(move).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ await waitFor(()=>expect(move).toHaveBeenCalledWith('s','target',['r1','r2']));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+});

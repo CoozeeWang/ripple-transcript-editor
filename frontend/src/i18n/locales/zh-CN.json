@@ -1764,5 +1764,22 @@
     "endingAction": "正在结束…",
     "background": "{{client}} 正在辅助编辑「{{recording}}」，该稿件暂时只读。其他稿件可继续编辑。",
     "completed": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。"
+  },
+  "recordingMove": {
+    "select": "选择 {{name}}",
+    "action": "移动到其他场次",
+    "title": "移动录音",
+    "summary": "将 {{count}} 条录音及其全部原始转录稿、编辑版本和批注从“{{source}}”移到其他场次。",
+    "destination": "目标场次",
+    "choose": "请选择目标场次",
+    "metadata": "录音和稿件原有的日期、地点、参与人及备注会保留，不会被目标场次的信息覆盖。",
+    "cancel": "取消",
+    "confirm": "确认移动",
+    "working": "正在移动并核对文件…",
+    "done": "录音及关联稿件已移到“{{target}}”。",
+    "invalidSelection": "请选择同一场次中的录音及另一个现有目标场次，然后重试。",
+    "failed": "移动未完成。请检查项目文件夹的访问权限和可用空间，再重试；原场次中的材料仍保留。",
+    "selected": "已选 {{count}} 条录音",
+    "clear": "取消选择"
   }
 }

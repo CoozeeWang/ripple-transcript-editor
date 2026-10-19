@@ -296,3 +296,10 @@ body:has(.project-home--welcome) { min-width: 0; }
 .recent-project-recovery { flex-direction:column; gap:12px; padding:12px 16px; }
 .recent-project-recovery__actions { display:flex; align-self:stretch; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
 .recent-project-recovery__actions .button { flex:0 1 auto; min-width:0; font:400 .86rem/1.5 var(--font-sans); white-space:normal; }
+
+.recording-move-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; }
+.recording-move-toolbar > span { color:var(--color-text-3); font-size:.86rem; }
+.recording-move-checkbox { flex:none; margin-top:7px; }
+.recording-move-destinations { display:grid; gap:8px; border:0; padding:8px 0; margin:12px 0; max-height:30vh; overflow:auto; }
+.recording-move-destinations label { display:flex; align-items:center; gap:8px; overflow-wrap:anywhere; }
+.recording-move-destinations legend { font-weight:500; }

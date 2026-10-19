@@ -1,7 +1,7 @@
 import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
+import { moveProjectRecordings, referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
 import { createEdit, setModelOriginal, saveActiveEdit, createModel, persistActiveModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
@@ -839,4 +839,110 @@ it('preserves the previous association when a recovery file becomes unreadable d
  const candidate={kind:'file',name:file.name,getFile:async()=>file} as unknown as FileSystemFileHandle;
  await expect(relinkMedia(p,interview.id,recording,candidate)).rejects.toMatchObject({reason:'unreadable'});
  expect(handles.get(key)).toBe(previous);expect((await openProject(p.directory)).data).toEqual(p.data);
+});
+
+
+it.each(['copy', 'reference'] as const)('moves a full batch and preserves versions, marks, metadata and audio (%s)', async storage => {
+  const { p, interview, recording, source } = await fixture(storage);
+  let project = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], storage);
+  project = await addInterview(project, 'Synthetic destination');
+  const target = project.data.interviews[1];
+  const dir = await recordingDirectory(project, interview.id, recording);
+  const transcript = {audio:{filename:recording.file,duration:3},speakers:[{id:'s',name:'Synthetic speaker'}],segments:[{id:'1',speaker_id:'s',start:0,end:3,text:'Synthetic original',annotations:[{id:'a',text:'Synthetic note',createdAt:'2026-01-02T00:00:00Z'}]}]};
+  const made = await createModel(dir,recording.file,{engine:'synthetic',sourceKind:'transcription',transcript,original:transcript,label:'Synthetic original',originalOnly:true});
+  await createModel(dir,recording.file,{engine:'synthetic',sourceKind:'import',transcript,label:'Synthetic edit',metadata:{...interview.metadata!,location:'Synthetic place',notes:'Synthetic notes'}});
+  const manifest = (await readManifest(dir,recording.file))!;
+  const before = await readModelOriginal(dir,recording.file,made.model.id);
+  const ids = project.data.interviews[0].recordings.map(r=>r.id);
+  const moved = await moveProjectRecordings(project,interview.id,target.id,ids);
+  const reopened = await openProject(moved.directory);
+  expect(reopened.data.interviews[0].recordings).toHaveLength(0);
+  expect(reopened.data.interviews[1].recordings.map(r=>r.id)).toEqual(ids);
+  for(const item of reopened.data.interviews[1].recordings) {
+    expect(await (await readProjectMedia(reopened,target.id,item)).text()).toBe('original audio');
+    expect(item.storage).toBe(storage);
+    expect(item.draft!.metadata.recorded_at).toBe(interview.metadata!.recorded_at);
+  }
+  const item = reopened.data.interviews[1].recordings[0];
+  const movedDir = await recordingDirectory(reopened,target.id,item);
+  expect((await readManifest(movedDir,item.file))!.models).toEqual(manifest.models);
+  expect(await readModelOriginal(movedDir,item.file,made.model.id)).toEqual(before);
+  expect((await readEdited(movedDir,item.file))!.metadata).toMatchObject({location:'Synthetic place',notes:'Synthetic notes'});
+  // Moving back uses unique staging paths and preserves the recording identity.
+  const returned = await moveProjectRecordings(reopened,target.id,interview.id,[item.id]);
+  const back = returned.data.interviews[0].recordings[0];
+  expect(back.id).toBe(recording.id);
+  expect(await (await readProjectMedia(returned,interview.id,back)).text()).toBe('original audio');
+});
+
+it('preserves an offline external reference and a recording-specific draft', async () => {
+  const {p,interview,recording,source}=await fixture('reference');
+  const draft={metadata:{...interview.metadata!,recorded_at:'2026-01-02',location:'Synthetic location'},speakers:[{id:'s',name:'Synthetic speaker'}]};
+  const saved=await saveProject(p,{...p.data,interviews:[{...interview,recordings:[{...recording,draft}]}]});
+  const project=await addInterview(saved,'Synthetic destination');
+  source.files.clear();
+  const next=await moveProjectRecordings(project,interview.id,project.data.interviews[1].id,[recording.id]);
+  const moved=next.data.interviews[1].recordings[0];
+  expect(moved.draft).toEqual(draft);
+  await expect(readProjectMedia(next,next.data.interviews[1].id,moved)).rejects.toMatchObject({reason:'missing'});
+  source.files.set('interview.wav',new File(['original audio'],'interview.wav'));
+  expect(await (await readProjectMedia(next,next.data.interviews[1].id,moved)).text()).toBe('original audio');
+});
+
+it('keeps the original batch indexed if a later audio is missing during staging', async () => {
+  const {p,source,interview}=await fixture();
+  let project=await addRecordings(p,interview.id,[await source.handle.getFileHandle('interview.wav')],'copy');
+  project=await addInterview(project,'Synthetic destination');
+  const second=project.data.interviews[0].recordings[1];
+  const sessions=await project.directory.getDirectoryHandle('interviews');
+  const media=await(await sessions.getDirectoryHandle(interview.id)).getDirectoryHandle('media');
+  await media.removeEntry(second.file);
+  await expect(moveProjectRecordings(project,interview.id,project.data.interviews[1].id,project.data.interviews[0].recordings.map(r=>r.id))).rejects.toThrow();
+  expect((await openProject(project.directory)).data).toEqual(project.data);
+  // A retry after restoring the missing file does not collide with interrupted staging.
+  const stream=await(await media.getFileHandle(second.file,{create:true})).createWritable();
+  await stream.write(new File(['original audio'],'interview.wav'));await stream.close();
+  expect((await moveProjectRecordings(project,interview.id,project.data.interviews[1].id,[second.id])).data.interviews[1].recordings).toHaveLength(1);
+});
+
+it('rejects stale revisions, duplicate IDs and invalid destinations without changing the index', async () => {
+  const {p,interview,recording}=await fixture();
+  const project=await addInterview(p,'Synthetic destination');
+  await expect(moveProjectRecordings(p,interview.id,project.data.interviews[1].id,[recording.id])).rejects.toThrow();
+  for(const [target,ids] of [[interview.id,[recording.id]],['missing',[recording.id]],[project.data.interviews[1].id,[recording.id,recording.id]],[project.data.interviews[1].id,['missing']]] as [string,string[]][]) {
+    await expect(moveProjectRecordings(project,interview.id,target,ids)).rejects.toThrow();
+  }
+  expect((await openProject(project.directory)).data).toEqual(project.data);
+});
+
+it('does not publish any moved recording when the final index write fails',async()=>{
+ const {p,interview,recording}=await fixture();
+ const project=await addInterview(p,'Synthetic destination');
+ const original=project.directory.getFileHandle.bind(project.directory);
+ let failed=false;
+ vi.spyOn(project.directory,'getFileHandle').mockImplementation(async(name,options)=>{
+   const handle=await original(name,options);
+   if(name!=='ripple-project.json')return handle;
+   return {...handle,createWritable:async()=>{
+     if(!failed){failed=true;throw new DOMException('Synthetic disk failure','QuotaExceededError');}
+     return handle.createWritable();
+   }} as FileSystemFileHandle;
+ });
+ await expect(moveProjectRecordings(project,interview.id,project.data.interviews[1].id,[recording.id])).rejects.toThrow();
+ expect((await openProject(project.directory)).data).toEqual(project.data);
+ expect(await(await readProjectMedia(project,interview.id,recording)).text()).toBe('original audio');
+});
+
+it('refuses a missing version file and leaves destination recordings untouched',async()=>{
+ const {p,interview,recording,source}=await fixture();
+ let project=await addInterview(p,'Synthetic destination');
+ const target=project.data.interviews[1];
+ project=await addRecordings(project,target.id,[await source.handle.getFileHandle('interview.wav')],'copy');
+ const dir=await recordingDirectory(project,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:1},speakers:[],segments:[{id:'1',start:0,end:1,speaker_id:'',text:'Synthetic text'}]};
+ const made=await createModel(dir,recording.file,{engine:'synthetic',transcript,label:'Synthetic edit'});
+ const folder=await dir.getDirectoryHandle(recording.file.replace(/\.[^.]+$/,'')+'.transcript');
+ await folder.removeEntry(made.model.edits[0].file);
+ await expect(moveProjectRecordings(project,interview.id,target.id,[recording.id])).rejects.toThrow();
+ expect((await openProject(project.directory)).data).toEqual(project.data);
 });

@@ -24,7 +24,7 @@ import { ProjectBoard } from './ProjectBoard';
 import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
 import { useDismissable } from '../useDismissable';
-import { trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject,
+import { moveProjectRecordings, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject,
   type ExistingManuscript, type OpenProject, type ProjectRecording, type ProjectImportStage } from '../lib/projectStore';
 import './projectWorkspace.css';
 
@@ -287,6 +287,13 @@ export function ProjectWorkspace() {
             try { await publish(await saveProject(snapshot, { ...snapshot.data, interviews })); }
             catch (error) { setProject(snapshot); throw error; }
           }, false); }}
+          moveRecordings={async (source, target, ids) => {
+            ids.forEach(id => assertRecordingMutable(source, id));
+            const next = await moveProjectRecordings(current.current!, source, target, ids);
+            await publish(next);
+            setMediaRevision(value => value + 1);
+            setSuccessNotice(msg('recordingMove.done', { target: next.data.interviews.find(session => session.id === target)!.title }));
+          }}
           createSession={async session => {
             const snapshot = current.current!;
             await publish(await saveProject(snapshot, { ...snapshot.data, interviews: [...snapshot.data.interviews, session] }));

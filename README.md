@@ -7,6 +7,7 @@ Ripple (formerly Transcription Editor) is a local-first web app for editing long
 The first usable editor slice includes:
 
 - create and switch between local interviews
+- select recordings on the project board and move them, with all transcripts and versions, to another session in the same project; recording details and external audio references are preserved
 - editable interview metadata: title, date/time, location, people, roles, topics, and notes
 - bundled synthetic transcript data and JSON import
 - audio saved locally inside its interview folder
