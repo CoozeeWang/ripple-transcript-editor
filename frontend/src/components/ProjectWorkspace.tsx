@@ -1,3 +1,5 @@
+import { registerDesktopUpdateGuard } from '../lib/desktopUpdates';
+import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
@@ -173,6 +175,10 @@ export function ProjectWorkspace() {
     setLegacyCandidates({ interviewId: targetId, items });
     if (!items.length) setError(msg('ProjectWorkspace.m0903'));
   };
+  useEffect(() => registerDesktopUpdateGuard(async () => {
+    if (busyRef.current || aiConnector?.state.activities?.some(blocksHumanEditing)) throw Error('update_work_in_progress');
+    if (creating || materialTarget !== undefined || (!editor && !settings && hasEditorDrafts()) || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description)) throw Error('update_unsaved_project');
+  }));
   const returnHome = () => {
     if (busy) return;
     const dirty = creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);

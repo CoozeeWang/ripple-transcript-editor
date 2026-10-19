@@ -30,5 +30,13 @@
   },
   "bundle": {
     "active": false
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "basicUi"
+      }
+    }
   }
 }

@@ -31,6 +31,10 @@ macOS can also retain an old image under a pinned Dock entry's cache identity. I
 
 On macOS, creating or opening a valid `.ripple` project automatically sets its Finder custom icon using NSWorkspace. The icon is embedded in the native executable. Projects remain ordinary folders, so native selection and cross-platform project contents keep their existing structure. If decoration fails, the project remains usable with a visible notice. Portable project copies receive their own icon; no icon change is attempted for browser storage or on Windows. macOS may create a hidden `Icon` metadata file and resource forks; those are system decoration, not interview content. Finder appearance and metadata preservation when copied between filesystems still require native acceptance.
 
+## Desktop updates
+
+The installed app offers a user-initiated check, download and install flow in Settings → General. See [update source, signing, preservation and release preparation](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger public updates; publishing a signed catalog is a separate release action.
+
 ## Native development on macOS
 
 Double-click `start-dev.command` at the repository root, or run `npm --prefix desktop run dev`. This opens **Ripple Dev** in the native Tauri window using the checkout's current code. It requires macOS 14+, Node.js 22.15+, Rust/Cargo, and prepared dependencies:
