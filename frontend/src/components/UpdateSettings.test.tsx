@@ -26,6 +26,7 @@ async function ready(){
   await screen.findByText('当前版本 0.2.0-beta.1 · b75');
   fireEvent.click(screen.getByRole('button',{name:'检查更新'}));
   fireEvent.click(await screen.findByRole('button',{name:'下载更新'}));
+  expect(screen.getByText('Synthetic release notes <script>not HTML</script>').querySelector('script')).toBeNull();
   fireEvent.click(await screen.findByRole('button',{name:'准备安装'}));
 }
 it('requires separate check, download, preparation and installation decisions',async()=>{
@@ -33,7 +34,6 @@ it('requires separate check, download, preparation and installation decisions',a
   await ready();
   expect(invoke.mock.calls.filter(([name])=>name==='update_install')).toHaveLength(0);
   expect(document.activeElement).toBe(screen.getByRole('button',{name:'稍后再说'}));
-  expect(screen.getByText('Synthetic release notes <script>not HTML</script>').querySelector('script')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'退出并安装'}));
   await waitFor(()=>expect(invoke).toHaveBeenCalledWith('update_install'));
   expect(guard).toHaveBeenCalledOnce();remove();
