@@ -283,3 +283,24 @@ it('selects several recordings and sends one confirmed move with their associate
  await waitFor(()=>expect(move).toHaveBeenCalledWith('s','target',['r1','r2']));
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
 });
+
+it('keeps the confirmed source and count stable while the saved project refreshes',async()=>{
+ HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+ vi.mocked(local.readManifest).mockResolvedValue({models:[]} as never);
+ const recording={id:'r',file:'a.wav',name:'Synthetic audio',storage:'copy'};
+ const source={id:'s',title:'Synthetic source',recordings:[recording]};
+ const target={id:'t',title:'Synthetic destination',recordings:[]};
+ const project={data:{id:'p',interviews:[source,target]}} as OpenProject;
+ let finish!:()=>void;
+ const move=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
+ const props={project,selected:'s',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>{await work();},legacy:()=>{},relink:()=>{},associate:()=>{},moveRecordings:move};
+ const view=render(<ProjectBoard {...props}/>);
+ fireEvent.click(screen.getByRole('checkbox',{name:'选择 Synthetic audio'}));
+ fireEvent.click(screen.getByRole('button',{name:'移动到其他场次'}));
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ view.rerender(<ProjectBoard {...props} busy project={{...project,data:{...project.data,interviews:[{...source,recordings:[]},{...target,recordings:[recording]}]}} as OpenProject}/>);
+ expect(screen.getByRole('dialog').textContent).toContain('将 1 条录音');
+ expect(screen.getByRole('dialog').textContent).toContain('Synthetic source');
+ await act(async()=>finish());
+});
