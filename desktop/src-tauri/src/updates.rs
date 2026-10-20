@@ -426,6 +426,9 @@ mod tests {
         let sig = include_str!("../../tests/fixtures/updater/synthetic-package.txt.sig");
         let key = include_str!("../../tests/fixtures/updater/synthetic-public.key.pub");
         assert!(verify_package(bytes, sig, key, "1.2.3").is_ok());
+        // Signed data is byte-exact: Windows checkout must not rewrite LF to CRLF.
+        let rewritten = String::from_utf8_lossy(bytes).replace('\n', "\r\n");
+        assert!(verify_package(rewritten.as_bytes(), sig, key, "1.2.3").is_err());
         assert!(verify_package(b"tampered", sig, key, "1.2.3").is_err());
         assert!(verify_package(bytes, sig, key, "9.9.9").is_err());
         assert!(verify_package(bytes, sig, PUBLIC_KEY, "1.2.3").is_err());
