@@ -1,36 +1,19 @@
-# 引擎服务预设（2026-09-21）
+# 转录引擎与外部 AI
 
-本次范围：DeepSeek、Kimi、智谱 GLM、OpenAI、Claude、Gemini；聚合平台 OpenRouter、硅基流动；本机 Ollama、LM Studio；其他 OpenAI 兼容服务。阿里、豆包及新增转录服务留待后续。
+转录和 AI 辅助编辑是两种不同的连接。此页替代早期“内置 AI 模型服务预设”说明；当前 Ripple 不在设置内配置 DeepSeek、Kimi、Claude 等文字编辑模型，也不保存它们的编辑模型密钥。
 
-## 配置体验
+## 音频转录
 
-设置主页只显示已保存的配置，默认配置仍在最上方。在添加配置中选择服务，自动填入地址及部分模型选项。模型可手动填写；读取模型列表不会改变当前选择。常规官方地址位于高级设置，国内/国际地址直接展示。官方入口只允许对应官方地址；其他兼容代理使用自定义入口。原有自定义配置不会被迁移或替换。
+在设置的转录引擎页配置所选服务，再从录音开始转录。当前代码包含 ElevenLabs、讯飞普通／大模型、OpenAI 兼容转录、FunASR，以及腾讯标准／URL／极速适配器。具体字段及可用能力以所选引擎的配置表单为准；并非每个服务都提供相同的语言、说话人或时间戳选项。
 
-读取列表与测试使用当前表单，不自动保存。测试连接会发出一个简短的付费可能请求，只验证连接和简单结构化响应，不代表真实文稿编辑质量。请求不含文稿。列表接口不可用时仍可使用预设或手动 ID。聚合平台、本地模型以及手动填写的模型需要自身支持文本对话与 JSON 输出；列表存在不等于全部模型已适配。预设模型不是自动追踪“最新版本”的别名；已保存 ID 保持原样。
+凭据保存在本机应用数据中，不随项目副本导出，也不提交到 Git。测试连接不代表真实音频效果或服务商账户额度已通过；开始转录可能使用服务商额度。重试前应先核对原任务状态，恢复边界见[诊断与转录恢复](diagnostics.md#转录计时与连接恢复)。
 
-## 调用与存储
+## 文字分析与辅助编辑
 
-- 兼容服务使用 Chat Completions + JSON object。
-- Claude 使用 Messages、x-api-key、固定结果工具（强制单工具返回）；工具仅作为结构化结果容器，不执行操作。
-- Gemini 使用官方 OpenAI 兼容接口和 JSON schema。
-- 全部经过 Ripple 原有结果验证；截断或格式错误不能作为成功结果应用。
-- 原有 store 的新增 provider 分组按需补齐；保留 profile ID、默认选择、模型和密钥。普通兼容协议的版本指纹算法保持不变，不使旧的续传记录失效。
-- 列表与测试不写入凭据，不把上游原始错误或密钥回传前端。
-- 转录仅整理现有字段：Whisper 预填基础地址和模型；FunASR 预填主机与端口。保留 GPT 转录模型尚未适配的说明。
+在设置的 AI 辅助编辑页，选择 ChatGPT、Claude Desktop 或 WorkBuddy，按[本机 AI 连接](LOCAL_AI_CONNECTIONS.md)接入。模型选择、账户及费用由外部 AI 软件管理。Ripple 提供项目和版本范围内的 MCP 工具；外部 AI 收到请求的稿件文字，不接收音频。
+
+开始修改前明确目标版本、编辑范围及保存方式；原稿不能直接修改。当前版本和新版本的保存、撤销及中断恢复规则见[MCP 连接](AI_CONNECTOR.md)。
 
 ## 验证边界
 
-通过模拟上游的协议、迁移、密钥隔离、错误分类及表单交互测试，构建通过。浏览器检查服务切换、Claude 表单、Kimi 地区地址和原有默认配置。未使用真实供应商密钥进行付费请求；真实音频/文稿效果尚待用户账户验收。
-
-## 官方参考
-
-- [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat)
-- [Claude tool choice](https://platform.claude.com/cookbook/tool-use-tool-choice)
-- [Gemini OpenAI compatibility](https://ai.google.dev/gemini-api/docs/openai)
-- [Kimi 快速开始](https://platform.kimi.com/docs/get-api-key)
-- [智谱 API](https://docs.bigmodel.cn/cn/api/introduction)
-- [DeepSeek](https://api-docs.deepseek.com/)
-- [硅基流动](https://docs.siliconflow.cn/docs/api/chat-completions-post)
-- [OpenRouter](https://openrouter.ai/docs/api_reference/overview)
-- [Ollama](https://docs.ollama.com/api/openai-compatibility)
-- [LM Studio](https://lmstudio.ai/docs/developer/openai-compat)
+本次文档预审对照当前源码及已验 Mac 行为，不重新调用付费转录服务。各转录账户的真实质量、外部客户端的实际调用、Windows 安装包／实机验收和完整线上升级分别记录；后两项仍留到 Release 前完成。

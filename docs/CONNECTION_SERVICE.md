@@ -2,7 +2,9 @@
 
 This experimental public relay is not the current product route. The maintainer chose personal/local client connections instead. See [Local AI connections](LOCAL_AI_CONNECTIONS.md). No public service is deployed or required by the current desktop flow.
 
-This service implements the simplified connection flow. Users add **Ripple** in their AI application, open **Settings → AI-assisted editing → Connect Ripple**, and enter the displayed one-use pairing code on the authorization page. They do not install a transport program or enter a tunnel ID, API key, or server address. The desktop connection switch controls access to the currently open interview. Saved authorization survives restarting the desktop and service. **Disconnect and revoke** invalidates the device and all its AI authorizations.
+## Retained experimental design
+
+The following describes the experimental relay implementation for developers, not the current desktop setup instructions. Do not follow it to configure the installed app. In this design, users add **Ripple** in their AI application, open **Settings → AI-assisted editing → Connect Ripple**, and enter the displayed one-use pairing code on the authorization page. They do not install a transport program or enter a tunnel ID, API key, or server address. The desktop connection switch controls access to the currently open interview. Saved authorization survives restarting the desktop and service. **Disconnect and revoke** invalidates the device and all its AI authorizations.
 
 The service is not deployed publicly yet. A build without `RIPPLE_CONNECTION_URL` clearly reports that the service is unavailable. Local HTTP is allowed only on loopback for development. ChatGPT, other AI clients, Windows, public distribution and deployment require their own compatibility/acceptance checks; a local test does not establish these results.
 

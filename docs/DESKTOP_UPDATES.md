@@ -47,3 +47,11 @@ Paths above are fictional. The tool checks bundle metadata, architecture and cod
 Prepare each accepted platform separately, then combine the `platforms` entries into one catalog with the same version and notes. Verify that each URL names an uploaded asset in that exact Release. Do not list platforms that have not been built and accepted. Publish the reviewed catalog, packages and signature files together only after the maintainer approves the Release. This tool never uploads or creates a Release. A published Beta with its own catalog is discoverable; internal builds without a new product version are still manual installations.
 
 Synthetic source tests check consent, stale replies, signature tampering, version substitution, archive traversal, app-only replacement and rollback. These do not establish a public Release or a real Windows installation result. Full feed-to-installed-app acceptance additionally requires an actually published, signed release newer than the installed product version.
+
+## Verification status before Release
+
+As of 2026-10-20, the standalone update-window interaction has Mac internal-build acceptance through b83. Source tests and local synthetic signed-package tests are separate evidence. No new publicly hosted update is implied by this status.
+
+- **Pending before Release:** Windows installer generation for the final candidate, installed/native Windows acceptance, and a complete published signed update from feed discovery through download, preparation, install, restart and preserved user state.
+- **Pending real scenarios:** preparation timeout, installation failure, rollback and rollback failure/recovery must be checked at their appropriate platform/integration layer; simulated UI states and source tests do not establish real hosted acceptance.
+- Windows accepts EXE updater assets. The upstream updater's legacy ZIP feature is disabled; the Mac app archive uses Ripple's own validation/replacement path. TLS and system-proxy support remain enabled.

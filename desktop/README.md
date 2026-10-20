@@ -4,16 +4,24 @@ This contains the Ripple frontend in a Tauri window and a bundled local Python b
 
 Windows internal builds suppress Python bytecode generation while verifying the staged runtime. Before creating an installer, `stage-backend.py --check-clean` rejects generated caches and staging probe data; installed-runtime checks repeat this assertion. A static Defender scan of the installer and extracted payload runs before installation smoke tests. These checks do not establish a Google Safe Browsing verdict or replace acceptance on a user's Windows machine.
 
-Build locally:
+## Local macOS build
+
+Prepare Node.js 22.22.2+ on the 22 release line, 24.15+ on the 24 release line, or 26+, Rust/Cargo, uv, and managed Python 3.12. Install the locked dependencies, then build from the repository root:
 
 ```sh
-cd frontend && npm run build
-cd ../desktop/src-tauri && ~/.cargo/bin/cargo build --release --features custom-protocol --offline
-cd ../.. && python3 desktop/stage-backend.py
-RIPPLE_BUILD_NUMBER=9 desktop/package-mac.sh /path/printed/by/stage-backend
+npm --prefix frontend ci
+npm --prefix desktop ci
+uv sync --project backend --locked
+npm --prefix frontend run build
+~/.cargo/bin/cargo build --manifest-path desktop/src-tauri/Cargo.toml --release --features custom-protocol --locked
+python3 desktop/stage-backend.py
 ```
 
-Choose a build number higher than every previous internal build; `8` was used by a separate session-navigation test app, so use `9` for the next Ripple test build. The packaging script requires this number, writes `desktop/dist/Ripple.app`, and stores the build number, Tauri application version, and Git commit in `Contents/Info.plist`. Check those three values in the finished app before naming or recording a test package. Reusing or lowering the build number when overwriting an existing app is rejected. Backend state is stored under the app's user data directory. Selected project and audio files remain in their chosen locations. Closing the window stops the owned backend. The personal test build uses an ad hoc signature and is not notarized.
+The staging command prints the backend directory. `RIPPLE_DATA_DIR` must point to an absolute directory outside the repository whenever running local services. Staging is not installation or acceptance.
+
+Choose an unused positive `RIPPLE_BUILD_NUMBER` higher than all existing delivery records and the installed app; do not infer the next number from an old example in this document. Package with `desktop/package-mac.sh <printed-backend-directory> [output-app-path]`. This writes the application version, build number, and exact Git commit to `Contents/Info.plist`; verify the finished bundle before naming a compressed delivery package. Reusing or lowering the build number when replacing an existing output app is rejected.
+
+Backend state is stored under the app's user data directory. Selected project and audio files remain in their chosen locations. Closing the window stops the owned backend. The personal internal build uses an ad hoc signature and is not notarized. As of 2026-10-20, Mac b83 has maintainer acceptance; later dependency changes require their own package verification. Windows packaging/installed acceptance and a complete published, signed online upgrade remain pending before Release.
 
 The main window sets `dragDropEnabled: false` so file drops reach the editor's HTML drop zones. Tauri's native drop interception must not consume these events: the app uses the same target validation and import flow as its browser version. When WebKit supplies a dropped File without a persistent file handle, audio can be copied into the project; external-reference storage still requires the file picker. This also leaves the editor's internal drag sorting available.
 
@@ -33,11 +41,11 @@ On macOS, creating or opening a valid `.ripple` project automatically sets its F
 
 ## Desktop updates
 
-The installed app offers a user-initiated check, download and install flow from Ripple → Check for Updates… on Mac or Help → Check for Updates… on Windows, in a standalone update window. See [update source, signing, preservation and release preparation](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger public updates; publishing a signed catalog is a separate release action.
+The installed app offers a user-initiated **Update and restart…** flow from Ripple → Check for Updates… on Mac or Help → Check for Updates… on Windows, in a standalone update window. See [update source, signing, preservation and release preparation](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger public updates; publishing a signed catalog is a separate release action.
 
 ## Native development on macOS
 
-Double-click `start-dev.command` at the repository root, or run `npm --prefix desktop run dev`. This opens **Ripple Dev** in the native Tauri window using the checkout's current code. It requires macOS 14+, Node.js 22.15+, Rust/Cargo, and prepared dependencies:
+Double-click `start-dev.command` at the repository root, or run `npm --prefix desktop run dev`. This opens **Ripple Dev** in the native Tauri window using the checkout's current code. It requires macOS 14+, a supported Node.js version as listed above, Rust/Cargo, and prepared dependencies:
 
 ```sh
 npm --prefix frontend ci
