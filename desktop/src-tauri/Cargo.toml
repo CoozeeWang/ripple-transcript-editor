@@ -12,7 +12,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
-tauri-plugin-updater = "2"
+# Windows updates use signed EXE installers; Mac uses our verified app archive flow.
+# Do not compile the updater's unused legacy ZIP extraction support.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 minisign-verify = "0.2"

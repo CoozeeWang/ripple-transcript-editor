@@ -434,6 +434,11 @@ mod tests {
     #[test]
     fn source_is_fixed_to_this_repository_and_platform() {
         assert!(allowed_package(&Url::parse("https://github.com/CoozeeWang/ripple-transcript-editor/releases/download/v1.0.0/Ripple.app.tar.gz").unwrap(), true));
+        assert!(allowed_package(&Url::parse("https://github.com/CoozeeWang/ripple-transcript-editor/releases/download/v1.0.0/Ripple.exe").unwrap(), false));
+        for name in ["Ripple.zip", "Ripple.msi", "Ripple.app.tar.gz"] {
+            let url = Url::parse(&format!("https://github.com/CoozeeWang/ripple-transcript-editor/releases/download/v1.0.0/{name}")).unwrap();
+            assert!(!allowed_package(&url, false));
+        }
         for url in ["http://github.com/CoozeeWang/ripple-transcript-editor/releases/download/v1/a.app.tar.gz", "https://github.com/other/repo/releases/download/v1/a.app.tar.gz", "https://github.com@invalid.example/CoozeeWang/ripple-transcript-editor/releases/download/v1/a.app.tar.gz", "https://github.com/CoozeeWang/ripple-transcript-editor/releases/download/v1/a.exe", "https://github.com/CoozeeWang/ripple-transcript-editor/releases/download/v1/a.app.tar.gz?redirect=other"] {
             assert!(!allowed_package(&Url::parse(url).unwrap(), true));
         }
