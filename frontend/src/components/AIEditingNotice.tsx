@@ -25,9 +25,9 @@ export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurr
       return <div className={`ai-editing-notice${complete ? ' is-completed' : ''}`} key={task.task_id}>
         {!complete && <svg className="ai-editing-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg>}
         <div className="ai-editing-copy" role="status" aria-live="polite">
-          <span>{complete ? msg('aiEditing.completed', { saved: task.saved, total: task.total }) : ending ? msg('aiEditing.ending') : task.state === 'failed' ? msg('aiEditing.failed') : task.state === 'paused' ? msg('aiEditing.paused') : active ? msg(isCurrent(task) ? 'aiEditing.locked' : 'aiEditing.background', { client, recording: task.target?.recording ?? task.version }) : msg('aiEditing.ended')}</span>
+          <span>{complete ? msg('aiEditing.completed', { saved: task.saved, total: task.total, count: task.total }) : ending ? msg('aiEditing.ending') : task.state === 'failed' ? msg('aiEditing.failed') : task.state === 'paused' ? msg('aiEditing.paused') : active ? msg(isCurrent(task) ? 'aiEditing.locked' : 'aiEditing.background', { client, recording: task.target?.recording ?? task.version }) : msg('aiEditing.ended')}</span>
           <span className="ai-editing-detail">{task.target ? `${task.target.recording} · ${task.version}` : task.version}
-            {!complete && <> · {msg(`aiEditing.${!task.total ? 'preparing' : active ? task.state : 'counts'}`, { processed: task.processed, saved: task.saved, total: task.total })}</>}</span>
+            {!complete && <> · {msg(`aiEditing.${!task.total ? 'preparing' : active ? task.state : 'counts'}`, { processed: task.processed, saved: task.saved, total: task.total, count: task.total })}</>}</span>
         </div>
         <button type="button" className={protectedTask ? 'ai-editing-end' : 'ai-editing-close'} disabled={busy === task.task_id || ending} onClick={() => void run(task)} aria-label={protectedTask ? undefined : msg('aiEditing.dismiss')}>
           {protectedTask ? msg(ending ? 'aiEditing.endingAction' : 'aiEditing.end') : '×'}

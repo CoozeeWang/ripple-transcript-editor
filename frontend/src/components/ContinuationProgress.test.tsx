@@ -116,3 +116,28 @@ it('hides completed history locally without cancelling or deleting saved journal
   rerender(<ContinuationProgress tasks={[completed, { ...task, task_id: 'new-recovery' }]} error="" onAction={action}/>);
   expect(screen.getByRole('button', { name: '重读本批继续' })).toBeTruthy();
 });
+
+it.each(['zh-CN', 'en'] as const)('shows reason-specific recovery inside the real embedded notice in %s', async language => {
+  const { AIEditingNotice } = await import('./AIEditingNotice');
+  await act(() => setInterfaceLanguage(language));
+  const activity = { task_id: task.task_id, client: 'chatgpt', key: 'synthetic', version: task.version, version_id: task.version_id,
+    kind: 'incremental' as const, state: 'paused' as const, processed: 24, saved: 24, total: 60, touched: 0, inFlight: 0 };
+  const action = vi.fn(async () => ({})), end = vi.fn(async () => ({}));
+  const content = (reason: string) => <AIEditingNotice activities={[{ ...activity, reason }]} onEnd={end}>
+    <ContinuationProgress embedded tasks={[{ ...task, reason }]} error="" onAction={action}/>
+  </AIEditingNotice>;
+  const { rerender } = render(content('planned_segment_changed'));
+  expect(screen.getByText(language === 'en'
+    ? 'The remaining segment structure has changed. End this task and agree on a new editing range in your AI conversation. Saved batches are retained.'
+    : '未处理的片段结构已变化。请结束此任务，再在 AI 对话中确认新的编辑范围；已保存的批次仍保留。')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: language === 'en' ? 'Re-read batch and continue' : '重读本批继续' })).toBeNull();
+  expect(screen.queryByText(/Resume the task|可继续任务/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'End editing' : '结束编辑' }));
+  await waitFor(() => expect(end).toHaveBeenCalledWith(task.task_id));
+  for (const reason of ['user_paused', 'batch_conflict_manual_changes_preserved', 'synthetic_disk_failure']) {
+    rerender(content(reason));
+    expect(screen.getByRole('button', { name: language === 'en' ? 'Re-read batch and continue' : '重读本批继续' })).toBeTruthy();
+    const selector = reason === 'user_paused' ? /Completed batches remain|完成的批次仍保留/ : reason.startsWith('batch_conflict') ? /pending AI proposals are retained|AI 待提交结果均已保留/ : /not been confirmed saved|本批尚未确认保存/;
+    expect(screen.getByText(selector)).toBeTruthy();
+  }
+});

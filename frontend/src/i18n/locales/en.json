@@ -1796,7 +1796,7 @@
     "processing": "Processing · {{processed}} / {{total}} segments processed",
     "saving": "Saving · {{saved}} / {{total}} segments confirmed saved",
     "counts": "{{saved}} / {{total}} segments confirmed saved",
-    "paused": "AI editing is paused. This manuscript remains read-only. Resume the task or end editing.",
+    "paused": "AI editing is paused. This manuscript remains read-only. See the recovery guidance below, or end editing.",
     "failed": "AI editing encountered a problem. This manuscript remains read-only. Check the result, then continue the task or end editing.",
     "ended": "AI editing ended. Saved changes are retained.",
     "inUse": "This manuscript is being edited by AI. End editing first.",
@@ -1805,7 +1805,17 @@
     "ending": "Ending editing. Waiting for the current save to be confirmed…",
     "endingAction": "Ending…",
     "background": "{{client}} is editing “{{recording}}”, which is temporarily read-only. Other manuscripts remain editable.",
-    "completed": "AI editing completed. {{saved}} / {{total}} segments saved."
+    "completed": "AI editing completed. {{saved}} / {{total}} segments saved.",
+    "waiting_one": "Waiting for AI · {{saved}} / {{total}} segment saved",
+    "waiting_other": "Waiting for AI · {{saved}} / {{total}} segments saved",
+    "processing_one": "Processing · {{processed}} / {{total}} segment processed",
+    "processing_other": "Processing · {{processed}} / {{total}} segments processed",
+    "saving_one": "Saving · {{saved}} / {{total}} segment confirmed saved",
+    "saving_other": "Saving · {{saved}} / {{total}} segments confirmed saved",
+    "counts_one": "{{saved}} / {{total}} segment confirmed saved",
+    "counts_other": "{{saved}} / {{total}} segments confirmed saved",
+    "completed_one": "AI editing completed. {{saved}} / {{total}} segment saved.",
+    "completed_other": "AI editing completed. {{saved}} / {{total}} segments saved."
   },
   "recordingMove": {
     "select": "Select {{name}}",
@@ -1826,6 +1836,10 @@
     "actionFor": "Move {{name}} to another session",
     "actionSelected": "Move {{count}} selected recordings to another session",
     "selection": "Recordings: {{count}}",
-    "origin": "From {{source}}"
+    "origin": "From {{source}}",
+    "selected_one": "{{count}} recording selected",
+    "selected_other": "{{count}} recordings selected",
+    "actionSelected_one": "Move {{count}} selected recording to another session",
+    "actionSelected_other": "Move {{count}} selected recordings to another session"
   }
 }

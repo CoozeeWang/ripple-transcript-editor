@@ -91,3 +91,13 @@ it('keeps source metadata lookup independent of reviewed Chinese display text', 
   await setInterfaceLanguage('zh-CN');
   expect(serviceText('模型名')).toBe(msg('serviceCatalog.b0219'));
 });
+
+it.each([0, 1, 2])('uses the recording quantity %i for selection and move description', async count => {
+  await setInterfaceLanguage('en');
+  const noun = count === 1 ? 'recording' : 'recordings';
+  expect(msg('recordingMove.selected', { count })).toBe(`${count} ${noun} selected`);
+  expect(msg('recordingMove.actionSelected', { count })).toBe(`Move ${count} selected ${noun} to another session`);
+  await setInterfaceLanguage('zh-CN');
+  expect(msg('recordingMove.selected', { count })).toBe(`已选 ${count} 条录音`);
+  expect(msg('recordingMove.actionSelected', { count })).toBe(`移动所选 ${count} 条录音到其他场次`);
+});

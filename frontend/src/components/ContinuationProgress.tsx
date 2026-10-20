@@ -46,7 +46,7 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
       </div>
     </div>
     {error&&<p className="continuation-progress-error" role="alert">{msg('continuation.error')}</p>}
-    {!embedded&&task&&<p className="continuation-progress-note"><span>{message}</span>{live&&task.is_current&&<span className="continuation-progress-caution"> {msg('continuation.caution')}</span>}{task.held_batches>0&&<span> {msg('continuation.held')}</span>}</p>}
+    {task&&(!embedded||task.state==='paused')&&<p className="continuation-progress-note"><span>{message}</span>{live&&task.is_current&&<span className="continuation-progress-caution"> {msg('continuation.caution')}</span>}{task.held_batches>0&&<span> {msg('continuation.held')}</span>}</p>}
     {canOperate&&task&&(task.staged>0||task.held_batches>0)&&preview?.task===task.task_id&&<div className="continuation-proposals">
       <button type="button" className="cred-btn" onClick={()=>setPreview(null)}>{msg('continuation.hidePending')}</button>
       {!preview.proposals.length&&<p>{msg('continuation.noPending')}</p>}

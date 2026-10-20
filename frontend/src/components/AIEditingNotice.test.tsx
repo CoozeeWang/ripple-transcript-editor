@@ -56,3 +56,19 @@ it('uses English task copy and preserves real saved counts', async () => {
   expect(screen.getByRole('button', { name: 'End editing' })).toBeTruthy();
   await setInterfaceLanguage('zh-CN');
 });
+
+it.each([1, 2])('uses total %i for the English stage and completion plural, not the saved count', async total => {
+  await setInterfaceLanguage('en');
+  try {
+    const { rerender } = render(<AIEditingNotice activities={[{ ...task, total, state: 'waiting', saved: 0 }]} onEnd={vi.fn()}/>);
+    const noun = total === 1 ? 'segment' : 'segments';
+    expect(screen.getByText(new RegExp(`Waiting for AI · 0 / ${total} ${noun} saved$`))).toBeTruthy();
+    for (const state of ['processing', 'saving', 'paused'] as const) {
+      rerender(<AIEditingNotice activities={[{ ...task, total, state, saved: 0, processed: 0 }]} onEnd={vi.fn()}/>);
+      const prefix = state === 'processing' ? 'Processing · ' : state === 'saving' ? 'Saving · ' : '';
+      expect(screen.getByText(new RegExp(`${prefix}0 / ${total} ${noun} ${state === 'processing' ? 'processed' : 'confirmed saved'}$`))).toBeTruthy();
+    }
+    rerender(<AIEditingNotice activities={[{ ...task, total, state: 'completed', saved: total }]} onEnd={vi.fn()}/>);
+    expect(screen.getByText(`AI editing completed. ${total} / ${total} ${noun} saved.`)).toBeTruthy();
+  } finally { await setInterfaceLanguage('zh-CN'); }
+});

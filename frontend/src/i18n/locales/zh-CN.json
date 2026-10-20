@@ -1796,7 +1796,7 @@
     "processing": "正在处理 · 已处理 {{processed}} / {{total}} 个片段",
     "saving": "正在保存 · 已确认保存 {{saved}} / {{total}} 个片段",
     "counts": "已确认保存 {{saved}} / {{total}} 个片段",
-    "paused": "AI 编辑已暂停，此稿件仍暂时只读。可继续任务或结束编辑。",
+    "paused": "AI 编辑已暂停，稿件仍暂时只读。请查看下方的恢复说明，或结束编辑。",
     "failed": "AI 编辑遇到问题，此稿件仍暂时只读。请核对结果后继续任务，或结束编辑。",
     "ended": "AI 编辑已结束，已保存的内容保留。",
     "inUse": "此稿件正在由 AI 编辑，请先结束编辑。",
@@ -1805,7 +1805,17 @@
     "ending": "正在结束编辑，等待本次保存确认…",
     "endingAction": "正在结束…",
     "background": "{{client}} 正在辅助编辑「{{recording}}」，该稿件暂时只读。其他稿件可继续编辑。",
-    "completed": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。"
+    "completed": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。",
+    "waiting_one": "等待 AI 返回 · 已保存 {{saved}} / {{total}} 个片段",
+    "waiting_other": "等待 AI 返回 · 已保存 {{saved}} / {{total}} 个片段",
+    "processing_one": "正在处理 · 已处理 {{processed}} / {{total}} 个片段",
+    "processing_other": "正在处理 · 已处理 {{processed}} / {{total}} 个片段",
+    "saving_one": "正在保存 · 已确认保存 {{saved}} / {{total}} 个片段",
+    "saving_other": "正在保存 · 已确认保存 {{saved}} / {{total}} 个片段",
+    "counts_one": "已确认保存 {{saved}} / {{total}} 个片段",
+    "counts_other": "已确认保存 {{saved}} / {{total}} 个片段",
+    "completed_one": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。",
+    "completed_other": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。"
   },
   "recordingMove": {
     "select": "选择 {{name}}",
@@ -1826,6 +1836,10 @@
     "actionFor": "将 {{name}} 移动到其他场次",
     "actionSelected": "移动所选 {{count}} 条录音到其他场次",
     "selection": "{{count}} 条录音",
-    "origin": "来自 {{source}}"
+    "origin": "来自 {{source}}",
+    "selected_one": "已选 {{count}} 条录音",
+    "selected_other": "已选 {{count}} 条录音",
+    "actionSelected_one": "移动所选 {{count}} 条录音到其他场次",
+    "actionSelected_other": "移动所选 {{count}} 条录音到其他场次"
   }
 }
