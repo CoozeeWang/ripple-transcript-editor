@@ -10,6 +10,11 @@ on:
       - 'mock-data/**'
   workflow_dispatch:
     inputs:
+      build_number:
+        description: 'Unused positive internal build number for this delivery'
+        type: string
+        default: '84'
+        required: true
       scan_b63_only:
         description: 'Analyze the existing Chrome-blocked b63 artifact without running its installer'
         type: boolean
@@ -33,9 +38,13 @@ jobs:
     timeout-minutes: 45
     env:
       UV_PYTHON_PREFERENCE: only-managed
-      RIPPLE_BUILD_NUMBER: '70'
+      RIPPLE_BUILD_NUMBER: ${{ inputs.build_number || '84' }}
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
+      - name: Validate internal build number
+        shell: pwsh
+        run: |
+          if ($env:RIPPLE_BUILD_NUMBER -notmatch '^[1-9][0-9]*$') { throw 'Expected a positive internal build number' }
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
