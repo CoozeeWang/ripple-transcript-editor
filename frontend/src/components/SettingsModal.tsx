@@ -1,5 +1,5 @@
 import { ConnectorSetup } from './ConnectorSetup';
-import { msg, useInterfaceLanguage, setInterfaceLanguage, interfaceLanguage } from '../i18n';
+import { msg, useInterfaceLanguage, setInterfaceLanguage, interfaceLanguage, LANGUAGE_OPTIONS, normalizeInterfaceLanguage } from '../i18n';
 import { ProjectPreferenceSettings } from './ProjectPreferenceSettings';
 import { trapDialogFocus } from '../lib/dialogFocus';
 import { RESTORE_PROJECT_INTERVIEW } from '../lib/projectPreferences';
@@ -121,8 +121,8 @@ export function SettingsModal(props: SettingsModalProps) {
           >
             <section className="settings-block">
               <label className="field"><span>{msg('language.label')}</span>
-                <select aria-label={msg('language.label')} value={interfaceLanguage()} onChange={event => void setInterfaceLanguage(event.target.value as 'zh-CN' | 'en')}>
-                  <option value="zh-CN">简体中文</option><option value="en">English</option>
+                <select aria-label={msg('language.label')} value={interfaceLanguage()} onChange={event => void setInterfaceLanguage(normalizeInterfaceLanguage(event.target.value))}>
+                  {LANGUAGE_OPTIONS.map(({value,label})=><option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
               <p className="settings-hint">{msg('language.hint')}</p>

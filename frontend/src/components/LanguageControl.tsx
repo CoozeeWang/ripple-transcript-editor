@@ -1,5 +1,5 @@
 import {useId,useLayoutEffect,useRef,useState} from 'react';
-import {interfaceLanguage,msg,setInterfaceLanguage,useInterfaceLanguage} from '../i18n';
+import {interfaceLanguage,LANGUAGE_OPTIONS,msg,setInterfaceLanguage,useInterfaceLanguage} from '../i18n';
 import {useDismissable} from '../useDismissable';
 import {ActionIcon} from './ActionIcon';
 import './languageControl.css';
@@ -35,7 +35,7 @@ export function LanguageControl({welcome=false}:{welcome?:boolean}) {
     </button>
     {open&&<div ref={menu} id={id} popover="manual" role="menu" className="language-menu" aria-label={msg('language.label')}
       onPointerDown={event=>{if(event.button===0)event.preventDefault();}}>
-      {([['zh-CN','简体中文'],['en','English']] as const).map(([value,label])=><button type="button" role="menuitemradio" aria-checked={interfaceLanguage()===value} key={value}
+      {LANGUAGE_OPTIONS.map(({value,label})=><button type="button" role="menuitemradio" aria-checked={interfaceLanguage()===value} key={value}
         onClick={()=>{void setInterfaceLanguage(value);close();trigger.current?.focus();}}><span aria-hidden="true">{language===value?'✓':''}</span>{label}</button>)}
     </div>}
   </div>;

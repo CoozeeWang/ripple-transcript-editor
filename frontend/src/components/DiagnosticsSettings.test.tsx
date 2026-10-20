@@ -23,7 +23,7 @@ it('shows recent local problems even if the backend is unavailable', async () =>
   recordProblem('rename', new DOMException('private filename', 'NotAllowedError'));
   render(<DiagnosticsSettings />);
   expect(screen.getByText('重命名：文件或服务访问权限不足')).toBeTruthy();
-  await screen.findByText(/暂时无法读取后台记录/);
+  await screen.findByText(/暂时无法读取本地服务日志/);
   expect((screen.getByRole('button', { name: "导出诊断与日志" }) as HTMLButtonElement).disabled).toBe(false);
 });
 it('shows an honest clipboard failure instead of claiming success', async () => {

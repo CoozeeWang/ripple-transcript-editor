@@ -25,6 +25,8 @@ export function formatDateField(value: string | null | undefined): string {
   if (!value) return "—";
   const trimmed = value.trim();
   if (!trimmed) return "—";
+  // Preserve year/month precision before parsing; never invent a calendar day.
+  if (/^\d{4}(?:-\d{2})?$/.test(trimmed)) return trimmed;
   // Date-only metadata is a calendar day, not a UTC instant.
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed.replace(/-/g, "/");
   if (trimmed.includes("T") || trimmed.includes("-")) {

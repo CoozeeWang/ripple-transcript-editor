@@ -27,7 +27,7 @@ pub fn release(app: &AppHandle) {
     let _ = app.emit_to("main", "desktop-update-release", ());
 }
 pub fn language(app: &AppHandle, language: &str, title: &str) {
-    let normalized = if language == "en" { "en" } else { "zh-CN" };
+    let normalized = crate::native_menu::normalize_language(language);
     if let Ok(mut value) = app.state::<UpdateWindow>().language.lock() { *value = normalized.into(); }
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.set_title(title);
@@ -44,11 +44,11 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
         window.show()?; window.unminimize()?; window.set_focus()?; return Ok(());
     }
     let language = app.state::<UpdateWindow>().language.lock().map(|v|v.clone()).unwrap_or_default();
-    let english = language == "en";
+    let normalized = crate::native_menu::normalize_language(&language);
     let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html?updateWindow=1".into()))
-        .title(if english { "Software update" } else { "软件更新" })
+        .title(match normalized { "en" => "Software update", "zh-TW" => "軟體更新", _ => "软件更新" })
         .inner_size(560.0, 380.0).min_inner_size(480.0, 340.0)
-        .initialization_script(format!("window.__RIPPLE_UPDATE_WINDOW__ = {};", serde_json::json!({"language":if english {"en"} else {"zh-CN"}})))
+        .initialization_script(format!("window.__RIPPLE_UPDATE_WINDOW__ = {};", serde_json::json!({"language":normalized})))
         .disable_drag_drop_handler().on_navigation(navigation).center();
     #[cfg(target_os="macos")]
     let builder = if crate::development(app) { builder.data_store_identifier(*b"ripple-dev-00001") } else { builder };

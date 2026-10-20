@@ -286,3 +286,19 @@ it.each([
     expect(JSON.stringify(model)).toBe(before);
   } finally { await setInterfaceLanguage('zh-CN'); }
 });
+
+it('uses Taiwan export headings while retaining manuscript content, names, date precision and machine JSON', async () => {
+  await setInterfaceLanguage('zh-TW');
+  try {
+    const transcript: Transcript = { audio: { filename: 'Synthetic 原始转录稿.wav', duration: 1 }, speakers: [],
+      segments: [{ id: 's', speaker_id: '', start: 0, end: 1, text: 'Synthetic 原文 {{name}} <AI>' }] };
+    const metadata = { id:'synthetic', title: 'Synthetic 项目名稱', recorded_at: '2026-10', location: 'Synthetic location', participants: [], notes: '', topics: [], created_at: '2026-10-01', updated_at: '2026-10-01' } as InterviewMetadata;
+    const model = buildExportModel(transcript, metadata);
+    const txt = renderTxt(model), pdf = renderPdfHtml(model);
+    expect(txt).toContain('Synthetic 原文 {{name}} <AI>');
+    expect(txt).toContain('Synthetic 项目名稱');
+    expect(formatDateField('2026-10')).toBe('2026-10');
+    expect(pdf).toContain('Synthetic 原文 {{name}} &lt;AI&gt;');
+    expect((buildJsonPayload(transcript, undefined).segments as Transcript['segments'])[0].text).toBe('Synthetic 原文 {{name}} <AI>');
+  } finally { await setInterfaceLanguage('zh-CN'); }
+});

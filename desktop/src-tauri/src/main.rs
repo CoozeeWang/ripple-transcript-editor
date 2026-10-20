@@ -289,7 +289,7 @@ fn backend_ready() -> bool { health_ok() }
 #[tauri::command]
 fn connector_window_key(app: tauri::AppHandle) -> Result<String, String> {
     let data = app_data(&app).map_err(|e| e.to_string())?;
-    fs::read_to_string(data.join("connector/window.key")).map_err(|_| "连接后台尚未就绪".to_string())
+    fs::read_to_string(data.join("connector/window.key")).map_err(|_| native_menu::diagnostic(&app, "connectorNotReady"))
 }
 
 #[tauri::command]
@@ -541,7 +541,7 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
     if TcpStream::connect(("127.0.0.1", PORT)).is_ok() { return Err(format!("端口 {PORT} 已被占用；请先关闭占用它的程序")); }
     let stage = app.path().resource_dir().map_err(|e| e.to_string())?.join("backend");
     let python = backend_runtime::python(&stage);
-    if !python.is_file() { return Err("App 缺少随附后台".into()); }
+    if !python.is_file() { return Err(native_menu::diagnostic(app, "runtimeMissing")); }
     let data = app_data(&app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let log = OpenOptions::new().create(true).append(true).open(data.join("backend.log")).map_err(|e| e.to_string())?;

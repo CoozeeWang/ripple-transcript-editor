@@ -141,3 +141,16 @@ it.each(['zh-CN', 'en'] as const)('shows reason-specific recovery inside the rea
     expect(screen.getByText(selector)).toBeTruthy();
   }
 });
+
+it('shows the approved Taiwan pause reason without offering resume for changed scope', async () => {
+  const { AIEditingNotice } = await import('./AIEditingNotice');
+  await act(() => setInterfaceLanguage('zh-TW'));
+  render(<AIEditingNotice activities={[{ task_id: task.task_id, client: 'chatgpt', key: 'synthetic', version: task.version, version_id: task.version_id,
+    kind: 'incremental', state: 'paused', reason: 'planned_segment_changed', processed: 24, saved: 24, total: 60, touched: 0, inFlight: 0 }]} onEnd={vi.fn()}>
+    <ContinuationProgress embedded tasks={[{ ...task, reason: 'planned_segment_changed' }]} error="" onAction={vi.fn()}/>
+  </AIEditingNotice>);
+  expect(screen.getByText(/暫停原因與後續處理說明/)).toBeTruthy();
+  expect(screen.getByText(/尚未處理的片段結構已變更/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: '結束編輯' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /繼續/ })).toBeNull();
+});

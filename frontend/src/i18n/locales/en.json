@@ -1372,7 +1372,7 @@
     "m1527": "Too many requests at once or in a short period. Try again later.",
     "m1528": "The engine service is temporarily unavailable. Try again later.",
     "m1529": "Transcription failed (HTTP {{v0}})",
-    "m1530": "The transcription recovery record is damaged. Keep the related files for troubleshooting.",
+    "m1530": "The transcription task record is damaged. Keep the related files for troubleshooting.",
     "m1531": "You’ve stopped waiting, but the transcription task may still be running. Start transcription again to resume waiting for the existing task.",
     "m1532": "Stopped waiting. You can resume waiting for the existing task later.",
     "m1533": "Connection lost. If Ripple’s local service is still running, start transcription again to resume waiting for the existing task.",
@@ -1725,7 +1725,9 @@
     "claudeLocalConfigurationHint": "Configured locally means Ripple saved its local settings. It does not mean Claude installed the extension or connected. Confirm installation in Claude, then verify a read."
   },
   "desktopRuntime": {
-    "backendUnavailable": "Ripple’s local service couldn’t start. Restart Ripple or check the application logs."
+    "backendUnavailable": "Ripple’s local service couldn’t start. Restart Ripple or check the application logs.",
+    "connectorNotReady": "The local MCP connection isn’t ready.",
+    "runtimeMissing": "Ripple’s bundled local service runtime is missing. Reinstall Ripple."
   },
   "nativeMenu": {
     "file": "File",
@@ -1751,7 +1753,9 @@
     "zoom": "Zoom",
     "maximize": "Maximize",
     "checkUpdates": "Check for Updates…",
-    "updateTitle": "Software update"
+    "updateTitle": "Software update",
+    "helpMac": "Help",
+    "minimizeMac": "Minimize"
   },
   "notice": {
     "dismiss": "Dismiss message",
@@ -1796,7 +1800,7 @@
     "processing": "Processing · {{processed}} / {{total}} segments processed",
     "saving": "Saving · {{saved}} / {{total}} segments confirmed saved",
     "counts": "{{saved}} / {{total}} segments confirmed saved",
-    "paused": "AI editing is paused. This manuscript remains read-only. See the recovery guidance below, or end editing.",
+    "paused": "AI editing is paused. This manuscript remains read-only. See the pause details and next steps below, or end editing.",
     "failed": "AI editing encountered a problem. This manuscript remains read-only. Check the result, then continue the task or end editing.",
     "ended": "AI editing ended. Saved changes are retained.",
     "inUse": "This manuscript is being edited by AI. End editing first.",

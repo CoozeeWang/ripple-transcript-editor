@@ -1,4 +1,5 @@
 import { i18next, interfaceLanguage, msg } from '../i18n';
+import { IS_MAC } from './format';
 
 const menuKeys = {
   'Check for Updates…':'checkUpdates', 'Software Update':'updateTitle',
@@ -11,8 +12,8 @@ const menuKeys = {
 } as const;
 
 /** Keep the standard native actions and shortcuts; translate only their labels. */
-export function nativeMenuLabels() {
-  return Object.fromEntries(Object.entries(menuKeys).map(([source, key]) => [source, msg(`nativeMenu.${key}`, { name: '__APP_NAME__' })]));
+export function nativeMenuLabels(macos = IS_MAC) {
+  return Object.fromEntries(Object.entries(menuKeys).map(([source, key]) => [source, msg(`nativeMenu.${macos && key === 'help' ? 'helpMac' : macos && key === 'minimize' ? 'minimizeMac' : key}`, { name: '__APP_NAME__' })]));
 }
 export function installNativeMenuLanguage(invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>) {
   const update = () => { void invoke('set_menu_language', { labels: nativeMenuLabels(), language: interfaceLanguage() }).catch(error => console.error('Native menu language update failed', error)); };

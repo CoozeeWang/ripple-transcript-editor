@@ -2,19 +2,25 @@ import i18next from 'i18next';
 import { initReactI18next, useTranslation } from 'react-i18next';
 import zh from './locales/zh-CN.json';
 import en from './locales/en.json';
+import tw from './locales/zh-TW.json';
 
-export type InterfaceLanguage = 'zh-CN' | 'en';
+export const INTERFACE_LANGUAGES = ['zh-CN', 'zh-TW', 'en'] as const;
+export type InterfaceLanguage = typeof INTERFACE_LANGUAGES[number];
+export const LANGUAGE_OPTIONS = [{ value: 'zh-CN', label: '简体中文' }, { value: 'zh-TW', label: '繁體中文（台灣）' }, { value: 'en', label: 'English' }] as const;
+export function normalizeInterfaceLanguage(value: unknown): InterfaceLanguage {
+  return INTERFACE_LANGUAGES.includes(value as InterfaceLanguage) ? value as InterfaceLanguage : 'zh-CN';
+}
 export const LANGUAGE_KEY = 'ripple-interface-language';
 function storedLanguage(): InterfaceLanguage {
-  try { return localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh-CN'; }
+  try { return normalizeInterfaceLanguage(localStorage.getItem(LANGUAGE_KEY)); }
   catch { return 'zh-CN'; }
 }
 void i18next.use(initReactI18next).init({
-  resources: { 'zh-CN': { translation: zh }, en: { translation: en } },
-  lng: storedLanguage(), fallbackLng: 'zh-CN', supportedLngs: ['zh-CN', 'en'],
+  resources: { 'zh-CN': { translation: zh }, 'zh-TW': { translation: tw }, en: { translation: en } },
+  lng: storedLanguage(), fallbackLng: 'zh-CN', supportedLngs: [...INTERFACE_LANGUAGES],
   initAsync: false, interpolation: { escapeValue: false },
 });
-export function interfaceLanguage(): InterfaceLanguage { return i18next.language === 'en' ? 'en' : 'zh-CN'; }
+export function interfaceLanguage(): InterfaceLanguage { return normalizeInterfaceLanguage(i18next.language); }
 const renderedMessages = new Map<string, { key: string; values?: Record<string, unknown> }>();
 export function msg(key: string, values?: Record<string, unknown>): string {
   const text = String(i18next.t(key, values ?? {}));
@@ -32,6 +38,7 @@ export function useInterfaceLanguage() {
   return interfaceLanguage();
 }
 export async function setInterfaceLanguage(language: InterfaceLanguage) {
+  language = normalizeInterfaceLanguage(language);
   await i18next.changeLanguage(language);
   try { localStorage.setItem(LANGUAGE_KEY, language); } catch { /* Still works for this window. */ }
 }
@@ -45,5 +52,5 @@ export { i18next };
 
 /** Stable identity check for pre-existing message-valued progress state. */
 export function isMessage(value: string, key: string): boolean {
-  return ['zh-CN', 'en'].some(lng => i18next.t(key, { lng }) === value);
+  return INTERFACE_LANGUAGES.some(lng => i18next.t(key, { lng }) === value);
 }

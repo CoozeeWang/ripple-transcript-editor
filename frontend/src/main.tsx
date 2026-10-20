@@ -1,6 +1,6 @@
 import { UpdateWindow } from "./components/UpdateWindow";
 import { isDesktopUpdateWindow } from "./lib/desktopUpdates";
-import { setInterfaceLanguage } from "./i18n";
+import { normalizeInterfaceLanguage, setInterfaceLanguage } from "./i18n";
 import { installFileDropGuard } from "./lib/fileDropGuard";
 import { installRuntimeDiagnostics } from "./lib/diagnostics";
 import { StrictMode } from "react";
@@ -23,7 +23,7 @@ const root = createRoot(document.getElementById("root")!);
 if (isDesktopUpdateWindow()) {
   document.documentElement.classList.add('desktop-update-document');
   const language=(window as unknown as {__RIPPLE_UPDATE_WINDOW__:{language:string}}).__RIPPLE_UPDATE_WINDOW__.language;
-  void setInterfaceLanguage(language==='en'?'en':'zh-CN').then(()=>root.render(<StrictMode><UpdateWindow /></StrictMode>));
+  void setInterfaceLanguage(normalizeInterfaceLanguage(language)).then(()=>root.render(<StrictMode><UpdateWindow /></StrictMode>));
 } else void installDesktopRuntime().then(() => root.render(
   <StrictMode><AIConnectorProvider><ProjectWorkspace /></AIConnectorProvider></StrictMode>,
 )).catch(error => root.render(<main style={{ padding: 32 }} role="alert">{String(error)}</main>));

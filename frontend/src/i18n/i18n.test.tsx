@@ -6,6 +6,7 @@ import { interfaceLanguage, LANGUAGE_KEY, msg, setInterfaceLanguage, useInterfac
 import { formatRelativeTime, keys, toDatetimeLocalValue } from '../lib/format';
 import zh from './locales/zh-CN.json';
 import en from './locales/en.json';
+import tw from './locales/zh-TW.json';
 
 afterEach(async () => { cleanup(); await setInterfaceLanguage('zh-CN'); });
 describe('interface language', () => {
@@ -38,13 +39,16 @@ describe('interface language', () => {
     expect(interfaceLanguage()).toBe('en');
     spy.mockRestore();
   });
-  it('has matching keys and interpolation variables in both languages', () => {
+  it('has matching keys and interpolation variables in all three languages', () => {
     const flatten = (value: object): Record<string, string> => Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => typeof entry === 'string' ? [[key, entry]] : Object.entries(flatten(entry)).map(([sub, text]) => [key + '.' + sub, text])));
-    const source = flatten(zh), target = flatten(en);
+    const source = flatten(zh);
+    for (const catalog of [en, tw]) {
+      const target = flatten(catalog);
     expect(Object.keys(target).sort()).toEqual(Object.keys(source).sort());
     for (const [key, text] of Object.entries(source)) {
       expect(target[key].trim(), key).not.toBe('');
       expect([...new Set(target[key].match(/{{\w+}}/g) ?? [])].sort(), key).toEqual([...new Set(text.match(/{{\w+}}/g) ?? [])].sort());
+    }
     }
   });
 });
@@ -100,4 +104,30 @@ it.each([0, 1, 2])('uses the recording quantity %i for selection and move descri
   await setInterfaceLanguage('zh-CN');
   expect(msg('recordingMove.selected', { count })).toBe(`已选 ${count} 条录音`);
   expect(msg('recordingMove.actionSelected', { count })).toBe(`移动所选 ${count} 条录音到其他场次`);
+});
+
+it('switches through all three languages without changing content or persistent names', async () => {
+  const { LANGUAGE_OPTIONS, normalizeInterfaceLanguage, uiMessage, isMessage, formatNumber } = await import('./index');
+  expect(LANGUAGE_OPTIONS.map(option => option.value)).toEqual(['zh-CN', 'zh-TW', 'en']);
+  expect(normalizeInterfaceLanguage('zh-TW')).toBe('zh-TW');
+  expect(normalizeInterfaceLanguage('unexpected')).toBe('zh-CN');
+  const content = 'Synthetic 專案 原始转录稿 <AI> {{name}}';
+  function Draft() { useInterfaceLanguage(); const [text, setText] = useState(content); return <><label>{msg('language.label')}<textarea value={text} onChange={e => setText(e.target.value)}/></label><output>{msg('recordingMove.selected', { count: 1 })}</output></>; }
+  render(<Draft/>);
+  const field = screen.getByRole('textbox');
+  const existing = msg('ProjectWorkspace.m0901');
+  for (const language of ['zh-TW', 'en', 'zh-CN'] as const) {
+    await act(() => setInterfaceLanguage(language));
+    expect(screen.getByRole('textbox')).toBe(field);
+    expect((field as HTMLTextAreaElement).value).toBe(content);
+    expect(document.documentElement.lang).toBe(language);
+    expect(localStorage.getItem(LANGUAGE_KEY)).toBe(language);
+    expect(uiMessage(existing)).toBe(msg('ProjectWorkspace.m0901'));
+    expect(isMessage(msg('ProjectWorkspace.m0901'), 'ProjectWorkspace.m0901')).toBe(true);
+  }
+  await act(() => setInterfaceLanguage('zh-TW'));
+  expect(screen.getByText('已選取 1 筆錄音')).toBeTruthy();
+  expect(formatNumber(12345)).toBe(new Intl.NumberFormat('zh-TW').format(12345));
+  expect(toDatetimeLocalValue('2026-10')).toBe('2026-10');
+  expect(msg('nativeMenu.undo')).toBe('復原');
 });
