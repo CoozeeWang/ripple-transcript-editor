@@ -37,6 +37,7 @@ export interface ConnectorDocument {
   references: () => Promise<ConnectorReference[]>;
 }
 export interface ConnectorHost {
+  continuationWarning?: (scope: string, unreadable: number) => void;
   editingActivity?: (tasks: AIEditActivity[]) => void;
   assertWrite?: (taskId: string) => void;
   continuationProgress?: (tasks: ContinuationProgress[]) => void;

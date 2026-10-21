@@ -154,3 +154,10 @@ it('shows the approved Taiwan pause reason without offering resume for changed s
   expect(screen.getByRole('button', { name: '結束編輯' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: /繼續/ })).toBeNull();
 });
+
+it.each(['zh-CN', 'zh-TW', 'en'] as const)('reports unreadable journals while retaining healthy task controls in %s', async language => {
+  await act(() => setInterfaceLanguage(language));
+  render(<ContinuationProgress tasks={[task]} error="continuation_journal_unreadable" onAction={vi.fn()}/>);
+  expect(screen.getByRole('alert').textContent).toContain(language === 'en' ? 'other tasks remain available' : language === 'zh-TW' ? '其他工作仍可使用' : '其他任务仍可使用');
+  expect(screen.getAllByRole('button').some(button => !(button as HTMLButtonElement).disabled)).toBe(true);
+});

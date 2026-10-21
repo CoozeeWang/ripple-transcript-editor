@@ -599,7 +599,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       const version = connectorVersions(manifest?.models ?? []).find(v => v.id === versionId);
       if (!version) throw new Error('current_version_unavailable');
       return { identity: String(identity), editable: !viewingOriginal, transcript: latestExport.current.transcript, rules,
-        continuations: {scope:String(identity),read:async()=>readContinuationTasks(dir,audio),write:async task=>{
+        continuations: {scope:String(identity),read:async reportUnreadable=>readContinuationTasks(dir,audio,reportUnreadable),write:async task=>{
           if(dirHandleRef.current!==dir || connectorContext.current.audio!==audio)throw Error('interview_changed');
           await writeContinuationTask(dir,audio,task);
         }},
@@ -995,7 +995,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 转录中的文案随阶段和时间变化，直接算出来，不进 state（避免 effect 里 setState）。
   // 正在转录的是别的文件时，文案改成「谁在后台跑」，秒数照旧在走。
-  const hasAIEditingNotice = visibleAIActivities(connector.activities).length > 0;
+  const hasAIEditingNotice = visibleAIActivities(connector.activities).length > 0 || Boolean(connector.taskError);
   const processNoticeText = !transcribeJob
     ? processMessage
     : !transcribeIsCurrent
@@ -1089,7 +1089,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
           ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
           : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
-          {connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled') && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
+          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
         </AIEditingNotice>
       {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice

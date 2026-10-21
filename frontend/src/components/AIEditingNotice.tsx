@@ -14,7 +14,8 @@ export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurr
     try { await (blocksHumanEditing(task) ? onEnd(task.task_id) : onDismiss?.(task.task_id)); }
     finally { setBusy(null); }
   };
-  if (!visible.length) return null;
+  // Recovery errors must remain visible even when no task could be recovered.
+  if (!visible.length) return children ? <>{children}</> : null;
   return <section className="ai-editing-region" aria-label={msg('aiEditing.title')}>
     {visible.map(task => {
       const active = ownsEditing(task);

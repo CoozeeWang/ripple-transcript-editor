@@ -1,8 +1,10 @@
+"""Compatibility interview store. Current .ripple project files are owned by the frontend."""
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from .atomic_files import atomic_write_text
 from .models import AudioInfo, InterviewDraft, InterviewMetadata, Speaker, Transcript
 from .runtime_paths import CODE_ROOT, DATA_ROOT
 
@@ -48,36 +50,28 @@ def save_transcript(interview_id: str, transcript: Transcript) -> Path:
     destination = transcript_path(interview_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(
+    return atomic_write_text(
+        destination,
         json.dumps(transcript.model_dump(exclude_none=True), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
-    temporary.replace(destination)
-    return destination
 
 
 def save_original_response(interview_id: str, response: dict) -> Path:
     destination = original_response_path(interview_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(
-        json.dumps(response, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    return atomic_write_text(
+        destination,
+        json.dumps(response, ensure_ascii=False, indent=2) + "\n",
     )
-    temporary.replace(destination)
-    return destination
 
 
 def save_normalized_transcript(interview_id: str, transcript: Transcript) -> Path:
     destination = normalized_transcript_path(interview_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(
+    return atomic_write_text(
+        destination,
         json.dumps(transcript.model_dump(exclude_none=True), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
-    temporary.replace(destination)
-    return destination
 
 
 def load_metadata(interview_id: str) -> InterviewMetadata:
@@ -94,13 +88,10 @@ def load_metadata(interview_id: str) -> InterviewMetadata:
 def save_metadata(metadata: InterviewMetadata) -> Path:
     destination = metadata_path(metadata.id)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(
+    return atomic_write_text(
+        destination,
         json.dumps(metadata.model_dump(), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
-    temporary.replace(destination)
-    return destination
 
 
 def list_interviews() -> list[InterviewMetadata]:

@@ -23,7 +23,7 @@ export interface ContinuationTask {
 export interface ContinuationStore {
   /** Session-local identity; no path is returned to clients. */
   scope: string;
-  read: () => Promise<ContinuationTask[]>;
+  read: (reportUnreadable?: (count: number) => void) => Promise<ContinuationTask[]>;
   write: (task: ContinuationTask) => Promise<void>;
 }
 export interface ContinuationProgress {
@@ -61,7 +61,7 @@ export class IncrementalContinuation {
   private async load(doc: ConnectorDocument) {
     if (!doc.continuations) fail('durable_tasks_unavailable');
     if (this.scope !== doc.continuations.scope) {
-      this.tasks = new Map((await doc.continuations.read()).map(task => [task.id, task]));
+      this.tasks = new Map((await doc.continuations.read(count => this.host.continuationWarning?.(doc.continuations!.scope, count))).map(task => [task.id, task]));
       this.scope = doc.continuations.scope;
     }
     // A manuscript receipt and pending journal resolve a crash after file save but before progress save.

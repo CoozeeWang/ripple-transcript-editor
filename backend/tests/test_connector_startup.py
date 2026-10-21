@@ -21,7 +21,8 @@ def test_setup_reads_utf8_bytes_independently_of_stdin_codepage(tmp_path):
                             env=env, capture_output=True, timeout=15, check=False)
     assert result.returncode == 0, result.stderr.decode("ascii", errors="replace")
     setup = json.loads((data / "connector/setup.json").read_text(encoding="utf-8"))
-    assert setup["client_path"] == str(client.resolve())
+    assert Path(setup["client_path"]).is_relative_to(data / "connector/runtimes")
+    assert Path(setup["client_path"]).read_bytes() == client.read_bytes()
     assert (data / "connector/runtime.key").read_text(encoding="utf-8") == values["runtime_key"]
 
 
@@ -74,3 +75,50 @@ def test_packaged_mcp_initializes_pth_before_importing_dependencies(tmp_path):
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
     assert b"--credential-file" in result.stdout
     assert marker.is_file()
+
+
+def test_upgrade_rebinds_bundle_without_downloads_or_key_rotation(tmp_path):
+    from app.connector_setup import save_setup
+    import shutil
+    downloaded = tmp_path / 'Synthetic Downloads'
+    downloaded.mkdir()
+    client = downloaded / 'tunnel-client'
+    client.write_bytes(b'synthetic client')
+    client.chmod(0o700)
+    (downloaded / 'cloudflared').write_bytes(b'synthetic companion')
+    (downloaded / 'LICENSE').write_text('synthetic license')
+    (downloaded / 'unrelated-secret.txt').write_text('synthetic excluded value')
+    data = tmp_path / 'Synthetic Data'
+    key = 'synthetic-runtime-key-for-upgrade-test-123456'
+    save_setup(data, tmp_path / 'Old App', {'client_path': str(client), 'tunnel_id': 'tunnel_synthetic', 'runtime_key': key})
+    directory = data / 'connector'
+    before = (directory / 'runtime.key').read_bytes()
+    managed = Path(json.loads((directory / 'setup.json').read_text())['client_path'])
+    assert managed.read_bytes() == b'synthetic client'
+    assert (managed.parent / 'cloudflared').read_bytes() == b'synthetic companion'
+    assert not (managed.parent / 'unrelated-secret.txt').exists()
+    shutil.rmtree(downloaded)
+    save_setup(data, tmp_path / 'New App 中文', {'client_path': str(managed), 'tunnel_id': 'tunnel_synthetic', 'runtime_key': ''})
+    assert (directory / 'runtime.key').read_bytes() == before
+    profile = (directory / 'tunnel.yaml').read_text()
+    assert 'Old App' not in profile and 'New App' in profile
+    assert key not in profile
+    assert len(list((directory / 'runtimes').iterdir())) == 1
+
+
+def test_failed_config_publish_keeps_previous_complete_file(tmp_path, monkeypatch):
+    from app import connector_setup
+    from pathlib import Path
+    target = tmp_path / 'setup.json'
+    target.write_text('{"synthetic":"previous"}')
+    original = Path.replace
+    def fail(source, dest):
+        if dest == target:
+            raise OSError('synthetic publish failure')
+        return original(source, dest)
+    monkeypatch.setattr(Path, 'replace', fail)
+    import pytest
+    with pytest.raises(OSError):
+        connector_setup.write_private(target, '{"synthetic":"next"}')
+    assert json.loads(target.read_text()) == {'synthetic': 'previous'}
+    assert list(tmp_path.iterdir()) == [target]

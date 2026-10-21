@@ -1610,6 +1610,12 @@
     "mismatch": "The selected audio doesn’t match the dropped files. Select the same audio files again."
   },
   "connector": {
+    "tunnel_off": "ChatGPT tunnel is off.",
+    "tunnel_unconfigured": "ChatGPT is not configured.",
+    "tunnel_connecting": "Connecting the ChatGPT tunnel…",
+    "tunnel_ready": "ChatGPT tunnel is ready; confirm with a tool call in ChatGPT.",
+    "tunnel_retrying": "ChatGPT tunnel disconnected. Reconnecting automatically without replaying edits.",
+    "tunnel_setup_required": "ChatGPT setup is unavailable. Edit the setup to reselect the client or check the key.",
     "title": "MCP connection",
     "hint": "External AI can read and analyze transcripts in the current project, including manuscripts you have not opened. Specify the manuscript and exact version; AI asks when the version is missing. Text edits can create a new version or update the selected editable version. Annotations and highlights are saved to that version. No audio is sent; requested transcript text is sent to the selected AI service.",
     "enable": "Enable MCP connection",
@@ -1789,7 +1795,8 @@
     "proposedText": "Pending AI text",
     "proposedDelete": "AI proposes deleting this segment",
     "proposedMerge": "AI proposes merging with the previous segment, using this text",
-    "scopeChanged": "The remaining segment structure has changed. End this task and agree on a new editing range in your AI conversation. Saved batches are retained."
+    "scopeChanged": "The remaining segment structure has changed. End this task and agree on a new editing range in your AI conversation. Saved batches are retained.",
+    "unreadableJournals": "Some AI task records could not be read. Their original files are retained, and other tasks remain available. Keep a project copy and check the affected tasks."
   },
   "aiEditing": {
     "title": "AI-assisted editing",

@@ -3,10 +3,10 @@ import os
 import threading
 import uuid
 from functools import wraps
-from pathlib import Path
 
 from dotenv import dotenv_values
 
+from .atomic_files import atomic_write_text
 from .runtime_paths import DATA_ROOT
 
 PROJECT_ROOT = DATA_ROOT
@@ -63,7 +63,8 @@ def save_credentials(provider_id: str, values: dict[str, str]) -> None:
         for line in lines:
             name = line.split("=", 1)[0]
             if name in replacements:
-                updated.append(replacements[name])
+                if name not in seen:
+                    updated.append(replacements[name])
                 seen.add(name)
             else:
                 updated.append(line)
@@ -71,14 +72,7 @@ def save_credentials(provider_id: str, values: dict[str, str]) -> None:
             if name not in seen:
                 updated.append(replacement)
 
-        # 注意：不要用 ENV_PATH.with_suffix(".env.tmp")——`.env` 是隐藏文件，
-        # Python 视整个 `.env` 为文件名（无标准后缀），with_suffix 会拼成
-        # `.env.env.tmp`，导致后续 replace 时源文件不存在（FileNotFoundError）。
-        # 用唯一文件名 + 原子替换：即使没有锁保护（如跨进程），并发写者各自落盘、
-        # 最后一次 replace 生效（值幂等，无副作用）。
-        temporary = Path(f"{ENV_PATH}.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")
-        temporary.write_text("\n".join(updated) + "\n", encoding="utf-8")
-        temporary.replace(ENV_PATH)
+        atomic_write_text(ENV_PATH, "\n".join(updated) + "\n", private=True)
 
 
 def get_elevenlabs_api_key() -> str | None:
@@ -100,11 +94,7 @@ def _load_profile_store() -> dict:
 
 
 def _save_profile_store(data: dict) -> None:
-    temporary = Path(f"{PROFILES_PATH}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    temporary.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    temporary.replace(PROFILES_PATH)
+    atomic_write_text(PROFILES_PATH, json.dumps(data, ensure_ascii=False, indent=2), private=True)
 
 
 def _provider_entry(data: dict, provider_id: str) -> dict:
@@ -151,15 +141,12 @@ def clear_credentials(provider_id: str, field_keys: list[str] | None = None) -> 
             return not name.startswith(prefix)
 
         kept = [line for line in lines if _keep(line)]
-        ENV_PATH.write_text(
-            ("\n".join(kept) + "\n") if kept else "", encoding="utf-8"
-        )
+        atomic_write_text(ENV_PATH, ("\n".join(kept) + "\n") if kept else "", private=True)
 
 
 @locked_store
 def _sync_env(provider_id: str, values: dict[str, str]) -> None:
-    """把某套档案的密钥镜像进 .env（先清后写，保证启用切换干净）。"""
-    clear_credentials(provider_id, list(values.keys()))
+    """一次发布最终镜像，失败时保留原文件，不暴露先清后写的中间状态。"""
     if values:
         save_credentials(provider_id, values)
 

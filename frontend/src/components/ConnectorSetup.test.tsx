@@ -255,3 +255,20 @@ it('keeps the adjacent edit entry disabled until saved configuration is loaded',
  fireEvent.click(entry);
  expect((ui.getByLabelText('隧道标识（Tunnel ID）') as HTMLInputElement).readOnly).toBe(false);
 });
+
+it.each(['zh-CN','zh-TW','en'] as const)('shows remote recovery independently of local configuration in %s', async language => {
+ await setInterfaceLanguage(language);
+ const invoke=vi.fn(async(command:string):Promise<unknown> => {
+  if(command==='connector_client_status')return {client:'chatgpt',configured:{chatgpt:true,claude:false,workbuddy:false}};
+  if(command==='connector_setup_status')return {client_path:'/synthetic/tunnel-client',tunnel_id:'tunnel_synthetic',has_key:true,configured:true};
+  if(command==='connector_client_platform')return {os:'macos',arch:'aarch64'};
+  if(command==='connector_tunnel_status')return 'retrying';
+  return false;
+ });
+ (window as unknown as {__TAURI__:unknown}).__TAURI__={core:{invoke}};
+ const ui=render(<ConnectorSetup enabled/>);
+ await waitFor(()=>expect(ui.getByText(language==='en'?'ChatGPT tunnel disconnected. Reconnecting automatically without replaying edits.':language==='zh-TW'?'ChatGPT 通道已中斷，正在自動重新連線；不會重複提交編輯。':'ChatGPT 隧道已断开，正在自动重连；不会重复提交编辑。')).toBeTruthy());
+ expect(invoke.mock.calls.some(([name])=>name==='connector_tunnel_start'||name==='connector_setup')).toBe(false);
+ ui.rerender(<ConnectorSetup enabled={false}/>);
+ expect(ui.queryByText(/disconnected\. Reconnecting|隧道已断开|通道已中斷/)).toBeNull();
+});

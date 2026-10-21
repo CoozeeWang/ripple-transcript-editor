@@ -19,3 +19,18 @@ it('remembers explicit enable and disable across hook remounts without implicitl
   expect(third.result.current.enabled).toBe(false);
   third.unmount();
 });
+
+it('surfaces a journal warning alongside healthy progress instead of rejecting the entire task list', async () => {
+  const { waitFor } = await import('@testing-library/react');
+  const version = { id: 'm:e', model_id: 'm', edit_id: 'e', name: 'Synthetic edit', kind: 'edit' as const };
+  const task = { schema: 1 as const, id: crypto.randomUUID(), source: version, target: version, saveMode: 'current_version' as const,
+    name: version.name, rules: ['Synthetic rule'], actions: ['edit' as const], ids: ['s1'], done: [], held: [],
+    state: 'paused' as const, summary: '{}', updated: '' };
+  const partialHost = { publish: vi.fn(), current: async () => ({ identity: 'synthetic', title: 'Synthetic', label: version.name,
+    names: [version.name], version, transcript: { audio: { filename: 'synthetic.wav', duration: 1 }, speakers: [], segments: [] },
+    references: async () => [], continuations: { scope: 'synthetic', read: async (report?: (count: number) => void) => { report?.(1); return [task]; }, write: async () => {} } }) };
+  const hook = renderHook(() => useAIConnector(partialHost, 'synthetic'));
+  await waitFor(() => expect(hook.result.current.tasks).toHaveLength(1));
+  expect(hook.result.current.taskError).toBe('continuation_journal_unreadable');
+  hook.unmount();
+});

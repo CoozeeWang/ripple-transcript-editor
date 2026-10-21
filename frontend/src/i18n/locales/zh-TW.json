@@ -1610,6 +1610,12 @@
     "mismatch": "所選音訊與拖入的檔案不一致，請重新選擇。"
   },
   "connector": {
+    "tunnel_off": "ChatGPT 通道已關閉。",
+    "tunnel_unconfigured": "ChatGPT 尚未設定。",
+    "tunnel_connecting": "ChatGPT 通道正在連線…",
+    "tunnel_ready": "ChatGPT 通道就緒；請在 ChatGPT 中呼叫工具確認。",
+    "tunnel_retrying": "ChatGPT 通道已中斷，正在自動重新連線；不會重複提交編輯。",
+    "tunnel_setup_required": "ChatGPT 連線設定無法使用，請修改設定並重新選擇連線程式或檢查金鑰。",
     "title": "MCP 連線",
     "hint": "外部 AI 可依需要讀取、分析目前專案的逐字稿，也能編輯尚未開啟的稿件。請指定稿件與確切版本；若未指定，AI 會先詢問。文字修改可另存新版本，或修改選定的可編輯版本；註解與醒目標示會儲存到該版本。不會傳送音訊；要求讀取的逐字稿文字會傳送至所選的 AI 服務。",
     "enable": "啟用 MCP 連線",
@@ -1789,7 +1795,8 @@
     "proposedText": "AI 待提交正文",
     "proposedDelete": "AI 提議刪除此片段",
     "proposedMerge": "AI 提議與前段合併，待提交正文如下",
-    "scopeChanged": "尚未處理的片段結構已變更。請結束此任務，再於 AI 對話中確認新的編輯範圍；已儲存的批次仍會保留。"
+    "scopeChanged": "尚未處理的片段結構已變更。請結束此任務，再於 AI 對話中確認新的編輯範圍；已儲存的批次仍會保留。",
+    "unreadableJournals": "部分 AI 工作記錄無法讀取，原始檔案已保留。其他工作仍可使用；請保留專案副本並檢查受影響的工作。"
   },
   "aiEditing": {
     "title": "AI 輔助編輯",

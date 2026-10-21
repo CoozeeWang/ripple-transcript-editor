@@ -108,7 +108,7 @@ export class ProjectConnectorHosts {
         remember: async rules => { await check(); await writeConnectorRules(entry.directory, entry.recording.file, rules); },
         references: async () => { await check(); return connectorReferences(entry.directory, entry.recording.file,
           (await readConnectorManifest(entry.directory, entry.recording.file))?.models ?? []); },
-        continuations: { scope: identity, read: async () => { await check(); return readContinuationTasks(entry.directory, entry.recording.file); },
+        continuations: { scope: identity, read: async () => { await check(); return readContinuationTasks(entry.directory, entry.recording.file, count => this.activeHost.continuationWarning?.(identity, count)); },
           write: async task => { await check(); await writeContinuationTask(entry.directory, entry.recording.file, task); } },
       };
     };
@@ -165,7 +165,7 @@ export class ProjectConnectorHosts {
       },
     };
     return { host, target, isActive, tasks: async () => {
-      await check(); return readContinuationTasks(entry.directory, entry.recording.file);
+      await check(); return readContinuationTasks(entry.directory, entry.recording.file, count => this.activeHost.continuationWarning?.(identity, count));
     }, setVersion: (next: ConnectorVersion) => { version = next; } };
   }
 }

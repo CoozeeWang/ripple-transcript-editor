@@ -32,12 +32,14 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
   const [tasks,setTasks]=useState<ContinuationProgress[]>([]);
   const [activities,setActivities]=useState<AIEditActivity[]>([]);
   const [taskError,setTaskError]=useState('');
+  const [journalWarnings, setJournalWarnings] = useState<Record<string, number>>({});
   const controllerRef=useRef<ProjectAIConnector|null>(null);
   const projectIdentity=useRef<string | null>(null);
   const generation=useRef(0);
   const createController=useCallback((valid:()=>boolean=()=>true)=>new ProjectAIConnector({current:()=>latest.current.current(),publish:(...args)=>latest.current.publish(...args),
     applyMarks:(...args)=>{if(!latest.current.applyMarks)throw Error('marks_unavailable');return latest.current.applyMarks(...args);},
     editingActivity:next=>{if(valid())setActivities(next);},
+    continuationWarning:(scope, count)=>{if(valid())setJournalWarnings(previous=>previous[scope]===count?previous:{...previous,[scope]:count});},
     continuationProgress:next=>{if(valid())setTasks(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next);}},
     ()=> valid() && project.current ? { ...project.current, project: () => valid() ? project.current?.project() ?? null : null } : undefined),[]);
   const taskAction=useCallback(async(operation:string,task_id?:string)=>{
@@ -53,7 +55,7 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
       projectIdentity.current = nextProject;
       const currentGeneration = generation.current;
       controllerRef.current = createController(() => generation.current === currentGeneration);
-      setActivities([]); setTasks([]);
+      setActivities([]); setTasks([]); setJournalWarnings({});
     }
     if(!context)return;
     let disposed=false;
@@ -88,6 +90,7 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
       token = String(await tauri.core.invoke('connector_window_key'));
       if (disposed) return;
       await request('session', { session, enabled: true }, abort.signal);
+      if (disposed) return;
       // A remote tunnel failure must not disable configured local clients.
       await tauri.core.invoke('connector_tunnel_start').catch(() => {});
       heartbeat = setInterval(() => {
@@ -149,5 +152,5 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
     return activity?.kind === 'incremental' && activity.state === 'ended' && task.state === 'draft'
       ? { ...task, state: 'paused' as const, reason: activity.reason } : task;
   });
-  return { enabled, setEnabled, reconnect: () => setAttempt(value => value + 1), status: enabled ? status : 'off' as const,activities,tasks:visibleTasks,taskError,taskAction,targetLocked };
+  return { enabled, setEnabled, reconnect: () => setAttempt(value => value + 1), status: enabled ? status : 'off' as const,activities,tasks:visibleTasks,taskError:taskError || (Object.values(journalWarnings).some(count=>count>0)?'continuation_journal_unreadable':''),taskAction,targetLocked };
 }

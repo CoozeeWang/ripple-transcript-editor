@@ -32,6 +32,14 @@ Select the AI application and choose **Delete ChatGPT / Claude / WorkBuddy conne
 
 Deletion does not uninstall extensions or remove registrations inside ChatGPT, Claude or WorkBuddy, and does not revoke an OpenAI tunnel or Runtime API key. Manage those separately in the relevant application or OpenAI settings. If the selected client has a request in progress, finish editing and check the saved result before retrying deletion. Cancellation changes nothing; failure keeps a retry available.
 
+## Connection recovery and reinstalling
+
+Ripple supervises its own ChatGPT tunnel while MCP is enabled, including when settings are closed. Exits retry with exponential delays from five seconds to five minutes. A running client gets two minutes to restore readiness before Ripple replaces that owned process; a minute of stable readiness resets the backoff. Turning MCP off stops recovery. Local broker readiness and tunnel readiness have separate labels, and Reconnect remains available while enabled. Reconnection never replays an editing or save request: check the existing task status before retrying an uncertain write.
+
+Saving setup retains the selected tunnel-client and its companion runtime/licensing files in Ripple's per-user application data. Existing setups migrate when next started. Upgrades and reinstalls that retain this data reuse the tunnel identity and protected key, and rebuild the adapter command against the current installed app location. Removing application data or revoking the remote key requires setup again. A missing previously selected download needs reselection if it was removed before migration. No runtime is downloaded automatically. Network access, remote tunnel availability and valid account authorization are still required.
+
+A bounded local connection event log records timestamps, lifecycle events and exit codes, without transcript content, request payloads or secret values. It is diagnostic evidence, not proof that an external client successfully invoked a tool. Windows source behavior is shared; Windows installation and native acceptance remain separate.
+
 ## Verification and limits
 
 A ready local broker/transport does not prove that the AI application installed or called it. Verify with an actual read request before attempting edits. All clients share the same 20 tools and current-project boundary. Specify the exact interview, recording and version; AI asks when the version is missing rather than selecting a default. Project tools can edit an unopened manuscript without switching the editor. Before editing, ask whether to update the current editable version or create a new one. Incremental tasks save each batch into the same agreed target version. Annotations and highlights retain human marks. Unknown writes must be checked via task status before retrying.

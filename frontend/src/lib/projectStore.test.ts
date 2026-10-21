@@ -946,3 +946,99 @@ it('refuses a missing version file and leaves destination recordings untouched',
  await expect(moveProjectRecordings(project,interview.id,target.id,[recording.id])).rejects.toThrow();
  expect((await openProject(project.directory)).data).toEqual(project.data);
 });
+
+async function manuscriptFixture() {
+  const setup = await fixture();
+  const view = await recordingDirectory(setup.p, setup.interview.id, setup.recording);
+  const transcript = { audio: { filename: setup.recording.file, duration: 1 }, speakers: [],
+    segments: [{ id: 's1', speaker_id: '', start: 0, end: 1, text: 'Synthetic manuscript' }] };
+  const made = await createModel(view, setup.recording.file, { engine: 'synthetic', transcript, label: 'Synthetic edit' });
+  const folder = await view.getDirectoryHandle(`${setup.recording.file.replace(/\.[^.]+$/, '')}.transcript`);
+  return { ...setup, view, folder, made };
+}
+async function putText(folder: FileSystemDirectoryHandle, name: string, text: string) {
+  const writer = await (await folder.getFileHandle(name, { create: true })).createWritable();
+  await writer.write(text); await writer.close();
+}
+async function getText(folder: FileSystemDirectoryHandle, name: string) {
+  return (await (await folder.getFileHandle(name)).getFile()).text();
+}
+it.each(['missing', 'corrupt'] as const)('copies and moves a manuscript recovered from a backup with a %s canonical index', async failure => {
+  const { p, interview, recording, folder, made } = await manuscriptFixture();
+  const raw = await getText(folder, 'manifest.json');
+  await putText(folder, 'manifest.json.bak', raw);
+  if (failure === 'missing') await folder.removeEntry('manifest.json');
+  else await putText(folder, 'manifest.json', '{synthetic broken');
+  const copy = await savePortableProject(p, directory('synthetic backup').handle, 'Synthetic copy');
+  const copiedView = await recordingDirectory(copy, interview.id, copy.data.interviews[0].recordings[0]);
+  expect((await readEdited(copiedView, recording.file))?.transcript).toEqual(made.edited.transcript);
+  const project = await addInterview(p, 'Synthetic destination');
+  const moved = await moveProjectRecordings(project, interview.id, project.data.interviews[1].id, [recording.id]);
+  expect(moved.data.interviews[1].recordings).toHaveLength(1);
+  // Recovery must not repair or overwrite the source as a read side effect.
+  if (failure === 'corrupt') expect(await getText(folder, 'manifest.json')).toBe('{synthetic broken');
+  else await expect(folder.getFileHandle('manifest.json')).rejects.toMatchObject({ name: 'NotFoundError' });
+});
+it('uses a verified manuscript backup for trash and restore without hiding missing version files', async () => {
+  const { p, interview, recording, folder, made } = await manuscriptFixture();
+  await putText(folder, 'manifest.json.bak', await getText(folder, 'manifest.json'));
+  await putText(folder, 'manifest.json', '{synthetic broken');
+  const removed = await trashProjectMaterial(p, interview.id, recording.id);
+  const restored = await restoreProjectMaterial(removed, removed.data.trash![0].id);
+  expect(restored.data.interviews[0].recordings[0].id).toBe(recording.id);
+  await folder.removeEntry(made.model.edits[0].file);
+  await expect(savePortableProject(restored, directory('synthetic backup').handle, 'Incomplete')).rejects.toThrow();
+});
+it('does not bypass revoked manuscript access through a backup during project copying', async () => {
+  const { p, folder } = await manuscriptFixture();
+  await putText(folder, 'manifest.json.bak', await getText(folder, 'manifest.json'));
+  const original = folder.getFileHandle.bind(folder);
+  vi.spyOn(folder, 'getFileHandle').mockImplementation((name, options) => name === 'manifest.json'
+    ? Promise.reject(new DOMException('Synthetic revoked permission', 'NotAllowedError')) : original(name, options));
+  await expect(savePortableProject(p, directory().handle, 'Denied')).rejects.toMatchObject({ name: 'NotAllowedError' });
+});
+it('copies AI rules and journals, pauses copied work, rebinds the summary and retains damaged evidence', async () => {
+  const { p, interview, recording, folder, made } = await manuscriptFixture();
+  const version = { id: `${made.model.id}:${made.model.activeEditId}`, model_id: made.model.id,
+    edit_id: made.model.activeEditId, name: 'Synthetic edit', kind: 'edit' };
+  const task = { schema: 1, id: crypto.randomUUID(), source: version, target: version, saveMode: 'current_version',
+    name: version.name, rules: ['Synthetic rule'], actions: ['edit'], ids: ['s1'], done: [], held: [], state: 'draft',
+    summary: JSON.stringify({ target: { project_id: p.data.id, project: p.data.title, interview_id: interview.id, recording_id: recording.id } }), updated: '' };
+  const tasks = await folder.getDirectoryHandle('ai-continuation-tasks', { create: true });
+  const damagedId = crypto.randomUUID();
+  await putText(folder, 'ai-connector-rules.json', JSON.stringify({ rules: task.rules }));
+  await putText(tasks, `${task.id}.json`, JSON.stringify(task));
+  const olderTask = { ...task, id: crypto.randomUUID(), summary: 'Synthetic older summary' };
+  const pausedTask = { ...task, id: crypto.randomUUID(), state: 'paused', reason: 'planned_segment_changed' };
+  await putText(tasks, `${olderTask.id}.json`, JSON.stringify(olderTask));
+  await putText(tasks, `${pausedTask.id}.json`, JSON.stringify(pausedTask));
+  await putText(tasks, `${damagedId}.json`, '{synthetic interrupted journal');
+  await putText(folder, 'credentials.json', 'synthetic device configuration must not travel');
+  const copy = await savePortableProject(p, directory().handle, 'Synthetic copy');
+  const view = await recordingDirectory(copy, interview.id, copy.data.interviews[0].recordings[0]);
+  const copied = await view.getDirectoryHandle(`${recording.file.replace(/\.[^.]+$/, '')}.transcript`);
+  const copiedTasks = await copied.getDirectoryHandle('ai-continuation-tasks');
+  const saved = JSON.parse(await getText(copiedTasks, `${task.id}.json`));
+  expect(saved).toMatchObject({ id: task.id, state: 'paused', target: version, reason: 'project_copied' });
+  expect(JSON.parse(await getText(copiedTasks, `${olderTask.id}.json`))).toMatchObject({ state: 'paused', summary: olderTask.summary });
+  expect(JSON.parse(await getText(copiedTasks, `${pausedTask.id}.json`))).toMatchObject({ state: 'paused', reason: 'planned_segment_changed' });
+  expect(JSON.parse(saved.summary).target).toMatchObject({ project_id: copy.data.id, project: 'Synthetic copy' });
+  expect(await getText(copied, 'ai-connector-rules.json')).toBe(JSON.stringify({ rules: task.rules }));
+  expect(await getText(copiedTasks, `${damagedId}.json`)).toBe('{synthetic interrupted journal');
+  await expect(copied.getFileHandle('credentials.json')).rejects.toMatchObject({ name: 'NotFoundError' });
+  expect(JSON.parse(await getText(tasks, `${task.id}.json`))).toEqual(task);
+});
+
+it('keeps a project copy incomplete when manuscript AI state cannot be read', async () => {
+  const { p, folder } = await manuscriptFixture();
+  const originalIndex = await getText(p.directory, 'ripple-project.json');
+  const original = folder.getFileHandle.bind(folder);
+  vi.spyOn(folder, 'getFileHandle').mockImplementation((name, options) => name === 'ai-connector-rules.json'
+    ? Promise.reject(new DOMException('Synthetic permission revoked', 'NotAllowedError')) : original(name, options));
+  const target = directory('synthetic backup');
+  await expect(savePortableProject(p, target.handle, 'Synthetic incomplete')).rejects.toMatchObject({ name: 'NotAllowedError' });
+  const incomplete = target.dirs.get('Synthetic incomplete.ripple')!;
+  expect(incomplete.files.has('COPY-INCOMPLETE.txt')).toBe(true);
+  expect(incomplete.files.has('ripple-project.json')).toBe(false);
+  expect(await getText(p.directory, 'ripple-project.json')).toBe(originalIndex);
+});

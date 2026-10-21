@@ -1,6 +1,7 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
 import { stampContinuationReceipt } from './lib/continuationBatch';
 import type { ContinuationTask } from './lib/incrementalContinuation';
+import { isContinuationTask } from './lib/continuationJournal';
 import type { ConnectorVersion } from './lib/aiConnector';
 import { apiErrorMessage } from './i18n/errors';
 import { msg } from './i18n';
@@ -2098,21 +2099,25 @@ export async function writeConnectorRules(dir: FileSystemDirectoryHandle, audio:
 }
 
 /** One local journal per task, scoped to this recording's existing transcript container. */
-export async function readContinuationTasks(dir: FileSystemDirectoryHandle, audio: string): Promise<ContinuationTask[]> {
+export async function readContinuationTasks(dir: FileSystemDirectoryHandle, audio: string, reportUnreadable?: (count: number) => void): Promise<ContinuationTask[]> {
   return inDirectory(dir, async () => {
     const container = await resolveTranscriptDir(dir, audio, false);
-    if (!container) return [];
+    if (!container) { reportUnreadable?.(0); return []; }
     let folder: FileSystemDirectoryHandle;
     try { folder = await container.getDirectoryHandle('ai-continuation-tasks'); }
-    catch (error) { if ((error as {name?:string}).name === 'NotFoundError') return []; throw error; }
+    catch (error) { if ((error as {name?:string}).name === 'NotFoundError') { reportUnreadable?.(0); return []; } throw error; }
     const tasks: ContinuationTask[] = [];
+    let unreadable = 0;
     for await (const [name, handle] of folder.entries()) {
       if (handle.kind !== 'file' || !/^[a-f0-9-]{36}\.json$/.test(name)) continue;
-      const value = JSON.parse(await (await (handle as FileSystemFileHandle).getFile()).text()) as ContinuationTask;
-      if (value.schema !== 1 || `${value.id}.json` !== name || !Array.isArray(value.ids) || !Array.isArray(value.done) ||
-          !Array.isArray(value.held) || !['draft','paused','completed','cancelled'].includes(value.state) || !value.target?.id) throw Error('continuation_journal_unreadable');
+      // Access errors still fail the read; only malformed individual journals are isolated.
+      const raw = await (await (handle as FileSystemFileHandle).getFile()).text();
+      let value: unknown;
+      try { value = JSON.parse(raw); } catch { unreadable++; continue; }
+      if (!isContinuationTask(value) || `${value.id}.json` !== name) { unreadable++; continue; }
       tasks.push(value);
     }
+    reportUnreadable?.(unreadable);
     return tasks;
   });
 }

@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { recordingDirectory, savePortableProject } from './projectStore';
+import { syntheticDirectory } from '../testUtils/syntheticDirectory';
+import { describe, expect, it, vi } from 'vitest';
 import { ProjectAIConnector } from './projectAIConnector';
 import { projectConnectorFixture as fixture } from '../testUtils/syntheticProjectConnector';
-import { readModelEdit, readManifest, saveActiveEdit, removeEdit } from '../localStore';
+import { readContinuationTasks, readModelEdit, readManifest, saveActiveEdit, removeEdit } from '../localStore';
 
 const readB = (c: ProjectAIConnector, version_id = 'm1:e1') => c.handle('read_project', { interview_id: 'session-b', recording_id: 'recording-session-b', version_id });
 const changedB = { segment_id: 's1', before: 'B0', after: 'B0 Test' };
@@ -179,4 +181,35 @@ describe('current-project AI routing', () => {
     expect(listed.tasks).toMatchObject([{ task_id: task.task_id, state: 'draft', target: { recording_id: 'recording-session-b' } }]);
     await expect(f.connector().handle('marks_status', { task_id: task.task_id })).rejects.toThrow('task_expired');
   });
+});
+
+it('recovers a copied project task beside a damaged journal and saves only to the new project after explicit resume', async () => {
+  const f = await fixture(), originalConnector = f.connector();
+  const task = await prepared(originalConnector, 'incremental', 'current_version');
+  const folder = await f.dirB.getDirectoryHandle('session-b.transcript');
+  const journals = await folder.getDirectoryHandle('ai-continuation-tasks');
+  const damagedName = `${crypto.randomUUID()}.json`;
+  const writer = await (await journals.getFileHandle(damagedName, { create: true })).createWritable();
+  await writer.write('{synthetic damaged journal'); await writer.close();
+  const copy = await savePortableProject(f.project!, syntheticDirectory('synthetic backup').handle, 'Synthetic copy');
+  const warning = vi.fn();
+  const copyConnector = new ProjectAIConnector({ ...f.active, continuationWarning: warning }, () => ({
+    project: () => copy, active: () => ({ interview_id: '', recording_id: '', version_id: null, directory: null }),
+  }));
+  const listed = await copyConnector.handle('project_tasks', {});
+  expect(listed.tasks).toMatchObject([{ task_id: task.task_id, state: 'paused', target: { project_id: copy.data.id } }]);
+  expect(warning.mock.calls.some(([, count]) => count === 1)).toBe(true);
+  expect(f.active.publish).not.toHaveBeenCalled();
+  const copiedRecording = copy.data.interviews[1].recordings[0];
+  const copiedDir = await recordingDirectory(copy, 'session-b', copiedRecording);
+  const copiedTask = (await readContinuationTasks(copiedDir, 'session-b.wav'))[0];
+  expect(JSON.parse(copiedTask.summary).target.project_id).toBe(copy.data.id);
+  expect((await readModelEdit(copiedDir, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0');
+  await copyConnector.handle('resume', { task_id: task.task_id });
+  const batch = await copyConnector.handle('batch', { task_id: task.task_id });
+  expect(await copyConnector.handle('checkpoint', { task_id: task.task_id, batch_id: batch.batch_id,
+    confirmed_summary: copiedTask.summary, changes: [changedB] })).toMatchObject({ saved: true, target: { project_id: copy.data.id } });
+  expect((await readModelEdit(copiedDir, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0 Test');
+  expect((await readModelEdit(f.dirB, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0');
+  expect((await readContinuationTasks(f.dirB, 'session-b.wav'))[0].state).toBe('draft');
 });

@@ -31,7 +31,22 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
   const selectRef=useRef<HTMLSelectElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const [tunnelReady,setTunnelReady]=useState(false);
-  useEffect(()=>{let disposed=false;const check=()=>{void invoke<boolean>('connector_tunnel_ready').then(value=>{if(!disposed)setTunnelReady(value);}).catch(()=>{if(!disposed)setTunnelReady(false);});};if(client==='chatgpt')check();const timer=client==='chatgpt'?setInterval(check,5000):undefined;return()=>{disposed=true;clearInterval(timer);};},[client,revision]);
+  const [tunnelStatus,setTunnelStatus]=useState('connecting');
+  useEffect(() => {
+    let disposed = false, checking = false;
+    const check = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const [ready, status] = await Promise.all([invoke<boolean>('connector_tunnel_ready'), invoke<string>('connector_tunnel_status')]);
+        if (!disposed) {setTunnelReady(ready);setTunnelStatus(['off','unconfigured','connecting','ready','retrying','setup_required'].includes(status) ? status : 'retrying');}
+      } catch {if (!disposed) {setTunnelReady(false);setTunnelStatus('retrying');}}
+      finally {checking = false;}
+    };
+    if (enabled && client === 'chatgpt') void check();
+    const timer = enabled && client === 'chatgpt' ? setInterval(() => void check(), 5000) : undefined;
+    return () => {disposed = true;clearInterval(timer);};
+  }, [client, revision, enabled]);
   useEffect(() => {
     let disposed = false;
     void invoke<ClientStatus>('connector_client_status').then(value => {if (!disposed) {setClient(value.client);setManualOpen(value.client === 'claude');setConfigured(value.configured);}})
@@ -110,6 +125,7 @@ export function ConnectorSetup({onSaved, enabled = true}: {onSaved?: () => void;
         </div>
       </details>}
     </div>
+    {client === 'chatgpt' && !busy && configured?.chatgpt === true && enabled && <p className="settings-hint" role="status">{msg(`connector.tunnel_${tunnelReady ? 'ready' : tunnelStatus === 'ready' ? 'connecting' : tunnelStatus}`)}</p>}
     {client === 'chatgpt' && !busy && <ChatGPTSetup key={revision} ref={chatgptSetupRef} onEditAvailabilityChange={setChatgptEditAvailable} onSaved={() => {setTunnelReady(false);void refreshConfiguration(); onSaved?.();}} tunnelReady={tunnelReady}/>}
     {enabled && confirmDelete && <DeleteConnectorDialog clientName={clientName} busy={busy} error={deleteError} opener={deleteButtonRef} fallback={selectRef}
       onCancel={() => {setConfirmDelete(null); setDeleteError('');}}

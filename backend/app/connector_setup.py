@@ -6,10 +6,13 @@ import json
 import os
 import shlex
 import sys
+import hashlib
+import shutil
+import tempfile
 from pathlib import Path
 
 from .bundled_runtime import bundled_python
-from .private_files import protect_private_fd
+from .atomic_files import atomic_write_text
 
 
 class SetupError(ValueError):
@@ -43,9 +46,11 @@ def save_setup(data_root: Path, resources: Path, values: dict):
             key = key[:len(key)//2]
         if any(c.isspace() for c in key) or len(key) < 32:
             raise SetupError('setup_key_invalid')
-        write_private(key_file, key)
     elif not key_file.is_file():
         raise SetupError('setup_key_invalid')
+    client = retain_runtime(directory, client)
+    if key:
+        write_private(key_file, key)
     python = bundled_python(resources)
     arguments = [str(python), '-m', 'app.connector_mcp', '--url', os.environ.get('RIPPLE_CONNECTOR_URL', 'http://127.0.0.1:18701'), '--credential-file', str(directory / 'client.key')]
     # tunnel-client parses this string using shell-word rules on every platform,
@@ -65,11 +70,48 @@ def save_setup(data_root: Path, resources: Path, values: dict):
 
 
 def write_private(path: Path, value: str):
-    flags = os.O_NOFOLLOW if hasattr(os, 'O_NOFOLLOW') else 0
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | flags, 0o600)
-    with os.fdopen(fd, 'w', encoding='utf-8') as f:
-        protect_private_fd(f.fileno())
-        f.write(value)
+    if path.is_symlink():
+        raise SetupError('setup_write_failed')
+    atomic_write_text(path, value, private=True)
+
+
+def retain_runtime(directory: Path, client: Path) -> Path:
+    """Keep the selected official runtime outside replaceable app/download folders.
+
+    Copy only its executables and licensing/manifest companions. No download,
+    account change or global install; old versions remain available for rollback.
+    """
+    root = directory / 'runtimes'
+    if root.is_symlink():
+        raise SetupError('setup_write_failed')
+    root.mkdir(mode=0o700, exist_ok=True)
+    if client.is_relative_to(root.resolve()):
+        return client
+    names = {client.name, 'cloudflared.exe' if client.suffix == '.exe' else 'cloudflared',
+             'cloudflared-manifest.json', 'LICENSE', 'NOTICE'}
+    files = sorted((p for p in client.parent.iterdir() if p.is_file() and not p.is_symlink()
+                    and (p.name in names or (p.name.startswith('tunnel-client-v')
+                         and p.name.endswith(('-licenses.txt', '.spdx.json'))))), key=lambda p: p.name)
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.name.encode('utf-8'))
+        with path.open('rb') as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+    destination = root / digest.hexdigest()
+    if not destination.exists():
+        stage = Path(tempfile.mkdtemp(prefix='.stage-', dir=root))
+        try:
+            for path in files:
+                shutil.copy2(path, stage / path.name)
+            stage.rename(destination)
+        finally:
+            if stage.exists():
+                shutil.rmtree(stage)
+    retained = destination / client.name
+    if not retained.is_file():
+        raise SetupError('setup_client_invalid')
+    return retained
 
 
 if __name__ == '__main__':

@@ -1,4 +1,6 @@
 import { msg } from '../i18n';
+import { readRecoverableManifest } from './manifestRecovery';
+import { isContinuationTask } from './continuationJournal';
 import type { ImportMaterial } from './materialImport';
 import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
@@ -72,6 +74,9 @@ async function readText(dir: FileSystemDirectoryHandle, name: string): Promise<s
   try { return await (await (await dir.getFileHandle(name)).getFile()).text(); }
   catch (error) { if (notFound(error)) return null; throw error; }
 }
+// The editor and project management use the same read-only recovery policy.
+const readManuscriptIndex = (directory: FileSystemDirectoryHandle) =>
+  readRecoverableManifest({ read: name => readText(directory, name) });
 async function writeText(dir: FileSystemDirectoryHandle, name: string, text: string) {
   const handle = await dir.getFileHandle(name, { create: true });
   const stream = await handle.createWritable();
@@ -338,6 +343,36 @@ async function copyTree(source: FileSystemDirectoryHandle, target: FileSystemDir
     }
   }
 }
+/** Only manuscript-owned AI state travels with a portable project, never device configuration. */
+async function copyManuscriptWork(source: FileSystemDirectoryHandle, target: FileSystemDirectoryHandle, projectId: string, projectTitle: string) {
+  const rules = await readText(source, 'ai-connector-rules.json');
+  if (rules !== null) await writeText(target, 'ai-connector-rules.json', rules);
+  let tasks: FileSystemDirectoryHandle;
+  try { tasks = await source.getDirectoryHandle('ai-continuation-tasks'); }
+  catch (error) { if (notFound(error)) return; throw error; }
+  const destination = await target.getDirectoryHandle('ai-continuation-tasks', { create: true });
+  for await (const [name, handle] of tasks.entries()) {
+    if (handle.kind !== 'file' || !/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+    const raw = await (await (handle as FileSystemFileHandle).getFile()).text();
+    let text = raw;
+    try {
+      const task: unknown = JSON.parse(raw);
+      if (isContinuationTask(task)) {
+        // Version/recording IDs are preserved in the copy. Rebind only project identity.
+        try {
+          const summary = JSON.parse(task.summary);
+          if (summary?.target && typeof summary.target === 'object' && !Array.isArray(summary.target)) {
+            summary.target = { ...summary.target, project_id: projectId, project: projectTitle };
+            task.summary = JSON.stringify(summary);
+          }
+        } catch { /* Older summaries can be plain text; the bound host supplies the new identity. */ }
+        if (task.state === 'draft') { task.state = 'paused'; task.reason = 'project_copied'; }
+        text = JSON.stringify(task, null, 2);
+      }
+    } catch { /* Preserve unreadable evidence byte-for-byte; recovery reports it separately. */ }
+    await writeText(destination, name, text);
+  }
+}
 export async function savePortableProject(project: OpenProject, parent: FileSystemDirectoryHandle, title: string): Promise<OpenProject> {
   // Prevent an active editor in another window from changing manuscripts during the copy.
   const release = await acquireProjectEditor(project.data.id);
@@ -362,10 +397,11 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
         catch(e) { if(!notFound(e))throw e; }
         let manuscriptNames:string[]=[];
         if(manuscripts) {
-          const raw=await readText(manuscripts,'manifest.json');
+          const raw=await readManuscriptIndex(manuscripts);
           if(!raw)throw new Error(msg('projectStore.m1416', { v0: recording.name }));
           const manifest=JSON.parse(raw) as TranscriptManifest;
           if(!Array.isArray(manifest.models))throw new Error(msg('projectStore.m1417'));
+          await validateManuscript(manuscripts, manifest, true);
           manuscriptNames=manifest.models.map(m=>m.label||m.sourceName||m.engine);
           const target=await to.getDirectoryHandle(folderName,{create:true});
           const files=new Set(manifest.models.flatMap(m=>[...(m.original?[m.original]:[]),...m.edits.map(e=>e.file)]));
@@ -376,6 +412,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
             await writeText(target,file,text);
           }
           await writeText(target,'manifest.json',raw);
+          await copyManuscriptWork(manuscripts, target, created.data.id, title.trim());
         }
         if (recording.storage === 'none') continue;
         if (recording.storage === 'reference') {
@@ -411,7 +448,7 @@ export async function findExistingManuscripts(parent: FileSystemDirectoryHandle,
   for await (const [name, handle] of (parent as FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
     if (handle.kind !== 'directory' || !name.endsWith('.transcript')) continue;
     const directory = handle as FileSystemDirectoryHandle;
-    const raw = await readText(directory, 'manifest.json');
+    const raw = await readManuscriptIndex(directory);
     if (!raw) continue;
     let manifest: TranscriptManifest;
     try { manifest = JSON.parse(raw); } catch { continue; }
@@ -483,12 +520,12 @@ export async function importExistingManuscript(project: OpenProject, interviewId
         throw new Error(msg('projectStore.m1435'));
       }
     } catch (error) { if (!notFound(error)) throw error; }
-    if (await readText(source.directory, 'manifest.json') !== source.manifestText) throw new Error(msg('projectStore.m1436'));
+    if (await readManuscriptIndex(source.directory) !== source.manifestText) throw new Error(msg('projectStore.m1436'));
     await validateManuscript(source.directory, source.manifest);
     const manuscriptDirectory = `import-${crypto.randomUUID()}.transcript`;
     const staged = await directory.getDirectoryHandle(manuscriptDirectory, { create: true });
     await copyTree(source.directory, staged);
-    if (await readText(source.directory, 'manifest.json') !== source.manifestText || await readText(staged, 'manifest.json') !== source.manifestText) throw new Error(msg('projectStore.m1437'));
+    if (await readManuscriptIndex(source.directory) !== source.manifestText || await readManuscriptIndex(staged) !== source.manifestText) throw new Error(msg('projectStore.m1437'));
     const manifest = { ...source.manifest, audio: recording.file };
     await writeText(staged, 'manifest.json', JSON.stringify(manifest, null, 2));
     const active = manifest.models.find(m => m.id === manifest.activeModelId)!;
@@ -631,8 +668,8 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
     if (!interview || !source || sourceId === targetId || (targetId && (!target || target.storage === 'none'))) throw new Error(msg('projectStore.m1450'));
     const directory = await interviewDirectory(project, interviewId);
     const manuscript = await directory.getDirectoryHandle(source.manuscriptDirectory ?? `${stemOf(source.file)}.transcript`);
-    const sourceManifest = JSON.parse(await (await manuscript.getFileHandle('manifest.json')).getFile().then(f => f.text()));
-    if (!sourceManifest.models?.length) throw new Error(msg('projectStore.m1451'));
+    const sourceManifest = JSON.parse(await readManuscriptIndex(manuscript) ?? 'null');
+    if (!sourceManifest?.models?.length) throw new Error(msg('projectStore.m1451'));
     if (modelId && !sourceManifest.models.some((m: { id: string }) => m.id === modelId)) throw new Error(msg('projectStore.m1452'));
     // Whole-history legacy moves still require an empty destination. Individual documents can append.
     let targetSnapshot: { folder: FileSystemDirectoryHandle; manifest: TranscriptManifest } | undefined;
@@ -641,8 +678,8 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
       try { existing = await directory.getDirectoryHandle(target.manuscriptDirectory ?? `${stemOf(target.file)}.transcript`); }
       catch (e) { if (!notFound(e)) throw e; }
       if (existing) {
-        const manifest = JSON.parse(await (await existing.getFileHandle('manifest.json')).getFile().then(f => f.text()));
-        if (!Array.isArray(manifest.models) || (!modelId && manifest.models.length)) throw new Error(msg('projectStore.m1453'));
+        const manifest = JSON.parse(await readManuscriptIndex(existing) ?? 'null');
+        if (!Array.isArray(manifest?.models) || (!modelId && manifest.models.length)) throw new Error(msg('projectStore.m1453'));
         targetSnapshot={folder:existing,manifest};
       }
     }
@@ -748,7 +785,7 @@ async function manuscriptSnapshot(project: OpenProject, interviewId: string, rec
   let folder: FileSystemDirectoryHandle;
   try { folder = await directory.getDirectoryHandle(recording.manuscriptDirectory ?? `${stemOf(recording.file)}.transcript`); }
   catch (error) { if (notFound(error)) return null; throw error; }
-  const raw = await readText(folder, 'manifest.json');
+  const raw = await readManuscriptIndex(folder);
   if (!raw) throw new Error(msg('projectStore.m1458'));
   const manifest = JSON.parse(raw) as TranscriptManifest;
   if (!Array.isArray(manifest.models)) throw new Error(msg('projectStore.m1459'));

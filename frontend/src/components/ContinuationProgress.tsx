@@ -45,7 +45,7 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
         </>}
       </div>
     </div>
-    {error&&<p className="continuation-progress-error" role="alert">{msg('continuation.error')}</p>}
+    {error&&<p className="continuation-progress-error" role="alert">{msg(error==='continuation_journal_unreadable'?'continuation.unreadableJournals':'continuation.error')}</p>}
     {task&&(!embedded||task.state==='paused')&&<p className="continuation-progress-note"><span>{message}</span>{live&&task.is_current&&<span className="continuation-progress-caution"> {msg('continuation.caution')}</span>}{task.held_batches>0&&<span> {msg('continuation.held')}</span>}</p>}
     {canOperate&&task&&(task.staged>0||task.held_batches>0)&&preview?.task===task.task_id&&<div className="continuation-proposals">
       <button type="button" className="cred-btn" onClick={()=>setPreview(null)}>{msg('continuation.hidePending')}</button>

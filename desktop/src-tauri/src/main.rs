@@ -7,6 +7,7 @@ mod file_transfer;
 mod project_icon;
 mod backend_runtime;
 mod tunnel_proxy;
+mod tunnel_recovery;
 mod native_menu;
 mod grants;
 mod pdf_print;
@@ -26,7 +27,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
@@ -35,9 +36,25 @@ const PORT: u16 = 18702;
 #[cfg(not(debug_assertions))]
 const PORT: u16 = 18701;
 static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static TUNNEL_LOG_LOCK: Mutex<()> = Mutex::new(());
 
 struct Backend(Mutex<Option<Child>>);
-struct ConnectorTunnel(Mutex<Option<Child>>);
+struct ConnectorTunnel(Mutex<TunnelState>);
+#[derive(Default)]
+struct TunnelState {
+    enabled: bool,
+    child: Option<Child>,
+    recovery: tunnel_recovery::Recovery,
+    status: &'static str,
+}
+impl TunnelState {
+    fn stop(&mut self) {
+        self.enabled = false;
+        if let Some(mut child) = self.child.take() { backend_runtime::stop_tunnel(&mut child); }
+        self.recovery = tunnel_recovery::Recovery::default();
+        self.status = "off";
+    }
+}
 use file_transfer::Writes;
 #[derive(Serialize)]
 struct NativeEntry { name: String, kind: &'static str }
@@ -334,7 +351,7 @@ async fn connector_client_delete(app: tauri::AppHandle, client: String) -> Resul
         let key = connector_window_key(app.clone()).map_err(|_| "connector_delete_failed")?;
         connector_config::delete_request(PORT, &key, &client)?;
         if let Some(guard) = tunnel.as_mut() {
-            if let Some(mut child) = guard.take() { let _ = child.kill(); let _ = child.wait(); }
+            guard.stop();
         }
         Ok(())
     }).await.map_err(|_| "connector_delete_failed".to_string())?
@@ -468,7 +485,12 @@ fn connector_setup_status(app: tauri::AppHandle) -> Result<serde_json::Value, St
 }
 
 #[tauri::command]
-fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
+fn connector_setup(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
+    let _guard = state.0.lock().map_err(|_| "connector_busy")?;
+    write_connector_setup(app, client_path, tunnel_id, runtime_key)
+}
+
+fn write_connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String, runtime_key: String) -> Result<(), String> {
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let data = app_data(&app).map_err(|_| "data_unavailable")?;
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
@@ -482,49 +504,135 @@ fn connector_setup(app: tauri::AppHandle, client_path: String, tunnel_id: String
     if output.status.success() { Ok(()) } else { Err(connector_config::setup_error(&output.stdout)) }
 }
 
-#[tauri::command]
-fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|_| "connector_busy")?;
-    if let Some(child) = guard.as_mut() {
-        if child.try_wait().map_err(|_| "connector_failed")?.is_none() { return Ok(()); }
+// Fixed event labels only: never persist raw client output, credentials or MCP payloads.
+fn tunnel_event(app: &tauri::AppHandle, event: &str, exit: Option<i32>) {
+    let Ok(_lock) = TUNNEL_LOG_LOCK.lock() else { return };
+    let Ok(data) = app_data(app) else { return };
+    let path = data.join("connector/connection-events.log");
+    if fs::metadata(&path).map(|m| m.len() > 65536).unwrap_or(false) {
+        let _ = fs::rename(&path, path.with_extension("previous.log"));
     }
-    let data = app_data(&app).map_err(|_| "data_unavailable")?.join("connector");
-    if !data.join("setup.json").exists() { return Ok(()); }
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        let _ = writeln!(file, "{}", serde_json::json!({"time":time,"event":event,"exit":exit}));
+    }
+}
+
+fn capture_tunnel_diagnostics(app: tauri::AppHandle, mut stream: impl Read + Send + 'static) {
+    std::thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+        let mut last: Option<(&'static str, Instant)> = None;
+        while let Ok(count) = stream.read(&mut buffer) {
+            if count == 0 { break; }
+            if let Some(event) = tunnel_recovery::diagnostic(&buffer[..count]) {
+                // Bound disk churn during an outage, even if the client logs continuously.
+                if last.is_none_or(|(previous, time)| previous != event || time.elapsed() >= Duration::from_secs(60)) {
+                    tunnel_event(&app, event, None);
+                    last = Some((event, Instant::now()));
+                }
+            }
+        }
+    });
+}
+
+fn spawn_tunnel(app: &tauri::AppHandle) -> Result<Child, String> {
+    let data = app_data(app).map_err(|_| "data_unavailable")?.join("connector");
     let setup = fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?;
     let config: serde_json::Value = serde_json::from_str(&setup).map_err(|_| "connector_setup_required")?;
     let client = config.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
     let tunnel = config.get("tunnel_id").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
-    // Regenerate the command against this bundle after an install or app update.
-    // Keep the existing protected runtime key; do not retain a temporary build path.
-    connector_setup(app.clone(), client.to_string(), tunnel.to_string(), String::new())?;
+    // Rebind to this installed bundle, retain the protected key and migrate a
+    // selected download into a durable per-user runtime outside the app bundle.
+    write_connector_setup(app.clone(), client.to_string(), tunnel.to_string(), String::new())?;
+    let updated: serde_json::Value = serde_json::from_str(&fs::read_to_string(data.join("setup.json")).map_err(|_| "connector_setup_required")?).map_err(|_| "connector_setup_required")?;
+    let client = updated.get("client_path").and_then(|v|v.as_str()).ok_or("connector_setup_required")?;
     let _ = fs::remove_file(data.join("health.url"));
     let resources = app.path().resource_dir().map_err(|_| "resources_unavailable")?.join("backend");
     let python_path = std::env::join_paths([resources.join("backend"), resources.join("site-packages")]).map_err(|_| "resources_unavailable")?;
-    let mut command = backend_runtime::background_command(client);
+    let mut command = backend_runtime::tunnel_command(client);
     tunnel_proxy::apply(&mut command);
-    let child = command.args(["run", "--config"]).arg(data.join("tunnel.yaml"))
+    let mut child = command.args(["run", "--config"]).arg(data.join("tunnel.yaml"))
         .env("PYTHONPATH", python_path).env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("RIPPLE_DATA_DIR", app_data(&app).map_err(|_| "data_unavailable")?)
-        .stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "connector_start_failed")?;
-    *guard = Some(child);
-    Ok(())
+        .env("RIPPLE_DATA_DIR", app_data(app).map_err(|_| "data_unavailable")?)
+        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|_| "connector_start_failed".to_string())?;
+    if let Some(stream) = child.stdout.take() { capture_tunnel_diagnostics(app.clone(), stream); }
+    if let Some(stream) = child.stderr.take() { capture_tunnel_diagnostics(app.clone(), stream); }
+    Ok(child)
 }
 
-
-#[tauri::command]
-fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> bool {
-    let Ok(mut guard) = state.0.lock() else { return false };
-    let Some(child) = guard.as_mut() else { return false };
-    if !matches!(child.try_wait(), Ok(None)) { return false; }
-    let Ok(data) = app_data(&app) else { return false };
+fn tunnel_health(app: &tauri::AppHandle) -> bool {
+    let Ok(data) = app_data(app) else { return false };
     let Ok(url) = fs::read_to_string(data.join("connector/health.url")) else { return false };
     let Some(raw) = url.trim().strip_prefix("http://127.0.0.1:") else { return false };
     let Ok(port) = raw.trim_end_matches('/').parse::<u16>() else { return false };
     let Ok(mut stream) = TcpStream::connect_timeout(&SocketAddr::from(([127,0,0,1],port)), Duration::from_millis(300)) else { return false };
     let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
     if stream.write_all(b"GET /readyz HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() { return false; }
     let mut response = String::new();
-    stream.read_to_string(&mut response).is_ok() && (response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200"))
+    stream.take(16384).read_to_string(&mut response).is_ok() && (response.starts_with("HTTP/1.1 200 ") || response.starts_with("HTTP/1.0 200 "))
+}
+
+fn supervise_tunnel(app: &tauri::AppHandle, state: &mut TunnelState) {
+    if !state.enabled { return; }
+    let now = Instant::now();
+    if let Some(child) = state.child.as_mut() {
+        match child.try_wait() {
+            Ok(Some(exit)) => {
+                tunnel_event(app, "process_exited", exit.code());
+                state.child = None;
+                state.recovery.failed(now);
+                state.status = "retrying";
+            }
+            Ok(None) => {
+                let ready = tunnel_health(app);
+                if state.recovery.unhealthy_too_long(ready, now) {
+                    // Only stop the process owned by this app, never an unrelated client.
+                    backend_runtime::stop_tunnel(child);
+                    state.child = None;
+                    state.recovery.failed(now);
+                    state.status = "retrying";
+                    tunnel_event(app, "readiness_timeout", None);
+                } else {
+                    let status = if ready { "ready" } else { "connecting" };
+                    if state.status != status { tunnel_event(app, status, None); }
+                    state.status = status;
+                }
+            }
+            Err(_) => { state.status = "retrying"; }
+        }
+    }
+    if state.child.is_none() && state.recovery.can_start(now) {
+        let configured = app_data(app).map(|d| d.join("connector/setup.json").is_file()).unwrap_or(false);
+        if !configured { state.status = "unconfigured"; return; }
+        match spawn_tunnel(app) {
+            Ok(child) => { state.child = Some(child); state.status = "connecting"; tunnel_event(app, "process_started", None); }
+            Err(error) => {
+                state.recovery.failed(now);
+                state.status = if matches!(error.as_str(), "setup_client_invalid" | "setup_key_invalid" | "setup_tunnel_invalid" | "connector_setup_required") { "setup_required" } else { "retrying" };
+                tunnel_event(app, state.status, None);
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn connector_tunnel_start(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|_| "connector_busy")?;
+    guard.enabled = true;
+    supervise_tunnel(&app, &mut guard);
+    Ok(())
+}
+
+#[tauri::command]
+fn connector_tunnel_ready(app: tauri::AppHandle, state: tauri::State<'_, ConnectorTunnel>) -> bool {
+    let Ok(mut guard) = state.0.lock() else { return false };
+    guard.enabled && guard.child.as_mut().is_some_and(|child| matches!(child.try_wait(), Ok(None))) && tunnel_health(&app)
+}
+
+#[tauri::command]
+fn connector_tunnel_status(state: tauri::State<'_, ConnectorTunnel>) -> &'static str {
+    state.0.lock().map(|guard| if guard.enabled { guard.status } else { "off" }).unwrap_or("retrying")
 }
 
 #[tauri::command]
@@ -533,7 +641,7 @@ fn connector_local_ready() -> bool { health_ok() }
 #[tauri::command]
 fn connector_tunnel_stop(state: tauri::State<'_, ConnectorTunnel>) {
     if let Ok(mut guard) = state.0.lock() {
-        if let Some(mut child) = guard.take() { let _ = child.kill(); let _ = child.wait(); }
+        guard.stop();
     }
 }
 
@@ -573,7 +681,7 @@ fn stop_backend(app: &tauri::AppHandle) {
 fn owned_process_ids(app: &tauri::AppHandle) -> Vec<u32> {
     let mut ids = vec![std::process::id()];
     if let Some(state) = app.try_state::<Backend>() { if let Ok(lock) = state.0.lock() { if let Some(child) = lock.as_ref() { ids.push(child.id()); } } }
-    if let Some(state) = app.try_state::<ConnectorTunnel>() { if let Ok(lock) = state.0.lock() { if let Some(child) = lock.as_ref() { ids.push(child.id()); } } }
+    if let Some(state) = app.try_state::<ConnectorTunnel>() { if let Ok(lock) = state.0.lock() { if let Some(child) = lock.child.as_ref() { ids.push(child.id()); } } }
     ids
 }
 
@@ -605,7 +713,7 @@ fn main() {
     }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_updater::Builder::new().pubkey(include_str!("../update-public.key.pub").trim()).build())
         .manage(Writes::default())
-        .manage(ConnectorTunnel(Mutex::new(None)))
+        .manage(ConnectorTunnel(Mutex::new(TunnelState::default())))
         .setup(|app| {
             app.manage(updates::Updates::new(app.handle()));
             app.manage(update_window::UpdateWindow::default());
@@ -623,12 +731,18 @@ fn main() {
                 let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
                 app.manage(Backend(Mutex::new(Some(child))));
             }
+            let supervisor_app = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(5));
+                let state = supervisor_app.state::<ConnectorTunnel>();
+                if let Ok(mut guard) = state.0.lock() { supervise_tunnel(&supervisor_app, &mut guard); };
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![update_window::update_prepare, update_window::update_prepared, update_window::update_close, updates::update_status, updates::update_check, updates::update_download, updates::update_cancel, updates::update_install, updates::update_open_releases, updates::update_dismiss_result, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
-            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_local_ready, connector_tunnel_stop])
+            fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_status, connector_local_ready, connector_tunnel_stop])
         .on_menu_event(|app, event| {
             if event.id().as_ref() == native_menu::UPDATE_ID {
                 if let Err(error) = update_window::open(app) { eprintln!("Update window failed: {error}"); }

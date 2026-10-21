@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ConnectorContext, type ConnectorState } from './hooks/connectorContext';
 import { act, cleanup, fireEvent, render as renderBase, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import App from "./App";
@@ -175,4 +176,15 @@ it("publishes the exact loaded metadata and transcript references after applying
   loadFresh("synthetic.wav");
   expect(fixture.persistence!.persistedContent?.metadata).toBe(fixture.persistence!.metadata);
   expect(fixture.persistence!.persistedContent?.transcript).toBe(fixture.persistence!.transcript);
+});
+
+it('shows damaged-journal recovery when no AI activity or healthy task could be recovered', async () => {
+  const state: ConnectorState = { enabled: false, setEnabled: vi.fn(), reconnect: vi.fn(), status: 'off', activities: [], tasks: [],
+    taskError: 'continuation_journal_unreadable', taskAction: vi.fn(async () => ({})), targetLocked: () => false };
+  renderBase(<ConnectorContext.Provider value={{ state, register: vi.fn(), unregister: vi.fn() }}><App /></ConnectorContext.Provider>);
+  load('Synthetic.wav');
+  expect(screen.getByRole('alert').textContent).toContain('其他任务仍可使用');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '刷新进度' })); });
+  expect(state.taskAction).toHaveBeenCalledWith('tasks', undefined);
+  expect(screen.getByText('Synthetic.wav的内容')).toBeTruthy();
 });

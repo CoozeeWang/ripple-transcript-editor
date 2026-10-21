@@ -4,6 +4,7 @@ import { useAIConnectorRuntime } from '../hooks/useAIConnector';
 import type { ConnectorHost } from '../lib/aiConnector';
 import type { ProjectConnectorAccess } from '../lib/projectConnectorHost';
 import { AIEditingNotice } from './AIEditingNotice';
+import { ContinuationProgress } from './ContinuationProgress';
 import { assertDesktopUpdateIdle, desktopUpdatePreparing } from '../lib/desktopUpdates';
 
 /** The transport and task identities belong to the window, never to a keyed editor. */
@@ -45,7 +46,9 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
   };
   const state = useAIConnectorRuntime(host, context, project);
   return <ConnectorContext.Provider value={{ state, register, unregister }}>
-    {!context && <div className="ai-editing-global"><AIEditingNotice activities={state.activities} isCurrent={() => false} onDismiss={id => state.taskAction('dismiss_editing', id)} onEnd={id => state.taskAction('end_editing', id)}/></div>}
+    {!context && <div className="ai-editing-global"><AIEditingNotice activities={state.activities} isCurrent={() => false} onDismiss={id => state.taskAction('dismiss_editing', id)} onEnd={id => state.taskAction('end_editing', id)}>
+      {state.taskError && <ContinuationProgress embedded tasks={state.tasks} error={state.taskError} onAction={state.taskAction}/>}
+    </AIEditingNotice></div>}
     {children}
   </ConnectorContext.Provider>;
 }
