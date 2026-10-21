@@ -1,8 +1,10 @@
 import { msg } from '../i18n';
+import { readRecoverableManifest } from './manifestRecovery';
+import { isContinuationTask } from './continuationJournal';
 import type { ImportMaterial } from './materialImport';
 import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
-import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable } from './desktopFs';
+import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decorateNativeProject, NativeFileHandle } from './desktopFs';
 
 export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
@@ -21,7 +23,7 @@ export interface RippleProject {
   kind: 'ripple-project'; schemaVersion: 1; id: string; title: string; description: string;
   revision: number; interviews: ProjectInterview[]; trash?: ProjectTrashItem[];
 }
-export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject }
+export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject; finderIconWarning?: boolean }
 const INDEX = 'ripple-project.json';
 const safeName = (s: unknown): s is string => typeof s === 'string' && !!s && s !== '.' && s !== '..' && !/[\\/]/.test(s);
 const id = (s: unknown): s is string => typeof s === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(s);
@@ -72,6 +74,9 @@ async function readText(dir: FileSystemDirectoryHandle, name: string): Promise<s
   try { return await (await (await dir.getFileHandle(name)).getFile()).text(); }
   catch (error) { if (notFound(error)) return null; throw error; }
 }
+// The editor and project management use the same read-only recovery policy.
+const readManuscriptIndex = (directory: FileSystemDirectoryHandle) =>
+  readRecoverableManifest({ read: name => readText(directory, name) });
 async function writeText(dir: FileSystemDirectoryHandle, name: string, text: string) {
   const handle = await dir.getFileHandle(name, { create: true });
   const stream = await handle.createWritable();
@@ -83,7 +88,9 @@ export async function openProject(directory: FileSystemDirectoryHandle): Promise
   const raw = await readText(directory, INDEX);
   if (raw === null) throw new Error(msg('projectStore.m1393'));
   // Do not silently open an older backup: it could hide newly created interviews.
-  return { directory, data: parseProject(raw) };
+  const data = parseProject(raw);
+  const finderIconWarning = !await decorateNativeProject(directory);
+  return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
 }
 export async function acquireProjectEditor(projectId: string): Promise<() => void> {
   if (typeof navigator === 'undefined' || !navigator.locks) return () => {};
@@ -125,7 +132,8 @@ export async function createProject(parent: FileSystemDirectoryHandle, title: st
   const directory = await parent.getDirectoryHandle(folder, { create: true });
   const data: RippleProject = { kind: 'ripple-project', schemaVersion: 1, id: crypto.randomUUID(), title: name, description: '', revision: 0, interviews: [] };
   await writeText(directory, INDEX, JSON.stringify(data, null, 2));
-  return { directory, data };
+  const finderIconWarning = !await decorateNativeProject(directory);
+  return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
 }
 
 // Browser handles are machine-local. Project metadata remains portable; external media can be relinked.
@@ -216,13 +224,15 @@ export async function resolveMedia(project: OpenProject, interviewId: string, re
     return (await dir.getDirectoryHandle('media')).getFileHandle(recording.file);
   }
   const handle = await handleValue<FileSystemFileHandle>(`media:${project.data.id}:${recording.id}`);
-  if (!handle) throw new Error(msg('projectStore.m1404'));
+  // A lost machine-local handle says nothing about whether the external file exists.
+  if (!handle) throw new ProjectMediaUnavailable(msg('projectStore.mediaPermission'), 'permission');
   return handle;
 }
 export async function relinkMedia(project: OpenProject, interviewId: string, recording: ProjectRecording, handle: FileSystemFileHandle): Promise<OpenProject> {
   return checkedTrashMutation(project,async()=>{
-  const file = await handle.getFile();
-  const fingerprint = await mediaFingerprint(file);
+  let file: File; let fingerprint: string;
+  try { file = await handle.getFile(); fingerprint = await mediaFingerprint(file); }
+  catch (error) { throw mediaFailure(error); }
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (!AUDIO_EXT.includes(ext)) throw new Error(msg('projectStore.m1405'));
   if (recording.storage !== 'none' && fingerprint !== recording.fingerprint) throw new Error(msg('projectStore.m1406'));
@@ -230,7 +240,40 @@ export async function relinkMedia(project: OpenProject, interviewId: string, rec
   return saveProject(project, { ...project.data, interviews: project.data.interviews.map(i => i.id === interviewId ? { ...i, recordings: i.recordings.map(r => r.id === recording.id ? { ...r, storage: 'reference', fingerprint, ...(r.storage === 'none' ? { file: `${r.id}.${ext}`, name: file.name } : {}) } : r) } : i) });
   });
 }
-export class ProjectMediaUnavailable extends Error {}
+export type MediaFailureReason = 'permission' | 'missing' | 'changed' | 'unreadable';
+export class ProjectMediaUnavailable extends Error {
+  constructor(message: string, readonly reason: MediaFailureReason = 'unreadable') { super(message); }
+}
+export function mediaFailureMessage(reason: MediaFailureReason): string {
+  switch (reason) {
+    case 'permission': return msg('projectStore.mediaPermission');
+    case 'missing': return msg('projectStore.mediaMissing');
+    case 'changed': return msg('projectStore.mediaChanged');
+    default: return msg('projectStore.mediaUnreadable');
+  }
+}
+export function mediaFailure(error: unknown): ProjectMediaUnavailable {
+  if (error instanceof ProjectMediaUnavailable) return error;
+  const name = (error as { name?: string })?.name;
+  const reason = name === 'NotAllowedError' || name === 'SecurityError' ? 'permission'
+    : name === 'NotFoundError' ? 'missing' : 'unreadable';
+  return new ProjectMediaUnavailable(mediaFailureMessage(reason), reason);
+}
+export async function readProjectMedia(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<File> {
+  try {
+    const file = await (await resolveMedia(project, interviewId, recording)).getFile();
+    if (await mediaFingerprint(file) !== recording.fingerprint) {
+      throw new ProjectMediaUnavailable(msg('projectStore.mediaChanged'), 'changed');
+    }
+    return file;
+  } catch (error) { throw mediaFailure(error); }
+}
+export async function checkProjectMedia(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<void> {
+  const handle = await resolveMedia(project, interviewId, recording);
+  if (!(handle instanceof NativeFileHandle)) { await readProjectMedia(project, interviewId, recording); return; }
+  try { await handle.checkMedia(recording.fingerprint); }
+  catch (error) { throw error === 'media_changed' ? new ProjectMediaUnavailable(mediaFailureMessage('changed'), 'changed') : mediaFailure(error); }
+}
 export async function recordingDirectory(project: OpenProject, interviewId: string, recording: ProjectRecording): Promise<FileSystemDirectoryHandle> {
   const directory = await interviewDirectory(project, interviewId);
   // A single recording view isolates existing editor/version code without duplicating external media.
@@ -239,11 +282,15 @@ export async function recordingDirectory(project: OpenProject, interviewId: stri
     kind: 'file', name: recording.file,
     async getFile() {
       if (recording.storage === 'none') throw new ProjectMediaUnavailable('');
+      return readProjectMedia(project, interviewId, recording);
+    },
+    async getPlaybackUrl() {
       try {
-        const file = await (await resolveMedia(project, interviewId, recording)).getFile();
-        if (await mediaFingerprint(file) !== recording.fingerprint) throw new Error(msg('projectStore.m1407'));
-        return file;
-      } catch { throw new ProjectMediaUnavailable(msg('projectStore.m1408')); }
+        if (recording.storage === 'none') throw new ProjectMediaUnavailable('');
+        const handle = await resolveMedia(project, interviewId, recording);
+        if (handle instanceof NativeFileHandle) return await handle.getPlaybackUrl(recording.fingerprint);
+        return URL.createObjectURL(await readProjectMedia(project, interviewId, recording));
+      } catch(error) { throw error === 'media_changed' ? new ProjectMediaUnavailable(mediaFailureMessage('changed'), 'changed') : mediaFailure(error); }
     },
   };
   return {
@@ -296,6 +343,38 @@ async function copyTree(source: FileSystemDirectoryHandle, target: FileSystemDir
     }
   }
 }
+/** Only manuscript-owned AI state travels with a portable project, never device configuration. */
+async function copyManuscriptWork(source: FileSystemDirectoryHandle, target: FileSystemDirectoryHandle, projectId: string, projectTitle: string) {
+  for (const name of ['ai-connector-rules.json', 'ai-interview-preferences.json']) {
+    const rules = await readText(source, name);
+    if (rules !== null) await writeText(target, name, rules);
+  }
+  let tasks: FileSystemDirectoryHandle;
+  try { tasks = await source.getDirectoryHandle('ai-continuation-tasks'); }
+  catch (error) { if (notFound(error)) return; throw error; }
+  const destination = await target.getDirectoryHandle('ai-continuation-tasks', { create: true });
+  for await (const [name, handle] of tasks.entries()) {
+    if (handle.kind !== 'file' || !/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+    const raw = await (await (handle as FileSystemFileHandle).getFile()).text();
+    let text = raw;
+    try {
+      const task: unknown = JSON.parse(raw);
+      if (isContinuationTask(task)) {
+        // Version/recording IDs are preserved in the copy. Rebind only project identity.
+        try {
+          const summary = JSON.parse(task.summary);
+          if (summary?.target && typeof summary.target === 'object' && !Array.isArray(summary.target)) {
+            summary.target = { ...summary.target, project_id: projectId, project: projectTitle };
+            task.summary = JSON.stringify(summary);
+          }
+        } catch { /* Older summaries can be plain text; the bound host supplies the new identity. */ }
+        if (task.state === 'draft') { task.state = 'paused'; task.reason = 'project_copied'; }
+        text = JSON.stringify(task, null, 2);
+      }
+    } catch { /* Preserve unreadable evidence byte-for-byte; recovery reports it separately. */ }
+    await writeText(destination, name, text);
+  }
+}
 export async function savePortableProject(project: OpenProject, parent: FileSystemDirectoryHandle, title: string): Promise<OpenProject> {
   // Prevent an active editor in another window from changing manuscripts during the copy.
   const release = await acquireProjectEditor(project.data.id);
@@ -320,10 +399,11 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
         catch(e) { if(!notFound(e))throw e; }
         let manuscriptNames:string[]=[];
         if(manuscripts) {
-          const raw=await readText(manuscripts,'manifest.json');
+          const raw=await readManuscriptIndex(manuscripts);
           if(!raw)throw new Error(msg('projectStore.m1416', { v0: recording.name }));
           const manifest=JSON.parse(raw) as TranscriptManifest;
           if(!Array.isArray(manifest.models))throw new Error(msg('projectStore.m1417'));
+          await validateManuscript(manuscripts, manifest, true);
           manuscriptNames=manifest.models.map(m=>m.label||m.sourceName||m.engine);
           const target=await to.getDirectoryHandle(folderName,{create:true});
           const files=new Set(manifest.models.flatMap(m=>[...(m.original?[m.original]:[]),...m.edits.map(e=>e.file)]));
@@ -334,6 +414,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
             await writeText(target,file,text);
           }
           await writeText(target,'manifest.json',raw);
+          await copyManuscriptWork(manuscripts, target, created.data.id, title.trim());
         }
         if (recording.storage === 'none') continue;
         if (recording.storage === 'reference') {
@@ -351,7 +432,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
     const data: RippleProject = { ...source.data, id: created.data.id, title: title.trim(), revision: 0, trash: [] };
     await writeText(created.directory, INDEX, JSON.stringify(data, null, 2));
     await created.directory.removeEntry('COPY-INCOMPLETE.txt');
-    return { directory: created.directory, data };
+    return { directory: created.directory, data, ...(created.finderIconWarning ? {finderIconWarning:true} : {}) };
   }); } finally { release(); }
 }
 
@@ -369,7 +450,7 @@ export async function findExistingManuscripts(parent: FileSystemDirectoryHandle,
   for await (const [name, handle] of (parent as FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
     if (handle.kind !== 'directory' || !name.endsWith('.transcript')) continue;
     const directory = handle as FileSystemDirectoryHandle;
-    const raw = await readText(directory, 'manifest.json');
+    const raw = await readManuscriptIndex(directory);
     if (!raw) continue;
     let manifest: TranscriptManifest;
     try { manifest = JSON.parse(raw); } catch { continue; }
@@ -401,18 +482,18 @@ async function validateSourceAudio(parent: FileSystemDirectoryHandle, manifest: 
     if (fingerprint !== manifest.audioFingerprint) throw new Error(msg('projectStore.m1424'));
   }
 }
-async function validateManuscript(directory: FileSystemDirectoryHandle, manifest: TranscriptManifest) {
-  if (manifest.schemaVersion !== 2 || !Array.isArray(manifest.models) || !manifest.models.length) throw new Error(msg('projectStore.m1425'));
+async function validateManuscript(directory: FileSystemDirectoryHandle, manifest: TranscriptManifest, allowReadOnly = false) {
+  if (manifest.schemaVersion !== 2 || !Array.isArray(manifest.models) || (!allowReadOnly && !manifest.models.length)) throw new Error(msg('projectStore.m1425'));
   const ids = new Set<string>();
   for (const model of manifest.models) {
-    if (!model || !id(model.id) || ids.has(model.id) || !Array.isArray(model.edits) || !model.edits.length || typeof model.engine !== 'string') throw new Error(msg('projectStore.m1426'));
+    if (!model || !id(model.id) || ids.has(model.id) || !Array.isArray(model.edits) || (!model.edits.length && !(allowReadOnly && model.original)) || typeof model.engine !== 'string') throw new Error(msg('projectStore.m1426'));
     ids.add(model.id);
     const edits = new Set<string>();
     for (const edit of model.edits) {
       if (!edit || !id(edit.id) || edits.has(edit.id)) throw new Error(msg('projectStore.m1427'));
       edits.add(edit.id);
     }
-    if (!edits.has(model.activeEditId) || model.edits.some(e => e.comparisonBaseId && !edits.has(e.comparisonBaseId))) throw new Error(msg('projectStore.m1428'));
+    if ((model.edits.length ? !edits.has(model.activeEditId) : !!model.activeEditId) || model.edits.some(e => e.comparisonBaseId && !edits.has(e.comparisonBaseId))) throw new Error(msg('projectStore.m1428'));
     for (const file of [...(model.original ? [model.original] : []), ...model.edits.map(e => e.file)]) {
       if (!safeName(file)) throw new Error(msg('projectStore.m1429'));
       const text = await readText(directory, file);
@@ -422,7 +503,7 @@ async function validateManuscript(directory: FileSystemDirectoryHandle, manifest
           || data.transcript.segments.some((s: { text?: unknown }) => !s || typeof s.text !== 'string')) throw new Error(msg('projectStore.m1431', { v0: file }));
     }
   }
-  if (!ids.has(manifest.activeModelId)) throw new Error(msg('projectStore.m1432'));
+  if (manifest.models.length ? !ids.has(manifest.activeModelId) : !!manifest.activeModelId) throw new Error(msg('projectStore.m1432'));
 }
 /** Stage a complete copy, then publish its pointer in the project index. Never replace existing manuscripts. */
 export async function importExistingManuscript(project: OpenProject, interviewId: string, recording: ProjectRecording, source: ExistingManuscript): Promise<OpenProject> {
@@ -441,12 +522,12 @@ export async function importExistingManuscript(project: OpenProject, interviewId
         throw new Error(msg('projectStore.m1435'));
       }
     } catch (error) { if (!notFound(error)) throw error; }
-    if (await readText(source.directory, 'manifest.json') !== source.manifestText) throw new Error(msg('projectStore.m1436'));
+    if (await readManuscriptIndex(source.directory) !== source.manifestText) throw new Error(msg('projectStore.m1436'));
     await validateManuscript(source.directory, source.manifest);
     const manuscriptDirectory = `import-${crypto.randomUUID()}.transcript`;
     const staged = await directory.getDirectoryHandle(manuscriptDirectory, { create: true });
     await copyTree(source.directory, staged);
-    if (await readText(source.directory, 'manifest.json') !== source.manifestText || await readText(staged, 'manifest.json') !== source.manifestText) throw new Error(msg('projectStore.m1437'));
+    if (await readManuscriptIndex(source.directory) !== source.manifestText || await readManuscriptIndex(staged) !== source.manifestText) throw new Error(msg('projectStore.m1437'));
     const manifest = { ...source.manifest, audio: recording.file };
     await writeText(staged, 'manifest.json', JSON.stringify(manifest, null, 2));
     const active = manifest.models.find(m => m.id === manifest.activeModelId)!;
@@ -589,8 +670,8 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
     if (!interview || !source || sourceId === targetId || (targetId && (!target || target.storage === 'none'))) throw new Error(msg('projectStore.m1450'));
     const directory = await interviewDirectory(project, interviewId);
     const manuscript = await directory.getDirectoryHandle(source.manuscriptDirectory ?? `${stemOf(source.file)}.transcript`);
-    const sourceManifest = JSON.parse(await (await manuscript.getFileHandle('manifest.json')).getFile().then(f => f.text()));
-    if (!sourceManifest.models?.length) throw new Error(msg('projectStore.m1451'));
+    const sourceManifest = JSON.parse(await readManuscriptIndex(manuscript) ?? 'null');
+    if (!sourceManifest?.models?.length) throw new Error(msg('projectStore.m1451'));
     if (modelId && !sourceManifest.models.some((m: { id: string }) => m.id === modelId)) throw new Error(msg('projectStore.m1452'));
     // Whole-history legacy moves still require an empty destination. Individual documents can append.
     let targetSnapshot: { folder: FileSystemDirectoryHandle; manifest: TranscriptManifest } | undefined;
@@ -599,8 +680,8 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
       try { existing = await directory.getDirectoryHandle(target.manuscriptDirectory ?? `${stemOf(target.file)}.transcript`); }
       catch (e) { if (!notFound(e)) throw e; }
       if (existing) {
-        const manifest = JSON.parse(await (await existing.getFileHandle('manifest.json')).getFile().then(f => f.text()));
-        if (!Array.isArray(manifest.models) || (!modelId && manifest.models.length)) throw new Error(msg('projectStore.m1453'));
+        const manifest = JSON.parse(await readManuscriptIndex(existing) ?? 'null');
+        if (!Array.isArray(manifest?.models) || (!modelId && manifest.models.length)) throw new Error(msg('projectStore.m1453'));
         targetSnapshot={folder:existing,manifest};
       }
     }
@@ -659,12 +740,54 @@ async function checkedTrashMutation<T>(project: OpenProject, work: () => Promise
     return await work();
   } finally { release(); }
 }
+/** Stage the complete batch before publishing a single index change. Originals remain recovery snapshots. */
+export async function moveProjectRecordings(project: OpenProject, sourceId: string, targetId: string, recordingIds: string[]): Promise<OpenProject> {
+  return checkedTrashMutation(project, async () => {
+    const source = project.data.interviews.find(session => session.id === sourceId);
+    const target = project.data.interviews.find(session => session.id === targetId);
+    const ids = new Set(recordingIds);
+    const recordings = source?.recordings.filter(recording => ids.has(recording.id)) ?? [];
+    if (!source || !target || sourceId === targetId || !ids.size || ids.size !== recordingIds.length
+        || recordings.length !== ids.size || recordings.some(recording => recording.storage === 'none')) {
+      throw new Error(msg('recordingMove.invalidSelection'));
+    }
+    const destination = await interviewDirectory(project, targetId, true);
+    const moved: ProjectRecording[] = [];
+    for (const recording of recordings) {
+      const snapshot = await manuscriptSnapshot(project, sourceId, recording);
+      if (!snapshot && recording.manuscriptDirectory) throw new Error(msg('projectStore.m1458'));
+      if (snapshot) await validateManuscript(snapshot.folder, snapshot.manifest, true);
+      // Unique staging names make interrupted copies harmless and keep retries independent.
+      const file = `${crypto.randomUUID()}.${recording.file.split('.').pop()}`;
+      let manuscriptDirectory: string | undefined;
+      if (snapshot) {
+        manuscriptDirectory = await stageModels(destination, snapshot.folder, { ...snapshot.manifest, audio: file });
+      }
+      if (recording.storage === 'copy') {
+        const audio = await readProjectMedia(project, sourceId, recording);
+        const media = await destination.getDirectoryHandle('media', { create: true });
+        const handle = await media.getFileHandle(file, { create: true });
+        await audio.stream().pipeTo(await handle.createWritable());
+        if (await mediaFingerprint(await handle.getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1412'));
+      }
+      // External handles are keyed by project/recording ID, so referenced audio stays linked,
+      // including offline audio. Freeze inherited details before changing the parent session.
+      moved.push({ ...recording, file, manuscriptDirectory,
+        draft: recording.draft ?? { metadata: { ...(source.metadata ?? defaultMetadata(recording.name)), id: recording.id, title: recording.name }, speakers: [] } });
+    }
+    // AI hosts re-read the index: after this commit the old session no longer owns these IDs.
+    return saveProject(project, { ...project.data, interviews: project.data.interviews.map(session =>
+      session.id === sourceId ? { ...session, recordings: session.recordings.filter(recording => !ids.has(recording.id)) }
+        : session.id === targetId ? { ...session, recordings: [...session.recordings, ...moved] } : session) });
+  });
+}
+
 async function manuscriptSnapshot(project: OpenProject, interviewId: string, recording: ProjectRecording) {
   const directory = await interviewDirectory(project, interviewId);
   let folder: FileSystemDirectoryHandle;
   try { folder = await directory.getDirectoryHandle(recording.manuscriptDirectory ?? `${stemOf(recording.file)}.transcript`); }
   catch (error) { if (notFound(error)) return null; throw error; }
-  const raw = await readText(folder, 'manifest.json');
+  const raw = await readManuscriptIndex(folder);
   if (!raw) throw new Error(msg('projectStore.m1458'));
   const manifest = JSON.parse(raw) as TranscriptManifest;
   if (!Array.isArray(manifest.models)) throw new Error(msg('projectStore.m1459'));
@@ -777,7 +900,10 @@ export function referenceAudioNotice(recording:ProjectRecording, interviewTitle:
  return msg('projectStore.m1466', { v0: recording.name, v1: interviewTitle, v2: manuscripts.length?manuscripts.join("、"):msg('projectStore.m1467') });
 }
 export async function checkedMediaFile(project:OpenProject, interviewId:string, recording:ProjectRecording):Promise<File>{
- const file=await(await resolveMedia(project,interviewId,recording)).getFile();
- if(await mediaFingerprint(file)!==recording.fingerprint)throw new Error(msg('projectStore.m1468', { v0: recording.name }));
- return file;
+ try { return await readProjectMedia(project,interviewId,recording); }
+ catch(error) {
+   const failure=mediaFailure(error);
+   const keys={permission:'projectStore.mediaExportPermission',missing:'projectStore.mediaExportMissing',changed:'projectStore.mediaExportChanged',unreadable:'projectStore.mediaExportUnreadable'};
+   throw new ProjectMediaUnavailable(msg(keys[failure.reason],{name:recording.name}),failure.reason);
+ }
 }

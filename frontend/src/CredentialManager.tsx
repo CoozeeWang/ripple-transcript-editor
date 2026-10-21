@@ -2,7 +2,7 @@ import { apiErrorMessage } from './i18n/errors';
 import { serviceText } from './i18n/serviceText';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   CredentialField,
   CredentialListView,
@@ -51,7 +51,7 @@ export function FieldInput({
           {field.allow_custom !== false && <option value="__custom__">{msg('CredentialManager.m0057')}</option>}
         </select>}
         {(!useSelect || custom) && <input
-          aria-label={useSelect ? `${serviceText(field.label)} ID` : field.label}
+          aria-label={useSelect ? `${serviceText(field.label)} ID` : serviceText(field.label)}
           type={!field.secret && value !== MASK || visible ? "text" : "password"}
           value={value}
           placeholder={disabled ? undefined : serviceText(field.placeholder ?? "")}
@@ -114,10 +114,10 @@ async function readCredentialLists(base: string) {
   return { providers: provs, lists: Object.fromEntries(entries) };
 }
 
-export default function CredentialManager({ kind = "transcription" }: { kind?: "transcription" | "editing" }) {
+export default function CredentialManager() {
   useInterfaceLanguage();
-  const base = kind === "editing" ? "/api/ai/providers" : "/api/providers";
-  const actionName = kind === "editing" ? msg('CredentialManager.m0065') : msg('CredentialManager.m0066');
+  const base = "/api/providers";
+  const actionName = msg('CredentialManager.m0066');
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [lists, setLists] = useState<Record<string, CredentialListView>>({});
   const [loading, setLoading] = useState(true);
@@ -297,13 +297,12 @@ export default function CredentialManager({ kind = "transcription" }: { kind?: "
     .sort((a, b) => Number(b.profile.is_default) - Number(a.profile.is_default));
   return (
     <div className="cred-manager">
-      <p className="settings-hint">{kind === "editing" ? msg('CredentialManager.m0076') : msg('CredentialManager.m0077')}{' '}{msg('review.defaultConfiguration')}</p>
+      <p className="settings-hint">{msg('CredentialManager.m0077')} {msg('review.defaultConfiguration')}</p>
       {error && <div className="form-error" role="alert">{uiMessage(error)}<button type="button" className="cred-btn" disabled={Boolean(busy)} onClick={() => void load()}>{msg('CredentialManager.m0080')}</button></div>}
       <fieldset className="cred-manager__groups" disabled={Boolean(busy)}>
         {saved.length === 0 && <p className="settings-hint">{msg('CredentialManager.m0081')}</p>}
         {saved.map(({ provider, profile }) => (
           <ProfileCard key={`${provider.id}:${profile.id}`} actionName={actionName}
-            servicePath={kind === "editing" ? `${base}/${provider.id}` : undefined}
             providerName={lists[provider.id].provider_name} experimental={Boolean(lists[provider.id].experimental)}
             profile={profile} fields={lists[provider.id].fields} view={views[profile.id]} busy={busy === profile.id}
             onReveal={fieldKey => reveal(provider.id, profile.id, fieldKey)}
@@ -325,7 +324,7 @@ export default function CredentialManager({ kind = "transcription" }: { kind?: "
             </label>
             {addingFor && lists[addingFor] ? <>
               {addingFor === "openai_compatible" && <p className="settings-hint">{msg('CredentialManager.m0085')}</p>}
-              <AddCard key={addingFor} servicePath={kind === "editing" ? `${base}/${addingFor}` : undefined} fields={lists[addingFor].fields} name={newName} setName={setNewName}
+              <AddCard key={addingFor} fields={lists[addingFor].fields} name={newName} setName={setNewName}
                 values={newValues} setValues={setNewValues} visible={newVisible} setVisible={setNewVisible}
                 busy={Boolean(busy)} onCancel={() => { setAddingFor(null); setNewValues({}); setNewVisible({}); }}
                 onSave={() => saveAdd(addingFor)} />
@@ -339,7 +338,6 @@ export default function CredentialManager({ kind = "transcription" }: { kind?: "
 
 function ProfileCard({
   actionName,
-  servicePath,
   profile,
   fields,
   view,
@@ -355,7 +353,6 @@ function ProfileCard({
   setView,
 }: {
   actionName: string;
-  servicePath?: string;
   providerName: string;
   experimental: boolean;
   profile: CredentialProfile;
@@ -414,7 +411,7 @@ function ProfileCard({
       <p className="cred-profile__summary">{providerName}{profile.public_values?.model ? ` · ${profile.public_values.model}` : ""}{experimental ? msg('CredentialManager.m0091') : ""}</p>
 
       {isEditing && <CredentialFields fields={fields} values={view?.values ?? {}} visible={view?.visible ?? {}}
-        servicePath={servicePath} onToggle={toggleVisibility}
+        onToggle={toggleVisibility}
         onChange={(key, value) => setView(profile.id, { values: { ...view?.values, [key]: value } })} />}
 
 
@@ -450,7 +447,6 @@ function ProfileCard({
 }
 
 function AddCard({
-  servicePath,
   fields,
   name,
   setName,
@@ -462,7 +458,6 @@ function AddCard({
   onCancel,
   onSave,
 }: {
-  servicePath?: string;
   fields: CredentialField[];
   name: string;
   setName: (v: string) => void;
@@ -484,7 +479,7 @@ function AddCard({
         placeholder={msg('CredentialManager.m0099')}
         onChange={(e) => setName(e.target.value)}
       />
-      <CredentialFields fields={fields} values={values} visible={visible} servicePath={servicePath}
+      <CredentialFields fields={fields} values={values} visible={visible}
         onToggle={key => setVisible({ ...visible, [key]: !visible[key] })}
         onChange={(key, value) => setValues({ ...values, [key]: value })} />
       <div className="cred-profile__actions">
@@ -497,58 +492,20 @@ function AddCard({
   );
 }
 
-export function CredentialFields({ fields, values, visible, onChange, onToggle, servicePath }: {
+export function CredentialFields({ fields, values, visible, onChange, onToggle }: {
   fields: CredentialField[]; values: Record<string, string>; visible: Record<string, boolean>;
-  onChange: (key: string, value: string) => void; onToggle: (key: string) => void; servicePath?: string;
+  onChange: (key: string, value: string) => void; onToggle: (key: string) => void;
 }) {
   useInterfaceLanguage();
-  const [models, setModels] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [failed, setFailed] = useState(false);
-  const signature = JSON.stringify(stripName(values));
-  const current = useRef(signature);
-  useLayoutEffect(() => { current.current = signature; }, [signature]);
-  const [noticeSignature, setNoticeSignature] = useState(signature);
-  const [modelEndpoint, setModelEndpoint] = useState("");
-  const endpoint = `${values.base_url ?? ""}|${values.api_key ?? ""}`;
-
-  const request = async (action: "models" | "test") => {
-    setBusy(true); setNotice(""); setNoticeSignature(signature); setFailed(false);
-    try {
-      const response = await fetch(`${servicePath}/${action}`, { method: "POST",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values: stripName(values) }),
-        signal: AbortSignal.timeout(action === "test" ? 195000 : 25000) });
-      await credentialResponse(response);
-      const data = await response.json() as { models?: string[] };
-      if (current.current !== signature) return;
-      if (action === "models") {
-        setModels(data.models ?? []);setModelEndpoint(endpoint);
-        setNotice(data.models?.length ? msg('CredentialManager.m0102', { v0: data.models.length }) : msg('CredentialManager.m0103'));
-      } else setNotice(msg('CredentialManager.m0104'));
-    } catch (error) {
-      if (current.current !== signature) return;
-      setFailed(true); setNotice(error instanceof Error ? error.message : msg('CredentialManager.m0105'));
-    } finally { setBusy(false); }
-  };
   const renderField = (field: CredentialField) => <FieldInput key={field.key}
-    field={field.key === "model" ? { ...field, options: [...new Set([...(field.options ?? []), ...(modelEndpoint===endpoint?models:[])])] } : field}
+    field={field}
     value={values[field.key] ?? ""} visible={Boolean(visible[field.key])}
-    onToggle={() => onToggle(field.key)} onChange={value => onChange(field.key, value)} disabled={busy} />;
+    onToggle={() => onToggle(field.key)} onChange={value => onChange(field.key, value)} />;
   return <div className="cred-profile__fields">
     {fields.filter(field => !field.advanced).map(renderField)}
     {fields.some(field => field.advanced) && <details className="cred-advanced">
       <summary>{msg('CredentialManager.m0106')}</summary><div className="cred-profile__fields">{fields.filter(field => field.advanced).map(renderField)}</div>
     </details>}
-    {servicePath && <>
-      <div className="cred-profile__actions">
-        <button type="button" className="cred-btn" disabled={busy} onClick={() => void request("models")}>{msg('CredentialManager.m0107')}</button>
-        <button type="button" className="cred-btn" disabled={busy || !values.model?.trim()} onClick={() => void request("test")}>{msg('CredentialManager.m0108')}</button>
-        {busy && <span className="settings-hint" role="status">{msg('CredentialManager.m0109')}</span>}
-      </div>
-      <small className="cred-field__hint">{msg('CredentialManager.m0110')}</small>
-      {noticeSignature===signature && notice && <p className={failed ? "form-error" : "settings-hint"} role={failed ? "alert" : "status"}>{uiMessage(notice)}</p>}
-    </>}
   </div>;
 }
 

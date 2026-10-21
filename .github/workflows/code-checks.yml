@@ -1,0 +1,38 @@
+name: Code checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npx --no-install tsc -p tsconfig.app.json --noEmit --incremental false
+        working-directory: frontend
+      - run: npx --no-install tsc -p tsconfig.node.json --noEmit --incremental false
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: node scripts/i18n-audit.mjs
+      - run: node --test scripts/launcher.test.mjs scripts/desktop-dev.test.mjs scripts/lifecycle-lock.test.mjs

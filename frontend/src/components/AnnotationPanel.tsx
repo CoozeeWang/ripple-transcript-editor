@@ -13,6 +13,8 @@ export type PanelTab = "annotation" | "highlight";
  *  跨领域状态（transcript/选中与焦点片段/隐藏说话人）与操作全部 props 注入。 */
 export interface AnnotationPanelProps {
   transcript: Transcript | null;
+  readOnly?: boolean;
+  readOnlyMessage?: string;
   annotationView: "selected" | "all";
   setAnnotationView: Dispatch<SetStateAction<"selected" | "all">>;
   panelTab: PanelTab;
@@ -39,6 +41,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
   useInterfaceLanguage();
   const {
     transcript,
+    readOnly = false,
     annotationView,
     setAnnotationView,
     panelTab,
@@ -173,6 +176,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
         </div>
       </div>
 
+      {readOnly && <p className="annotation-empty" role="note">{props.readOnlyMessage ?? msg('AnnotationPanel.readOnly')}</p>}
       {panelTab === "annotation" ? (
         <>
           <div className="annotation-view-toggle">
@@ -211,7 +215,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
                       <p className="annotation-empty">{msg('AnnotationPanel.m0331')}</p>
                     ) : (
                       (currentSegment.annotations ?? []).map((annotation) => (
-                        <AnnotationCard
+                        <AnnotationCard readOnly={readOnly}
                           key={annotation.id}
                           annotation={annotation}
                           isCurrent
@@ -222,7 +226,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
                       ))
                     )}
                   </div>
-                  <AnnotationAddBox onSubmit={(text) => addAnnotation(currentSegment.id, text)} />
+                  <AnnotationAddBox disabled={readOnly} onSubmit={(text) => addAnnotation(currentSegment.id, text)} />
                 </>
               ) : (
                 <p className="annotation-empty">{msg('AnnotationPanel.m0332')}</p>
@@ -241,7 +245,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
                   .filter((segment) => !hiddenSpeakerIds.has(segment.speaker_id))
                   .flatMap((segment, index) =>
                     (segment.annotations ?? []).map((annotation) => (
-                      <AnnotationCard
+                      <AnnotationCard readOnly={readOnly}
                         key={annotation.id}
                         annotation={annotation}
                         meta={msg('AnnotationPanel.m0334', { v0: formatTime(segment.start), v1: index + 1 })}
@@ -309,6 +313,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
                       <button
                         type="button"
                         className="hl-del"
+                        disabled={readOnly}
                         aria-label={msg('AnnotationPanel.m0339')}
                         data-tip={msg('AnnotationPanel.m0340')}
                         onClick={(event) => {

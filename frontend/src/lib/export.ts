@@ -2,6 +2,8 @@ import { msg, interfaceLanguage } from '../i18n';
 import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
 import { sanitizeForFilename } from "../localStore";
+import { showPdfPrintPreview } from './pdfPrint';
+import { nativeDesktopAvailable, saveNativeBlob } from './desktopFs';
 
 // 导出（Markdown / TXT / Word / PDF / JSON）的格式化逻辑。
 // 除 downloadBlob 外全部是无副作用的纯函数，独立成模块以便单元测试。
@@ -23,6 +25,8 @@ export function formatDateField(value: string | null | undefined): string {
   if (!value) return "—";
   const trimmed = value.trim();
   if (!trimmed) return "—";
+  // Preserve year/month precision before parsing; never invent a calendar day.
+  if (/^\d{4}(?:-\d{2})?$/.test(trimmed)) return trimmed;
   // Date-only metadata is a calendar day, not a UTC instant.
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed.replace(/-/g, "/");
   if (trimmed.includes("T") || trimmed.includes("-")) {
@@ -97,19 +101,30 @@ export function buildExportModel(
   };
 }
 
+/** Manuscript fields are plain text, even when they contain Markdown or HTML syntax. */
+function markdownText(text: string): string {
+  return text.replace(/\r\n?/g, "\n").split("\n").map(line =>
+    line.replace(/[!-/:-@[-`{-~]/g, "\\$&")
+      .replace(/^[ \t]+/, whitespace => [...whitespace].map(char => char === "\t" ? "&#9;" : "&#32;").join("")),
+  ).join("\n");
+}
+
 export function renderMarkdown(m: ExportModel): string {
-  const lines: string[] = ["# " + m.title, ""];
-  lines.push(msg('export.m1309', { v0: m.date }));
-  lines.push(msg('export.m1310', { v0: m.location }));
-  lines.push(msg('export.m1311', { v0: m.participants }));
-  lines.push(msg('export.m1312', { v0: m.topics }));
-  lines.push(msg('export.m1313', { v0: m.audioFile }));
-  if (m.notes) lines.push(msg('export.m1314', { v0: m.notes }));
+  const field = (value: string) => markdownText(value).replace(/\n/g, "  \n  ");
+  const lines: string[] = ["# " + markdownText(m.title.replace(/\s+/g, " ")), ""];
+  lines.push(msg('export.m1309', { v0: field(m.date) }));
+  lines.push(msg('export.m1310', { v0: field(m.location) }));
+  lines.push(msg('export.m1311', { v0: field(m.participants) }));
+  lines.push(msg('export.m1312', { v0: field(m.topics) }));
+  lines.push(msg('export.m1313', { v0: field(m.audioFile) }));
+  if (m.notes) lines.push(msg('export.m1314', { v0: field(m.notes) }));
   lines.push("", "---", "");
   for (const seg of m.segments) {
-    lines.push(`**${seg.speakerName}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text}`);
+    const body = markdownText(seg.text.replace(/<br\s*\/?>/gi, "\n")).replace(/\n+/g, "\n\n");
+    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${body}`);
     for (const a of seg.annotations) {
-      lines.push(msg('export.m1315', { v0: a.date, v1: a.text }));
+      // Separate the quote from the body, and keep every note line inside it.
+      lines.push("", msg('export.m1315', { v0: markdownText(a.date), v1: markdownText(a.text).replace(/\n/g, "\n> ") }));
     }
     lines.push("");
   }
@@ -126,7 +141,7 @@ export function renderTxt(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1321', { v0: m.notes }));
   lines.push("", "========", "");
   for (const seg of m.segments) {
-    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${seg.text}`);
+    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}`, seg.text);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1322', { v0: a.date, v1: a.text }));
     }
@@ -142,8 +157,7 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
-export function renderPdfHtml(m: ExportModel): string {
+function exportMetadata(m: ExportModel): Array<[string, string]> {
   const meta: Array<[string, string]> = [
     [msg('export.m1323'), m.date],
     [msg('export.m1324'), m.location],
@@ -152,6 +166,12 @@ export function renderPdfHtml(m: ExportModel): string {
     [msg('export.m1327'), m.audioFile],
   ];
   if (m.notes) meta.push([msg('export.m1328'), m.notes]);
+  return meta;
+}
+
+// PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
+export function renderPdfHtml(m: ExportModel): string {
+  const meta = exportMetadata(m);
   const metaHtml = meta
     .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
     .join("");
@@ -165,9 +185,9 @@ export function renderPdfHtml(m: ExportModel): string {
         .join("");
       return `<div class="seg"><span class="sp" style="color:${seg.speakerColor}">${escapeHtml(
         seg.speakerName,
-      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><span class="body">：${escapeHtml(
+      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><div class="body">${escapeHtml(
         seg.text,
-      )}</span></div>${anns}`;
+      )}</div></div>${anns}`;
     })
     .join("");
   return `<!doctype html>
@@ -176,13 +196,14 @@ export function renderPdfHtml(m: ExportModel): string {
 <meta charset="utf-8" />
 <title>${escapeHtml(m.title)}</title>
 <style>
-  body { font-family: Inter, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color:#262621; max-width: 820px; margin: 0 auto; padding: 24px; line-height: 1.7; }
+  body { font-family: Inter, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color:#262621; max-width: 820px; margin: 0 auto; padding: 24px; line-height: 1.7; overflow-wrap:anywhere; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   h1 { font-size: 22px; margin: 0 0 12px; }
   table.meta { border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
   table.meta th { text-align: left; color:#888; font-weight: 600; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; }
   table.meta td { padding: 2px 0; }
   hr { border: none; border-top: 1px solid #e2e0d8; margin: 16px 0; }
-  .seg { margin: 10px 0 2px; }
+  .seg { margin: 16px 0 4px; }
+  .body, .anno-text { white-space: pre-wrap; }
   .sp { font-weight: 700; }
   .ts { color:#999; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 0 4px; }
   .anno { margin: 2px 0 6px 0; padding: 6px 10px; background:#fff8e6; border-left: 3px solid #e0b84a; border-radius: 3px; font-size: 13.5px; }
@@ -225,17 +246,31 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
     children: unknown[];
   }> = [];
 
-  const paragraphChildren: unknown[] = [];
+  const paragraphChildren: unknown[] = [new Paragraph({
+    style: "Title", keepNext: true, spacing: { after: 200 },
+    children: [new TextRun({ text: m.title, bold: true, size: 36, color: "000000" })],
+  })];
+  const separator = interfaceLanguage() === 'en' ? ': ' : '：';
+  for (const [label, value] of exportMetadata(m)) {
+    paragraphChildren.push(new Paragraph({
+      spacing: { after: 60, line: 280 },
+      children: [
+        new TextRun({ text: label + separator, bold: true }),
+        ...value.split(/\r\n?|\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined })),
+      ],
+    }));
+  }
   let commentId = 0;
 
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
-    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]：` : "：", color: "999999" });
-    const bodyRun = new TextRun({ text: seg.text });
+    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]` : "", color: "999999" });
+    const bodyRuns = seg.text.split(/\r?\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined }));
 
-    const runs: unknown[] = [speakerRun, tsRun];
+    paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
+    const runs: unknown[] = [];
     if (seg.annotations.length === 0) {
-      runs.push(bodyRun);
+      runs.push(...bodyRuns);
     } else {
       const ids: number[] = [];
       seg.annotations.forEach((a) => {
@@ -252,14 +287,15 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
       const startRuns = ids.map((id) => new CommentRangeStart(id));
       const endRuns = ids.map((id) => new CommentRangeEnd(id)).reverse();
       const refRuns = ids.map((id) => new CommentReference(id));
-      runs.push(...startRuns, bodyRun, ...endRuns, ...refRuns);
+      runs.push(...startRuns, ...bodyRuns, ...endRuns, ...refRuns);
     }
     paragraphChildren.push(
-      new Paragraph({ spacing: { after: 120 }, children: runs as never }),
+      new Paragraph({ spacing: { after: 160, line: 320 }, children: runs as never }),
     );
   });
 
   const doc = new Document({
+    title: m.title,
     comments: { children: commentConfigs as never },
     sections: [{ children: paragraphChildren as never }],
   });
@@ -267,7 +303,8 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   return Packer.toBlob(doc);
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
+export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+  if (nativeDesktopAvailable()) { await saveNativeBlob(blob, filename); return; }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -296,6 +333,7 @@ export function buildJsonPayload(
   });
   const base = { ...transcript, segments } as Record<string, unknown>;
   delete base.comparisonReviews;
+  delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {
     return { engine, ...base };
   }
@@ -318,32 +356,18 @@ export async function exportTranscript(
   const model = buildExportModel(transcript, metadata);
   const stem = exportFilenameStem(model.title, versionLabel);
   if (format !== 'pdf') {
-    downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
+    await downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
     return;
   }
   if (format === "pdf") {
     const html = renderPdfHtml(model).replace(/<title>.*?<\/title>/s, `<title>${escapeHtml(stem)}</title>`);
-    const win = window.open("", "_blank");
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      window.setTimeout(() => {
-        try {
-          win.print();
-        } catch {
-          /* 用户可在新页面手动打印 */
-        }
-      }, 300);
-    } else {
-      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `${stem}.html`);
-    }
+    await showPdfPrintPreview(html, stem);
   }
 }
 
 export const exportFormats = () => [
-  ['Word（.docx）', 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
-  ['JSON（.json）', 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], ['Markdown（.md）', 'md'],
+  [msg('export.formatDocx'), 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
+  [msg('export.formatJson'), 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], [msg('export.formatMarkdown'), 'md'],
 ] as const;
 export type ExportFormat = ReturnType<typeof exportFormats>[number][1];
 export function canExportSubtitles(t: Transcript) {

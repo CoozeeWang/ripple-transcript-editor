@@ -34,7 +34,7 @@ function manifestFiles(raw:string):string[]|null {
   }catch { /* malformed or incomplete candidate */ }
   return null;
 }
-export async function readRecoverableManifest(io:ManifestIO):Promise<string|null> {
+export async function readRecoverableManifest(io:Pick<ManifestIO,'read'>):Promise<string|null> {
   let found=false;
   for(const name of candidates){
     const raw=await io.read(name);

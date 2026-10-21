@@ -34,3 +34,46 @@ def test_first_configuration_is_default_and_later_additions_preserve_it():
     settings.add_profile('test', 'Team', {'api_key': 'fake-two'})
     assert settings.get_default_profile() == {'provider_id': 'test', 'profile_id': first}
     assert settings._load_profile_store()['test']['profiles'][0]['name'] == 'Service · model-a'
+
+
+@pytest.mark.parametrize("operation", ["clear", "sync", "store"])
+def test_failed_configuration_publish_keeps_original_and_cleans_temporary(monkeypatch, operation):
+    from pathlib import Path
+
+    target = settings.PROFILES_PATH if operation == "store" else settings.ENV_PATH
+    original = '{"test": {"profiles": []}}' if operation == "store" else "OTHER_SETTING=synthetic\nTEST_API_KEY=old-synthetic\n"
+    target.write_text(original, encoding="utf-8")
+    replace = Path.replace
+
+    def fail_publish(source, destination):
+        if destination == target:
+            raise OSError("synthetic publish failure")
+        return replace(source, destination)
+
+    monkeypatch.setattr(Path, "replace", fail_publish)
+    with pytest.raises(OSError, match="synthetic publish failure"):
+        if operation == "clear":
+            settings.clear_credentials("test", ["api_key"])
+        elif operation == "sync":
+            settings._sync_env("test", {"api_key": "new-synthetic"})
+        else:
+            settings._save_profile_store({"test": {"profiles": []}})
+    assert target.read_text(encoding="utf-8") == original
+    assert not list(target.parent.glob("*.tmp"))
+
+
+def test_profile_sync_publishes_once_without_an_intermediate_cleared_file(monkeypatch):
+    original = "# synthetic config\nOTHER_SETTING=keep\nTEST_API_KEY=old\nTEST_API_KEY=duplicate\n"
+    settings.ENV_PATH.write_text(original, encoding="utf-8")
+    publish = settings.atomic_write_text
+    published = []
+
+    def capture(destination, text, **options):
+        assert destination.read_text(encoding="utf-8") == original
+        published.append(text)
+        return publish(destination, text, **options)
+
+    monkeypatch.setattr(settings, "atomic_write_text", capture)
+    settings._sync_env("test", {"api_key": "new-synthetic"})
+    assert len(published) == 1
+    assert settings.ENV_PATH.read_text(encoding="utf-8") == "# synthetic config\nOTHER_SETTING=keep\nTEST_API_KEY=new-synthetic\n"

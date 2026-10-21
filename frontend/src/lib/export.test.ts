@@ -1,6 +1,8 @@
+import { setInterfaceLanguage } from "../i18n";
 import { describe, it, expect } from "vitest";
 
 import {
+  exportFormats,
   exportFilenameStem,
   buildExportModel,
   buildJsonPayload,
@@ -9,8 +11,30 @@ import {
   formatDateField,
   renderMarkdown,
   renderTxt,
+  renderDocx,
+  renderPdfHtml,
 } from "./export";
 import type { InterviewMetadata, Transcript } from "../types";
+
+it('does not export internal AI save receipts as manuscript JSON',()=>{
+  const transcript:Transcript={audio:{filename:'synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'',start:0,end:1,text:'Synthetic'}],
+    aiContinuationReceipts:{task:{task_id:'task',batch_id:'batch',source_version_id:'m:e1',version_id:'m:e2',processed_ids:['s'],changed_segments:1,deleted_segments:0,merged_segments:0}}};
+  expect(buildJsonPayload(transcript,undefined)).not.toHaveProperty('aiContinuationReceipts');
+  expect(transcript.aiContinuationReceipts).toBeTruthy();
+});
+
+it('retains paragraph breaks and annotation ranges in Word and PDF exports', async () => {
+  const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [],
+    segments: [{ id: 's', speaker_id: '', start: 0, end: 2, text: 'First paragraph\nSecond paragraph',
+      annotations: [{ id: 'a', text: 'Synthetic note', createdAt: '2026-01-01' }] }] }, null);
+  const { default: JSZip } = await import('jszip');
+  const archive = await JSZip.loadAsync(await (await renderDocx(model)).arrayBuffer());
+  const xml = await archive.file('word/document.xml')!.async('string');
+  expect(xml).toMatch(/First paragraph[\s\S]*<w:br\/>[\s\S]*Second paragraph/);
+  expect(xml).toMatch(/commentRangeStart[\s\S]*First paragraph[\s\S]*Second paragraph[\s\S]*commentRangeEnd/);
+  expect(renderPdfHtml(model)).toContain('.body, .anno-text { white-space: pre-wrap; }');
+  expect(renderPdfHtml(model)).toContain('First paragraph\nSecond paragraph');
+});
 
 describe("formatClock", () => {
   it("0 秒 → 00:00:00", () => {
@@ -122,10 +146,17 @@ describe("renderMarkdown / renderTxt", () => {
     expect(md).toContain("**王远** [00:00:00]：你好");
   });
 
+  it.each(["第一段\n第二段", "第一段\r\n第二段", "第一段<br>第二段", "第一段<BR />第二段"])("exports real Markdown paragraphs for %s", text => {
+    const md=renderMarkdown({...model,segments:[{...model.segments[0],text}]});
+    expect(md).toContain("：第一段\n\n第二段\n");
+    expect(md).not.toMatch(/<br/i);
+    expect(text).toMatch(/第一段/);
+  });
+
   it("txt 含标题和说话人", () => {
     const txt = renderTxt(model);
     expect(txt).toContain("标题");
-    expect(txt).toContain("王远 [00:00:00]：你好");
+    expect(txt).toContain("王远 [00:00:00]\n你好");
   });
 });
 
@@ -197,4 +228,77 @@ describe('subtitle export', () => {
     expect(canExportSubtitles({ ...t, segments: [{ ...t.segments[0], end: 0 }] })).toBe(false);
     expect(canExportSubtitles({ ...t, segments: [] })).toBe(false);
   });
+});
+
+it('uses locale punctuation in format labels while keeping export format IDs stable',async()=>{
+ const chinese=exportFormats();
+ await setInterfaceLanguage('en');
+ try {
+  const english=exportFormats();
+  expect(english.map(item=>item[1])).toEqual(chinese.map(item=>item[1]));
+  expect(english.filter(item=>['docx','json','md'].includes(item[1])).map(item=>item[0])).toEqual(['Word (.docx)','JSON (.json)','Markdown (.md)']);
+ } finally { await setInterfaceLanguage('zh-CN'); }
+});
+
+it('preserves literal manuscript text after real GFM parsing', async () => {
+  const { marked } = await import('marked');
+  const { JSDOM } = await import('jsdom');
+  const body = '*literal* _text_ [link](https://example.invalid) <tag> &amp; \\path\n# literal heading\n- literal list\n1. literal item\n    indented text\n| a | b |\n| - | - |';
+  const note = 'First *note*\n\n# still a note <tag>';
+  const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 1 }, speakers: [{ id: 's', name: 'Synthetic *speaker*' }], segments: [{ id: 's', speaker_id: 's', start: 0, end: 1, text: body, annotations: [{ id: 'a', text: note, createdAt: '2026-01-01' }] }] }, null);
+  model.title = 'Synthetic <title>\n# literal title';
+  model.notes = 'Synthetic note\n# literal metadata';
+  const doc = new JSDOM(await marked.parse(renderMarkdown(model), { gfm: true })).window.document;
+  expect(doc.querySelectorAll('h1')).toHaveLength(1);
+  expect(doc.querySelector('h1')?.textContent).toBe('Synthetic <title> # literal title');
+  expect(doc.querySelectorAll('a, em, code, pre, table, tag, script')).toHaveLength(0);
+  expect(doc.querySelectorAll('strong')).toHaveLength(1);
+  expect(doc.querySelector('strong')?.textContent).toBe('Synthetic *speaker*');
+  for (const line of body.split('\n')) expect(doc.body.textContent).toContain(line);
+  expect(doc.querySelectorAll('blockquote')).toHaveLength(1);
+  for (const line of note.split('\n').filter(Boolean)) expect(doc.querySelector('blockquote')?.textContent).toContain(line);
+  expect(doc.querySelectorAll('ul')).toHaveLength(1);
+});
+
+it.each([
+  ['zh-CN', ['日期：2026/10/15', '地点：Synthetic location', '参与者：Synthetic speaker', '话题：Synthetic topic', '音频：synthetic.wav', '备注：First note\nSecond note']],
+  ['en', ['Date: 2026/10/15', 'Location: Synthetic location', 'Participants: Synthetic speaker', 'Topics: Synthetic topic', 'Audio: synthetic.wav', 'Notes: First note\nSecond note']],
+] as const)('includes the same interview information in Word and PDF for %s', async (language, fields) => {
+  try {
+    await setInterfaceLanguage(language);
+    const { JSDOM } = await import('jsdom');
+    const { default: JSZip } = await import('jszip');
+    const model = buildExportModel({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [{ id: 's', name: 'Synthetic speaker' }], segments: [{ id: 's1', speaker_id: 's', start: 0, end: 2, text: 'Synthetic body', annotations: [{ id: 'a', text: 'Synthetic annotation', createdAt: '2026-10-15' }] }] }, { id: 'synthetic', title: '合成标题 Synthetic title', recorded_at: '2026-10-15', location: 'Synthetic location', topics: ['Synthetic topic'], participants: [], notes: 'First note\nSecond note', created_at: '', updated_at: '' });
+    const before = JSON.stringify(model);
+    const archive = await JSZip.loadAsync(await (await renderDocx(model)).arrayBuffer());
+    const xml = await archive.file('word/document.xml')!.async('string');
+    const document = new JSDOM(xml, { contentType: 'application/xml' }).window.document;
+    const paragraphs = [...document.getElementsByTagName('w:p')].map(p => [...p.getElementsByTagName('w:r')].map(r => [...r.children].map(c => c.tagName === 'w:br' ? '\n' : c.tagName === 'w:t' ? c.textContent : '').join('')).join(''));
+    expect(paragraphs.slice(0, 7)).toEqual([model.title, ...fields]);
+    expect(paragraphs.slice(7)).toEqual(['Synthetic speaker [00:00:00]', 'Synthetic body']);
+    const pdf = new JSDOM(renderPdfHtml(model)).window.document;
+    expect(pdf.querySelector('h1')?.textContent).toBe(model.title);
+    expect([...pdf.querySelectorAll('table.meta tr')].map(row => [...row.children].map(cell => cell.textContent).join('：').replace('：', language === 'en' ? ': ' : '：'))).toEqual(fields);
+    expect(await archive.file('word/comments.xml')!.async('string')).toContain('Synthetic annotation');
+    const noNotes = await JSZip.loadAsync(await (await renderDocx({ ...model, notes: '' })).arrayBuffer());
+    const noNotesDocument = new JSDOM(await noNotes.file('word/document.xml')!.async('string'), { contentType: 'application/xml' }).window.document;
+    expect(noNotesDocument.getElementsByTagName('w:p')).toHaveLength(8);
+    expect(JSON.stringify(model)).toBe(before);
+  } finally { await setInterfaceLanguage('zh-CN'); }
+});
+
+it('uses Taiwan export headings while retaining manuscript content, names, date precision and machine JSON', async () => {
+  await setInterfaceLanguage('zh-TW');
+  try {
+    const transcript: Transcript = { audio: { filename: 'Synthetic 原始转录稿.wav', duration: 1 }, speakers: [],
+      segments: [{ id: 's', speaker_id: '', start: 0, end: 1, text: 'Synthetic 原文 {{name}} <AI>' }] };
+    const metadata = { id:'synthetic', title: 'Synthetic 项目名稱', recorded_at: '2026-10', location: 'Synthetic location', participants: [], notes: '', topics: [], created_at: '2026-10-01', updated_at: '2026-10-01' } as InterviewMetadata;
+    const model = buildExportModel(transcript, metadata);
+    const txt = renderTxt(model), pdf = renderPdfHtml(model);
+    expect(txt).toContain('Synthetic 原文 {{name}} <AI>');
+    expect(txt).toContain('Synthetic 项目名稱');
+    expect(formatDateField('2026-10')).toBe('2026-10');
+    expect(pdf).toContain('Synthetic 原文 {{name}} &lt;AI&gt;');
+    expect((buildJsonPayload(transcript, undefined).segments as Transcript['segments'])[0].text).toBe('Synthetic 原文 {{name}} <AI>');
+  } finally { await setInterfaceLanguage('zh-CN'); }
 });

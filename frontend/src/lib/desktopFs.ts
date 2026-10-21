@@ -1,13 +1,23 @@
 /** File System Access compatibility for Ripple's local Tauri window. */
+import { msg } from '../i18n';
 
 type Entry = { name: string; kind: 'file' | 'directory' };
 type NativeKind = Entry['kind'];
 type Descriptor = { __rippleNativeHandle: true; root: string; parts: string[]; kind: NativeKind };
 
-function invoke<T>(command: string, args: Record<string, unknown>): Promise<T> {
-  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
+type InvokeArgs = Record<string, unknown> | Uint8Array;
+type InvokeOptions = { headers: Record<string, string> };
+const CHUNK_SIZE = 1024 * 1024;
+
+function invoke<T>(command: string, args: InvokeArgs, ...options: [] | [InvokeOptions]): Promise<T> {
+  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: InvokeArgs, ...options: [] | [InvokeOptions]) => Promise<T> } } }).__TAURI__;
   if (!tauri?.core) throw new Error('Native file bridge unavailable');
-  return tauri.core.invoke(command, args);
+  return tauri.core.invoke(command, args, ...options).catch(error => {
+    if (error === 'selection_cancelled') throw new DOMException('Selection cancelled', 'AbortError');
+    if (error === 'permission_required') throw new DOMException('File access needs permission', 'NotAllowedError');
+    if (error === 'file_missing') throw new DOMException('Selected file is missing', 'NotFoundError');
+    throw error;
+  });
 }
 
 export function nativeDesktopAvailable(): boolean {
@@ -32,23 +42,24 @@ abstract class NativeHandle {
   async isSameEntry(other: FileSystemHandle): Promise<boolean> {
     return other instanceof NativeHandle && this.root === other.root && this.parts.join('\0') === other.parts.join('\0');
   }
-  async queryPermission(): Promise<PermissionState> {
-    if (productionDesktop) return await invoke<boolean>('fs_permission', { root: this.root, parts: this.parts }) ? 'granted' : 'prompt';
+  async queryPermission(options?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState> {
+    if (productionDesktop) return await invoke<boolean>('fs_permission', { root: this.root, parts: this.parts, write: options?.mode === 'readwrite' }) ? 'granted' : 'prompt';
     return selectedRoots.has(this.root) ? 'granted' : 'prompt';
   }
-  async requestPermission(): Promise<PermissionState> {
-    if (await this.queryPermission() === 'granted') return 'granted';
+  async requestPermission(options?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState> {
+    if (await this.queryPermission(options) === 'granted') return 'granted';
     try {
       if (productionDesktop) await invoke('fs_reauthorize', { root: this.root, parts: this.parts, kind: this.kind });
       else await chooseNativeFixtureDirectory();
     } catch { return 'denied'; }
-    return await this.queryPermission() === 'granted' ? 'granted' : 'denied';
+    return await this.queryPermission(options) === 'granted' ? 'granted' : 'denied';
   }
   descriptor(): Descriptor { return { __rippleNativeHandle: true, root: this.root, parts: this.parts, kind: this.kind }; }
 }
 
 class NativeWritable extends WritableStream<BufferSource | Blob | string> {
   private writerForDirect: WritableStreamDefaultWriter<BufferSource | Blob | string> | null = null;
+  private abortNative: () => Promise<void>;
   constructor(root: string, parts: string[]) {
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -60,7 +71,7 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
       chunks.length = 0;
       size = 0;
-      if (session) await invoke('fs_write_chunk', { id: await session, bytes: Array.from(bytes) });
+      if (session) await invoke('fs_write_chunk', bytes, { headers: { 'x-ripple-write-id': String(await session) } });
       else chunks.push(bytes);
     };
     super({
@@ -68,11 +79,12 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
         const bytes = typeof data === 'string' ? new TextEncoder().encode(data)
           : data instanceof Blob ? new Uint8Array(await data.arrayBuffer())
           : new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
-        for (let start = 0; start < bytes.length; start += 1024 * 1024) {
-          const piece = bytes.subarray(start, start + 1024 * 1024);
+        for (let start = 0; start < bytes.length;) {
+          const piece = bytes.subarray(start, start + (session ? CHUNK_SIZE - size : CHUNK_SIZE));
+          start += piece.length;
           chunks.push(new Uint8Array(piece));
           size += piece.length;
-          if (session && size >= 1024 * 1024) await flush();
+          if (session && size >= CHUNK_SIZE) await flush();
         }
       },
       async close() {
@@ -88,6 +100,7 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
       },
       async abort() { if (session) await invoke('fs_abort_write', { id: await session }); },
     });
+    this.abortNative = async () => { if (session) await invoke('fs_abort_write', { id: await session }); };
   }
   async write(data: FileSystemWriteChunkType): Promise<void> {
     if (typeof data === 'object' && data !== null && 'data' in data) {
@@ -105,8 +118,8 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
   }
   async abort(reason?: unknown): Promise<void> {
     this.writerForDirect ??= this.getWriter();
-    await this.writerForDirect.abort(reason);
-    this.writerForDirect.releaseLock();
+    try { await this.writerForDirect.abort(reason); }
+    finally { await this.abortNative(); this.writerForDirect.releaseLock(); }
   }
   async seek(): Promise<void> { throw new Error('Unsupported in probe'); }
   async truncate(): Promise<void> { throw new Error('Unsupported in probe'); }
@@ -114,6 +127,14 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
 
 export class NativeFileHandle extends NativeHandle {
   readonly kind = 'file';
+  async checkMedia(expected: string): Promise<void> {
+    await invoke('fs_media_check', {root:this.root, parts:this.parts, expected});
+  }
+  async getPlaybackUrl(expected = ''): Promise<string> {
+    const path = await invoke<string>('fs_media_url', {root:this.root, parts:this.parts, expected});
+    const tauri = (window as unknown as {__TAURI__: {core: {convertFileSrc:(path:string)=>string}}}).__TAURI__;
+    return tauri.core.convertFileSrc(path);
+  }
   async getFile(): Promise<File> {
     if (!productionDesktop) {
       const bytes = await invoke<number[]>('fs_read', { root: this.root, parts: this.parts });
@@ -121,9 +142,14 @@ export class NativeFileHandle extends NativeHandle {
     }
     const size = await invoke<number>('fs_size', { root: this.root, parts: this.parts });
     const chunks: Uint8Array<ArrayBuffer>[] = [];
-    for (let offset = 0; offset < size; offset += 1024 * 1024) {
-      const bytes = await invoke<number[]>('fs_read_chunk', { root: this.root, parts: this.parts, offset, length: Math.min(1024 * 1024, size - offset) });
-      chunks.push(new Uint8Array(bytes));
+    for (let offset = 0; offset < size; offset += CHUNK_SIZE) {
+      const length = Math.min(CHUNK_SIZE, size - offset);
+      // Tauri returns an ArrayBuffer over binary IPC. Its platform fallback can
+      // still return a number array; both carry the exact original bytes.
+      const response = await invoke<ArrayBuffer | number[]>('fs_read_chunk', { root: this.root, parts: this.parts, offset, length });
+      const bytes = new Uint8Array(response);
+      if (bytes.length !== length) throw new Error(msg('desktopFs.readChanged'));
+      chunks.push(bytes);
     }
     return new File(chunks, this.name);
   }
@@ -192,6 +218,14 @@ export async function chooseNativeFiles(multiple: boolean): Promise<FileSystemFi
   return selected.map(item => new NativeFileHandle(item.root, []) as FileSystemFileHandle);
 }
 
+/** The native dialog authorizes the destination; writes remain atomic. */
+export async function saveNativeBlob(blob: Blob, filename: string): Promise<void> {
+  const selected = await invoke<{root: string; name: string}>('pick_save_file', {filename});
+  const stream = await new NativeFileHandle(selected.root, child([], selected.name)).createWritable();
+  try { await stream.write(blob); await stream.close(); }
+  catch (error) { await stream.abort().catch(() => {}); throw error; }
+}
+
 /** Called only by the packaged desktop entry point. Browser pickers remain untouched. */
 export function installDesktopFilePickers(): void {
   if (!nativeDesktopAvailable()) return;
@@ -221,4 +255,20 @@ export function decodeNativeHandles<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, decodeNativeHandles(item)])) as T;
   }
   return value;
+}
+
+/** Query only an existing native capability; this never opens a picker. */
+export async function nativeAccessStatus(handle: FileSystemDirectoryHandle): Promise<'granted' | 'missing' | 'permission'> {
+  if (handle instanceof NativeHandle && productionDesktop) {
+    return invoke('fs_access_status', { root: handle.root, parts: handle.parts });
+  }
+  const query = handle as FileSystemDirectoryHandle & {queryPermission?: (options:{mode:string})=>Promise<string>};
+  return await query.queryPermission?.({mode:'readwrite'}) === 'granted' ? 'granted' : 'permission';
+}
+
+/** Best-effort Finder decoration; browser/fixture storage is left unchanged. */
+export async function decorateNativeProject(directory: FileSystemDirectoryHandle): Promise<boolean> {
+  if (!(directory instanceof NativeDirectoryHandle) || !productionDesktop) return true;
+  try { return await invoke<boolean>('project_set_icon',{root:directory.root,parts:directory.parts}); }
+  catch { return false; }
 }

@@ -46,3 +46,12 @@ it('Escape cancels renaming even if blur follows', () => {
  const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'修改'}});fireEvent.keyDown(input,{key:'Escape'});fireEvent.blur(input);
  expect(onRename).not.toHaveBeenCalled();
 });
+
+it('keeps rename-only names on double-click or keyboard activation', () => {
+ const start=vi.fn();
+ render(<ProjectFileName name="Synthetic original" label="Transcript" nameAction="rename" editing={false} disabled={false} onOpen={start} onRename={vi.fn()} onFinish={vi.fn()}/>);
+ const button=screen.getByRole('button');
+ fireEvent.click(button);expect(start).not.toHaveBeenCalled();
+ fireEvent.doubleClick(button);expect(start).toHaveBeenCalledTimes(1);
+ fireEvent.keyDown(button,{key:'Enter'});expect(start).toHaveBeenCalledTimes(2);
+});

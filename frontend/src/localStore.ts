@@ -1,4 +1,8 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
+import { stampContinuationReceipt } from './lib/continuationBatch';
+import type { ContinuationTask } from './lib/incrementalContinuation';
+import { isContinuationTask } from './lib/continuationJournal';
+import type { ConnectorVersion } from './lib/aiConnector';
 import { apiErrorMessage } from './i18n/errors';
 import { msg } from './i18n';
 import { chooseDirectory } from './lib/projectPreferences';
@@ -336,8 +340,11 @@ async function audioFingerprint(dir: FileSystemDirectoryHandle, name: string): P
   const cached = fingerprintCache.get(dir)?.get(name);
   if (cached) return cached;
   const fileHandle = await (dir as unknown as {
-    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
+    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File>; getPlaybackUrl?: () => Promise<string> }>;
   }).getFileHandle(name);
+  // Raw AAC still needs the existing ADTS-to-M4A adapter. Other native media
+  // is streamed by the authorized asset protocol instead of copied into JS.
+  if (fileHandle.getPlaybackUrl && !/\.aac$/i.test(name)) return fileHandle.getPlaybackUrl();
   const file = await fileHandle.getFile();
   const head = await file.slice(0, 65536).arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", head);
@@ -1087,6 +1094,7 @@ async function createModelUnlocked(
     transcript: withSharedSpeakers(params.original ? restoreTranscriptOrigins({...params.transcript,segments:params.transcript.segments.map(s=>({...s,words:s.words?.map(w=>({...w,timing:undefined,origins:undefined}))}))},params.original,id) : params.transcript, params.sharedSpeakers ?? existing.sharedSpeakers, Boolean(params.sharedSpeakers?.length)),
   };
   const editFile = params.editLabel ? transcriptFilename(existing.title ?? stem, requireVersionName(params.editLabel)) : `${id}-e1.json`;
+  edited.transcript = stampContinuationReceipt(edited.transcript, `${id}:e1`);
   if (params.editLabel && (await hasSidecar(tDir,editFile) || existing.models.some(m=>m.edits.some(e=>e.label===params.editLabel)))) throw new Error(msg('localStore.m1487'));
   if (!params.originalOnly) await writeFileJson(tDir, editFile, { ...edited, updated_at: new Date().toISOString() });
 
@@ -1193,6 +1201,7 @@ async function createEditUnlocked(
     file: editFile,
     updated_at: new Date().toISOString(),
   };
+  edited.transcript = stampContinuationReceipt(edited.transcript, `${modelId}:${id}`);
   const newModel: TranscriptModel = {
     ...model,
     designatedOriginal: model.designatedOriginal,
@@ -1268,6 +1277,8 @@ async function persistActiveModelUnlocked(
   if (!tDir) return null;
   const manifest = await readManifestUnlocked(dir, name);
   if (!manifest) return null;
+  const selected = manifest.models.find(m => m.id === modelId);
+  if (!selected || (editId && (selected.designatedOriginal || !selected.edits.some(edit => edit.id === editId)))) throw new Error(msg('localStore.m1504'));
   const models = manifest.models.map((m) => {
     if (m.id !== modelId) return m;
     return editId ? { ...m, activeEditId: editId } : m;
@@ -1349,7 +1360,7 @@ async function syncTranscriptNames(
 }
 
 /** 重命名模型（更新 manifest.label）。 */
-async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: string, modelId: string, designatedOriginal: boolean): Promise<TranscriptManifest> {
+async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: string, modelId: string, designatedOriginal: boolean, editId?: string): Promise<TranscriptManifest> {
   const manifest = await readManifestUnlocked(dir, name);
   const tDir = await resolveTranscriptDir(dir, name, false);
   const model = manifest?.models.find(m => m.id === modelId);
@@ -1364,7 +1375,11 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
     const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
     await writeFileJson(tDir, MANIFEST_NAME, next);return next;
   }
-  const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal, designatedOriginalEditId: designatedOriginal ? (m.activeEditId || m.edits[0]?.id) : undefined } : m) };
+  const designatedEditId = editId ?? model.activeEditId ?? model.edits[0]?.id;
+  if (designatedOriginal && editId && !model.edits.some(edit => edit.id === editId)) throw new Error(msg('localStore.m1504'));
+  const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal,
+    ...(designatedOriginal && editId ? { activeEditId: editId } : {}),
+    designatedOriginalEditId: designatedOriginal ? designatedEditId : undefined } : m) };
   await writeFileJson(tDir, MANIFEST_NAME, next);
   return next;
 }
@@ -1398,8 +1413,10 @@ async function renameEditLabelUnlocked(
     ...m, edits: m.edits.map(e => e.id === editId ? { ...e, label: label.trim() } : e),
   }) };
   if (manifest.models.some(m => m.edits.some(e => !(m.id === modelId && e.id === editId) && sanitizeForFilename(e.label ?? defaultEditLabel(m.edits.indexOf(e))).toLocaleLowerCase() === sanitizeForFilename(label.trim()).toLocaleLowerCase()))) throw new Error(msg('localStore.m1519'));
-  const current = await readEditedUnlocked(dir, name);
-  return syncTranscriptNames(tDir, manifest, next, manifest.title ?? current?.metadata.title ?? stemOf(name));
+  // Labels are display data. Stable internal filenames need not be rewritten
+  // when a user renames one version; exports derive names from the label.
+  await writeFileJson(tDir, MANIFEST_NAME, next);
+  return next;
 }
 
 /** Publish the index before deleting content; a failed index write must never lose a manuscript. */
@@ -1974,6 +1991,18 @@ function inDirectory<T>(dir: FileSystemDirectoryHandle, operation: () => Promise
   return next;
 }
 export const readManifest: typeof readManifestUnlocked = (...args) => inDirectory(args[0], () => readManifestUnlocked(...args));
+/** Project discovery must not migrate unopened manuscripts as a side effect. */
+export function readConnectorManifest(dir: FileSystemDirectoryHandle, audio: string): Promise<TranscriptManifest | null> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) return null;
+    const raw = await readManifestText(container);
+    if (raw === null) return null;
+    const manifest = JSON.parse(raw) as TranscriptManifest;
+    if (!Array.isArray(manifest.models)) throw Error('open_legacy_manuscript_in_ripple_first');
+    return manifest;
+  });
+}
 export const readEdited: typeof readEditedUnlocked = (...args) => inDirectory(args[0], () => readEditedUnlocked(...args));
 export const readModelEdit: typeof readModelEditUnlocked = (...args) => inDirectory(args[0], () => readModelEditUnlocked(...args));
 export const readModelOriginal: typeof readModelOriginalUnlocked = (...args) => inDirectory(args[0], () => readModelOriginalUnlocked(...args));
@@ -1989,50 +2018,118 @@ export const writeEdited: typeof writeEditedUnlocked = (...args) => inDirectory(
 export const renameAudio: typeof renameAudioUnlocked = (...args) => inDirectory(args[0], () => renameAudioUnlocked(...args));
 export const migrateAllLegacy: typeof migrateAllLegacyUnlocked = (...args) => inDirectory(args[0], () => migrateAllLegacyUnlocked(...args));
 
-/** AI review drafts are separate from the manifest and never become editable versions implicitly. */
-export async function readAIReviewDraft(dir: FileSystemDirectoryHandle, audio: string, key: string): Promise<import("./components/AIEditingDialog").AIReviewDraft | null> {
-  const container = await resolveTranscriptDir(dir, audio, false);
-  if (!container) return null;
-  try {
-    const drafts = await container.getDirectoryHandle("ai-review");
-    const file = await drafts.getFileHandle(`${encodeURIComponent(key)}.json`);
-    return JSON.parse(await (await file.getFile()).text());
-  } catch (error) {
-    if ((error as {name?:string}).name === "NotFoundError") return null;
-    throw error;
-  }
-}
-
-export async function writeAIReviewDraft(dir: FileSystemDirectoryHandle, audio: string, key: string, draft: import("./components/AIEditingDialog").AIReviewDraft | null): Promise<void> {
-  const container = await resolveTranscriptDir(dir, audio, false);
-  if (!container) throw new Error(msg('localStore.m1554'));
-  const drafts = await container.getDirectoryHandle("ai-review", {create:true});
-  const name = `${encodeURIComponent(key)}.json`;
-  if (draft) await writeFileJson(drafts, name, draft);
-  else {
-    try { await drafts.removeEntry(name); }
-    catch (error) { if ((error as {name?:string}).name !== "NotFoundError") throw error; }
-  }
-}
-
-/** Stable across audio renames and modification versions, separate for each transcript container. */
-export async function aiEditingDocumentId(dir: FileSystemDirectoryHandle, audio: string): Promise<string> {
-  const container = await resolveTranscriptDir(dir, audio, false);
-  if (!container) throw new Error(msg('localStore.m1555'));
-  const name = "ai-preferences-id.json";
-  try {
-    const file = await container.getFileHandle(name);
-    const value = JSON.parse(await (await file.getFile()).text());
-    if (typeof value.id !== "string" || !value.id) throw new Error(msg('localStore.m1556'));
-    return value.id;
-  } catch (error) {
-    if ((error as {name?:string}).name !== "NotFoundError") throw error;
-  }
-  const id = crypto.randomUUID();
-  await writeFileJson(container, name, {id});
-  return id;
-}
-
 export const saveInterviewDetails: typeof saveInterviewDetailsUnlocked = (...args) => inDirectory(args[0], () => saveInterviewDetailsUnlocked(...args));
 
 export const setModelOriginal: typeof setModelOriginalUnlocked = (...args) => inDirectory(args[0], () => setModelOriginalUnlocked(...args));
+
+/** Compare and save one explicitly selected background version in the same directory queue.
+ * Never selects a different version or changes the editor's active version.
+ */
+export function saveConnectorVersion(dir: FileSystemDirectoryHandle, audio: string, options: {
+  version: ConnectorVersion; baseline: Transcript; name?: string;
+  allowRebase?: boolean;
+  check: () => Promise<void>;
+  update: (current: Transcript) => Transcript;
+}): Promise<{ version: ConnectorVersion; transcript: Transcript }> {
+  return inDirectory(dir, async () => {
+    await options.check();
+    const manifest = await readManifestUnlocked(dir, audio);
+    const model = manifest?.models.find(m => m.id === options.version.model_id);
+    const edit = model?.edits.find(e => e.id === options.version.edit_id);
+    const original = options.version.kind === 'original';
+    if (!model || !manifest || (!original && (!edit || model.designatedOriginal))) throw Error('target_version_unavailable');
+    if (original && !options.name) throw Error('current_version_read_only_create_new_version');
+    const data = original ? await readModelOriginalUnlocked(dir, audio, model.id)
+      : await readModelEditUnlocked(dir, audio, model.id, options.version.edit_id);
+    if (!data) throw Error('target_version_unavailable');
+    if (!options.allowRebase && JSON.stringify(data.transcript) !== JSON.stringify(options.baseline)) throw Error('source_changed_read_current_again');
+    const transcript = options.update(data.transcript);
+    await options.check();
+    if (!options.name && transcript === data.transcript) return { version: options.version, transcript };
+    if (options.name) {
+      const result = await createEditUnlocked(dir, audio, model.id, { fromOriginal: original,
+        srcEditId: original ? undefined : options.version.edit_id, setActive: false,
+        reviewed: { baseline: data.transcript, transcript, label: options.name } });
+      return { version: { id: `${result.model.id}:${result.edit.id}`, model_id: result.model.id,
+        edit_id: result.edit.id, name: result.edit.label!, kind: 'edit' }, transcript: result.edited.transcript };
+    }
+    // Both files are recoverable. Roll back this write if the second half fails.
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container || !edit || !('metadata' in data)) throw Error('target_version_unavailable');
+    const before = await readFileText(container, edit.file);
+    if (before === null) throw Error('target_version_unavailable');
+    const updated = new Date().toISOString();
+    try {
+      const serialized = JSON.stringify({ ...data, transcript, updated_at: updated }, null, 2);
+      await writeFileText(container, edit.file, serialized);
+      if (await readFileText(container, edit.file) !== serialized) throw Error('background_save_verification_failed');
+      await writeFileJson(container, MANIFEST_NAME, { ...manifest, models: manifest.models.map(m => m.id === model.id
+        ? { ...m, edits: m.edits.map(e => e.id === edit.id ? { ...e, updated_at: updated } : e) } : m) });
+    } catch (error) {
+      try {
+        await writeFileText(container, edit.file, before);
+        if (await readFileText(container, edit.file) !== before) throw Error('background_rollback_verification_failed', { cause: error });
+      }
+      catch { throw Error('background_save_uncertain_check_target_version', { cause: error }); }
+      throw error;
+    }
+    return { version: options.version, transcript };
+  });
+}
+
+/** Confirmed connector rules belong only to this interview, without raw examples. */
+export async function readConnectorRules(dir: FileSystemDirectoryHandle, audio: string): Promise<string[]> {
+  const container = await resolveTranscriptDir(dir, audio, false);
+  if (!container) return [];
+  try {
+    const file = await container.getFileHandle('ai-interview-preferences.json');
+    const value = JSON.parse(await (await file.getFile()).text());
+    return value.schema === 1 && value.source === 'explicit_user_confirmation' && Array.isArray(value.rules) ? value.rules.filter((rule: unknown) => typeof rule === 'string') : [];
+  } catch (error) {
+    if ((error as { name?: string }).name === 'NotFoundError') return [];
+    throw error;
+  }
+}
+export async function writeConnectorRules(dir: FileSystemDirectoryHandle, audio: string, rules: string[]): Promise<void> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) throw new Error('connector_document_unavailable');
+    await writeFileJson(container, 'ai-interview-preferences.json', { schema: 1, rules, scope: 'current-interview', source: 'explicit_user_confirmation', updated_at: new Date().toISOString() });
+  });
+}
+
+/** One local journal per task, scoped to this recording's existing transcript container. */
+export async function readContinuationTasks(dir: FileSystemDirectoryHandle, audio: string, reportUnreadable?: (count: number) => void): Promise<ContinuationTask[]> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) { reportUnreadable?.(0); return []; }
+    let folder: FileSystemDirectoryHandle;
+    try { folder = await container.getDirectoryHandle('ai-continuation-tasks'); }
+    catch (error) { if ((error as {name?:string}).name === 'NotFoundError') { reportUnreadable?.(0); return []; } throw error; }
+    const tasks: ContinuationTask[] = [];
+    let unreadable = 0;
+    for await (const [name, handle] of folder.entries()) {
+      if (handle.kind !== 'file' || !/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+      // Access errors still fail the read; only malformed individual journals are isolated.
+      const raw = await (await (handle as FileSystemFileHandle).getFile()).text();
+      let value: unknown;
+      try { value = JSON.parse(raw); } catch { unreadable++; continue; }
+      if (!isContinuationTask(value) || `${value.id}.json` !== name) { unreadable++; continue; }
+      tasks.push(value);
+    }
+    reportUnreadable?.(unreadable);
+    return tasks;
+  });
+}
+export async function writeContinuationTask(dir: FileSystemDirectoryHandle, audio: string, task: ContinuationTask): Promise<void> {
+  if (!/^[a-f0-9-]{36}$/.test(task.id)) throw Error('invalid_continuation_task_id');
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    if (!container) throw Error('connector_document_unavailable');
+    const folder = await container.getDirectoryHandle('ai-continuation-tasks', {create:true});
+    const name=`${task.id}.json`;
+    let exists=true;
+    try{await folder.getFileHandle(name);}catch(error){if((error as {name?:string}).name==='NotFoundError')exists=false;else throw error;}
+    try{await writeFileJson(folder,name,task);}catch(error){if(!exists)await folder.removeEntry(name).catch(()=>{});throw error;}
+  });
+}

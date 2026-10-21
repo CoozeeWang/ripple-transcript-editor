@@ -2,7 +2,7 @@ import {expect,it} from "vitest";
 import type {Transcript,Segment} from "../types";
 import {seedOriginalOrigins,restoreTranscriptOrigins} from "./transcriptOrigins";
 import {reanchorCharacters,timeForCharacter} from "./transcriptOps";
-import {applyAISuggestions} from "./aiEditing";
+import {applyAISuggestions} from "./aiVersionEdits";
 import {applyComparisonDecision,comparisonParts} from "./comparisonReview";
 import {mergeSegmentWithNext,splitSegmentAt} from "./segmentOps";
 import {buildJsonPayload} from "./export";

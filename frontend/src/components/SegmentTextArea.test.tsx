@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { msg, setInterfaceLanguage } from '../i18n';
 import { SegmentTextArea } from "./SegmentTextArea";
 import { writeEditorText, type ParagraphEditorElement } from "../lib/paragraphEditor";
 import { flushEditorDrafts } from "../lib/editorDrafts";
 
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(async () => { cleanup(); vi.useRealTimers(); await setInterfaceLanguage('zh-CN'); });
 function setup() {
   vi.useFakeTimers();
   const registry = {current: new Map<string, ParagraphEditorElement>()};
@@ -150,4 +151,32 @@ it("keeps the original selection across IME candidates and flushes the latest co
  fireEvent.compositionEnd(editor);
  act(()=>vi.advanceTimersByTime(500));
  expect(onChange).toHaveBeenCalledTimes(1);
+});
+
+it('refreshes comparison controls without rewriting the manuscript or cursor', async () => {
+ const {props,ui,editor,onChange}=setup();
+ ui.rerender(<SegmentTextArea {...props} value="甲丙" comparisonBefore="甲乙" onComparisonDecision={vi.fn()}/>);
+ const change=editor.querySelector<HTMLElement>('[data-comparison-change]')!;
+ editor.focus();editor.setSelectionRange(1,1);
+ const paragraph=editor.firstChild;
+ expect(change.getAttribute('aria-label')).toBe(msg('comparisonText.m1249'));
+ await act(()=>setInterfaceLanguage('en'));
+ expect(change.getAttribute('aria-label')).toBe('Review this change');
+ expect(editor.firstChild).toBe(paragraph);
+ expect(editor.value).toBe('甲丙');expect(editor.selectionStart).toBe(1);
+ expect(onChange).not.toHaveBeenCalled();
+ await act(()=>setInterfaceLanguage('zh-CN'));
+ expect(change.getAttribute('aria-label')).toBe(msg('comparisonText.m1249'));
+});
+
+it('inserts a real paragraph at the caret and persists it within the same segment',()=>{
+ const {editor,onChange}=setup();editor.focus();editor.setSelectionRange(1,1);
+ fireEvent.keyDown(editor,{key:'Enter'});
+ expect(editor.value).toBe('甲\n\n乙');expect(editor.children).toHaveLength(3);
+ expect(editor.selectionStart).toBe(2);
+ act(()=>flushEditorDrafts());expect(onChange).toHaveBeenCalledWith('甲\n\n乙',expect.anything());
+});
+it('replaces selected body text with a paragraph without relying on execCommand',()=>{
+ const {editor}=setup();editor.focus();editor.setSelectionRange(0,1);
+ fireEvent.keyDown(editor,{key:'Enter'});expect(editor.value).toBe('\n\n乙');
 });

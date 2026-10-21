@@ -59,7 +59,7 @@ export function SegmentTextArea({
   onKeyDown: (event: ReactKeyboardEvent<ParagraphEditorElement>) => void;
   onChange: (next: string, edits?:TextEdit[]) => void;
 }) {
-  useInterfaceLanguage();
+  const language = useInterfaceLanguage();
   const ref = useRef<ParagraphEditorElement | null>(null);
   const [activeChange, setActiveChange] = useState<{key:string; before:string; text:string; base:string; left:number; top:number}|null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -145,7 +145,12 @@ export function SegmentTextArea({
         onKeyDown(event as unknown as ReactKeyboardEvent<ParagraphEditorElement>);
         if (!event.defaultPrevented && event.key === "Enter") {
           event.preventDefault();
-          document.execCommand("insertParagraph");
+          const editor=ref.current!;
+          const start=editor.selectionStart,end=editor.selectionEnd;
+          const text=editor.value;
+          recordDraft(text.slice(0,start)+"\n"+text.slice(end),{start,end});
+          paint();editor.setSelectionRange(start+1,start+1);
+          window.dispatchEvent(new Event("te:draft-dirty"));scheduleCommit();
         }
         if ((event.metaKey || event.ctrlKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
           event.preventDefault();
@@ -245,6 +250,11 @@ export function SegmentTextArea({
     paint();
   }, [comparisonBefore, comparisonAccepted, onComparisonDecision]);
   useLayoutEffect(() => {
+    // Translate display controls without repainting the draft or moving its cursor.
+    ref.current?.querySelectorAll<HTMLElement>('[data-comparison-change][role="button"]')
+      .forEach(node => node.setAttribute('aria-label', msg('comparisonText.m1249')));
+  }, [language]);
+  useLayoutEffect(() => {
     const editor = ref.current;
     if (!editor || !highlights?.length) return;
     const paintMarks = () => setManuscriptHighlights(editor, highlights);
@@ -299,7 +309,17 @@ export function SegmentTextArea({
       suppressContentEditableWarning
       onCompositionStart={startComposition}
       onCompositionEnd={endComposition}
-      onFocus={onFocus}
+      onFocus={()=>{
+        onFocus();
+        requestAnimationFrame(()=>{
+          const editor=ref.current,selection=window.getSelection();
+          if(editor&&document.activeElement===editor&&selection?.isCollapsed&&selection.anchorNode&&editor.contains(selection.anchorNode)&&selection.anchorNode.nodeType!==Node.TEXT_NODE){
+            // WebKit can place its initial caret on a paragraph container,
+            // giving it the full line-box height. Use the equivalent text point.
+            const offset=editor.selectionStart;editor.setSelectionRange(offset,offset);
+          }
+        });
+      }}
       onBlur={(event) => {
         commit();
         onBlur(event as unknown as ReactFocusEvent<ParagraphEditorElement>);

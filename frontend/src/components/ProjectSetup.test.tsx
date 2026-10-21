@@ -212,3 +212,20 @@ it('stages dropped audio as a reference using the selected original handle',asyn
  expect(material.handle).toBe(original);expect(material.storage).toBe('reference');
  expect(selectAudioReferences).toHaveBeenCalledOnce();
 });
+
+it.each(['zh-CN','zh-TW','en'] as const)('offers a manuscript rename pencil with keyboard save and cancel (%s)',async language=>{
+ const {setInterfaceLanguage,msg}=await import('../i18n');await setInterfaceLanguage('zh-CN');
+ render(<ProjectSetup onDone={vi.fn()} onCancel={vi.fn()}/>);scene();
+ drop('选择或拖入独立转录稿，不关联音频',[textFile('Synthetic draft.txt','Synthetic public transcript')]);
+ await screen.findByRole('button',{name:msg('VersionPicker.m1097',{v0:'Synthetic draft.txt'})});
+ await setInterfaceLanguage(language);
+ const action=screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:'Synthetic draft.txt'})});
+ fireEvent.click(action);
+ const input=screen.getByRole('textbox',{name:msg('ProjectFileName.m0766',{v0:msg('ProjectBoard.m0665')})});
+ fireEvent.change(input,{target:{value:'Synthetic renamed'}});fireEvent.keyDown(input,{key:'Escape'});
+ expect(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:'Synthetic draft.txt'})})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:'Synthetic draft.txt'})}));
+ fireEvent.change(screen.getByRole('textbox',{name:msg('ProjectFileName.m0766',{v0:msg('ProjectBoard.m0665')})}),{target:{value:'Synthetic renamed'}});fireEvent.keyDown(screen.getByRole('textbox',{name:msg('ProjectFileName.m0766',{v0:msg('ProjectBoard.m0665')})}),{key:'Enter'});
+ expect(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:'Synthetic renamed'})})).toBeTruthy();
+ await setInterfaceLanguage('zh-CN');
+});

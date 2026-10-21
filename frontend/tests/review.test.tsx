@@ -1,5 +1,5 @@
 import {useTranscriptHistory} from "../src/useTranscriptHistory";
-import {applyAISuggestions} from "../src/lib/aiEditing";
+import {applyAISuggestions} from "../src/lib/aiVersionEdits";
 import { writeEditorText } from "../src/lib/paragraphEditor";
 /* eslint-disable @typescript-eslint/no-explicit-any -- In-memory filesystem test doubles implement only the APIs exercised below. */
 // @vitest-environment jsdom
@@ -13,7 +13,7 @@ import { useVersions } from '../src/hooks/useVersions';
 import { useFindReplace } from '../src/hooks/useFindReplace';
 import { useShortcuts } from '../src/hooks/useShortcuts';
 import { splitSegmentAt, mergeSegmentWithNext } from '../src/lib/segmentOps';
-import { markReviewed, isReviewed } from '../src/lib/aiEditing';
+import { markReviewed, isReviewed } from '../src/lib/revisions';
 import { saveInterviewDetails, readModelEdit, listAudioFiles, readEdited, readManifest, saveActiveEdit, persistActiveModel, renameAudio, createEdit, createModel, renameEditLabel, removeEdit, removeModelOriginal } from '../src/localStore';
 
 // Regression contracts use an in-memory filesystem; no real user data is accessed.
@@ -357,14 +357,14 @@ test('transcription starts with a readable original file and no automatic modifi
   expect(version.edited.metadata.title).toBe('访谈');
 });
 
-test('renaming a version preserves the title and contents and updates its local filename', async () => {
+test('renaming a version changes only its label and preserves the title, contents and stable filename', async () => {
   const {dir,child}=disk();
   const result=await renameEditLabel(dir as any,'a.wav','m1','e1','定稿');
-  expect(result.models[0].edits[0].file).toBe('a_定稿.json');
-  const data=JSON.parse(child.files.get('a_定稿.json')!);
+  expect(result.models[0].edits[0].file).toBe('m1-e1.json');
+  const data=JSON.parse(child.files.get('m1-e1.json')!);
   expect(data.metadata.title).toBe('a');
   expect(data.transcript.segments[0].text).toBe('磁盘旧稿');
-  expect(child.files.has('m1-e1.json')).toBe(false);
+  expect(child.files.has('m1-e1.json')).toBe(true);
 });
 
 test('changing interview title synchronizes audio, every version, and subsequent saves', async () => {
@@ -381,10 +381,12 @@ test('changing interview title synchronizes audio, every version, and subsequent
   expect((await readEdited(dir as any,'访谈新标题.wav'))?.metadata.title).toBe('访谈新标题');
 });
 
-test('conflicting custom names never overwrite an existing version', async () => {
+test('display renaming never overwrites an unrelated pre-existing filename', async () => {
   const {dir,child}=disk();child.files.set('a_定稿.json','external');const before=new Map(child.files);
-  await expect(renameEditLabel(dir as any,'a.wav','m1','e1','定稿')).rejects.toThrow('名称重复');
-  expect(child.files).toEqual(before);
+  await renameEditLabel(dir as any,'a.wav','m1','e1','定稿');
+  expect(child.files.get('a_定稿.json')).toBe('external');
+  expect(child.files.get('m1-e1.json')).toBe(before.get('m1-e1.json'));
+  expect(child.files.get('m1-e2.json')).toBe(before.get('m1-e2.json'));
 });
 
 test('failed filename update restores source files and manifest', async () => {

@@ -3,11 +3,11 @@
 import json
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from app import ai_editing, diagnostics, main as app_main, settings
+from app import diagnostics, settings
+from app import main as app_main
 from app.main import app
 from app.runtime_paths import CODE_ROOT, DATA_ROOT
+from fastapi.testclient import TestClient
 
 stage = Path(__file__).resolve().parent
 assert CODE_ROOT == stage
@@ -19,7 +19,6 @@ settings.save_credentials("probe", {"api_key": "fixture-only"})
 diagnostics.record_failure("service", 500)
 assert settings.ENV_PATH == DATA_ROOT / ".env" and settings.ENV_PATH.exists()
 assert settings.PROFILES_PATH == DATA_ROOT / "credentials.json"
-assert ai_editing.STORE_PATH == DATA_ROOT / "ai-editing.json"
 assert diagnostics.LOG_PATH == DATA_ROOT / ".logs/diagnostics.json" and diagnostics.LOG_PATH.exists()
 assert not (stage / ".env").exists()
 assert not (stage / "credentials.json").exists()

@@ -1,7 +1,8 @@
+import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
-import { createEdit, setModelOriginal, saveActiveEdit, createModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
+import { moveProjectRecordings, referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
+import { createEdit, setModelOriginal, saveActiveEdit, createModel, persistActiveModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
 function directory(name = 'root'): TestDirectory {
@@ -748,4 +749,296 @@ it('removes a designated imported version without needing a hidden original copy
  const remaining=await removeModelOriginal(root.handle,'a.wav',created.model.id);
  expect(remaining?.models).toHaveLength(0);
  expect(root.dirs.get('a.transcript')!.files.has(created.model.edits[0].file)).toBe(false);
+});
+
+it('keeps permission loss, missing files and changed content distinct for reference audio', async () => {
+  const {p,source,recording,interview} = await fixture('reference');
+  const key = `media:${p.data.id}:${recording.id}`;
+  const original = handles.get(key) as FileSystemFileHandle;
+  handles.set(key, {...original,getFile:async()=>{throw new DOMException('denied','NotAllowedError');}});
+  await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'permission'});
+  handles.set(key,original);
+  source.files.delete('interview.wav');
+  await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'missing'});
+  source.files.set('interview.wav',new File(['changed'],'interview.wav'));
+  await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'changed'});
+  source.files.set('interview.wav',new File(['original audio'],'interview.wav'));
+  expect(await (await readProjectMedia(p,interview.id,recording)).text()).toBe('original audio');
+  expect(mediaFailure(new Error('IO error')).reason).toBe('unreadable');
+});
+
+it('writes one complete English reference note without duplicating session and manuscript information', async () => {
+  const {recording, interview}=await fixture('reference');
+  await setInterfaceLanguage('en');
+  try {
+    const note=referenceAudioNotice(recording, interview.title, ['Synthetic transcript']);
+    expect(note.match(/Session:/g)).toHaveLength(1);
+    expect(note.match(/Linked transcripts:/g)).toHaveLength(1);
+    expect(note).toContain('is linked to an external file');
+    expect(note).toContain('Synthetic transcript');
+    expect(note).toContain('Locate original audio');
+  } finally { await setInterfaceLanguage('zh-CN'); }
+});
+
+it('opens exact revision IDs and the read-only engine source without changing any manuscript',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:3},speakers:[{id:'s',name:'Synthetic'}],segments:[{id:'1',speaker_id:'s',start:0,end:3,text:'原始内容'}]};
+ const made=await createModel(dir,recording.file,{engine:'synthetic',sourceKind:'transcription',transcript,original:transcript,label:'原始转录稿'});
+ const second=await createEdit(dir,recording.file,made.model.id,{srcEditId:'e1',label:'AI 辅助 01'});
+ await saveActiveEdit(dir,recording.file,made.model.id,second.edit.id,{kind:'te-edited',audio:recording.file,metadata:(await readModelEdit(dir,recording.file,made.model.id,second.edit.id))!.metadata,transcript:{...transcript,segments:[{...transcript.segments[0],text:'AI 修改'}]}});
+ await persistActiveModel(dir,recording.file,made.model.id,'e1');expect((await readEdited(dir,recording.file))?.transcript.segments[0].text).toBe('原始内容');
+ await persistActiveModel(dir,recording.file,made.model.id,second.edit.id);expect((await readEdited(dir,recording.file))?.transcript.segments[0].text).toBe('AI 修改');
+ expect((await readModelOriginal(dir,recording.file,made.model.id))?.transcript.segments[0].text).toBe('原始内容');
+ expect((await readModelEdit(dir,recording.file,made.model.id,second.edit.id))?.transcript.segments[0].text).toBe('AI 修改');
+ await expect(persistActiveModel(dir,recording.file,made.model.id,'missing')).rejects.toThrow();
+ expect((await readManifest(dir,recording.file))?.models[0].activeEditId).toBe(second.edit.id);
+});
+
+it('designates the explicit base revision even while a later AI revision is active',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:2},speakers:[{id:'s',name:'Synthetic'}],segments:[{id:'1',speaker_id:'s',start:0,end:2,text:'Base synthetic words'}]};
+ const made=await createModel(dir,recording.file,{engine:'imported',sourceKind:'import',transcript,label:'Base'});
+ const ai=await createEdit(dir,recording.file,made.model.id,{srcEditId:'e1',label:'AI version'});
+ const result=await setModelOriginal(dir,recording.file,made.model.id,true,'e1');
+ expect(result.models[0]).toMatchObject({designatedOriginalEditId:'e1',activeEditId:'e1'});
+ expect(result.models[0].edits.map(e=>e.id)).toEqual(['e1',ai.edit.id]);
+ expect((await readModelOriginal(dir,recording.file,made.model.id))?.transcript.segments[0].text).toBe('Base synthetic words');
+ await expect(setModelOriginal(dir,recording.file,made.model.id,true,'missing')).rejects.toThrow();
+});
+
+it('reports a lost local reference handle as permission recovery, without claiming the source file is missing', async () => {
+ const {p,source,recording,interview}=await fixture('reference');
+ handles.delete(`media:${p.data.id}:${recording.id}`);
+ await expect(readProjectMedia(p,interview.id,recording)).rejects.toMatchObject({reason:'permission'});
+ expect(await source.files.get('interview.wav')!.text()).toBe('original audio');
+});
+it.each([['NotAllowedError','permission'],['NotFoundError','missing'],['NotReadableError','unreadable'],['SecurityError','permission']])('gives an actionable named export failure for %s',async(name,reason)=>{
+ const {p,recording,interview}=await fixture('reference');
+ const key=`media:${p.data.id}:${recording.id}`;const original=handles.get(key) as FileSystemFileHandle;
+ handles.set(key,{...original,getFile:async()=>{throw new DOMException('Synthetic OS failure',name);}});
+ await expect(checkedMediaFile(p,interview.id,recording)).rejects.toMatchObject({reason,message:expect.stringContaining(recording.name)});
+ await expect(checkedMediaFile(p,interview.id,recording)).rejects.toThrow(/重新|找到|检查/);
+});
+it('keeps the old audio association if a recovery selection cannot be read',async()=>{
+ const {p,recording,interview}=await fixture('reference');const key=`media:${p.data.id}:${recording.id}`;const original=handles.get(key);
+ const candidate={kind:'file',name:'synthetic-recovery.wav',getFile:async()=>{throw new DOMException('Synthetic OS denial','NotAllowedError');}} as unknown as FileSystemFileHandle;
+ await expect(relinkMedia(p,interview.id,recording,candidate)).rejects.toMatchObject({reason:'permission'});
+ expect(handles.get(key)).toBe(original);expect((await openProject(p.directory)).data).toEqual(p.data);
+});
+it('keeps export recovery feedback readable in English',async()=>{
+ const {p,recording,interview}=await fixture('reference');handles.delete(`media:${p.data.id}:${recording.id}`);
+ await setInterfaceLanguage('en');
+ try { await expect(checkedMediaFile(p,interview.id,recording)).rejects.toMatchObject({reason:'permission',message:expect.stringContaining(recording.name)});
+ await expect(checkedMediaFile(p,interview.id,recording)).rejects.toThrow(/folder button|permission/); }
+ finally { await setInterfaceLanguage('zh-CN'); }
+});
+it('preserves the previous association when a recovery file becomes unreadable during fingerprinting',async()=>{
+ const {p,recording,interview}=await fixture('reference');const key=`media:${p.data.id}:${recording.id}`;const previous=handles.get(key);
+ const file=new File(['synthetic recovery'],'synthetic.wav');
+ vi.spyOn(file,'slice').mockReturnValue({arrayBuffer:async()=>{throw new DOMException('Synthetic read failure','NotReadableError');}} as unknown as Blob);
+ const candidate={kind:'file',name:file.name,getFile:async()=>file} as unknown as FileSystemFileHandle;
+ await expect(relinkMedia(p,interview.id,recording,candidate)).rejects.toMatchObject({reason:'unreadable'});
+ expect(handles.get(key)).toBe(previous);expect((await openProject(p.directory)).data).toEqual(p.data);
+});
+
+
+it.each(['copy', 'reference'] as const)('moves a full batch and preserves versions, marks, metadata and audio (%s)', async storage => {
+  const { p, interview, recording, source } = await fixture(storage);
+  let project = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], storage);
+  project = await addInterview(project, 'Synthetic destination');
+  const target = project.data.interviews[1];
+  const dir = await recordingDirectory(project, interview.id, recording);
+  const transcript = {audio:{filename:recording.file,duration:3},speakers:[{id:'s',name:'Synthetic speaker'}],segments:[{id:'1',speaker_id:'s',start:0,end:3,text:'Synthetic original',annotations:[{id:'a',text:'Synthetic note',createdAt:'2026-01-02T00:00:00Z'}]}]};
+  const made = await createModel(dir,recording.file,{engine:'synthetic',sourceKind:'transcription',transcript,original:transcript,label:'Synthetic original',originalOnly:true});
+  await createModel(dir,recording.file,{engine:'synthetic',sourceKind:'import',transcript,label:'Synthetic edit',metadata:{...interview.metadata!,location:'Synthetic place',notes:'Synthetic notes'}});
+  const manifest = (await readManifest(dir,recording.file))!;
+  const before = await readModelOriginal(dir,recording.file,made.model.id);
+  const ids = project.data.interviews[0].recordings.map(r=>r.id);
+  const moved = await moveProjectRecordings(project,interview.id,target.id,ids);
+  const reopened = await openProject(moved.directory);
+  expect(reopened.data.interviews[0].recordings).toHaveLength(0);
+  expect(reopened.data.interviews[1].recordings.map(r=>r.id)).toEqual(ids);
+  for(const item of reopened.data.interviews[1].recordings) {
+    expect(await (await readProjectMedia(reopened,target.id,item)).text()).toBe('original audio');
+    expect(item.storage).toBe(storage);
+    expect(item.draft!.metadata.recorded_at).toBe(interview.metadata!.recorded_at);
+  }
+  const item = reopened.data.interviews[1].recordings[0];
+  const movedDir = await recordingDirectory(reopened,target.id,item);
+  expect((await readManifest(movedDir,item.file))!.models).toEqual(manifest.models);
+  expect(await readModelOriginal(movedDir,item.file,made.model.id)).toEqual(before);
+  expect((await readEdited(movedDir,item.file))!.metadata).toMatchObject({location:'Synthetic place',notes:'Synthetic notes'});
+  // Moving back uses unique staging paths and preserves the recording identity.
+  const returned = await moveProjectRecordings(reopened,target.id,interview.id,[item.id]);
+  const back = returned.data.interviews[0].recordings[0];
+  expect(back.id).toBe(recording.id);
+  expect(await (await readProjectMedia(returned,interview.id,back)).text()).toBe('original audio');
+});
+
+it('preserves an offline external reference and a recording-specific draft', async () => {
+  const {p,interview,recording,source}=await fixture('reference');
+  const draft={metadata:{...interview.metadata!,recorded_at:'2026-01-02',location:'Synthetic location'},speakers:[{id:'s',name:'Synthetic speaker'}]};
+  const saved=await saveProject(p,{...p.data,interviews:[{...interview,recordings:[{...recording,draft}]}]});
+  const project=await addInterview(saved,'Synthetic destination');
+  source.files.clear();
+  const next=await moveProjectRecordings(project,interview.id,project.data.interviews[1].id,[recording.id]);
+  const moved=next.data.interviews[1].recordings[0];
+  expect(moved.draft).toEqual(draft);
+  await expect(readProjectMedia(next,next.data.interviews[1].id,moved)).rejects.toMatchObject({reason:'missing'});
+  source.files.set('interview.wav',new File(['original audio'],'interview.wav'));
+  expect(await (await readProjectMedia(next,next.data.interviews[1].id,moved)).text()).toBe('original audio');
+});
+
+it('keeps the original batch indexed if a later audio is missing during staging', async () => {
+  const {p,source,interview}=await fixture();
+  let project=await addRecordings(p,interview.id,[await source.handle.getFileHandle('interview.wav')],'copy');
+  project=await addInterview(project,'Synthetic destination');
+  const second=project.data.interviews[0].recordings[1];
+  const sessions=await project.directory.getDirectoryHandle('interviews');
+  const media=await(await sessions.getDirectoryHandle(interview.id)).getDirectoryHandle('media');
+  await media.removeEntry(second.file);
+  await expect(moveProjectRecordings(project,interview.id,project.data.interviews[1].id,project.data.interviews[0].recordings.map(r=>r.id))).rejects.toThrow();
+  expect((await openProject(project.directory)).data).toEqual(project.data);
+  // A retry after restoring the missing file does not collide with interrupted staging.
+  const stream=await(await media.getFileHandle(second.file,{create:true})).createWritable();
+  await stream.write(new File(['original audio'],'interview.wav'));await stream.close();
+  expect((await moveProjectRecordings(project,interview.id,project.data.interviews[1].id,[second.id])).data.interviews[1].recordings).toHaveLength(1);
+});
+
+it('rejects stale revisions, duplicate IDs and invalid destinations without changing the index', async () => {
+  const {p,interview,recording}=await fixture();
+  const project=await addInterview(p,'Synthetic destination');
+  await expect(moveProjectRecordings(p,interview.id,project.data.interviews[1].id,[recording.id])).rejects.toThrow();
+  for(const [target,ids] of [[interview.id,[recording.id]],['missing',[recording.id]],[project.data.interviews[1].id,[recording.id,recording.id]],[project.data.interviews[1].id,['missing']]] as [string,string[]][]) {
+    await expect(moveProjectRecordings(project,interview.id,target,ids)).rejects.toThrow();
+  }
+  expect((await openProject(project.directory)).data).toEqual(project.data);
+});
+
+it('does not publish any moved recording when the final index write fails',async()=>{
+ const {p,interview,recording}=await fixture();
+ const project=await addInterview(p,'Synthetic destination');
+ const original=project.directory.getFileHandle.bind(project.directory);
+ let failed=false;
+ vi.spyOn(project.directory,'getFileHandle').mockImplementation(async(name,options)=>{
+   const handle=await original(name,options);
+   if(name!=='ripple-project.json')return handle;
+   return {...handle,createWritable:async()=>{
+     if(!failed){failed=true;throw new DOMException('Synthetic disk failure','QuotaExceededError');}
+     return handle.createWritable();
+   }} as FileSystemFileHandle;
+ });
+ await expect(moveProjectRecordings(project,interview.id,project.data.interviews[1].id,[recording.id])).rejects.toThrow();
+ expect((await openProject(project.directory)).data).toEqual(project.data);
+ expect(await(await readProjectMedia(project,interview.id,recording)).text()).toBe('original audio');
+});
+
+it('refuses a missing version file and leaves destination recordings untouched',async()=>{
+ const {p,interview,recording,source}=await fixture();
+ let project=await addInterview(p,'Synthetic destination');
+ const target=project.data.interviews[1];
+ project=await addRecordings(project,target.id,[await source.handle.getFileHandle('interview.wav')],'copy');
+ const dir=await recordingDirectory(project,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:1},speakers:[],segments:[{id:'1',start:0,end:1,speaker_id:'',text:'Synthetic text'}]};
+ const made=await createModel(dir,recording.file,{engine:'synthetic',transcript,label:'Synthetic edit'});
+ const folder=await dir.getDirectoryHandle(recording.file.replace(/\.[^.]+$/,'')+'.transcript');
+ await folder.removeEntry(made.model.edits[0].file);
+ await expect(moveProjectRecordings(project,interview.id,target.id,[recording.id])).rejects.toThrow();
+ expect((await openProject(project.directory)).data).toEqual(project.data);
+});
+
+async function manuscriptFixture() {
+  const setup = await fixture();
+  const view = await recordingDirectory(setup.p, setup.interview.id, setup.recording);
+  const transcript = { audio: { filename: setup.recording.file, duration: 1 }, speakers: [],
+    segments: [{ id: 's1', speaker_id: '', start: 0, end: 1, text: 'Synthetic manuscript' }] };
+  const made = await createModel(view, setup.recording.file, { engine: 'synthetic', transcript, label: 'Synthetic edit' });
+  const folder = await view.getDirectoryHandle(`${setup.recording.file.replace(/\.[^.]+$/, '')}.transcript`);
+  return { ...setup, view, folder, made };
+}
+async function putText(folder: FileSystemDirectoryHandle, name: string, text: string) {
+  const writer = await (await folder.getFileHandle(name, { create: true })).createWritable();
+  await writer.write(text); await writer.close();
+}
+async function getText(folder: FileSystemDirectoryHandle, name: string) {
+  return (await (await folder.getFileHandle(name)).getFile()).text();
+}
+it.each(['missing', 'corrupt'] as const)('copies and moves a manuscript recovered from a backup with a %s canonical index', async failure => {
+  const { p, interview, recording, folder, made } = await manuscriptFixture();
+  const raw = await getText(folder, 'manifest.json');
+  await putText(folder, 'manifest.json.bak', raw);
+  if (failure === 'missing') await folder.removeEntry('manifest.json');
+  else await putText(folder, 'manifest.json', '{synthetic broken');
+  const copy = await savePortableProject(p, directory('synthetic backup').handle, 'Synthetic copy');
+  const copiedView = await recordingDirectory(copy, interview.id, copy.data.interviews[0].recordings[0]);
+  expect((await readEdited(copiedView, recording.file))?.transcript).toEqual(made.edited.transcript);
+  const project = await addInterview(p, 'Synthetic destination');
+  const moved = await moveProjectRecordings(project, interview.id, project.data.interviews[1].id, [recording.id]);
+  expect(moved.data.interviews[1].recordings).toHaveLength(1);
+  // Recovery must not repair or overwrite the source as a read side effect.
+  if (failure === 'corrupt') expect(await getText(folder, 'manifest.json')).toBe('{synthetic broken');
+  else await expect(folder.getFileHandle('manifest.json')).rejects.toMatchObject({ name: 'NotFoundError' });
+});
+it('uses a verified manuscript backup for trash and restore without hiding missing version files', async () => {
+  const { p, interview, recording, folder, made } = await manuscriptFixture();
+  await putText(folder, 'manifest.json.bak', await getText(folder, 'manifest.json'));
+  await putText(folder, 'manifest.json', '{synthetic broken');
+  const removed = await trashProjectMaterial(p, interview.id, recording.id);
+  const restored = await restoreProjectMaterial(removed, removed.data.trash![0].id);
+  expect(restored.data.interviews[0].recordings[0].id).toBe(recording.id);
+  await folder.removeEntry(made.model.edits[0].file);
+  await expect(savePortableProject(restored, directory('synthetic backup').handle, 'Incomplete')).rejects.toThrow();
+});
+it('does not bypass revoked manuscript access through a backup during project copying', async () => {
+  const { p, folder } = await manuscriptFixture();
+  await putText(folder, 'manifest.json.bak', await getText(folder, 'manifest.json'));
+  const original = folder.getFileHandle.bind(folder);
+  vi.spyOn(folder, 'getFileHandle').mockImplementation((name, options) => name === 'manifest.json'
+    ? Promise.reject(new DOMException('Synthetic revoked permission', 'NotAllowedError')) : original(name, options));
+  await expect(savePortableProject(p, directory().handle, 'Denied')).rejects.toMatchObject({ name: 'NotAllowedError' });
+});
+it('copies AI rules and journals, pauses copied work, rebinds the summary and retains damaged evidence', async () => {
+  const { p, interview, recording, folder, made } = await manuscriptFixture();
+  const version = { id: `${made.model.id}:${made.model.activeEditId}`, model_id: made.model.id,
+    edit_id: made.model.activeEditId, name: 'Synthetic edit', kind: 'edit' };
+  const task = { schema: 1, id: crypto.randomUUID(), source: version, target: version, saveMode: 'current_version',
+    name: version.name, rules: ['Synthetic rule'], actions: ['edit'], ids: ['s1'], done: [], held: [], state: 'draft',
+    summary: JSON.stringify({ target: { project_id: p.data.id, project: p.data.title, interview_id: interview.id, recording_id: recording.id } }), updated: '' };
+  const tasks = await folder.getDirectoryHandle('ai-continuation-tasks', { create: true });
+  const damagedId = crypto.randomUUID();
+  await putText(folder, 'ai-connector-rules.json', JSON.stringify({ rules: task.rules }));
+  await putText(tasks, `${task.id}.json`, JSON.stringify(task));
+  const olderTask = { ...task, id: crypto.randomUUID(), summary: 'Synthetic older summary' };
+  const pausedTask = { ...task, id: crypto.randomUUID(), state: 'paused', reason: 'planned_segment_changed' };
+  await putText(tasks, `${olderTask.id}.json`, JSON.stringify(olderTask));
+  await putText(tasks, `${pausedTask.id}.json`, JSON.stringify(pausedTask));
+  await putText(tasks, `${damagedId}.json`, '{synthetic interrupted journal');
+  await putText(folder, 'credentials.json', 'synthetic device configuration must not travel');
+  const copy = await savePortableProject(p, directory().handle, 'Synthetic copy');
+  const view = await recordingDirectory(copy, interview.id, copy.data.interviews[0].recordings[0]);
+  const copied = await view.getDirectoryHandle(`${recording.file.replace(/\.[^.]+$/, '')}.transcript`);
+  const copiedTasks = await copied.getDirectoryHandle('ai-continuation-tasks');
+  const saved = JSON.parse(await getText(copiedTasks, `${task.id}.json`));
+  expect(saved).toMatchObject({ id: task.id, state: 'paused', target: version, reason: 'project_copied' });
+  expect(JSON.parse(await getText(copiedTasks, `${olderTask.id}.json`))).toMatchObject({ state: 'paused', summary: olderTask.summary });
+  expect(JSON.parse(await getText(copiedTasks, `${pausedTask.id}.json`))).toMatchObject({ state: 'paused', reason: 'planned_segment_changed' });
+  expect(JSON.parse(saved.summary).target).toMatchObject({ project_id: copy.data.id, project: 'Synthetic copy' });
+  expect(await getText(copied, 'ai-connector-rules.json')).toBe(JSON.stringify({ rules: task.rules }));
+  expect(await getText(copiedTasks, `${damagedId}.json`)).toBe('{synthetic interrupted journal');
+  await expect(copied.getFileHandle('credentials.json')).rejects.toMatchObject({ name: 'NotFoundError' });
+  expect(JSON.parse(await getText(tasks, `${task.id}.json`))).toEqual(task);
+});
+
+it('keeps a project copy incomplete when manuscript AI state cannot be read', async () => {
+  const { p, folder } = await manuscriptFixture();
+  const originalIndex = await getText(p.directory, 'ripple-project.json');
+  const original = folder.getFileHandle.bind(folder);
+  vi.spyOn(folder, 'getFileHandle').mockImplementation((name, options) => name === 'ai-connector-rules.json'
+    ? Promise.reject(new DOMException('Synthetic permission revoked', 'NotAllowedError')) : original(name, options));
+  const target = directory('synthetic backup');
+  await expect(savePortableProject(p, target.handle, 'Synthetic incomplete')).rejects.toMatchObject({ name: 'NotAllowedError' });
+  const incomplete = target.dirs.get('Synthetic incomplete.ripple')!;
+  expect(incomplete.files.has('COPY-INCOMPLETE.txt')).toBe(true);
+  expect(incomplete.files.has('ripple-project.json')).toBe(false);
+  expect(await getText(p.directory, 'ripple-project.json')).toBe(originalIndex);
 });

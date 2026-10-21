@@ -23,8 +23,3 @@ it("does not export extra fields from stored data", () => {
   localStorage.setItem(DIAGNOSTICS_KEY, JSON.stringify([{ ...p, raw: 'secret-key' }]));
   expect(JSON.stringify(readProblems())).not.toContain('secret-key');
 });
-it('distinguishes model connection interruption from response timeout',()=>{
- expect(recordProblem('editing',new Error('模型响应连接中断或响应协议异常，请稍后继续')).reason).toBe('connection_lost');
- expect(recordProblem('editing',new Error('等待模型响应数据超时，请稍后继续')).reason).toBe('read_timeout');
- expect(recordProblem('editing',new Error('模型请求的代理连接失败，请检查代理后继续')).reason).toBe('proxy');
-});

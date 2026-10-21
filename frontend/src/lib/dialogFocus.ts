@@ -9,6 +9,17 @@ export function useDialogEntryFocus(ref: RefObject<HTMLElement | null>) {
   }, [ref]);
 }
 
+/** Capture the opener before showModal moves focus, then restore it on dismissal. */
+export function useModalDialog(ref: RefObject<HTMLDialogElement | null>) {
+  useEffect(() => {
+    const previous = document.activeElement;
+    const dialog = ref.current;
+    dialog?.showModal();
+    dialog?.querySelector<HTMLElement>('[data-dialog-initial-focus]')?.focus();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, [ref]);
+}
+
 /** Keep boundary Tab presses inside the modal instead of visiting browser chrome. */
 export function trapDialogFocus(event: KeyboardEvent<HTMLElement>) {
   if (event.key !== 'Tab' || event.defaultPrevented) return;

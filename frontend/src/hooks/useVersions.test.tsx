@@ -8,7 +8,7 @@ import type {
   Transcript,
   TranscriptManifest,
 } from "../types";
-import { removeEdit, readModelEdit, createEdit, renameEditLabel } from "../localStore";
+import { removeEdit, readModelEdit, createEdit, renameEditLabel, renameModelLabel } from "../localStore";
 import { useVersions } from "./useVersions";
 
 afterEach(cleanup);
@@ -283,7 +283,7 @@ it("keeps the old save target until the fallback manuscript has finished loading
  let work!:Promise<void>;await act(async()=>{work=ui.result.current.confirmDelete();});
  expect(ui.result.current.activeModel?.activeEditId).toBe("e1");expect(deps.reset).not.toHaveBeenCalled();
  await act(async()=>{read.resolve({kind:"te-edited",audio:"a.m4a",metadata:METADATA,transcript:transcriptWith("剩余稿件")});await work;});
- expect(ui.result.current.activeModel?.activeEditId).toBe("e2");expect(deps.reset).toHaveBeenCalledWith(transcriptWith("剩余稿件"));
+ expect(ui.result.current.activeModel?.activeEditId).toBe("e2");expect(deps.reset).toHaveBeenCalledWith(transcriptWith("剩余稿件"), METADATA);
 });
 it("does not replace the current document after a slow version creation finishes in another interview",async()=>{
  const deps=hookDeps();const ui=renderHook(p=>useVersions(p),{initialProps:deps});
@@ -305,4 +305,18 @@ it("renames in place without opening naming dialog or changing selection",async(
  expect(ui.result.current.activeModel?.edits[0].label).toBe("定稿");
  expect(ui.result.current.activeModel?.activeEditId).toBe("e1");
  expect(ui.result.current.namingOpen).toBe(false);expect(deps.reset).not.toHaveBeenCalled();
+});
+
+it('renames only the original display label, preserving selection and manuscript identity',async()=>{
+ const deps=hookDeps();const ui=renderHook(()=>useVersions(deps));
+ act(()=>ui.result.current.applyManifest(MANIFEST));
+ const renamed={...MANIFEST,models:MANIFEST.models.map(m=>({...m,label:'Synthetic original'}))};
+ vi.mocked(renameModelLabel).mockResolvedValueOnce(renamed);
+ await act(async()=>{await ui.result.current.renameVersion('m1','model-name',' Synthetic original ');});
+ expect(renameModelLabel).toHaveBeenLastCalledWith(deps.dirHandleRef.current,'a.m4a','m1','Synthetic original');
+ expect(ui.result.current.activeModel?.id).toBe('m1');
+ expect(ui.result.current.activeModel?.activeEditId).toBe(MANIFEST.models[0].activeEditId);
+ expect(ui.result.current.activeModel?.original).toBe(MANIFEST.models[0].original);
+ expect(ui.result.current.activeModel?.edits).toEqual(MANIFEST.models[0].edits);
+ expect(deps.reset).not.toHaveBeenCalled();
 });

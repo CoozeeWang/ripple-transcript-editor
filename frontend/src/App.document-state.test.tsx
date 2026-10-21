@@ -1,13 +1,22 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { ConnectorContext, type ConnectorState } from './hooks/connectorContext';
+import { act, cleanup, fireEvent, render as renderBase, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import App from "./App";
+import type { ReactNode } from 'react';
+import { AIConnectorProvider } from './components/AIConnectorProvider';
+function render(ui: ReactNode) {
+  const result = renderBase(<AIConnectorProvider>{ui}</AIConnectorProvider>);
+  return { ...result, rerender: (next: ReactNode) => result.rerender(<AIConnectorProvider>{next}</AIConnectorProvider>) };
+}
+import * as local from "./localStore";
+import type { UsePersistenceDeps } from "./hooks/usePersistence";
 import type { UseFolderDeps } from "./hooks/useFolder";
 
-const fixture = vi.hoisted(() => ({ folder: null as UseFolderDeps | null, flush: vi.fn(async () => {}) }));
+const fixture = vi.hoisted(() => ({ persistence: null as UsePersistenceDeps | null, folder: null as UseFolderDeps | null, directory: null as FileSystemDirectoryHandle | null, flush: vi.fn(async () => {}) }));
 vi.mock("./hooks/useFolder", () => ({ useFolder: (deps: UseFolderDeps) => {
   fixture.folder = deps;
-  return { dirHandle: null, dirHandleRef: { current: null }, startPref: { type: "last" },
+  return { dirHandle: null, dirHandleRef: { current: fixture.directory }, startPref: { type: "last" },
     preferredStartName: "", recentFolders: [], audioFiles: [], legacyEntries: [],
     migratingLegacy: false, selectedAudio: null, setSelectedAudio: vi.fn(),
     refreshAudioList: vi.fn(), loadAudio: vi.fn(), applyStartPref: vi.fn(),
@@ -17,7 +26,7 @@ vi.mock("./hooks/useFolder", () => ({ useFolder: (deps: UseFolderDeps) => {
 vi.mock("./hooks/useProviders", () => ({ useProviders: () => ({ providers: [],
   selectedProviderId: "", setSelectedProviderId: vi.fn(), defaultProviderId: null,
   activeProviderName: "", setActiveProviderName: vi.fn() }) }));
-vi.mock("./hooks/usePersistence", () => ({ usePersistence: () => ({ flushPendingSave: fixture.flush }) }));
+vi.mock("./hooks/usePersistence", () => ({ usePersistence: (deps: UsePersistenceDeps) => { fixture.persistence = deps; return { flushPendingSave: fixture.flush }; } }));
 vi.mock("./hooks/useOpeningPosition", () => ({ useOpeningPosition: () => {} }));
 
 function load(name: string, title = name) {
@@ -34,7 +43,29 @@ function loadFresh(name: string) {
   act(() => { fixture.folder!.onLoaded({ url: "", manifest: null, edited: null }, name); });
 }
 
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+vi.mock("./localStore", async original=>({...await original<typeof local>(),readModelOriginal:vi.fn()}));
+afterEach(() => { fixture.directory=null;cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); });
+
+it('expires loaded segment-count success, restarts on reopening and preserves load errors and text', () => {
+  vi.useFakeTimers();
+  render(<App />);
+  load('Synthetic.wav');
+  expect(document.querySelector('.process-notice')?.textContent).toContain('1');
+  act(() => vi.advanceTimersByTime(3000));
+  load('Synthetic.wav');
+  act(() => vi.advanceTimersByTime(3999));
+  expect(document.querySelector('.process-notice')).toBeTruthy();
+  act(() => vi.advanceTimersByTime(1));
+  expect(document.querySelector('.process-notice')).toBeNull();
+  expect(screen.getByText('Synthetic.wav的内容')).toBeTruthy();
+  load('Synthetic.wav');
+  const close = document.querySelector('.process-notice button')!;
+  fireEvent.click(close);
+  expect(document.querySelector('.process-notice')).toBeNull();
+  act(() => fixture.folder!.onLoadError('Synthetic read failure; retry', true));
+  act(() => vi.advanceTimersByTime(10000));
+  expect(screen.getByRole('alert').textContent).toContain('Synthetic read failure');
+});
 
 it("uses the complete recording filename for a new project's manuscript without changing the session", () => {
   const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
@@ -48,15 +79,15 @@ it("uses the complete recording filename for a new project's manuscript without 
   expect(session.title).toBe("第一场");
 });
 
-it("keeps a saved recording draft title and an existing manuscript title", () => {
+it("uses the recording combination name when opening both draft and manuscript versions", () => {
   const session = { id: "session", title: "第一场", participants: [], topics: [], notes: "", location: "",
     recorded_at: null, created_at: "", updated_at: "" };
   const draft = { metadata: { ...session, title: "我改过的标题" }, speakers: [] };
   render(<App recordingLabel="录音_A.m4a" interviewMetadata={session} recordingDraft={draft} />);
   loadFresh("stored-a.m4a");
-  expect(screen.getByRole("heading", { name: "我改过的标题" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
   load("stored-a.m4a", "导入稿标题");
-  expect(screen.getByRole("heading", { name: "导入稿标题" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "录音_A.m4a" })).toBeTruthy();
 });
 
 it("does not inherit hidden speaker IDs from old global storage or a previous document", () => {
@@ -101,4 +132,59 @@ it('waits for successful persistence before leaving the editor for projects', as
   expect(screen.getByText(/保存失败，请重试/)).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '返回项目' })); });
   expect(leave).toHaveBeenCalledOnce();
+});
+
+it('opens an original with readable markers and disables their modification', async () => {
+  Object.assign(HTMLElement.prototype, { scrollIntoView: vi.fn() });
+  render(<App />);
+  const name='Synthetic.wav';
+  const segment={id:'synthetic-segment',speaker_id:'synthetic-speaker',start:0,end:2,text:'Synthetic original text',annotations:[{id:'synthetic-note',text:'Synthetic original annotation',createdAt:'2026-01-01'}],highlights:[{id:'synthetic-highlight',start:0,end:9}]};
+  const transcript={audio:{filename:name,duration:2},speakers:[{id:'synthetic-speaker',name:'Synthetic speaker'}],segments:[segment]};
+  const metadata={id:'synthetic',title:'Synthetic original',participants:[],topics:[],notes:'',location:'',recorded_at:null,created_at:'',updated_at:''};
+  await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:name,activeModelId:'m1',models:[{id:'m1',engine:'synthetic',createdAt:'2026-01-01',original:'original.json',activeEditId:'',edits:[]}]},edited:{kind:'te-edited',audio:name,metadata,transcript}},name);});
+  expect(screen.getByText(/当前转录稿为只读/)).toBeTruthy();
+  const card=screen.getByText('Synthetic original annotation').closest('.annotation-card')!;
+  expect((card.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.doubleClick(screen.getByText('Synthetic original annotation'));
+  expect(card.querySelector('textarea')).toBeNull();
+  expect((screen.getByRole('textbox',{name:'给当前片段添加批注'}) as HTMLTextAreaElement).disabled).toBe(true);
+  expect(segment.annotations[0].text).toBe('Synthetic original annotation');
+});
+
+it('opens the explicitly selected engine original instead of the last editing revision',async()=>{
+ fixture.directory={} as FileSystemDirectoryHandle;
+ const metadata={id:'synthetic',title:'Synthetic',participants:[],topics:[],notes:'',location:'',recorded_at:null,created_at:'',updated_at:''};
+ const transcript={audio:{filename:'synthetic.wav',duration:2},speakers:[{id:'speaker',name:'Synthetic'}],segments:[{id:'s1',speaker_id:'speaker',start:0,end:2,text:'Original synthetic words'}]};
+ vi.mocked(local.readModelOriginal).mockResolvedValue({transcript} as never);
+ Object.assign(HTMLElement.prototype,{scrollIntoView:vi.fn()});
+ render(<App initialOriginalModelId="engine"/>);
+ await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:'synthetic.wav',activeModelId:'engine',models:[{id:'engine',engine:'synthetic',createdAt:'2026-01-01',original:'original.json',activeEditId:'e2',edits:[{id:'e2',file:'e2.json',updated_at:''}]}]},edited:{kind:'te-edited',audio:'synthetic.wav',metadata,transcript:{...transcript,segments:[{...transcript.segments[0],text:'AI synthetic words'}]}}},'synthetic.wav');});
+ expect(local.readModelOriginal).toHaveBeenCalledWith(fixture.directory,'synthetic.wav','engine');
+ expect(screen.getByText('Original synthetic words')).toBeTruthy();expect(screen.queryByText('AI synthetic words')).toBeNull();
+ expect(screen.getByText(/当前转录稿为只读/)).toBeTruthy();
+});
+
+// Recording labels can differ from the title inside an imported file. The
+// normalized display metadata and persistence baseline must be the same object.
+it("publishes the exact loaded metadata and transcript references after applying the recording label", () => {
+  render(<App recordingLabel="Synthetic recording" />);
+  load("synthetic.wav", "Synthetic imported title");
+  const current = fixture.persistence!;
+  expect(current.metadata?.title).toBe("Synthetic recording");
+  expect(current.persistedContent?.metadata).toBe(current.metadata);
+  expect(current.persistedContent?.transcript).toBe(current.transcript);
+  loadFresh("synthetic.wav");
+  expect(fixture.persistence!.persistedContent?.metadata).toBe(fixture.persistence!.metadata);
+  expect(fixture.persistence!.persistedContent?.transcript).toBe(fixture.persistence!.transcript);
+});
+
+it('shows damaged-journal recovery when no AI activity or healthy task could be recovered', async () => {
+  const state: ConnectorState = { enabled: false, setEnabled: vi.fn(), reconnect: vi.fn(), status: 'off', activities: [], tasks: [],
+    taskError: 'continuation_journal_unreadable', taskAction: vi.fn(async () => ({})), targetLocked: () => false };
+  renderBase(<ConnectorContext.Provider value={{ state, register: vi.fn(), unregister: vi.fn() }}><App /></ConnectorContext.Provider>);
+  load('Synthetic.wav');
+  expect(screen.getByRole('alert').textContent).toContain('其他任务仍可使用');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '刷新进度' })); });
+  expect(state.taskAction).toHaveBeenCalledWith('tasks', undefined);
+  expect(screen.getByText('Synthetic.wav的内容')).toBeTruthy();
 });

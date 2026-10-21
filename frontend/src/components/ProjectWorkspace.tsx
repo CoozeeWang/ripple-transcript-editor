@@ -1,5 +1,8 @@
+import { registerDesktopUpdateGuard } from '../lib/desktopUpdates';
+import { blocksHumanEditing } from '../lib/aiEditOwnership';
+import { ActionIcon } from './ActionIcon';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
-import { nativeDesktopAvailable } from '../lib/desktopFs';
+import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
 import { LanguageControl } from './LanguageControl';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory, pickerLocation, OPEN_LAST_PROJECT, restoredInterview, rememberInterview, canRestoreProject } from '../lib/projectPreferences';
@@ -10,8 +13,9 @@ import { DeleteMaterialDialog, ProjectTrashDialog } from './ProjectTrashDialog';
 import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
 import { ProjectImportStatus } from './ProjectImportStatus';
-import { manuscriptImportNotice } from '../lib/materialImport';
-import { useEffect, useRef, useState } from 'react';
+import { manuscriptImportNoticeKeys } from '../lib/materialImport';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { ConnectorContext } from '../hooks/connectorContext';
 import App from '../App';
 import { prepareMaterials } from '../lib/materialImport';
 import { ProjectExportDialog } from './ProjectExportDialog';
@@ -22,7 +26,7 @@ import { ProjectBoard } from './ProjectBoard';
 import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
 import { useDismissable } from '../useDismissable';
-import { trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject,
+import { moveProjectRecordings, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject,
   type ExistingManuscript, type OpenProject, type ProjectRecording, type ProjectImportStage } from '../lib/projectStore';
 import './projectWorkspace.css';
 
@@ -31,17 +35,23 @@ type Picker = Window & {
   showOpenFilePicker: (options: { multiple: boolean; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
 };
 export function ProjectWorkspace() {
-  useInterfaceLanguage();
+  const aiConnector = useContext(ConnectorContext);
+  const language = useInterfaceLanguage();
   const audioStorage = useAudioStorageChoice();
   const [trashOpen,setTrashOpen]=useState(false);
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
   const [deleteTarget,setDeleteTarget]=useState<{recording:ProjectRecording;modelId?:string;name:string;hasDocuments:boolean;sessionId:string}|null>(null);
   const [project, setProject] = useState<OpenProject | null>(null);
+  const [mediaRevision, setMediaRevision] = useState(0);
+  const assertRecordingMutable = (session: string, recording: string) => {
+    if (aiConnector?.state.targetLocked('', recording, session, project?.data.id)) throw Error(msg('aiEditing.inUse'));
+  };
   const [recent, setRecent] = useState<Awaited<ReturnType<typeof recentProjects>>>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
-  const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string } | null>(null);
+  const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string; originalModelId?: string } | null>(null);
   const [association, setAssociation] = useState<{ source: string; modelId: string; name: string; anchor:DOMRect } | null>(null);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [recentRecovery, setRecentRecovery] = useState<{id:string;title:string;reason:'missing'|'permission'|'unreadable'} | null>(null);
   const recentRef = useRef<HTMLDivElement>(null);
   useDismissable(recentRef, recentOpen, () => setRecentOpen(false));
   const [settings, setSettings] = useState(false);
@@ -67,7 +77,8 @@ export function ProjectWorkspace() {
   const [editingDescription, setEditingDescription] = useState<string | null>(null);
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [archiving, setArchiving] = useState(false);
-  const [importNotice, setImportNotice] = useState<string[]>([]);
+  const exportButton = useRef<HTMLButtonElement>(null);
+  const [importNotice, setImportNotice] = useState<{ name: string; keys: string[] }[]>([]);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [importStage, setImportStage] = useState<ProjectImportStage | null>(null);
   const importController = useRef<AbortController | null>(null);
@@ -95,6 +106,7 @@ export function ProjectWorkspace() {
             return;
           }
           const next = await openProject(items[0].directory);
+          if (next.data.id !== items[0].id) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
           if (!cancelled) { setInterviewId(restoredInterview(next)); setProject(next); current.current = next; }
         }
       } catch { if (!cancelled) setError(msg('ProjectWorkspace.m0900')); }
@@ -120,19 +132,29 @@ export function ProjectWorkspace() {
   const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => {
     let handle = directory;
     if (handle && expectedId && nativeDesktopAvailable()) {
-      const saved = handle as FileSystemDirectoryHandle & { queryPermission?: (options: { mode: string }) => Promise<string> };
-      let permission = 'prompt';
-      try { permission = await saved.queryPermission?.({ mode: 'readwrite' }) ?? 'prompt'; } catch { /* Re-select below. */ }
-      if (permission !== 'granted') handle = await chooseDirectory('open-project');
+      const status = await nativeAccessStatus(handle);
+      if (status !== 'granted') {
+        setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,reason:status});
+        return;
+      }
     }
     handle ??= await chooseDirectory('open-project');
     await permit(handle, 'readwrite');
-    const next = await openProject(handle);
+    let next: OpenProject;
+    try { next = await openProject(handle); }
+    catch (error) {
+      if (directory && expectedId) {
+        setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,
+          reason:(error as {name?:string})?.name==='NotFoundError'?'missing':'unreadable'});
+        return;
+      }
+      throw error;
+    }
     if (expectedId && next.data.id !== expectedId) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
-    setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
+    setRecentRecovery(null); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
-  const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string) => {
+  const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string, editId?: string) => {
     if (!project || !targetId) return;
     const target = project.data.interviews.find(i => i.id === targetId);
     if (!target) throw new Error(msg('ProjectWorkspace.m0902'));
@@ -142,18 +164,22 @@ export function ProjectWorkspace() {
     // Request access during the user gesture, but missing media must not block manuscripts.
     try { await permit(await resolveMedia(project, targetId, recording), 'read'); } catch { /* Editor displays offline media notice. */ }
     const directory = await recordingDirectory(project, targetId, recording);
-    if (modelId) await persistActiveModel(directory, recording.file, modelId);
-    setInterviewId(targetId); setEditor({ directory, recording, title: target.title });
+    if (modelId) await persistActiveModel(directory, recording.file, modelId, editId === "original" ? undefined : editId);
+    setInterviewId(targetId); setEditor({ directory, recording, title: target.title, originalModelId: editId === "original" ? modelId : undefined });
     editorLease.current = release; opened = true;
     } finally { if (!opened) release(); }
   };
-  const openRecording = (recording: ProjectRecording, targetId = interviewId, modelId?: string) => run(async () => { if (project && targetId) await enterRecording(project, recording, targetId, modelId); });
+  const openRecording = (recording: ProjectRecording, targetId = interviewId, modelId?: string, editId?: string) => run(async () => { if (project && targetId) await enterRecording(project, recording, targetId, modelId, editId); });
   const checkManuscripts = async (targetId: string, recordings: ProjectRecording[], folder?: FileSystemDirectoryHandle) => {
     const parent = folder ?? await chooseDirectory('open-audio-folder', 'read');
     const items = await findExistingManuscripts(parent, recordings);
     setLegacyCandidates({ interviewId: targetId, items });
     if (!items.length) setError(msg('ProjectWorkspace.m0903'));
   };
+  useEffect(() => registerDesktopUpdateGuard(async () => {
+    if (busyRef.current || aiConnector?.state.activities?.some(blocksHumanEditing)) throw Error('update_work_in_progress');
+    if (creating || materialTarget !== undefined || (!editor && !settings && hasEditorDrafts()) || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description)) throw Error('update_unsaved_project');
+  }));
   const returnHome = () => {
     if (busy) return;
     const dirty = creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
@@ -161,8 +187,15 @@ export function ProjectWorkspace() {
     setTrashOpen(false);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice([]); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
-  if (editor && project) return <App key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
-    projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={editor.recording.name}
+  if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
+    connectorProject={() => current.current} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
+    projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
+    onRenameInterview={async title => {
+      const snapshot = current.current!;
+      const interviews = snapshot.data.interviews.map(session => ({...session, recordings: session.recordings.map(recording =>
+        recording.id===editor.recording.id ? {...recording, name:title.trim()} : recording)}));
+      await publish(await saveProject(snapshot, {...snapshot.data, interviews}));
+    }}
     interviewMetadata={interview?.metadata} recordingDraft={interview?.recordings.find(item => item.id === editor.recording.id)?.draft}
     saveRecordingDraft={async draft => {
       const snapshot = current.current!;
@@ -180,31 +213,25 @@ export function ProjectWorkspace() {
     {!welcoming && <header className="project-home__header">
       {!welcoming && <button type="button" className="brand project-brand-home" aria-label={msg('ProjectWorkspace.m0905')} data-tip={msg('ProjectWorkspace.m0906')} data-tip-pos="bottom" disabled={busy} onClick={returnHome}><img className="brand-mark" src="/ripple-icon.svg" alt="" /><div><p className="product-name">Ripple</p><p className="file-name">Transcription Editor</p></div></button>}
       <nav aria-label={msg('ProjectWorkspace.m0907')}>
-        <button ref={settingsButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0908')} data-tip={msg('ProjectWorkspace.m0909')} data-tip-pos="bottom" disabled={busy || creating || materialTarget !== undefined} onClick={() => setSettings(true)}><svg
-                className="toolbar-button-icon"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-              </svg></button>
+        <button ref={settingsButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0908')} data-tip={msg('ProjectWorkspace.m0909')} data-tip-pos="bottom" disabled={busy || creating || materialTarget !== undefined} onClick={() => setSettings(true)}><ActionIcon kind="settings"/></button>
         <LanguageControl />
       </nav>
     </header>}
     {audioStorage.dialog}<section className="project-home__content" aria-busy={busy}>
+      {project?.finderIconWarning && <p role="status" className="settings-hint">{msg('ProjectWorkspace.finderIconWarning')}</p>}
+      {recentRecovery && <div className="project-error-notice recent-project-recovery" role="status">
+        <p>{msg(recentRecovery.reason==='missing'?'ProjectWorkspace.recentMissing':recentRecovery.reason==='permission'?'ProjectWorkspace.recentPermission':'ProjectWorkspace.recentUnreadable',{title:recentRecovery.title})}</p>
+        <div className="recent-project-recovery__actions">
+          <button type="button" className="button button--secondary" disabled={busy} onClick={()=>chooseProject(undefined,recentRecovery.id)}>{msg('ProjectWorkspace.recentRecover')}</button>
+          <button type="button" className="button button--secondary" disabled={busy} onClick={()=>setRecentRecovery(null)}>{msg('ProjectWorkspace.recentDismiss')}</button>
+        </div>
+      </div>}
       {error && !welcoming && <div ref={errorNotice} className="project-error-notice" role="alert" aria-atomic="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
-        <p>{uiMessage(error)}</p>
+        <p>{uiMessage(error)}</p><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setError('')}>×</button>
       </div>}
       {busy && showProgress && !importStage && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
-      {successNotice && <ProcessingNotice>{successNotice}</ProcessingNotice>}
+      {successNotice && <ProcessingNotice>{uiMessage(successNotice)}</ProcessingNotice>}
       {!project ? <>
         {creating ? <ProjectSetup onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { void publish(next); setSuccessNotice(next.data.interviews.some(interview => interview.recordings.length > 0) ? msg('projectImport.materialsDone') : null); setCreating(false); setInterviewId(next.data.interviews[0]?.id ?? null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
           <div className="project-welcome__identity">
@@ -216,7 +243,7 @@ export function ProjectWorkspace() {
             <button className="welcome-card" disabled={busy} onClick={() => void chooseProject()}><ProjectIcon kind="project" /><span>{msg('ProjectWorkspace.m0915')}</span></button>
             <div className="recent-dock" ref={recentRef}>
               <button className="recent-dock__btn" aria-label={msg('ProjectWorkspace.m0916')} title={msg('ProjectWorkspace.m0917')} aria-expanded={recentOpen} aria-controls="welcome-recent-projects" disabled={busy} onClick={() => setRecentOpen(open => !open)}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                <ActionIcon kind="clock"/>
               </button>
               {recentOpen && <section id="welcome-recent-projects" className="recent-pop project-welcome__recent"><h2>{msg('ProjectWorkspace.m0918')}</h2>
           {!recent.length ? <p className="settings-hint">{msg('ProjectWorkspace.m0919')}</p> : <div className="project-list">{recent.map(item => <div className="project-recent-row" key={item.id}>
@@ -233,18 +260,18 @@ export function ProjectWorkspace() {
           </div>
           {error && <div ref={errorNotice} className="project-error-notice project-welcome__error" role="alert" aria-atomic="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
-            <p>{uiMessage(error)}</p>
+            <p>{uiMessage(error)}</p><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setError('')}>×</button>
           </div>}
         </section>}
       </> : <>
-        {deleteTarget&&<DeleteMaterialDialog name={deleteTarget.name} audio={!deleteTarget.modelId} referenced={!deleteTarget.modelId&&deleteTarget.recording.storage==='reference'} hasDocuments={deleteTarget.hasDocuments} busy={busy} error={error} onCancel={()=>setDeleteTarget(null)} onDelete={keepDocuments=>void run(async()=>{const next=await trashProjectMaterial(current.current!,deleteTarget.sessionId,deleteTarget.recording.id,{modelId:deleteTarget.modelId,keepDocuments});await publish(next);setUndoTrash(next.data.trash!.at(-1)!.id);setDeleteTarget(null);},false)}/>}
+        {deleteTarget&&<DeleteMaterialDialog name={deleteTarget.name} audio={!deleteTarget.modelId} referenced={!deleteTarget.modelId&&deleteTarget.recording.storage==='reference'} hasDocuments={deleteTarget.hasDocuments} busy={busy} error={error} onCancel={()=>setDeleteTarget(null)} onDelete={keepDocuments=>void run(async()=>{assertRecordingMutable(deleteTarget.sessionId,deleteTarget.recording.id);const next=await trashProjectMaterial(current.current!,deleteTarget.sessionId,deleteTarget.recording.id,{modelId:deleteTarget.modelId,keepDocuments});await publish(next);setUndoTrash(next.data.trash!.at(-1)!.id);setDeleteTarget(null);},false)}/>}
         {trashOpen&&<ProjectTrashDialog project={project} busy={busy} error={error} onClose={()=>setTrashOpen(false)} onRestore={id=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,id));if(undoTrash===id)setUndoTrash(null);},false)} onClear={()=>void run(async()=>{await publish(await clearProjectTrash(current.current!));setUndoTrash(null);},false)}/>}
         {undoTrash&&project.data.trash?.some(t=>t.id===undoTrash)&&!trashOpen&&<TrashUndoNotice key={undoTrash} busy={busy} onUndo={()=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,undoTrash));setUndoTrash(null);},false)} onDismiss={()=>setUndoTrash(null)}/>}
         <div className="setup-title project-saved-title" hidden={materialTarget !== undefined}><ProjectIcon kind="project" /><div className="project-title-content"><div className="project-title-row"><div className="project-title-heading"><h1><InlineEdit doubleClick disabled={busy} value={project.data.title} ariaLabel={msg('ProjectWorkspace.m0922')} onCommit={next => { void run(async () => { if (!next.trim()) throw new Error(msg('ProjectWorkspace.m0923')); await publish(await saveProject(project, { ...project.data, title: next.trim() })); }); }} /></h1>
           </div><div className="project-title-actions">
-          <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ProjectIcon kind="trash"/></button>
-          {project.data.interviews.length > 0 && <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
-            <svg className="toolbar-button-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ActionIcon kind="trash"/></button>
+          {project.data.interviews.length > 0 && <button ref={exportButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
+            <ActionIcon kind="export"/>
           </button>}</div>
         </div>
         {editingDescription === project.data.id ? <form className="project-description-editor" onSubmit={e => { e.preventDefault(); void run(async () => {
@@ -259,14 +286,21 @@ export function ProjectWorkspace() {
         </div></div>
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
-        {importNotice.length>0&&<div className="project-import-notices" role="status">{importNotice.map((note,index)=><p key={index}>{note}</p>)}</div>}
-        <ProjectBoard key={project.data.id} project={project} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={setInterviewId}
+        {importNotice.length>0&&<div className="project-import-notices" role="status"><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setImportNotice([])}>×</button>{importNotice.map((note,index)=><p key={index}>{note.name}{language === 'en' ? ': ' : '：'}{note.keys.map(key => msg(key)).join(language === 'en' ? ' ' : '')}</p>)}</div>}
+        <ProjectBoard key={project.data.id} project={project} mediaRevision={mediaRevision} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={id=>{setError('');setImportNotice([]);setInterviewId(id);}}
           save={interviews => { void run(async () => {
             const snapshot = current.current!;
             setProject({ ...snapshot, data: { ...snapshot.data, interviews } });
             try { await publish(await saveProject(snapshot, { ...snapshot.data, interviews })); }
             catch (error) { setProject(snapshot); throw error; }
           }, false); }}
+          moveRecordings={async (source, target, ids) => {
+            ids.forEach(id => assertRecordingMutable(source, id));
+            const next = await moveProjectRecordings(current.current!, source, target, ids);
+            await publish(next);
+            setMediaRevision(value => value + 1);
+            setSuccessNotice(msg('recordingMove.done', { target: next.data.interviews.find(session => session.id === target)!.title }));
+          }}
           createSession={async session => {
             const snapshot = current.current!;
             await publish(await saveProject(snapshot, { ...snapshot.data, interviews: [...snapshot.data.interviews, session] }));
@@ -289,14 +323,14 @@ export function ProjectWorkspace() {
             importController.current = null;
             await publish(imported);
             if (kind === 'audio') setSuccessNotice(msg('projectImport.audioDone'));
-            setImportNotice(materials.flatMap(item => { const note = manuscriptImportNotice(item); return note ? [`${item.name}：${note}`] : []; }));
+            setImportNotice(materials.flatMap(item => { const keys = manuscriptImportNoticeKeys(item); return keys.length ? [{ name: item.name, keys }] : []; }));
           }}
-          add={id => setMaterialTarget(id ?? null)} open={(recording, modelId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId); }} run={run}
+          add={id => setMaterialTarget(id ?? null)} open={(recording, modelId, editId) => { void openRecording(recording, interviewId ?? project.data.interviews[0]?.id, modelId, editId); }} run={run}
           legacy={recording => { void run(() => checkManuscripts(interviewId ?? project.data.interviews[0].id, [recording])); }}
           remove={(recording,model,hasDocuments=false)=>{setError('');setDeleteTarget({recording,modelId:model?.id,name:model?.label||model?.sourceName||model?.engine||recording.name,hasDocuments,sessionId:interviewId??project.data.interviews[0].id});}}
-          detach={async (recording, modelId) => { const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}
+          detach={async (recording, modelId) => { assertRecordingMutable(interviewId!,recording.id); const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}
           associate={(recording,model,anchor) => { setError('');setInterviewId(interviewId ?? project.data.interviews[0].id); setAssociation({ source: recording.id, modelId:model.id, name:model.label||model.sourceName||model.engine,anchor }); }}
-          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); }); }} />
+          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) { assertRecordingMutable(interviewId!,recording.id); await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); setMediaRevision(value => value + 1); } }); }} />
             {interview && legacyCandidates?.interviewId === interview.id && legacyCandidates.items.map((candidate, index) => <div className="project-section project-import-existing" key={`${candidate.recordingId}:${index}`}>
               <strong>{msg('ProjectWorkspace.m0938')}</strong>
               <p>{candidate.directory.name}</p>
@@ -309,12 +343,12 @@ export function ProjectWorkspace() {
 
               })}>{msg('ProjectWorkspace.m0941')}</button><button className="cred-btn" disabled={busy} onClick={() => { setLegacyCandidates(null); }}>{msg('ProjectWorkspace.m0942')}</button></div>
             </div>)}
-            {interview && association && <AssociateAudioDialog anchor={association.anchor} name={association.name} recordings={interview.recordings.filter(r=>r.storage!=='none')} busy={busy} error={error} onClose={()=>setAssociation(null)} onConfirm={target=>void run(async()=>{await publish(await reassignManuscript(current.current!,interview.id,association.source,target,association.modelId));setAssociation(null);},false)}/>}
+            {interview && association && <AssociateAudioDialog anchor={association.anchor} name={association.name} recordings={interview.recordings.filter(r=>r.storage!=='none')} busy={busy} error={error} onClose={()=>setAssociation(null)} onConfirm={target=>void run(async()=>{assertRecordingMutable(interview.id,association.source);assertRecordingMutable(interview.id,target);await publish(await reassignManuscript(current.current!,interview.id,association.source,target,association.modelId));setAssociation(null);},false)}/>}
 
 
         </>}
       </>}
     </section>
-    {project && archiving && <ProjectExportDialog project={project} onClose={() => setArchiving(false)} />}
+    {project && archiving && <ProjectExportDialog project={project} returnFocusRef={exportButton} onClose={() => setArchiving(false)} />}
   </main>;
 }

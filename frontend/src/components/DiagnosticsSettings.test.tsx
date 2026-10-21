@@ -1,16 +1,29 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { DiagnosticsSettings } from './DiagnosticsSettings';
 import { CopyProblem } from './CopyProblem';
 import { recordProblem } from '../lib/diagnostics';
-afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+it('expires copied feedback but retains copy failure, with a local dismiss action', async () => {
+  const writeText=vi.fn(async()=>{});
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+  render(<CopyProblem problem={recordProblem('save')} />);
+  vi.useFakeTimers();
+  await act(async()=>fireEvent.click(screen.getByText('复制错误详情')));
+  expect(screen.getByText('已复制')).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(4000));expect(screen.queryByText('已复制')).toBeNull();
+  writeText.mockRejectedValueOnce(Error('synthetic_denied'));
+  await act(async()=>fireEvent.click(screen.getByText('复制错误详情')));
+  act(()=>vi.advanceTimersByTime(10000));expect(screen.getByRole('alert').textContent).toContain('复制失败');
+  fireEvent.click(screen.getByRole('button',{name:'关闭提示'}));expect(screen.queryByRole('alert')).toBeNull();
+});
 it('shows recent local problems even if the backend is unavailable', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
   recordProblem('rename', new DOMException('private filename', 'NotAllowedError'));
   render(<DiagnosticsSettings />);
   expect(screen.getByText('重命名：文件或服务访问权限不足')).toBeTruthy();
-  await screen.findByText(/暂时无法读取后台记录/);
+  await screen.findByText(/暂时无法读取本地服务日志/);
   expect((screen.getByRole('button', { name: "导出诊断与日志" }) as HTMLButtonElement).disabled).toBe(false);
 });
 it('shows an honest clipboard failure instead of claiming success', async () => {
@@ -22,7 +35,7 @@ it('shows an honest clipboard failure instead of claiming success', async () => 
 });
 it('exports only allowlisted records and environment fields', async () => {
   const id = '12345678-1234-1234-1234-123456789abc';
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ records: [{id, time: new Date().toISOString(), operation:'editing',status:502,raw:'secret-key'}] }))));
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ records: [{id, time: new Date().toISOString(), operation:'engine',status:502,raw:'secret-key'}] }))));
   const create = vi.fn<(blob: Blob) => string>(() => 'blob:diagnostic');
   vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});

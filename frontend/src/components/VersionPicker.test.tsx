@@ -2,6 +2,7 @@
 import {useState} from "react";
 import {act,cleanup,fireEvent,render,screen,within} from "@testing-library/react";
 import {afterAll,afterEach,beforeAll,expect,it,vi} from "vitest";
+import {setInterfaceLanguage} from '../i18n';
 import {VersionPicker} from "./VersionPicker";
 import type {TranscriptModel} from "../types";
 import {displayEngineLabel} from "../localStore";
@@ -17,9 +18,9 @@ it("shows the engine rather than the legacy model label and keeps original read-
  fireEvent.click(screen.getByRole("button",{name:"当前版本：v1"}));
  expect(screen.getByText("转录引擎")).toBeTruthy();
  expect(screen.getByText("ElevenLabs Scribe v2")).toBeTruthy();
- expect(screen.queryByText(/分段合并/)).toBeNull();
- expect(screen.queryByRole("button",{name:/重命名原始/})).toBeNull();
- fireEvent.click(screen.getByRole("button",{name:"原始转录稿（只读）"}));
+ expect(screen.getByText(/分段合并/)).toBeTruthy();
+ expect(screen.getByRole("button",{name:"重命名转录稿 ElevenLabs Scribe v2 · 分段合并"})).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"ElevenLabs Scribe v2 · 分段合并（只读）"}));
  expect(select).toHaveBeenCalledWith("m1","original");
  expect(displayEngineLabel("ElevenLabs Scribe v2 · 分段合并")).toBe("ElevenLabs Scribe v2");
 });
@@ -90,18 +91,22 @@ it("single pointer click still selects after the double-click window",()=>{
  act(()=>{vi.runAllTimers();});
  expect(select).toHaveBeenCalledWith("m1","e2");expect(screen.queryByRole("group")).toBeNull();
 });
-it('labels external baselines as imported and offers comparison and new edits without pretending they were transcribed',()=>{
+it.each(['current', 'comparison'] as const)('hides an internal imported snapshot from the %s menu without showing internal implementation notes',async variant=>{
  const select=vi.fn();
- render(<VersionPicker models={[{...models[0],sourceKind:'import',label:undefined}]} value="m1:original" variant="current" onSelect={select} onRename={vi.fn()} onCopy={vi.fn()}/>);
- fireEvent.click(screen.getByRole('button',{name:'当前版本：外部导入（只读）'}));
- expect(screen.getAllByText('外部导入').length).toBeGreaterThan(0);
- expect(screen.queryByText('原始转录稿（只读）')).toBeNull();
- expect(screen.queryByRole('button',{name:/重命名导入稿/})).toBeNull();
+ render(<VersionPicker models={[{...models[0],sourceKind:'import',label:'Synthetic import'}]} value="m1:e1" variant={variant} onSelect={select} onRename={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:variant==='current'?'当前版本：v1':'对照版本：v1'}));
+ expect(screen.queryByText('Synthetic import（只读）')).toBeNull();
+ expect(screen.queryByText('导入时快照保留用于恢复来源与时间定位，不作为对照版本。')).toBeNull();
+ await act(()=>setInterfaceLanguage('en'));
+ expect(screen.queryByText('Synthetic import (read-only)')).toBeNull();
+ expect(screen.queryByText('Import snapshots are retained to recover source and timing information, not as comparison versions.')).toBeNull();
+ expect(select).not.toHaveBeenCalled();
+ await act(()=>setInterfaceLanguage('zh-CN'));
 });
 
 it('renames an imported transcript independently of its edit versions',async()=>{
  const rename=vi.fn();
- render(<VersionPicker models={[{...models[0],sourceKind:'import',label:'人工初稿',sourceName:'访谈.txt'}]} value="m1:original" variant="current" onRename={rename} onSelect={vi.fn()}/>);
+ render(<VersionPicker models={[{...models[0],sourceKind:'import',designatedOriginal:true,label:'人工初稿',sourceName:'访谈.txt'}]} value="m1:original" variant="current" onRename={rename} onSelect={vi.fn()}/>);
  fireEvent.click(screen.getByRole('button',{name:'当前版本：人工初稿（只读）'}));
  fireEvent.click(screen.getByRole('button',{name:'重命名转录稿 人工初稿'}));
  fireEvent.change(screen.getByRole('textbox',{name:'转录稿名称'}),{target:{value:'人工校订稿'}});
@@ -109,7 +114,7 @@ it('renames an imported transcript independently of its edit versions',async()=>
  expect(rename).toHaveBeenCalledWith('m1','model-name','人工校订稿');
  expect(screen.queryByRole('group')).toBeNull();
  const trigger=screen.getByRole('button',{name:'当前版本：人工初稿（只读）'});expect(document.activeElement).toBe(trigger);fireEvent.click(trigger);
- expect(screen.getByRole('button',{name:/^v1.*人工初稿/})).toBeTruthy();
+ expect(screen.getByRole('button',{name:"人工初稿（只读）"})).toBeTruthy();
 });
 
 it('flattens imported groups and keeps a pristine import snapshot out of the current list',()=>{
@@ -120,14 +125,14 @@ it('flattens imported groups and keeps a pristine import snapshot out of the cur
 });
 it('offers an icon action to create an edit from a designated imported original',()=>{
  const copy=vi.fn();render(<VersionPicker models={[{...models[0],sourceKind:'import',designatedOriginal:true,label:'访谈原稿'}]} value="m1:original" variant="current" onSelect={vi.fn()} onRename={vi.fn()} onCopy={copy}/>);
- fireEvent.click(screen.getByRole('button',{name:'当前版本：原始转录稿（只读）'}));
+ fireEvent.click(screen.getByRole('button',{name:'当前版本：访谈原稿（只读）'}));
  const button=screen.getByRole('button',{name:"从该原始转录稿新建修改版本"});expect(button.getAttribute('data-tip')).toBe('新建修改版本');fireEvent.click(button);expect(copy).toHaveBeenCalledWith('m1','original');
 });
 
 it('orders imported originals before edits and gives an edit only one rename action',()=>{
  const imported:TranscriptModel[]=[{...models[0],id:'edit',sourceKind:'import',label:'外部修改稿'}, {...models[0],id:'original',sourceKind:'import',designatedOriginal:true,label:'原稿'}];
  render(<VersionPicker models={imported} value="original:original" variant="current" onSelect={vi.fn()} onRename={vi.fn()} onCopy={vi.fn()}/>);
- fireEvent.click(screen.getByRole('button',{name:'当前版本：原始转录稿（只读）'}));
+ fireEvent.click(screen.getByRole('button',{name:'当前版本：原稿（只读）'}));
  const menu=screen.getByRole('group',{name:'当前版本列表'});
  const rows=menu.querySelectorAll('.version-picker-row');expect(rows[0].classList.contains('version-picker-row--original')).toBe(true);
  const editRow=Array.from(rows).find(row=>row.textContent?.includes('v1'))!;
@@ -150,7 +155,7 @@ it('navigates version actions without dispatching a global arrow shortcut',()=>{
  fireEvent.click(screen.getByRole('button',{name:'当前版本：v1'}));
  const globalKey=vi.fn();window.addEventListener('keydown',globalKey);
  fireEvent.keyDown(document.activeElement!,{key:'End'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'重命名校订稿'}));
- fireEvent.keyDown(document.activeElement!,{key:'Home'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'原始转录稿（只读）'}));
+ fireEvent.keyDown(document.activeElement!,{key:'Home'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'ElevenLabs Scribe v2 · 分段合并（只读）'}));
  expect(globalKey).not.toHaveBeenCalled();window.removeEventListener('keydown',globalKey);
 });
 
@@ -158,7 +163,7 @@ it('keeps a mouse selection alive when WebKit would blur the focused row without
  const select=vi.fn();
  render(<VersionPicker models={models} value="m1:e1" variant="comparison" excluded="m1:e1" onSelect={select} onRename={vi.fn()}/>);
  fireEvent.click(screen.getByRole('button',{name:'对照版本：选择版本'}));
- const option=screen.getByRole('button',{name:'原始转录稿（只读）'});
+ const option=screen.getByRole('button',{name:'ElevenLabs Scribe v2 · 分段合并（只读）'});
  const focused=document.activeElement!;
  // On macOS, a pointer press on a button can move focus to the document,
  // closing the popup before its subsequent click reaches the option.
@@ -166,4 +171,65 @@ it('keeps a mouse selection alive when WebKit would blur the focused row without
  if(allowed)fireEvent.blur(focused,{relatedTarget:null});
  if(option.isConnected)fireEvent.click(option,{detail:1});
  expect(select).toHaveBeenCalledWith('m1','original');
+});
+
+it.each(['current', 'comparison'] as const)('marks the selected %s row independently of keyboard focus', variant => {
+ render(<VersionPicker models={models} value="m1:e1" variant={variant} onSelect={vi.fn()} onRename={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button', { name: variant==='current' ? '当前版本：v1' : '对照版本：v1' }));
+ const selected=screen.getByRole('button', { name:'v1', pressed:true });
+ const other=screen.getByRole('button', { name:'校订稿', pressed:false });
+ other.focus();
+ expect(document.activeElement).toBe(other);
+ expect(selected.querySelector('.version-picker-selection')?.getAttribute('aria-hidden')).toBe('true');
+ expect(selected.querySelector('.version-picker-selection')?.textContent).toBe('✓');
+ expect(other.querySelector('.version-picker-selection')).toBeNull();
+});
+
+it('refreshes open menu and trigger punctuation without changing its selected version',async()=>{
+ const select=vi.fn();
+ render(<VersionPicker models={models} value="m1:e1" variant="current" onSelect={select} onRename={vi.fn()}/>);
+ const trigger=screen.getByRole('button',{name:'当前版本：v1'});fireEvent.click(trigger);
+ try {
+  await act(()=>setInterfaceLanguage('en'));
+  expect(screen.getByRole('button',{name:'Current version: v1'})).toBe(trigger);
+  const menu=screen.getByRole('group',{name:'Current version list'});
+  expect(within(menu).getByRole('button',{name:'v1'}).getAttribute('aria-pressed')).toBe('true');
+  expect(select).not.toHaveBeenCalled();
+ } finally { await act(()=>setInterfaceLanguage('zh-CN')); }
+});
+
+it.each(['zh-CN','zh-TW','en'] as const)('renames engine originals in either picker without selecting or changing content (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {msg}=await import('../i18n');
+ const select=vi.fn(),rename=vi.fn();
+ for(const variant of ['current','comparison'] as const){
+  const view=render(<VersionPicker models={models} value="m1:original" variant={variant} onSelect={select} onRename={rename}/>);
+  fireEvent.click(view.container.querySelector('.version-picker-trigger')!);
+  fireEvent.click(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:models[0].label!})}));
+  const input=screen.getByRole('textbox',{name:msg('VersionPicker.m1093')});
+  expect(document.activeElement).toBe(input);
+  fireEvent.change(input,{target:{value:'Synthetic renamed original'}});
+  await act(async()=>fireEvent.click(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:models[0].label!})})));
+  expect(rename).toHaveBeenLastCalledWith('m1','model-name','Synthetic renamed original');
+  expect(select).not.toHaveBeenCalled();expect(models[0].original).toBe('original.json');
+  view.unmount();
+ }
+ await setInterfaceLanguage('zh-CN');
+});
+
+it('keeps an original rename draft on failure, supports cancel, and disables mutations',async()=>{
+ await setInterfaceLanguage('zh-CN');
+ const rename=vi.fn().mockRejectedValue(new Error('Synthetic write failure'));
+ const props={models,value:'m1:original',variant:'current' as const,onSelect:vi.fn(),onRename:rename};
+ const view=render(<VersionPicker {...props}/>);
+ fireEvent.click(view.container.querySelector('.version-picker-trigger')!);
+ const action=screen.getByRole('button',{name:'重命名转录稿 '+models[0].label});
+ fireEvent.click(action);const input=screen.getByRole('textbox');
+ fireEvent.change(input,{target:{value:'   '}});await act(async()=>fireEvent.keyDown(input,{key:'Enter'}));
+ expect(rename).not.toHaveBeenCalled();expect(screen.getByRole('alert')).toBeTruthy();
+ fireEvent.change(input,{target:{value:'Synthetic rename'}});await act(async()=>fireEvent.keyDown(input,{key:'Enter'}));
+ expect(screen.getByRole('alert').textContent).toBe('Synthetic write failure');expect((input as HTMLInputElement).value).toBe('Synthetic rename');
+ fireEvent.keyDown(input,{key:'Escape'});expect(screen.queryByRole('textbox')).toBeNull();
+ view.rerender(<VersionPicker {...props} mutationDisabled/>);
+ expect(screen.getByRole('button',{name:'重命名转录稿 '+models[0].label}).hasAttribute('disabled')).toBe(true);
 });

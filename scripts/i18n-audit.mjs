@@ -7,12 +7,16 @@ const ts = require('typescript');
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const read = p => JSON.parse(fs.readFileSync(path.join(root,p),'utf8'));
 const zh = read('frontend/src/i18n/locales/zh-CN.json'), en = read('frontend/src/i18n/locales/en.json');
+const tw = read('frontend/src/i18n/locales/zh-TW.json');
 const exceptions=read('docs/i18n/source-exceptions.json');
 const failures=[];
 for(const [group,values]of Object.entries(zh))for(const [key,value]of Object.entries(values)){
- const target=en[group]?.[key];
+ const target=en[group]?.[key], traditional=tw[group]?.[key];
  const parameters=s=>[...new Set(s.match(/{{\w+}}/g)||[])].sort().join(',');
- if(!target||parameters(value)!==parameters(target))failures.push(`Missing text or mismatched parameters: ${group}.${key}`);
+ if(!target||!traditional||parameters(value)!==parameters(target)||parameters(value)!==parameters(traditional))failures.push(`Missing text or mismatched parameters: ${group}.${key}`);
+}
+for(const [locale,catalog] of Object.entries({en,'zh-TW':tw})) for(const [group,entries] of Object.entries(catalog)) for(const key of Object.keys(entries)) {
+ if(!Object.hasOwn(zh[group]??{},key)) failures.push(`Extra key in ${locale}: ${group}.${key}`);
 }
 function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){
  const file=path.join(dir,e.name);

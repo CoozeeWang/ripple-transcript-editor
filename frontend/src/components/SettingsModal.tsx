@@ -1,4 +1,5 @@
-import { msg, useInterfaceLanguage, setInterfaceLanguage, interfaceLanguage } from '../i18n';
+import { ConnectorSetup } from './ConnectorSetup';
+import { msg, useInterfaceLanguage, setInterfaceLanguage, interfaceLanguage, LANGUAGE_OPTIONS, normalizeInterfaceLanguage } from '../i18n';
 import { ProjectPreferenceSettings } from './ProjectPreferenceSettings';
 import { trapDialogFocus } from '../lib/dialogFocus';
 import { RESTORE_PROJECT_INTERVIEW } from '../lib/projectPreferences';
@@ -9,14 +10,13 @@ import { loadBooleanPreference, saveBooleanPreference } from "../lib/preferences
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import CredentialManager from "../CredentialManager";
-import { EditingPlanSettings } from "./EditingPlanSettings";
-import { AIModelSettings } from "./AIModelSettings";
 
-/** 设置弹窗：通用、转录引擎、编辑引擎、编辑方案、诊断与日志。
+/** 设置弹窗：通用、转录引擎、外部 AI 连接、诊断与日志。
  *  偏好即时保存，全部通过 props 注入。 */
 export interface SettingsModalProps {
-  settingsTab: "prefs" | "engines" | "ai" | "plans" | "diagnostics";
-  setSettingsTab: Dispatch<SetStateAction<"prefs" | "engines" | "ai" | "plans" | "diagnostics">>;
+  connector?: { enabled: boolean; setEnabled: (value: boolean) => void; reconnect?: () => void; status: string };
+  settingsTab: "prefs" | "engines" | "ai" | "diagnostics";
+  setSettingsTab: Dispatch<SetStateAction<"prefs" | "engines" | "ai" | "diagnostics">>;
   settingsRef: RefObject<HTMLDialogElement | null>;
   setSettingsOpen: (open: boolean) => void;
   defaultPlaybackRate: number;
@@ -105,9 +105,6 @@ export function SettingsModal(props: SettingsModalProps) {
           <button type="button" role="tab" id="settings-tab-ai" aria-controls="settings-panel-ai"
             aria-selected={settingsTab === "ai"} tabIndex={settingsTab === "ai" ? 0 : -1} className={`settings-tab${settingsTab === "ai" ? " settings-tab--active" : ""}`}
             onClick={() => setSettingsTab("ai")}>{msg('SettingsModal.m0977')}</button>
-          <button type="button" role="tab" id="settings-tab-plans" aria-controls="settings-panel-plans"
-            aria-selected={settingsTab === "plans"} tabIndex={settingsTab === "plans" ? 0 : -1} className={`settings-tab${settingsTab === "plans" ? " settings-tab--active" : ""}`}
-            onClick={() => setSettingsTab("plans")}>{msg('SettingsModal.m0978')}</button>
           <button type="button" role="tab" id="settings-tab-diagnostics" aria-controls="settings-panel-diagnostics"
             aria-selected={settingsTab === "diagnostics"} tabIndex={settingsTab === "diagnostics" ? 0 : -1} className={`settings-tab${settingsTab === "diagnostics" ? " settings-tab--active" : ""}`}
             onClick={() => setSettingsTab("diagnostics")}>{msg('SettingsModal.m0979')}</button>
@@ -124,8 +121,8 @@ export function SettingsModal(props: SettingsModalProps) {
           >
             <section className="settings-block">
               <label className="field"><span>{msg('language.label')}</span>
-                <select aria-label={msg('language.label')} value={interfaceLanguage()} onChange={event => void setInterfaceLanguage(event.target.value as 'zh-CN' | 'en')}>
-                  <option value="zh-CN">简体中文</option><option value="en">English</option>
+                <select aria-label={msg('language.label')} value={interfaceLanguage()} onChange={event => void setInterfaceLanguage(normalizeInterfaceLanguage(event.target.value))}>
+                  {LANGUAGE_OPTIONS.map(({value,label})=><option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
               <p className="settings-hint">{msg('language.hint')}</p>
@@ -193,10 +190,19 @@ export function SettingsModal(props: SettingsModalProps) {
           </div>
         ) : settingsTab === "diagnostics" ? (
           <div className="settings-body" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics"><DiagnosticsSettings /></div>
-        ) : settingsTab === "plans" ? (
-          <div className="settings-body" role="tabpanel" id="settings-panel-plans" aria-labelledby="settings-tab-plans"><EditingPlanSettings /></div>
         ) : settingsTab === "ai" ? (
-          <div className="settings-body" role="tabpanel" id="settings-panel-ai" aria-labelledby="settings-tab-ai"><AIModelSettings /></div>
+          <div className="settings-body settings-body--ai" role="tabpanel" id="settings-panel-ai" aria-labelledby="settings-tab-ai">
+            {props.connector && <section className="settings-block settings-mcp">
+              <h3>{msg('connector.title')}</h3><p className="settings-hint">{msg('connector.hint')}</p>
+              <label className="settings-option"><input className="ripple-checkbox" type="checkbox"
+                checked={props.connector.enabled} onChange={event => props.connector?.setEnabled(event.target.checked)} />
+                <span>{msg('connector.enable')}</span></label>
+              <p className="settings-hint" role="status">{msg(`connector.${props.connector.status}`)}</p>
+              {props.connector.enabled && <button className="button" type="button"
+                onClick={() => { props.connector?.reconnect?.(); }}>{msg('connector.retry')}</button>}
+              <ConnectorSetup enabled={props.connector.enabled} onSaved={() => { props.connector?.reconnect?.(); }} />
+            </section>}
+</div>
         ) : (
           <div
             className="settings-body"

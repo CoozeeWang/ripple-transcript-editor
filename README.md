@@ -1,32 +1,20 @@
 # Ripple
 
-Ripple (formerly Transcription Editor) is a local-first web app for editing long-form interview transcripts while listening to the source audio.
+Ripple is a local-first desktop app for organizing recordings and editing long-form interview transcripts while listening to the source audio. The interface supports Simplified Chinese, Traditional Chinese (Taiwan), and English; switching language does not translate manuscript text or project names.
 
-## Current editor
+## Current desktop workflow
 
-The first usable editor slice includes:
+- Create or open a `.ripple` project folder, organize sessions, and add recordings or existing manuscripts.
+- Copy audio into the project or keep a reference to the original file. Import DOCX, TXT, SRT, VTT, or JSON manuscripts; untimed text stays untimed.
+- Move recordings and their transcripts, versions, and annotations to another session in the same project, preserving recording details and external audio references.
+- Transcribe through a configured transcription engine, then keep the original transcript read-only and create named editable versions.
+- Edit text and speakers, split/merge segments, find/replace, undo/redo, annotate, highlight, and compare versions.
+- Use timestamps, playback speed, and skip controls to review audio. Approximate word positions are identified rather than presented as acoustic alignment.
+- Save edits locally and export manuscripts or project materials. See [projects and storage](docs/projects.md) and [saving and export](docs/SAVING_AND_EXPORT.md).
 
-- create and switch between local interviews
-- editable interview metadata: title, date/time, location, people, roles, topics, and notes
-- bundled synthetic transcript data and JSON import
-- audio saved locally inside its interview folder
-- ElevenLabs Scribe v2 transcription with a locally stored API key
-- Chinese/automatic language selection, speaker diarization, optional speaker count, and audio-event tags
-- click a timestamp to seek and play
-- active segment highlighting during playback
-- inline transcript editing
-- global speaker renaming and per-segment speaker reassignment
-- split at the text cursor and merge with next segment
-- undo/redo for text, speaker, split, merge, and replace operations
-- find, replace, and confirmed replace all
-- keyboard shortcuts for playback, navigation, search, split, undo, and redo
-- playback speed and three-second skip controls
-- debounced local JSON autosave
-- JSON export
+Audio is submitted to the selected transcription service only when transcription is explicitly started. Provider availability, account permissions, prices, and actual transcription quality require separate checks with that service. See [transcription engines](docs/engine-presets.md).
 
-Each interview is stored in its own local folder. The folder can contain the source audio, `metadata.json`, the untouched `original_api_response.json`, the app-normalized `normalized_transcript.json`, and the editable `transcript.json`. Saved demo edits are written to `interviews/demo/transcript.json`. The entire `interviews/` directory is ignored by Git.
-
-To transcribe, create or open an interview, choose an audio file, then click **转录音频**. Paste an ElevenLabs API key once and save it locally. When launched with the project launcher, the key is written to the local data directory outside this Git repository and is never returned to the browser.
+The project folder contains its index, sessions, project-owned audio, and manuscript versions. External audio references, device credentials, and app preferences have separate storage and portability limits; a project copy is not a backup of every referenced audio file or device setting. Do not rename internal files manually. Legacy formats remain readable where supported; see [project storage and import](docs/projects.md).
 
 ### Keyboard shortcuts
 
@@ -35,33 +23,20 @@ To transcribe, create or open an interview, choose an audio file, then click **�
 | `Space` | Play / pause when focus is outside an editor field |
 | `↑` / `↓` | Select previous / next segment |
 | `↑` / `↓` with a project session row focused | Focus and select the previous / next session |
-| `Cmd + F` | Open find and replace |
+| `Cmd + F` / `Ctrl + F` | Open find and replace |
 | `Cmd + Enter` | Split at the text cursor |
-| `Cmd + Z` | Undo |
-| `Cmd + Shift + Z` | Redo |
+| `Cmd + Z` / `Ctrl + Z` | Undo |
+| `Cmd + Shift + Z` / `Ctrl + Shift + Z` | Redo |
+| `Cmd + S` / `Ctrl + S` | Save the current transcript |
+| `Cmd + E` / `Ctrl + Shift + E` | Open export |
+
+## MCP connection
+
+The personal desktop MCP connection lets external AI clients read a precisely selected version in the current project, including an unopened manuscript, and save edits in Ripple. Specify the manuscript and exact version; AI asks when the version is missing. Background saves leave the open editor unchanged; edits to the active manuscript can open normal source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## AI-assisted editing
 
-Open **设置 → 编辑引擎** to configure a text model separately from transcription. The first version supports Chat Completions-compatible endpoints with JSON-object output; use the provider's base URL (without `/chat/completions`), model ID, and API key. Local HTTP services are supported on loopback addresses. The launcher checks for the editing configuration route for multi-engine configuration before reusing an existing backend and refreshes older services. `node scripts/launcher.mjs refresh-backend` can refresh the backend while keeping the editor window open.
-
-In an editable transcript, choose **AI 辅助编辑**:
-
-1. **选择编辑方案** offers three alternatives, in order: **常用方案**, **从已有修订中生成方案**, and **自定义方案**. Choose a preset or saved plan directly; no testing or model-tuning step is required. To generate a new plan, select a range you have corrected, compare it with the original transcript, and review the generated rules. Rules can be unchecked, edited, or supplemented. Custom plans use the same rule editor. Confirm a named plan for this document only, or explicitly save it as a reusable common plan. Generated plans save reusable rules only, excluding source examples and model summaries. Existing common plans are updated only through an explicit update action.
-2. On the same page, **选择编辑范围** offers **全文 / 指定范围**. The footer identifies the active plan next to **开始 AI 辅助编辑**. Only this action sends the text for editing. Generating a plan also calls the selected model; writing or selecting rules does not.
-
-Completed AI output is saved as a new editing version and opens directly in the normal main editor. It defaults to single-column insertion/deletion marks against the version used for this AI run. The source remains intact. The version badge row lets users select another comparison version and toggle marks with **显示修改痕迹**, **⌘⇧Y** on macOS, or **Ctrl+Shift+Y** elsewhere. Ordinary editing also supports this comparison mode. Editing, saving, and undo use the normal manuscript workflow; individual review confirmations are not required. Comparison decorations never become saved text. Click a marked text change to accept it (keep the current wording and hide that mark) or reject it (restore that portion of the comparison version). Each action is undoable; confirmations are saved with the editing version, scoped to its comparison source, and excluded from exports. No per-segment approval is required.
-
-Generation drafts are checkpointed under the transcript container's `ai-review/` directory, outside the version manifest. Reopening AI editing on the same source restores plan selection, unfinished rules, or recoverable generated output. Legacy review decisions remain recoverable; legacy trial candidates migrate into plan rule review without restarting tests. Incomplete generation cannot be published. A changed source blocks publication from an older snapshot. A failed version save keeps completed output available to retry without another model request; a successful save clears the draft.
-
-Editing runs at most two batches concurrently, with up to 32 segments and 6000 characters per batch. Checkpoints retain source order; cancellation or a failed batch stops further requests. Reported rule conflicts stop generation. Explicit deletion and same-speaker merging are applied to the new version. Merging preserves paragraph boundaries, word timestamps, annotations, and highlights. Deletion removes the selected segment and its annotations/highlights, without silently merging neighbours. Merges stay within a request batch and cannot target a deleted segment.
-
-Each engine has named credential profiles, with independent editing/transcription defaults and show/hide controls. The old single editing configuration migrates automatically. The editing dialog can choose a saved profile for each run and displays its requested model name.
-
-Configuration and named preferences (including interview excerpts) live in the local data directory's `ai-editing.json`. API keys are omitted from lists and returned only when you explicitly reveal or edit a saved credential profile. Text requests contain only the selected text, speaker names, preference description, and examples; no audio is sent. Cancelling stops later batches and retains completed batches in the review draft; the remote provider may continue processing a request already sent.
-
-Limits: at most 20 examples / 24,000 combined characters per preference; each edit request contains up to 32 segments / 6,000 characters. Longer selections use at most two concurrent batches. A single segment over 6,000 characters must be split first. Preference changes require user confirmation; native non-compatible provider protocols and model retraining are outside this version. Model output is validated structurally; factual fidelity and editing taste still require human review.
-
-The isolated visual fixture at `/tests/ai-editor.html` uses synthetic data and in-memory responses. Automated tests mock model calls; a live provider and real editing quality must be evaluated after configuring your text model. Protocol reference: [JSON output](https://api-docs.deepseek.com/guides/json_mode/).
+Ripple has no built-in AI editing model, saved editing plans, or editing credential store. In **Settings → AI-assisted editing**, configure an external AI application through the MCP connection. The application can read and analyse a selected manuscript in the current project, save a new editable version or explicitly update the selected editable version, and add AI-labelled annotations or highlights. Original transcripts remain read-only. Task rules agreed through MCP apply only to that task. Future interview preferences require explicit user agreement and can be viewed, replaced or cleared through MCP. See [MCP connection](docs/AI_CONNECTOR.md) and [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## Naming and compatibility
 
@@ -77,6 +52,10 @@ The product is named **Ripple**. Startup scripts resolve paths relative to the c
 
 ## Development
 
+### Ripple Dev (native macOS window)
+
+Double-click `start-dev.command` to open **Ripple Dev** directly from the current checkout. Frontend changes refresh automatically, Python changes reload the backend, and Rust changes rebuild the native window. No repeated packaging or installation is needed. Development settings and backend data are isolated from the installed app. Close the installed Ripple first, and keep the launcher terminal open. See [native development setup and limits](desktop/README.md#native-development-on-macos).
+
 ### One-click start (macOS / Windows)
 
 Double-click `start.command` on macOS (or `start.bat` on Windows). It starts both local services and opens the editor in a dedicated Chrome app window, using an isolated profile so it won't touch your regular Chrome.
@@ -90,7 +69,7 @@ Run the backend with a separate local data directory:
 ```bash
 export RIPPLE_DATA_DIR="/absolute/path/to/local-data"
 cd backend
-uv sync
+uv sync --locked
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -98,7 +77,7 @@ In another terminal, run the frontend:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -109,16 +88,16 @@ Open <http://localhost:5173>. The frontend proxies `/api` requests to the backen
 Real audio, transcripts, `.env`, and API keys must not be committed. The `interviews/` directory and common audio formats are ignored by Git. Audio is sent to ElevenLabs only when the user explicitly starts a transcription.
 
 
-### Interview and version names
+### Session, recording, and version names
 
-The large heading is the shared interview title. Transcription opens a read-only **原始转录稿** without a naming prompt or an automatic editable v1. Creating an editable version first asks for a custom version name; cancelling creates no file. Renaming a version never changes the interview title.
-
-Editing the title automatically updates the audio filename, its `.transcript` directory, and the transcript files inside it. Editable files and exports use `Interview title_Version name` with the appropriate extension. Original files use `Interview title_原始转录稿.json`; multiple transcription runs include source identifiers to keep them distinct. Existing ID-based filenames remain readable and are synchronized when names are changed. Conflicting names are rejected rather than overwritten; incomplete rename operations retain or restore recovery copies.
+Projects, sessions, recordings, manuscripts, and editable versions have distinct names. Renaming a manuscript does not rename its session or source audio. The original transcript is read-only; creating a named editable version preserves it, and cancelling the naming dialog creates no version. Imported manuscripts are editable unless explicitly marked as an original. Legacy standalone-file naming rules should not be applied to project storage. See [project organization](docs/projects.md).
 
 ## Code health and acceptance
 
-See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance.
+See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance. As of 2026-10-20, Mac internal build b83 has been accepted by the maintainer; Windows packaging/installed acceptance and a full published, signed online upgrade remain pending before Release. This is not a public release announcement. See [verification boundaries](docs/README.md#验证状态与发布前待验).
 
 For contributors, [development workflow](docs/WORKFLOW.md) defines branches, checks, review and delivery. [Ripple Stylebook](docs/STYLEBOOK.md) records current interface rules; read the relevant sections when changing visible behavior. Private planning and acceptance records remain outside this public source repository.
 
 Word timing in editable versions keeps provenance back to the model's original transcript. Replacements inherit the replaced source range; insertions use a separate approximate anchor. Comparison selection does not reassign unchanged text to a different source. Segments with replacement, approximate, or unresolved timing show “含近似定位”. This preserves existing audio references; it does not perform acoustic forced alignment. Origin metadata is saved locally and omitted from JSON exports.
+
+The public relay is retained as development history and is not the default connection route. Ripple does not require its developer to operate a public server. See [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).

@@ -294,10 +294,10 @@ async function stop() {
   log("已停止 Ripple。");
 }
 
-// A running pre-update backend can pass /health but lack the new editing routes.
+// A running pre-update backend can pass /health but lack the current MCP routes.
 // Only a missing route identifies an old service; storage errors must not restart it.
 export async function backendNeedsUpdate(request = fetch) {
-  const response = await request("http://127.0.0.1:8000/api/ai/providers", {
+  const response = await request("http://127.0.0.1:8000/api/connector/poll", {
     signal: AbortSignal.timeout(2000),
   });
   return response.status === 404;

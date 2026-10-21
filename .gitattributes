@@ -1,0 +1,2 @@
+# Signature fixtures must retain their exact bytes on every checkout, including Windows.
+desktop/tests/fixtures/updater/** -text

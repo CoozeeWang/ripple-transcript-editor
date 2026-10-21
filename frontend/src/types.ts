@@ -32,6 +32,7 @@ export interface Word {
 }
 
 export interface Annotation {
+  source?: "ai";
   id: string;
   text: string;
   createdAt: string;
@@ -40,6 +41,7 @@ export interface Annotation {
 /** 片段内的一处高亮：编辑辅助记号，不参与任何导出（md/txt/docx/pdf/JSON 一律剥离）。
  *  范围相对所属 segment 的 text，左闭右开 [start, end)。编辑文本时由 reanchorRanges 重锚。 */
 export interface Highlight {
+  source?: "ai";
   id: string;
   start: number;
   end: number;
@@ -60,6 +62,8 @@ export interface Segment {
 }
 
 export interface Transcript {
+  /** Local save receipts for interrupted AI batches; excluded from public exports. */
+  aiContinuationReceipts?: Record<string, ContinuationReceipt>;
   timeAligned?: boolean;
   /** Display confirmations scoped to a comparison version and segment; never manuscript text. */
   comparisonReviews?: Record<string, {segmentId:string; before:string; accepted:string[]}>;
@@ -70,6 +74,17 @@ export interface Transcript {
   segments: Segment[];
   /** Explicit approval of a specific segment revision; never inferred from edits. */
   reviewedSegments?: Record<string, string>;
+}
+
+export interface ContinuationReceipt {
+  task_id: string;
+  batch_id: string;
+  source_version_id: string;
+  version_id: string;
+  processed_ids: string[];
+  changed_segments: number;
+  deleted_segments: number;
+  merged_segments: number;
 }
 
 export interface Participant {

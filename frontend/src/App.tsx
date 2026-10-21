@@ -1,4 +1,17 @@
-import { originalVersionLabel } from './lib/transcriptLabels';
+import { visibleAIActivities } from './lib/aiEditOwnership';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
+import { registerDesktopUpdateGuard } from './lib/desktopUpdates';
+import { blocksHumanEditing } from './lib/aiEditOwnership';
+import { flushSync } from "react-dom";
+import { applyAIMarks } from "./lib/aiMarks";
+import { useAIConnector } from "./hooks/useAIConnector";
+import { applyAISuggestions } from "./lib/aiVersionEdits";
+import { applyContinuationBatch,checkContinuationGuard } from './lib/continuationBatch';
+import { AIEditingNotice } from './components/AIEditingNotice';
+import { assertEditorReadyForAI } from './lib/editorDrafts';
+import {ContinuationProgress} from './components/ContinuationProgress';
+import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
+import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
 import { CopyProblem } from "./components/CopyProblem";
@@ -7,7 +20,6 @@ import { useStableCallbacks } from "./hooks/useStableCallbacks";
 import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReviews } from "./lib/comparisonReview";
 import { useVersionComparison } from "./hooks/useVersionComparison";
 import { comparisonRows } from "./lib/comparisonSegments";
-import { nextAIEditName } from "./lib/aiEditing";
 import { useOpeningPosition } from "./hooks/useOpeningPosition";
 import { openingSegmentId } from "./lib/editPosition";
 import type { ParagraphEditorElement } from "./lib/paragraphEditor";
@@ -43,14 +55,13 @@ import { usePersistence } from "./hooks/usePersistence";
 import { useEditor } from "./hooks/useEditor";
 import { usePlayback } from "./hooks/usePlayback";
 import {
-  aiEditingDocumentId,
-  readAIReviewDraft,
-  writeAIReviewDraft,
+  readConnectorRules, writeConnectorRules, readContinuationTasks, writeContinuationTask,
   AUDIO_EXT_LABEL,
   defaultEditLabel,
   defaultMetadata,
   readAudioUrl,
   renameAudio,
+  readModelOriginal,
   readManifest,
   sanitizeForFilename,
   stemOf,
@@ -78,15 +89,17 @@ import { SpeakerPanel } from "./components/SpeakerPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { DeleteDialog, MatchDialog, MergeDialog, NamingModal } from "./components/Dialogs";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { AIEditingDialog } from "./components/AIEditingDialog";
-import { readModelOriginal } from "./localStore";
 
 type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 
 // 快退/快进步长默认值（秒），可被偏好设置覆盖；键盘左右键与右侧 ± 按钮共用。
 
 export interface ProjectEditorProps {
+  connectorProject?: () => OpenProject | null;
+  projectInterviewId?: string;
+  projectRecordingId?: string;
   projectDirectory?: FileSystemDirectoryHandle;
+  initialOriginalModelId?: string;
   projectLabel?: string;
   interviewTitle?: string;
   interviewMetadata?: InterviewMetadata;
@@ -101,17 +114,24 @@ export interface ProjectEditorProps {
 }
 function App(projectProps: ProjectEditorProps = {}) {
   useInterfaceLanguage();
+  const initialVersionApplied = useRef(false);
   // 平台检测——tooltip 与按钮文案里显示对应的快捷键（避免 Mac 用户看到 Ctrl+O）
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform);
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
   const { transcript, reset: resetHistory, commit, undo, redo, canUndo, canRedo } =
     useTranscriptHistory<Transcript>();
+  const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
+  const [persistedContent, setPersistedContent] = useState<{ transcript: Transcript; metadata: InterviewMetadata } | null>(null);
   const resetDocumentViewRef = useRef<() => void>(() => {});
   // 所有成功载入/替换文稿的路径共用这个入口；普通编辑和撤销不重置视图。
-  const reset = useCallback((value: Transcript) => {
+  const reset = useCallback((value: Transcript, savedMetadata?: InterviewMetadata | null) => {
+    const loadedMetadata = savedMetadata && projectProps.recordingLabel
+      ? { ...savedMetadata, title: projectProps.recordingLabel } : savedMetadata;
+    if (loadedMetadata) setMetadataState(loadedMetadata);
+    setPersistedContent(loadedMetadata ? { transcript: value, metadata: loadedMetadata } : null);
     resetDocumentViewRef.current();
     resetHistory(value);
-  }, [resetHistory]);
+  }, [resetHistory, projectProps.recordingLabel]);
   const {
     providers,
     selectedProviderId,
@@ -148,11 +168,7 @@ function App(projectProps: ProjectEditorProps = {}) {
   const [settingsOpen, setSettingsOpen] = useState(Boolean(projectProps.openSettingsInitially));
   // 设置弹窗不持久化：每次打开都回到「通用」，因为改播放速度这类
   // 高频操作都在这一页，而「引擎与密钥」是低频的、体积又大的一页。
-  const [settingsTab, setSettingsTab] = useState<"prefs" | "engines" | "ai" | "plans" | "diagnostics">("prefs");
-  const [aiSession, setAISession] = useState<{
-    transcript: Transcript; source: string; selectedId: string;
-    dir: FileSystemDirectoryHandle; context: string; loadOriginal: () => Promise<Transcript | null>;
-  } | null>(null);
+  const [settingsTab, setSettingsTab] = useState<"prefs" | "engines" | "ai" | "diagnostics">("prefs");
   const { openSettingsInitially, onReturnToProjects } = projectProps;
   useEffect(() => {
     if (openSettingsInitially && !settingsOpen) onReturnToProjects?.();
@@ -162,11 +178,16 @@ function App(projectProps: ProjectEditorProps = {}) {
     setSettingsOpen(true);
   };
   useDismissable(recentMenuRef, recentMenuOpen, () => setRecentMenuOpen(false));
-  const [metadata, setMetadata] = useState<InterviewMetadata | null>(null);
+  const setMetadata = useCallback((value: React.SetStateAction<InterviewMetadata | null>) => {
+    setMetadataState(current => {
+      const next = typeof value === 'function' ? value(current) : value;
+      return next && typeof value !== 'function' && projectProps.recordingLabel ? {...next, title: projectProps.recordingLabel} : next;
+    });
+  }, [projectProps.recordingLabel]);
 const [hasLoadedTranscript, setHasLoadedTranscript] = useState(false);
 // 当前是否在查看引擎原始稿（只读模式，所有编辑控件禁用）。
 const [viewingOriginal, setViewingOriginal] = useState(false);
-  const [processStatus, setProcessStatus] = useState<ProcessStatus>("idle");
+  const [processStatus, updateProcessStatus] = useState<ProcessStatus>("idle");
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
   const openMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -177,7 +198,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // 统一浮层关闭契约：Esc + 浮层外部 pointerdown。
   useDismissable(openMenuRef, openMenuOpen, () => setOpenMenuOpen(false));
   useDismissable(exportMenuRef, exportMenuOpen, () => setExportMenuOpen(false));
-  const [processMessage, setProcessMessage] = useState("");
+  const [processMessage, setProcessMessage] = useTransientState('', '', () => processStatus === 'done' ? SUCCESS_FEEDBACK_MS : null);
+  const setProcessStatus = useCallback((status: ProcessStatus) => {
+    setProcessMessage('');
+    updateProcessStatus(status);
+  }, [setProcessMessage]);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [annotationView, setAnnotationView] = useState<"selected" | "all">("selected");
   // 批注栏页签：批注 / 高亮。高亮页是全文清单，没有「当前片段 / 全部」这层切换。
@@ -218,12 +243,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 编辑的提交入口：undo/redo 历史分组 + 标记未保存。usePlayback 依赖它，
   // 故放在 useFolder 之前定义。
+  const editLockedRef = useRef<() => boolean>(() => false);
   const mutateTranscript = useCallback(
     (updater: (current: Transcript) => Transcript, groupKey?: string) => {
-      commit(current => reconcileComparisonReviews(updater(current)), groupKey);
+      const aiWrite = groupKey?.startsWith('ai-marks:') || groupKey?.startsWith('ai-continuation:');
+      if (viewingOriginal || !aiWrite && editLockedRef.current()) return;
+      commit(current => !aiWrite && editLockedRef.current() ? current : reconcileComparisonReviews(updater(current)), groupKey);
       setSaveStatus("unsaved");
     },
-    [commit],
+    [commit, viewingOriginal],
   );
 
   const {
@@ -293,12 +321,21 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     canChangeDocument: () => canChangeDocumentRef.current(),
     beforeChange: () => beforeChangeRef.current(),
     onLoadStart: () => {
+      setProcessMessage('');
       setOpeningPosition(null);
       setSaveStatus("loading");
       setLoadError("");
       initialLoadRef.current = true;
     },
-    onLoaded: ({ url, manifest, edited }, name) => {
+    onLoaded: async ({ url, manifest, edited }, name) => {
+      let openingOriginal = false;
+      if (manifest && edited && !initialVersionApplied.current && projectProps.initialOriginalModelId && dirHandleRef.current) {
+        const original = await readModelOriginal(dirHandleRef.current, name, projectProps.initialOriginalModelId);
+        if (!original) throw new Error(msg('useVersions.m1196'));
+        edited = { ...edited, transcript: original.transcript };
+        openingOriginal = true;
+        initialVersionApplied.current = true;
+      }
       setAudioUrl(url);
       setAudioFilename(name);
       setCurrentTime(0);
@@ -308,10 +345,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         const initialMetadata = projectProps.recordingDraft?.metadata
           ?? projectProps.interviewMetadata
           ?? defaultMetadata(projectProps.interviewTitle ?? stemOf(name));
-        setMetadata(projectProps.recordingDraft || !projectProps.recordingLabel || manifest
+        const loadedMetadata = projectProps.recordingDraft || !projectProps.recordingLabel || manifest
           ? initialMetadata
-          : { ...initialMetadata, title: projectProps.recordingLabel });
-        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] });
+          : { ...initialMetadata, title: projectProps.recordingLabel };
+        setMetadata(loadedMetadata);
+        reset({ audio: { filename: name, duration: 0 }, speakers: projectProps.recordingDraft?.speakers ?? [], segments: [] }, loadedMetadata);
         setHasLoadedTranscript(false);
         applyManifestRef.current(null);
         setProcessStatus("ready");
@@ -321,13 +359,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       }
       applyManifestRef.current(manifest);
       setMetadata(edited.metadata);
-      reset(edited.transcript);
+      reset(edited.transcript, edited.metadata);
       const openingId = openingSegmentId(edited.transcript);
       setSelectedSegmentId(openingId);
       setOpeningPosition({ id: openingId });
       setHasLoadedTranscript(true);
       const loadedModel = manifest.models.find(m => m.id === manifest.activeModelId) ?? manifest.models[0];
-      setViewingOriginal(Boolean(loadedModel?.designatedOriginal) || (!loadedModel?.edits.length && Boolean(loadedModel?.original)));
+      setViewingOriginal(openingOriginal || Boolean(loadedModel?.designatedOriginal) || (!loadedModel?.edits.length && Boolean(loadedModel?.original)));
       setProcessStatus("done");
       setProcessMessage(msg('App.m0002', { v0: edited.transcript.segments.length }));
       setSaveStatus("saved");
@@ -517,6 +555,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     handleSave,
     flushPendingSave,
   } = usePersistence({
+    persistedContent,
     dirHandleRef,
     initialLoadRef,
     hasLoadedTranscript,
@@ -536,28 +575,134 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   useLayoutEffect(() => { beforeChangeRef.current = flushPendingSave; }, [flushPendingSave]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
-  const latestAIContext = useRef(aiContext);
-  useLayoutEffect(() => { latestAIContext.current = aiContext; }, [aiContext]);
-  if (aiSession && (aiSession.dir !== dirHandle || aiSession.context !== aiContext)) setAISession(null);
-  const openAIEditing = async () => {
-    const dir = dirHandle;
-    const audio = selectedAudio;
-    const model = activeModel;
-    if (!dir || !audio || !model || versionBusy) return;
-    try {
+  const [aiIdentity, setAIIdentity] = useState('0');
+  const connectorContext = useRef({ dir: dirHandle, audio:selectedAudio, context: aiContext, generation: 0 });
+  useLayoutEffect(() => {
+    if (connectorContext.current.dir !== dirHandle || connectorContext.current.context !== aiContext) {
+      connectorContext.current = { dir: dirHandle, audio:selectedAudio, context: aiContext, generation: connectorContext.current.generation + 1 };
+      setAIIdentity(String(connectorContext.current.generation));
+    }
+  }, [dirHandle, aiContext,selectedAudio]);
+  const connector = useAIConnector({
+    current: async () => {
+      const identity = connectorContext.current.generation;
+      const dir = dirHandle, audio = selectedAudio, model = activeModel;
+      if (!dir || !audio || !model || !hasLoadedTranscript || versionBusy || transcribing) throw new Error('no_editable_interview');
+      assertEditorReadyForAI();
       await flushPendingSave();
-      const current = latestExport.current.transcript;
-      if (!current?.segments.length || dirHandleRef.current !== dir || latestAIContext.current !== aiContext) return;
-      audioRef.current?.pause();
-      setAISession({ transcript: current, source: audio, selectedId: effectiveSelectedSegmentId, dir,
-        context: aiContext, loadOriginal: async () => (await readModelOriginal(dir, audio, model.id))?.transcript ?? null });
-    } catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0011')); }
+      if (connectorContext.current.generation !== identity || dirHandleRef.current !== dir || !latestExport.current.transcript) throw new Error('interview_changed');
+      const rules = await readConnectorRules(dir, audio);
+      if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      const manifest = await readManifest(dir, audio);
+      if (connectorContext.current.generation !== identity) throw new Error('interview_changed');
+      const versionId = `${model.id}:${viewingOriginal || model.designatedOriginal ? 'original' : model.activeEditId}`;
+      const version = connectorVersions(manifest?.models ?? []).find(v => v.id === versionId);
+      if (!version) throw new Error('current_version_unavailable');
+      return { identity: String(identity), editable: !viewingOriginal, transcript: latestExport.current.transcript, rules,
+        continuations: {scope:String(identity),read:async reportUnreadable=>readContinuationTasks(dir,audio,reportUnreadable),write:async task=>{
+          if(dirHandleRef.current!==dir || connectorContext.current.audio!==audio)throw Error('interview_changed');
+          await writeContinuationTask(dir,audio,task);
+        }},
+        remember: async confirmedRules => writeConnectorRules(dir, audio, confirmedRules),
+        title: latestExport.current.metadata?.title ?? '',
+        label: version.name, version,
+        names: models.flatMap(m => m.edits.map((e, i) => e.label ?? defaultEditLabel(i))),
+        references: async () => connectorReferences(dir, audio, (await readManifest(dir, audio))?.models ?? []) };
+    },
+    applyMarks: async (baseline, marks, taskId) => {
+      if (viewingOriginal || versionBusy || !activeModel?.activeEditId || JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+      const versionId = activeModel.activeEditId;
+      const version = activeModel.edits.find(edit => edit.id === versionId)?.label ?? 'v1';
+      const result = applyAIMarks(baseline, marks, taskId);
+      if (result.transcript !== baseline) {
+        let applied = false;
+        flushSync(() => {
+          mutateTranscript(current => {
+            if (JSON.stringify(current) !== JSON.stringify(baseline)) return current;
+            applied = true; return result.transcript;
+          }, `ai-marks:${taskId}`);
+          setAnnotationPanelCollapsed(false);
+          setAnnotationView('all');
+          setPanelTab(result.added_annotations ? 'annotation' : 'highlight');
+        });
+        if (!applied) throw new Error('source_changed_read_current_again');
+        try { await flushPendingSave(); }
+        catch { throw new Error('mark_save_failed_changes_retained_in_ripple'); }
+      }
+      return { saved: true, version, version_id: versionId, added_annotations: result.added_annotations, added_highlights: result.added_highlights };
+    },
+    publish: async (baseline, suggestions, name, target) => {
+      const sourceModel = activeModelId, sourceEdit = viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId;
+      if (!sourceModel || !sourceEdit) throw new Error('interview_changed');
+      if (String(connectorContext.current.generation) !== target.identity || target.source_version.model_id !== sourceModel ||
+        target.source_version.edit_id !== sourceEdit) throw new Error('source_changed_read_current_again');
+      if (target.save_mode === 'current_version') {
+        if (viewingOriginal || activeModel?.designatedOriginal || target.source_version.kind === 'original') throw new Error('current_version_read_only_create_new_version');
+        if (versionBusy || !target.checkpoint && JSON.stringify(latestExport.current.transcript) !== JSON.stringify(baseline)) throw new Error('source_changed_read_current_again');
+        const checkpoint=target.checkpoint ? {...target.checkpoint,receipt:{...target.checkpoint.receipt,version_id:target.source_version.id}} : undefined;
+        const atomicTranscript=checkpoint?null:applyAISuggestions(baseline,baseline,suggestions);
+        if(checkpoint&&(!latestExport.current.transcript||!checkContinuationGuard(latestExport.current.transcript,checkpoint.guard)))throw Error('batch_conflict_manual_changes_preserved');
+        let applied = false;
+        flushSync(() => {
+          mutateTranscript(current => {
+            if(checkpoint&&!checkContinuationGuard(current,checkpoint.guard))return current;
+            if (!checkpoint && JSON.stringify(current) !== JSON.stringify(baseline)) return current;
+            const next=checkpoint ? applyContinuationBatch(current,suggestions,checkpoint) : atomicTranscript!;
+            applied = true; return next;
+          }, `ai-continuation:${checkpoint?.receipt.batch_id??target.task_id}`);
+          if(atomicTranscript)setSelectedSegmentId(atomicTranscript.lastEditedSegmentId??atomicTranscript.segments[0]?.id??'');
+        });
+        if (!applied) throw new Error('source_changed_read_current_again');
+        try { await flushPendingSave(); }
+        catch { throw new Error('current_version_save_failed_changes_retained_in_ripple'); }
+        if (String(connectorContext.current.generation) === target.identity) {
+          setProcessStatus('done'); setProcessMessage(msg('useVersions.aiCurrentSaved'));
+        }
+        return { version: target.source_version.name, version_id: sourceEdit, result_version: target.source_version,
+          comparison_requested: false, undo_available: true };
+      }
+      const result = await createAIEdit(baseline, suggestions, name, target.checkpoint);
+      if (!result) throw new Error('save_result_unavailable_check_versions');
+      comparison.activate(result.model.id, result.edit.id, `${sourceModel}:${sourceEdit}`);
+      return { version: result.edit.label, version_id: result.edit.id,
+        result_version: {id:`${result.model.id}:${result.edit.id}`,model_id:result.model.id,edit_id:result.edit.id,name:result.edit.label,kind:'edit'}, comparison_requested: true };
+    },
+  }, hasLoadedTranscript ? `${aiContext}:${hasLoadedTranscript}:${versionBusy}` : '', projectProps.connectorProject ? {
+    project: projectProps.connectorProject,
+    onSaved: target => { setProcessStatus('done'); setProcessMessage(msg('connector.backgroundSaved', { recording: target.recording, version: target.version })); },
+    active: () => ({ interview_id: projectProps.projectInterviewId ?? '', recording_id: projectProps.projectRecordingId ?? '',
+      directory: dirHandleRef.current, version_id: activeModelId
+        ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : null }),
+  } : undefined);
+
+  const updateBlocked = useRef(false);
+  useLayoutEffect(() => {
+    updateBlocked.current = transcribing || versionBusy || renamingRef.current || (saveStatus === 'loading' && Boolean(transcript)) || processStatus === 'uploading' || connector.activities.some(blocksHumanEditing);
+  });
+  useEffect(() => registerDesktopUpdateGuard(async () => {
+    if (updateBlocked.current) throw Error('update_work_in_progress');
+    try { await flushPendingSave(); }
+    catch { throw Error('update_unsaved_project'); }
+    if (updateBlocked.current) throw Error('update_work_in_progress');
+    audioRef.current?.pause();
+  }));
+
+  const aiVersionId = activeModelId ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : '';
+  const aiLocked = connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, aiIdentity);
+  useLayoutEffect(() => {
+    editLockedRef.current = () => connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
+  });
+  const protectedReadOnly = viewingOriginal || aiLocked;
+  const guardedRenameVersion: typeof renameVersion = (...args) => {
+    if (editLockedRef.current()) return Promise.reject(Error('manuscript_locked_by_other_ai_end_editing_first'));
+    return renameVersion(...args);
   };
 
   // 设置弹层：必须在「空状态提前 return」与「完整 UI return」两处都渲染，
   // 否则空状态下点击「偏好设置」会因提前 return 而永不显示。
   const settingsModal = settingsOpen ? (
     <SettingsModal
+      connector={connector}
       settingsTab={settingsTab}
       setSettingsTab={setSettingsTab}
       settingsRef={settingsRef}
@@ -592,7 +737,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     replaceAll,
   } = useFindReplace({
     transcript,
-    viewingOriginal,
+    viewingOriginal: protectedReadOnly,
     mutateTranscript,
     setSelectedSegmentId,
     textareaRefs,
@@ -660,6 +805,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setMergePrompt, setMergeMenuFor]);
 
   const performUndo = useCallback(() => {
+    if (editLockedRef.current()) return;
     const hadDraft = hasEditorDrafts();
     flushEditorDrafts();
     if (!canUndo && !hadDraft) return;
@@ -668,6 +814,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   }, [canUndo, undo]);
 
   const performRedo = useCallback(() => {
+    if (editLockedRef.current()) return;
     flushEditorDrafts();
     if (!canRedo) return;
     redo();
@@ -676,7 +823,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
 
   useShortcuts({
-    disabled: Boolean(aiSession) || renaming || versionBusy || saveStatus === "loading",
+    disabled: renaming || versionBusy || saveStatus === "loading",
     transcript,
     viewingOriginal,
     removeSegment,
@@ -797,6 +944,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setAudioUrl(url);
       await refreshAudioList(dir);
       setSaveStatus("saved");
+      setProcessStatus('done');
       setProcessMessage(msg('App.m0016'));
     } catch (error) {
       recordProblem("rename", error);
@@ -809,12 +957,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
 
   const returnToProjects = async (exportFiles = false) => {
-    if (renaming || versionBusy || aiSession || (saveStatus === "loading" && transcript) || !canChangeDocumentRef.current()) return;
+    if (renaming || versionBusy || (saveStatus === "loading" && transcript) || !canChangeDocumentRef.current()) return;
     try { await flushPendingSave(); if (exportFiles) projectProps.onExportProjectFiles?.(); else projectProps.onReturnToProjects?.(); }
     catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0018')); }
   };
   const projectNav = projectProps.onReturnToProjects && <div className="project-editor-nav">
-    <button type="button" className="cred-btn" disabled={renaming || versionBusy || Boolean(aiSession) || transcribing}
+    <button type="button" className="cred-btn" disabled={renaming || versionBusy || transcribing}
       aria-label={projectProps.projectLabel ? msg('App.m0019', { v0: projectProps.projectLabel }) : msg('App.m0020')}
       title={msg('App.m0021')} onClick={() => void returnToProjects()}>{projectProps.projectLabel || msg('App.m0022')}</button>
   </div>;
@@ -847,6 +995,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 转录中的文案随阶段和时间变化，直接算出来，不进 state（避免 effect 里 setState）。
   // 正在转录的是别的文件时，文案改成「谁在后台跑」，秒数照旧在走。
+  const hasAIEditingNotice = visibleAIActivities(connector.activities).length > 0 || Boolean(connector.taskError);
   const processNoticeText = !transcribeJob
     ? processMessage
     : !transcribeIsCurrent
@@ -859,7 +1008,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           ? msg('App.m0026', { v0: Math.round(transcribeRatio * 100), v1: formatTime(transcribeElapsed) })
           : msg('App.m0027', { v0: activeProviderName || msg('App.m0028'), v1: formatTime(transcribeElapsed) });
 
-  const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0}
+  const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0} onDismiss={()=>{setProcessStatus("ready");setProcessMessage("");}}
             text={processNoticeText} status={activeStatus} phase={transcribePhase} ratio={transcribeRatio}
             engine={transcribeJob?.engine ?? activeProviderName} elapsed={transcribeElapsed}
             hint={transcribeHint} raw={transcribeRaw} cancelTranscription={cancelTranscription}
@@ -868,22 +1017,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   return (
     <div className="app-shell">
       {transcript.timeAligned === false && <p className="project-timing-notice">{msg('App.m0029')}</p>}
-      {aiSession && aiSession.dir === dirHandle && aiSession.context === aiContext && (
-        <AIEditingDialog transcript={aiSession.transcript} source={aiSession.source}
-          sourceLabel={viewingOriginal ? (activeModel ? originalVersionLabel(activeModel) : msg('App.m0031')) : activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))}
-          suggestedName={nextAIEditName(activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0)), activeModel?.edits.map((e,i) => e.label ?? defaultEditLabel(i)) ?? [])}
-          loadDocumentId={() => aiEditingDocumentId(aiSession.dir, aiSession.source)}
-          loadDraft={() => readAIReviewDraft(aiSession.dir, aiSession.source, viewingOriginal ? `original:${activeModelId}` : activeEditKey)}
-          saveDraft={draft => writeAIReviewDraft(aiSession.dir, aiSession.source, viewingOriginal ? `original:${activeModelId}` : activeEditKey, draft)}
-          selectedId={aiSession.selectedId} loadOriginal={aiSession.loadOriginal}
-          onClose={() => setAISession(null)}
-          onSettings={() => { setAISession(null); setSettingsTab("ai"); setSettingsOpen(true); }}
-          onApply={async (suggestions, label) => {
-            const sourceModel=activeModelId, sourceEdit=viewingOriginal ? "original" : activeModel?.activeEditId;
-            const result=await createAIEdit(aiSession.transcript, suggestions, label);
-            if(result && sourceModel && sourceEdit) comparison.activate(result.model.id,result.edit.id,`${sourceModel}:${sourceEdit}`);
-          }} />
-      )}
       {legacyEntries.length > 0 && dirHandle && (
         <div className="legacy-banner" role="status">
           <div className="legacy-banner__text">
@@ -900,12 +1033,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       )}
       <div inert={renaming || versionBusy || saveStatus === "loading"}><Topbar
         taskOnly={preparingTranscript}
-        openAIEditing={hasLoadedTranscript && transcript.segments.length && !versionBusy ? () => void openAIEditing() : undefined}
         audioFilename={audioFilename || transcript.audio.filename}
         projectMode={Boolean(projectProps.projectDirectory)}
         projectLabel={projectProps.projectLabel}
         onReturnToProjects={projectProps.onReturnToProjects ? () => void returnToProjects() : undefined}
-        navigationDisabled={renaming || versionBusy || Boolean(aiSession) || transcribing}
+        navigationDisabled={renaming || versionBusy || transcribing}
         dirHandle={dirHandle}
         handleOpenFolder={handleOpenFolder}
         folderShortcutHint={folderShortcutHint}
@@ -922,8 +1054,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         viewingOriginal={viewingOriginal}
         performUndo={performUndo}
         performRedo={performRedo}
-        canUndo={canUndo}
-        canRedo={canRedo}
+        canUndo={canUndo && !aiLocked}
+        canRedo={canRedo && !aiLocked}
         setFindOpen={setFindOpen}
         exportMenuOpen={exportMenuOpen}
         setExportMenuOpen={setExportMenuOpen}
@@ -946,7 +1078,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           setShowReplace={setShowReplace}
           replaceValue={replaceValue}
           setReplaceValue={setReplaceValue}
-          viewingOriginal={viewingOriginal}
+          viewingOriginal={protectedReadOnly}
           setFindOpen={setFindOpen}
           findNext={findNext}
           findPrev={findPrev}
@@ -954,8 +1086,14 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           replaceAll={replaceAll}
         />
       )}
-      {processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
+        <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
+          ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
+          : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
+          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
+        </AIEditingNotice>
+      {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice
+          onDismiss={() => { setProcessMessage(''); transcriptPanelRef.current?.focus(); }}
           text={processNoticeText}
           status={activeStatus}
           phase={transcribePhase}
@@ -968,7 +1106,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /></div>}
+      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setLoadError('')}>×</button></div>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -977,7 +1115,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         {!preparingTranscript && <SpeakerPanel
           speakers={transcript.speakers}
           hiddenSpeakerIds={hiddenSpeakerIds}
-          viewingOriginal={viewingOriginal}
+          viewingOriginal={protectedReadOnly}
+          readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
           mergeMenuFor={mergeMenuFor}
           setMergeMenuFor={setMergeMenuFor}
           mergeMenuRef={mergeMenuRef}
@@ -995,12 +1134,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         <div className="transcript-header-fixed">
         <TranscriptHeader
           preparing={preparingTranscript}
+          editingLocked={aiLocked}
           comparisonControls={<>
             <button type="button" className={`comparison-toggle${comparison.shown ? " is-active" : ""}`} aria-pressed={comparison.shown}
               disabled={viewingOriginal || !comparison.options.length || versionBusy} data-tip-pos="top" data-tip={msg('App.m0039', { v0: keys("Y",true) })} onClick={comparison.toggle}><span className="comparison-toggle-track" aria-hidden="true" /><span>{msg('App.m0040')}</span></button>
             {comparison.shown && <div className="comparison-source"><span>{msg('App.m0041')}</span>
               <VersionPicker key={`${selectedAudio}:comparison`} models={models} value={comparison.base} variant="comparison"
-                excluded={currentVersionKey} disabled={versionBusy} onSelect={(model,edit)=>comparison.choose(`${model}:${edit}`)} onRename={renameVersion} />
+                excluded={currentVersionKey} disabled={versionBusy} mutationDisabled={aiLocked} onSelect={(model,edit)=>comparison.choose(`${model}:${edit}`)} onRename={guardedRenameVersion} />
             </div>}
             {comparison.loading && <span className="comparison-status" role="status">{msg('App.m0042')}</span>}
             {comparison.error && <span role="alert">{uiMessage(comparison.error)}</span>}
@@ -1009,11 +1149,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           segmentCount={visibleSegments.length}
           viewingOriginal={viewingOriginal}
           activeModelId={activeModelId}
-          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy}
+          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy} mutationDisabled={aiLocked}
             onSelect={(model,edit)=>{if(edit==="original")void openOriginal(model);else void selectEdit(model,edit);}}
-            onRename={renameVersion} onCopy={(model,edit)=>{if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
-            onDelete={(modelId,editId,label,isLast)=>setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast})} />}
+            onRename={guardedRenameVersion} onCopy={(model,edit)=>{if(editLockedRef.current())return;if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
+            onDelete={(modelId,editId,label,isLast)=>{if(editLockedRef.current())return;setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast});}} />}
           patchMetadata={patch => {
+            if (editLockedRef.current()) return;
             if (patch.title !== undefined && projectProps.onRenameInterview) {
               void projectProps.onRenameInterview(patch.title).then(() => patchMetadata(patch)).catch(error => setLoadError(error instanceof Error ? error.message : msg('App.m0043')));
             } else if (patch.title !== undefined) void renameCurrentAudio(patch.title);
@@ -1024,7 +1165,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
         {!preparingTranscript && transcriptionNotice}
         </div>
-        <section className="transcript-panel" ref={transcriptPanelRef} aria-label={msg('App.m0045')}>
+
+        <section className="transcript-panel" ref={transcriptPanelRef} tabIndex={-1} aria-label={msg('App.m0045')}>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
               {msg('App.m0046')}</button>
@@ -1073,9 +1215,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 effectiveSelectedSegmentId={effectiveSelectedSegmentId === segment.id ? segment.id : ""}
                 isPlaying={isPlaying}
                 currentTime={currentTime}
-                findQuery={viewingOriginal ? findQuery : ""}
+                findQuery={protectedReadOnly ? findQuery : ""}
                 audioUrl={audioUrl}
-                viewingOriginal={viewingOriginal}
+                viewingOriginal={protectedReadOnly}
                 audioRef={audioRef}
                 textareaRefs={textareaRefs}
                 editingRef={editingRef}
@@ -1099,12 +1241,14 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           <div className={`save-toast save-toast--${saveToast.kind}`} role="status">
             <span className="save-toast__dot" />
             {uiMessage(saveToast.text)}
-            {saveToast.kind === "error" && <CopyProblem operation="save" />}
+            {saveToast.kind === "error" && <><CopyProblem operation="save"/><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setSaveToast(null)}>×</button></>}
           </div>
         )}
 
         {!preparingTranscript && <AnnotationPanel
           transcript={transcript}
+          readOnly={protectedReadOnly}
+          readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
           annotationView={annotationView}
           setAnnotationView={setAnnotationView}
           panelTab={panelTab}
@@ -1191,7 +1335,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           prompt={deletePrompt}
           dialogRef={deleteRef}
           setPrompt={setDeletePrompt}
-          confirmDelete={confirmDelete}
+          confirmDelete={() => { if (!editLockedRef.current()) void confirmDelete(); }}
         />
       )}
 

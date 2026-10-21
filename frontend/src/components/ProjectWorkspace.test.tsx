@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { ConnectorContext } from '../hooks/connectorContext';
 import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
+import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
 vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onExportProjectFiles?: () => void; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
-vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
+vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
 const project = { directory: { name: '测试.ripple' }, data: { id: 'p', title: '测试项目', description: '', revision: 0, interviews: [{ id: 'i', title: '第一次访谈', recordings: [{ id: 'r', name: '录音.wav', storage: 'copy' }] }] } } as store.OpenProject;
 beforeEach(() => {
@@ -17,6 +19,7 @@ beforeEach(() => {
   vi.mocked(store.openProject).mockResolvedValue(project);
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI__?: unknown }).__TAURI__; });
+afterEach(async () => { await setInterfaceLanguage('zh-CN'); });
 it('opens a project, selects an interview, and releases the editor lock when returning', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
@@ -67,7 +70,7 @@ it('removes a recent entry without attempting to open its missing directory', as
   expect(store.openProject).not.toHaveBeenCalled();
 });
 
-it('reselects a recent desktop project after its process grant expires', async () => {
+it('offers explicit recovery only when a recent desktop project loses access', async () => {
   const queryPermission = vi.fn(async () => 'prompt');
   const stale = { name: '测试.ripple', queryPermission } as unknown as FileSystemDirectoryHandle;
   const selected = { name: '测试.ripple' } as FileSystemDirectoryHandle;
@@ -79,6 +82,8 @@ it('reselects a recent desktop project after its process grant expires', async (
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
   fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
+  expect(state.picker).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', {name:'重新选择原项目'}));
   await screen.findByRole('heading', { name: '测试项目' });
   expect(queryPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
   expect(state.picker).toHaveBeenCalledOnce();
@@ -95,7 +100,8 @@ it('does not replace a recent entry with a different project', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
   fireEvent.click(await screen.findByRole('button', { name: '测试项目' }));
-  await screen.findByText('选中的不是这个最近项目。请重新选择原项目文件夹。');
+  fireEvent.click(await screen.findByRole('button', {name:'重新选择原项目'}));
+  await screen.findByText('所选文件夹与这个最近项目不匹配。请重新选择原项目文件夹。');
   expect(store.rememberProject).not.toHaveBeenCalled();
   expect(screen.queryByRole('heading', { name: '测试项目' })).toBeNull();
 });
@@ -130,6 +136,10 @@ it('imports documents from the independent drop zone into the selected interview
   fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [file], items: [] } });
   await waitFor(() => expect(store.importProjectMaterials).toHaveBeenCalledWith(project,
     [expect.objectContaining({ kind: 'manuscript', audioId: '', group: 'i' })], 'copy', 'i'));
+  await screen.findByText(`访谈.txt：${msg('materialImport.m1379')}`);
+  await act(() => setInterfaceLanguage('en'));
+  expect(screen.getByText(`访谈.txt: ${msg('materialImport.m1379')}`)).toBeTruthy();
+  expect(store.importProjectMaterials).toHaveBeenCalledOnce();
 });
 
 it('keeps copy and verification visible, blocks another import, and reports success', async () => {
@@ -164,6 +174,9 @@ it('keeps copy and verification visible, blocks another import, and reports succ
   expect(await screen.findByText('音频已加入项目。')).toBeTruthy();
   expect(screen.getByText('音频已加入项目。').className).toBe('processing-notice');
   expect(screen.queryByText('正在保存项目…')).toBeNull();
+  await act(() => setInterfaceLanguage('en'));
+  expect(screen.getByText('Audio added to the project.')).toBeTruthy();
+  expect(screen.queryByText('音频已加入项目。')).toBeNull();
 });
 
 it('cancels a copy without a success notice and allows the same audio to be retried', async () => {
@@ -201,6 +214,7 @@ it('removes the short success notice after four seconds', async () => {
   const timer = vi.spyOn(window, 'setTimeout');
   fireEvent.click(await screen.findByRole('button', { name: '加入音频' }));
   await screen.findByText('音频已加入项目。');
+  await waitFor(() => expect(timer.mock.calls.some(([, delay]) => delay === 4000)).toBe(true));
   const dismiss = timer.mock.calls.find(([, delay]) => delay === 4000)?.[0];
   expect(typeof dismiss).toBe('function');
   await act(async () => { if (typeof dismiss === 'function') dismiss(); });
@@ -307,7 +321,7 @@ it('returns home through the brand and confirms discarding an unconfirmed sessio
   fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
   expect(screen.queryByRole('button', { name: '打开音频' })).toBeNull();
   expect(screen.queryByRole('button', { name: '设置' })).toBeNull();
-  expect(screen.getByRole('combobox', { name: '界面语言' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '界面语言' })).toBeTruthy();
   confirm.mockRestore();
 });
 
@@ -417,9 +431,86 @@ it('lets first-time users select English from welcome without opening or writing
   const { setInterfaceLanguage } = await import('../i18n');
   render(<ProjectWorkspace />);
   try {
-    fireEvent.change(screen.getByRole('combobox', {name:'界面语言'}), {target:{value:'en'}});
+    fireEvent.click(screen.getByRole('button', {name:'界面语言'}));fireEvent.click(screen.getByRole('menuitemradio', {name:'English'}));
     expect(await screen.findByRole('button',{name:'New project'})).toBeTruthy();
     expect(store.openProject).not.toHaveBeenCalled();
     expect(store.createProject).not.toHaveBeenCalled();
   } finally { cleanup(); await setInterfaceLanguage('zh-CN'); }
+});
+
+it('directly opens a restored recent desktop project without invoking a picker', async () => {
+ const saved={name:'synthetic.ripple',queryPermission:vi.fn(async()=> 'granted')} as unknown as FileSystemDirectoryHandle;
+ Object.assign(window,{__TAURI__:{core:{}}});
+ vi.mocked(store.recentProjects).mockResolvedValueOnce([{id:'p',title:'测试项目',directory:saved}]).mockResolvedValue([]);
+ vi.mocked(store.openProject).mockResolvedValue({...project,directory:saved});
+ render(<ProjectWorkspace/>); fireEvent.click(screen.getByRole('button',{name:'最近项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'测试项目'}));
+ await screen.findByRole('heading',{name:'测试项目'}); expect(state.picker).not.toHaveBeenCalled();
+});
+it('keeps the welcome page and recent entry when recovery is cancelled', async () => {
+ const saved={name:'synthetic.ripple',queryPermission:vi.fn(async()=> 'prompt')} as unknown as FileSystemDirectoryHandle;
+ Object.assign(window,{__TAURI__:{core:{}}});
+ vi.mocked(store.recentProjects).mockResolvedValueOnce([{id:'p',title:'测试项目',directory:saved}]);
+ state.picker.mockRejectedValueOnce(new DOMException('cancelled','AbortError'));
+ render(<ProjectWorkspace/>); fireEvent.click(screen.getByRole('button',{name:'最近项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'测试项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'重新选择原项目'}));
+ await waitFor(()=>expect(state.picker).toHaveBeenCalledOnce());
+ expect(store.openProject).not.toHaveBeenCalled(); expect(store.rememberProject).not.toHaveBeenCalled();
+ expect(screen.queryByRole('heading',{name:'测试项目'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'取消'})); expect(screen.queryByText(/访问权限需要恢复/)).toBeNull();
+});
+
+it('refreshes recovered audio only after a successful selection, keeping cancellation harmless',async()=>{
+ const recording={...project.data.interviews[0].recordings[0],file:'synthetic.wav',fingerprint:'synthetic',storage:'reference' as const};
+ const linked={...project,data:{...project.data,interviews:[{...project.data.interviews[0],recordings:[recording]}]}};
+ vi.mocked(store.openProject).mockResolvedValue(linked);
+ const check=vi.spyOn(store,'checkProjectMedia').mockRejectedValueOnce(new DOMException('Synthetic permission loss','NotAllowedError')).mockResolvedValue(undefined);
+ const relink=vi.spyOn(store,'relinkMedia').mockResolvedValue({...linked,data:{...linked.data,revision:1}});
+ const selected={name:'synthetic.wav'} as FileSystemFileHandle;
+ Object.assign(window,{showOpenFilePicker:vi.fn().mockRejectedValueOnce(new DOMException('Synthetic cancel','AbortError')).mockResolvedValueOnce([selected])});
+ render(<ProjectWorkspace/>);fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ await screen.findByText(/音频访问权限需要恢复/);
+ fireEvent.click(screen.getByRole('button',{name:'找到 录音.wav 的原音频'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'找到 录音.wav 的原音频'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(relink).not.toHaveBeenCalled();expect(check).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('button',{name:'找到 录音.wav 的原音频'}));
+ await waitFor(()=>expect(relink).toHaveBeenCalledWith(linked,'i',recording,selected));
+ await waitFor(()=>expect(screen.queryByText(/音频访问权限需要恢复/)).toBeNull());
+ expect(check).toHaveBeenCalledTimes(2);
+});
+
+
+it('publishes a completed move and focuses its destination session',async()=>{
+ localStorage.clear();
+ const two={...project,data:{...project.data,interviews:[...project.data.interviews,{id:'destination',title:'Synthetic destination',recordings:[]}]}};
+ const moved={...two,data:{...two.data,revision:1,interviews:[{...two.data.interviews[0],recordings:[]},{...two.data.interviews[1],recordings:two.data.interviews[0].recordings}]}};
+ vi.mocked(store.openProject).mockResolvedValueOnce(two);
+ vi.mocked(store.moveProjectRecordings).mockResolvedValueOnce(moved);
+ render(<ProjectWorkspace/>);
+ fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ fireEvent.click(await screen.findByRole('checkbox',{name:'选择 录音.wav'}));
+ fireEvent.click(screen.getByRole('button',{name:'将 录音.wav 移动到其他场次'}));
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ await waitFor(()=>expect(store.moveProjectRecordings).toHaveBeenCalledWith(two,'i','destination',['r']));
+ expect(await screen.findByText('录音及关联稿件已移到“Synthetic destination”。')).toBeTruthy();
+ await waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[data-session-id="destination"]')));
+});
+
+it('refuses to move a recording while an AI task owns its manuscript',async()=>{
+ localStorage.clear();
+ const two={...project,data:{...project.data,interviews:[...project.data.interviews,{id:'destination',title:'Synthetic destination',recordings:[]}]}};
+ vi.mocked(store.openProject).mockResolvedValueOnce(two);
+ const targetLocked=vi.fn(()=>true);
+ render(<ConnectorContext.Provider value={{state:{targetLocked}} as never}><ProjectWorkspace/></ConnectorContext.Provider>);
+ fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ fireEvent.click(await screen.findByRole('checkbox',{name:'选择 录音.wav'}));
+ fireEvent.click(screen.getByRole('button',{name:'将 录音.wav 移动到其他场次'}));
+ fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
+ fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
+ expect(await screen.findByRole('alert')).toBeTruthy();
+ expect(store.moveProjectRecordings).not.toHaveBeenCalled();
+ expect(targetLocked).toHaveBeenCalledWith('','r','i','p');
+ expect(screen.getByRole('dialog')).toBeTruthy();
 });

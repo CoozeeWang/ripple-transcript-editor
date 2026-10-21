@@ -1,7 +1,8 @@
 import { msg } from '../i18n';
 import { recordProblem } from "../lib/diagnostics";
 import { flushEditorDrafts } from "../lib/editorDrafts";
-import { applyAISuggestions, type AISuggestion } from "../lib/aiEditing";
+import { applyAISuggestions, type AISuggestion } from "../lib/aiVersionEdits";
+import { applyContinuationBatch, type ContinuationCheckpoint } from '../lib/continuationBatch';
 import { useLayoutEffect, useRef, useState } from "react";
 import { useDismissable } from "../useDismissable";
 import type {
@@ -57,7 +58,7 @@ export interface UseVersionsDeps {
   selectedAudio: string | null;
   transcript: Transcript | null;
   metadata: InterviewMetadata | null;
-  reset: (t: Transcript) => void;
+  reset: (t: Transcript, savedMetadata?: InterviewMetadata | null) => void;
   setMetadata: (m: InterviewMetadata | null) => void;
   setSelectedSegmentId: (id: string) => void;
   setHasLoadedTranscript: (b: boolean) => void;
@@ -150,6 +151,7 @@ export function useVersions(deps: UseVersionsDeps) {
     const isCurrent = () => request === operationRef.current && dir === latest.current.dirHandleRef.current && deps.selectedAudio === latest.current.selectedAudio;
     if (!dir || !deps.selectedAudio) return;
     // 先 flush 当前编辑到旧修改稿，避免切换时丢失（只读模式下不 flush，见 flushActiveEdit）
+    deps.setProcessMessage('');
     await flushActiveEdit();
     if (!isCurrent()) return;
     const edited = await readModelEdit(dir, deps.selectedAudio, modelId, editId);
@@ -168,7 +170,7 @@ export function useVersions(deps: UseVersionsDeps) {
     setModels(nextModels);
     setActiveModelId(modelId);
     deps.setMetadata(edited.metadata);
-    deps.reset(edited.transcript);
+    deps.reset(edited.transcript, edited.metadata);
     deps.setSelectedSegmentId(edited.transcript.segments[0]?.id ?? "");
     deps.setHasLoadedTranscript(true);
     deps.setViewingOriginal(false);
@@ -183,13 +185,14 @@ export function useVersions(deps: UseVersionsDeps) {
     if (!dir || !deps.selectedAudio) return;
     // 切到原稿前先把内存里的修改落盘：自动保存有 600ms 防抖，而 viewingOriginal 置 true
     // 会让防抖 effect 直接 return（清掉待执行的定时器），未落盘的改动就此丢失。
+    deps.setProcessMessage('');
     await flushActiveEdit();
     if (!isCurrent()) return;
     const original = await readModelOriginal(dir, deps.selectedAudio, modelId);
     if (!original || !isCurrent()) return;
     setActiveModelId(modelId);
     // 原稿 JSON 不存元数据，沿用当前 metadata（描述同一段音频）
-    deps.reset(original.transcript);
+    deps.reset(original.transcript, deps.metadata);
     deps.setSelectedSegmentId(original.transcript.segments[0]?.id ?? "");
     deps.setHasLoadedTranscript(true);
     deps.setViewingOriginal(true);
@@ -208,7 +211,7 @@ export function useVersions(deps: UseVersionsDeps) {
   };
 
   /** Publish reviewed suggestions in one new version; the source remains untouched. */
-  const createAIEdit = async (baseline: Transcript, suggestions: AISuggestion[], label: string) => {
+  const createAIEdit = async (baseline: Transcript, suggestions: AISuggestion[], label: string, checkpoint?: ContinuationCheckpoint) => {
     if (versionBusy || !activeModel) {
       throw new Error(msg('useVersions.m1187'));
     }
@@ -218,20 +221,21 @@ export function useVersions(deps: UseVersionsDeps) {
     if (!dir || !audio) throw new Error(msg('useVersions.m1188'));
     const isCurrent = () => request === operationRef.current && dir === latest.current.dirHandleRef.current && audio === latest.current.selectedAudio && latest.current.viewingOriginal === deps.viewingOriginal;
     setVersionBusy(true);
+    deps.setProcessMessage('');
     try {
       await flushActiveEdit();
       if (!isCurrent() || !latest.current.transcript) throw new Error(msg('useVersions.m1189'));
-      const transcript = applyAISuggestions(latest.current.transcript, baseline, suggestions);
+      const transcript = checkpoint ? applyContinuationBatch(latest.current.transcript, suggestions, checkpoint) : applyAISuggestions(latest.current.transcript, baseline, suggestions);
       const result = await createEdit(dir, audio, activeModel.id, {
         fromOriginal: deps.viewingOriginal,
         srcEditId: deps.viewingOriginal ? undefined : activeModel.activeEditId,
-        reviewed: { baseline, transcript, label: label.slice(0, 100) },
+        reviewed: { baseline: checkpoint ? latest.current.transcript : baseline, transcript, label: label.slice(0, 100) },
       });
       if (!isCurrent()) return;
       setModels(result.manifest.models);
       setActiveModelId(result.model.id);
       deps.setMetadata(result.edited.metadata);
-      deps.reset(result.edited.transcript);
+      deps.reset(result.edited.transcript, result.edited.metadata);
       deps.setSelectedSegmentId(transcript.lastEditedSegmentId ?? transcript.segments[0]?.id ?? "");
       deps.setHasLoadedTranscript(true);
       deps.setProcessStatus("done");
@@ -266,7 +270,7 @@ export function useVersions(deps: UseVersionsDeps) {
         });
         if (!isCurrent()) return;
         setModels(result.manifest.models); setActiveModelId(result.model.id);
-        deps.setMetadata(result.edited.metadata); deps.reset(result.edited.transcript);
+        deps.setMetadata(result.edited.metadata); deps.reset(result.edited.transcript, result.edited.metadata);
         deps.setSelectedSegmentId(result.edited.transcript.segments[0]?.id ?? "");
         deps.setHasLoadedTranscript(true); deps.setViewingOriginal(false);
         setNamingOpen(false); return;
@@ -364,9 +368,10 @@ export function useVersions(deps: UseVersionsDeps) {
       if (replacement) {
         setActiveModelId(replacement.modelId);
         if (replacement.metadata) deps.setMetadata(replacement.metadata);
-        deps.reset(replacement.transcript);
+        deps.reset(replacement.transcript, replacement.metadata ?? deps.metadata);
         deps.setSelectedSegmentId(replacement.transcript.segments[0]?.id ?? "");
         deps.setHasLoadedTranscript(true); deps.setViewingOriginal(replacement.original);
+        deps.setProcessStatus('done');
         deps.setProcessMessage(replacement.original ? msg('useVersions.m1199') : msg('useVersions.m1200'));
       } else if (!manifest.models.length) {
         setActiveModelId(null); deps.setHasLoadedTranscript(false); deps.setViewingOriginal(false);
