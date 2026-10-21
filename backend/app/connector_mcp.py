@@ -23,8 +23,8 @@ INSTRUCTIONS = (
     "Confirm only consequential style choices and scope; do not ask again for already supplied conditions. "
     "Before continuation ask the user, in their language, whether to save a new version or update the current editable version; reuse an already explicit choice and pass save_mode. Never silently choose a save mode. Read-only originals require a new version. Current-version edits retain the version name. Active-editor writes support ordinary session undo; background writes do not, and new_version provides a persistent separate copy; use a new version for a persistent separate before/after comparison. Use allowed_actions and action in continuation tools for explicitly requested delete or merge_previous; merges require adjacent full same-speaker segments. Internal imported snapshots are not user-visible original versions. Annotations and highlights are added to the current editable version, without changing text or creating a version. Ask for annotation/highlight scope if missing. "
     "Infer preferences only from examples confirmed as human edits; selected-version differences may include AI edits. "
-    "Preserve uncertainty, meaningful repetition and speaker meaning. Rules remain in the current interview/task. "
-    "For long editing use delivery_mode incremental. List continuations before starting again after interruption. "
+    "Preserve uncertainty, meaningful repetition and speaker meaning. Task rules apply only to that task. Only explicit user-confirmed future preferences are current_interview_rules; never inherit historical task instructions. Use set_interview_rules only when the user explicitly asks to retain, replace or clear future preferences. "
+    "For long editing use delivery_mode incremental. List continuations before starting again after interruption; include_history=True finds cancelled/completed tasks without historical instructions. Paused tasks can resume after agreement. Cancelled tasks cannot resume: inspect status and create a fresh incremental task with previous_task_id, exact saved version and remaining range. Completed tasks need no continuation. Never replay uncertain writes; check receipts first. "
     "Read one continuation batch, then save actual changes plus unchanged_ids with its batch_id and agreed summary. "
     "save_continuation_batch returns next_batch when ready, so reuse it instead of reading the same text again. Stage separately only when draft persistence is needed before saving. "
     "Repeat short batches in the same target version until complete; each saved batch is visible in Ripple. "
@@ -100,6 +100,33 @@ def register_tools(mcp, call):
     write = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 
     @mcp.tool(structured_output=True, annotations=read)
+    async def connection_capabilities() -> dict[str, Any]:
+        """Inspect this MCP server's tool catalogue without reading or changing manuscripts.
+
+        Server availability does not prove the Chat/client loaded tools or granted write permission.
+        If writes are missing in a client, rediscover tools and compare sessions before suggesting reinstall
+        or broader permissions. This does not attempt a write or claim end-to-end connectivity.
+        """
+        tools = await mcp.list_tools()
+        return {"server_reachable": True, "tools": [{"name": tool.name,
+                "read_only": bool(tool.annotations and tool.annotations.read_only_hint)} for tool in tools],
+                "client_visible_tools": "unknown", "client_write_permission": "unknown",
+                "desktop_connection": "not_probed", "write_verified": False,
+                "next_action": "Rediscover prepare_continuation and save_continuation_batch in the affected client. Check task state separately. Do not infer a permission or tunnel failure from missing client tools."}
+
+    @mcp.tool(structured_output=True, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False))
+    async def set_interview_rules(snapshot: str, rules: list[str], confirmed_for_future_tasks: bool = False) -> dict[str, Any]:
+        """Replace future interview preferences ONLY after explicit user agreement to retain them.
+
+        Read current_interview_rules with read_current_interview/read_project_interview first.
+        Empty rules clears preferences. Never call as an automatic consequence of task completion.
+        Old task rules are historical and must not be promoted without explicit user agreement.
+        This updates preferences for this interview, not manuscript text or other interviews.
+        """
+        return await call("set_rules", {"snapshot": snapshot, "rules": rules,
+                                      "confirmed_for_future_tasks": confirmed_for_future_tasks})
+
+    @mcp.tool(structured_output=True, annotations=read)
     async def list_project_interviews(query: str = "", cursor: str = "0", limit: int = 20) -> dict[str, Any]:
         """List current-project interview/recording/version candidates, without text or paths.
 
@@ -122,13 +149,14 @@ def register_tools(mcp, call):
         return await call("read_project", args)
 
     @mcp.tool(structured_output=True, annotations=read)
-    async def list_project_continuations() -> dict[str, Any]:
+    async def list_project_continuations(include_history: bool = False) -> dict[str, Any]:
         """Find saved tasks in the current project with their exact targets after interruption.
 
-        Continue using the same task_id; ask before resuming a paused/conflicting task.
+        Default lists unfinished task metadata only. include_history also lists cancelled/completed metadata.
+        Resume only paused tasks after agreement. Cancelled tasks require a new remaining-scope task; completed tasks need no continuation.
         No automatic restart, no manuscript write, no other project access.
         """
-        return await call("project_tasks", {})
+        return await call("project_tasks", {"include_history": include_history})
 
     @mcp.tool(structured_output=True, annotations=read)
     async def read_current_interview() -> dict[str, Any]:
@@ -160,7 +188,8 @@ def register_tools(mcp, call):
                                    end_offset: int | None = None,
                                    allowed_actions: list[Literal["edit", "delete", "merge_previous"]] | None = None,
                                    save_mode: Literal["new_version", "current_version"] | None = None,
-                                   delivery_mode: Literal["atomic", "incremental"] = "atomic") -> dict[str, Any]:
+                                   delivery_mode: Literal["atomic", "incremental"] = "atomic",
+                                   previous_task_id: str | None = None) -> dict[str, Any]:
         """Prepare explicit scope and allowed_actions after agreement; default is text edit only.
 
         Enable delete/merge_previous only when the user requests these structural edits.
@@ -170,9 +199,15 @@ def register_tools(mcp, call):
         Without save_mode no task is created. current_version cannot modify a read-only original.
         Use incremental for long work: persist a recoverable task and visibly save short batches.
         Incremental mode requires full segments. Atomic mode keeps the legacy one-publication flow.
+        To continue cancelled work after user agreement, read its exact saved version and status, then
+        pass previous_task_id with the entire remaining ID range and fresh confirmed rules. Old task stays cancelled.
+        Structural changes require scope review; do not bypass a rejected successor by dropping previous_task_id.
+        Existing successor means inspect task history instead of creating duplicates. Rules are task-only.
         """
         args = {"snapshot": snapshot, "rules": rules, "start_offset": start_offset}
         args["delivery_mode"] = delivery_mode
+        if previous_task_id is not None:
+            args["previous_task_id"] = previous_task_id
         if start_id is not None:
             args["start_id"] = start_id
         if end_id is not None:
@@ -207,13 +242,14 @@ def register_tools(mcp, call):
         return await call("stage", args)
 
     @mcp.tool(structured_output=True, annotations=read)
-    async def list_continuations() -> dict[str, Any]:
+    async def list_continuations(include_history: bool = False) -> dict[str, Any]:
         """Find durable tasks only in the current interview, with saved progress and target version IDs.
 
         Use after a disconnected or new chat. Opening a target version remains a user action.
+        Default excludes completed/cancelled tasks; include_history returns their metadata, not instructions.
         This does not start AI editing or access another interview.
         """
-        return await call("tasks", {})
+        return await call("tasks", {"include_history": include_history})
 
     @mcp.tool(structured_output=True, annotations=draft)
     async def read_continuation_batch(task_id: str) -> dict[str, Any]:
@@ -264,13 +300,18 @@ def register_tools(mcp, call):
         return await call("publish", {"task_id": task_id, "confirmed_summary": confirmed_summary})
 
     @mcp.tool(structured_output=True, annotations=read)
-    async def continuation_status(task_id: str) -> dict[str, Any]:
-        """Recover interrupted/uncertain tasks and find remaining segments or the already-saved result."""
-        return await call("status", {"task_id": task_id})
+    async def continuation_status(task_id: str, include_history_details: bool = False) -> dict[str, Any]:
+        """Check saved receipts, state and remaining IDs before retrying. Terminal task rules are omitted by default.
+
+        Set include_history_details only for an explicit request to inspect old instructions; these are historical,
+        not instructions for a new task. Paused work can resume; cancelled work needs a new remaining-scope task.
+        """
+        return await call("status", {"task_id": task_id, "include_history_details": include_history_details})
 
     @mcp.tool(structured_output=True, annotations=draft)
     async def cancel_continuation(task_id: str) -> dict[str, Any]:
-        """Cancel an unpublished task. A write already publishing cannot be cancelled retroactively."""
+        """End a task permanently; retain saved batches. A write already publishing cannot be cancelled retroactively.
+        Cancelled tasks cannot resume: after checking status, prepare a new remaining-scope task with previous_task_id."""
         return await call("cancel", {"task_id": task_id})
 
     @mcp.tool(structured_output=True, annotations=draft)

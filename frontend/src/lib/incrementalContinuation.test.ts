@@ -43,7 +43,7 @@ it('saves 2107 segments in short visible batches into one work version and resum
       changes:[{segment_id:segments[0].id,before:segments[0].text,after:`Revised ${segments[0].text}`}],unchanged_ids:segments.slice(1).map(s=>s.id)});
     saved=Number(result.saved_segments);
     expect(f.doc.transcript.segments.find(segment=>segment.id===segments[0].id)!.text).toMatch(/^Revised /);
-    batches++;if(batches%7===0){f.restart();const list=await f.c.handle('tasks',{});expect((list.tasks as {saved_segments:number}[])[0].saved_segments).toBe(saved);}
+    batches++;if(batches%7===0){f.restart();const list=await f.c.handle('tasks',{include_history:true});expect((list.tasks as {saved_segments:number}[])[0].saved_segments).toBe(saved);}
     if(saved<2107)batch=batches%7===0?await f.c.handle('batch',{task_id:plan.task_id}):result.next_batch as Record<string,unknown>;
   }
   expect(batches).toBe(88);expect(f.versions).toBe(2);expect(f.writes).toBe(88);
@@ -83,7 +83,7 @@ it('recovers a saved manuscript receipt after the progress journal fails without
   const f=fixture(3),plan=await f.plan('new_version'),s=await stage(f,plan);f.failProgress();
   await expect(f.c.handle('checkpoint',s.args)).rejects.toThrow('synthetic_journal_failure');
   expect(f.writes).toBe(1);expect(f.versions).toBe(2);f.restart();
-  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({state:'completed',saved_segments:3,version_id:'m:e2'})]);
+  expect((await f.c.handle('tasks',{include_history:true})).tasks).toEqual([expect.objectContaining({state:'completed',saved_segments:3,version_id:'m:e2'})]);
   expect(await f.c.handle('checkpoint',s.args)).toMatchObject({saved:true,repeated:true});expect(f.writes).toBe(1);
 });
 
@@ -92,7 +92,7 @@ it('discovers an uncertain first save even after its work version was renamed an
   await expect(f.c.handle('checkpoint',s.args)).rejects.toThrow('synthetic_journal_failure');
   const saved=structuredClone(f.doc.transcript),version={...f.doc.version,name:'User renamed work version'};
   Object.assign(f.doc,{transcript:structuredClone(f.original),version:{...f.doc.version,id:'m:e1',edit_id:'e1',name:'Synthetic draft'},references:async()=>[{version,load:async()=>saved}]});
-  f.restart();expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({version_id:'m:e2',version:'User renamed work version',saved_segments:3,is_current:false})]);
+  f.restart();expect((await f.c.handle('tasks',{include_history:true})).tasks).toEqual([expect.objectContaining({version_id:'m:e2',version:'User renamed work version',saved_segments:3,is_current:false})]);
   await expect(f.c.handle('checkpoint',s.args)).rejects.toThrow('open_task_target_version_first');expect(f.versions).toBe(2);expect(f.writes).toBe(1);
 });
 
@@ -185,22 +185,70 @@ it('requires an explicit save choice and full segment scope, and survives restar
 
 it('reports actual saved batch counts across restart and repeated receipts',async()=>{
   const f=fixture(50),plan=await f.plan();
-  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({saved_batches:0,batch_number:1})]);
+  expect((await f.c.handle('tasks',{include_history:true})).tasks).toEqual([expect.objectContaining({saved_batches:0,batch_number:1})]);
   const first=await stage(f,plan);await f.c.handle('checkpoint',first.args);
   f.restart();
-  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({saved_batches:1,batch_number:2,saved_segments:24})]);
+  expect((await f.c.handle('tasks',{include_history:true})).tasks).toEqual([expect.objectContaining({saved_batches:1,batch_number:2,saved_segments:24})]);
   await f.c.handle('checkpoint',first.args);
-  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({saved_batches:1})]);
+  expect((await f.c.handle('tasks',{include_history:true})).tasks).toEqual([expect.objectContaining({saved_batches:1})]);
   const second=await stage(f,plan);await f.c.handle('checkpoint',second.args);
   const third=await stage(f,plan);await f.c.handle('checkpoint',third.args);
-  expect((await f.c.handle('tasks',{})).tasks).toEqual([expect.objectContaining({state:'completed',saved_batches:3,saved_segments:50})]);
+  expect((await f.c.handle('tasks',{include_history:true})).tasks).toEqual([expect.objectContaining({state:'completed',saved_batches:3,saved_segments:50})]);
 });
 it('does not invent batches when legacy saved segments are missing from the receipt history',async()=>{
   const f=fixture(50),plan=await f.plan(),first=await stage(f,plan);await f.c.handle('checkpoint',first.args);
   const journal=f.files.get(String(plan.task_id))!;delete journal.receipts;delete journal.lastReceipt;f.restart();
-  const tasks=(await f.c.handle('tasks',{})).tasks as {saved_batches?:number;batch_number?:number}[];
+  const tasks=(await f.c.handle('tasks',{include_history:true})).tasks as {saved_batches?:number;batch_number?:number}[];
   expect(tasks[0].saved_batches).toBeUndefined();expect(tasks[0].batch_number).toBeUndefined();
   const second=await stage(f,plan);await f.c.handle('checkpoint',second.args);
-  const updated=(await f.c.handle('tasks',{})).tasks as {saved_batches?:number}[];
+  const updated=(await f.c.handle('tasks',{include_history:true})).tasks as {saved_batches?:number}[];
   expect(updated[0].saved_batches).toBeUndefined();
+});
+
+
+it('creates a linked fresh task for cancelled remaining scope after restart without inheriting rules or replaying saved text', async () => {
+  const f = fixture(30), remember = vi.fn(async () => {}); f.doc.remember = remember;
+  const old = await f.plan(), batch = await stage(f, old);
+  await f.c.handle('checkpoint', batch.args);
+  await f.c.handle('cancel', { task_id: old.task_id });
+  f.change(24, { text: 'Synthetic manual correction' }); f.restart();
+  expect((await f.c.handle('tasks', {})).tasks).toEqual([]);
+  expect(await f.c.handle('status', { task_id: old.task_id })).toMatchObject({ state: 'cancelled', saved_segments: 24, next_action: 'prepare_remaining_as_new_task', remaining_ids: ['s24','s25','s26','s27','s28','s29'] });
+  expect((await f.c.handle('status', { task_id: old.task_id })).summary).toBeUndefined();
+  await expect(f.c.handle('resume', { task_id: old.task_id })).rejects.toThrow('task_not_paused');
+  const next = await f.plan('current_version', { start_id: 's24', previous_task_id: old.task_id, rules: ['New explicit instructions'] });
+  expect(next.task_id).not.toBe(old.task_id);
+  expect(JSON.parse(String(next.summary))).toMatchObject({ previous_task_id: old.task_id, rules: ['New explicit instructions'] });
+  expect((await f.c.handle('batch', { task_id: next.task_id })).segments).toMatchObject([{id:'s24',text:'Synthetic manual correction'}, ...['s25','s26','s27','s28','s29'].map(id=>({id}))]);
+  const saved = await stage(f, next); await f.c.handle('checkpoint', saved.args);
+  expect(f.writes).toBe(2); expect(remember).not.toHaveBeenCalled();
+  expect(f.doc.transcript.segments[0].text).toBe('Revised Synthetic segment 0');
+  await expect(f.plan('current_version', {start_id:'s24',previous_task_id:old.task_id})).rejects.toThrow('successor_already_exists');
+  expect((await f.c.handle('stage', {task_id:old.task_id,batch_id:batch.batch.batch_id,changes:[]})).saved).toBe(false);
+});
+
+it.each(['structure','range','version','receipt','uncertain'])('refuses unsafe successor: %s', async kind => {
+  const f = fixture(30), old = await f.plan(), batch = await stage(f, old);
+  await f.c.handle('checkpoint', batch.args); await f.c.handle('cancel', {task_id:old.task_id});
+  if(kind==='structure') f.change(25,{id:'replacement'});
+  if(kind==='version') f.switchVersion();
+  if(kind==='receipt') delete f.doc.transcript.aiContinuationReceipts;
+  if(kind==='uncertain') { const t=f.files.get(String(old.task_id))!; t.pending={...t.lastReceipt!,batch_id:'uncertain'}; f.restart(); }
+  await expect(f.plan('current_version',{start_id:kind==='range'?'s23':'s24',previous_task_id:old.task_id})).rejects.toThrow();
+  expect(f.files.size).toBe(1); expect(f.writes).toBe(1);
+});
+
+
+it('resolves a cancelled pending save receipt after restart without resurrecting the task', async () => {
+  for (const count of [3,30]) {
+    const f=fixture(count), task=await f.plan(), batch=await stage(f,task);
+    f.failProgress();
+    await expect(f.c.handle('checkpoint',batch.args)).rejects.toThrow('synthetic_journal_failure');
+    const journal=f.files.get(String(task.task_id))!;
+    journal.state='cancelled';journal.reason='user_cancelled';f.restart();
+    expect(await f.c.handle('status',{task_id:task.task_id})).toMatchObject({state:'cancelled',saved_segments:Math.min(24,count),next_action:count>24?'prepare_remaining_as_new_task':'none'});
+    expect(f.files.get(String(task.task_id))!.pending).toBeUndefined();
+    await expect(f.c.handle('resume',{task_id:task.task_id})).rejects.toThrow('task_not_paused');
+    expect(f.writes).toBe(1);
+  }
 });

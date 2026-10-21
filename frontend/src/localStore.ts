@@ -2082,9 +2082,9 @@ export async function readConnectorRules(dir: FileSystemDirectoryHandle, audio: 
   const container = await resolveTranscriptDir(dir, audio, false);
   if (!container) return [];
   try {
-    const file = await container.getFileHandle('ai-connector-rules.json');
+    const file = await container.getFileHandle('ai-interview-preferences.json');
     const value = JSON.parse(await (await file.getFile()).text());
-    return Array.isArray(value.rules) ? value.rules.filter((rule: unknown) => typeof rule === 'string') : [];
+    return value.schema === 1 && value.source === 'explicit_user_confirmation' && Array.isArray(value.rules) ? value.rules.filter((rule: unknown) => typeof rule === 'string') : [];
   } catch (error) {
     if ((error as { name?: string }).name === 'NotFoundError') return [];
     throw error;
@@ -2094,7 +2094,7 @@ export async function writeConnectorRules(dir: FileSystemDirectoryHandle, audio:
   return inDirectory(dir, async () => {
     const container = await resolveTranscriptDir(dir, audio, false);
     if (!container) throw new Error('connector_document_unavailable');
-    await writeFileJson(container, 'ai-connector-rules.json', { rules, scope: 'current-interview' });
+    await writeFileJson(container, 'ai-interview-preferences.json', { schema: 1, rules, scope: 'current-interview', source: 'explicit_user_confirmation', updated_at: new Date().toISOString() });
   });
 }
 

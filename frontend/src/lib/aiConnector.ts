@@ -91,6 +91,14 @@ export class AIConnector {
     if (['tasks','batch','checkpoint','pause','resume','proposals'].includes(operation) ||
       ['stage','status','cancel','publish'].includes(operation) && !this.tasks.has(String(a.task_id))) return this.incremental.handle(operation,a);
     if (['prepare_marks', 'stage_marks', 'apply_marks', 'marks_status', 'cancel_marks'].includes(operation)) return this.markTasks.handle(operation, a);
+    if (operation === 'set_rules') {
+      const doc = await this.valid(a.snapshot);
+      if (a.confirmed_for_future_tasks !== true) fail('explicit_future_rules_confirmation_required');
+      if (!Array.isArray(a.rules) || a.rules.length > 30 || a.rules.some(rule => typeof rule !== 'string' || !rule.trim() || rule.length > 2000)) fail('invalid_interview_rules');
+      if (!doc.remember) fail('interview_rules_unavailable');
+      await doc.remember(a.rules as string[]);
+      return { saved: true, scope: 'current-interview', source: 'explicit_user_confirmation', current_interview_rules: a.rules };
+    }
     if (operation === 'read_current') {
       const doc = await this.host.current();
       if (!doc.transcript.segments.length) fail('no_transcript');
@@ -102,7 +110,8 @@ export class AIConnector {
         ...(doc.target ? { target: doc.target } : {}),
         ...(doc.background ? { background: true, undo_available: false } : {}),
         current_version: doc.version,
-        duration: doc.transcript.audio.duration, speakers: doc.transcript.speakers, current_interview_rules: doc.rules ?? [],
+        duration: doc.transcript.audio.duration, speakers: doc.transcript.speakers, current_interview_rules: doc.rules ?? [], rules_scope: 'explicit_user_confirmed_future_tasks',
+        rules_instruction: 'These are only explicitly retained interview preferences. Task instructions and legacy rules are not inherited. Current user instructions take precedence; ask about conflicts.',
         instructions: 'Current version is the continuation target. Call read_editing_examples to resolve comparison versions before learning style. If comparison selection is required, list candidates and ask the user; never silently choose. Read pages as needed for analysis. For long editing, use delivery_mode incremental, read_continuation_batch and save_continuation_batch; reuse returned next_batch rather than reading the entire manuscript up front. List continuations after interruption before starting another task. Ask for an explicit continuation start and whether to save a new version or update the current editable version; reuse already explicit choices. Pass save_mode to prepare_continuation. Read-only originals require a new version. Do not display full text by default.' };
     }
     if (operation === 'read_page') {
@@ -160,6 +169,7 @@ export class AIConnector {
     }
     if (operation === 'prepare') {
       const s = await this.valid(a.snapshot);
+      if (a.previous_task_id !== undefined && a.delivery_mode !== 'incremental') fail('successor_requires_incremental_mode');
       if (a.delivery_mode === 'incremental') return this.incremental.prepare(s,a);
       if (a.delivery_mode !== undefined && a.delivery_mode !== 'atomic') fail('invalid_delivery_mode');
       if (typeof a.start_id !== 'string' || !a.start_id) return { needs_clarification: ['continuation_start'], writable: false };
@@ -242,7 +252,8 @@ export class AIConnector {
     }
     if (operation === 'status') {
       const task = this.task(a.task_id);
-      return { task_id: task.id, state: task.state, summary: task.summary,
+      return { task_id: task.id, state: task.state, ...(!['completed', 'cancelled'].includes(task.state) || a.include_history_details === true ? { summary: task.summary, rules_scope: ['completed', 'cancelled'].includes(task.state) ? 'historical-not-current-instructions' : 'this-task-only' } : {}),
+        next_action: task.state === 'cancelled' ? 'read_current_and_prepare_new_task' : task.state === 'completed' ? 'none' : task.state === 'publishing' ? 'check_status_before_retry' : 'continue_task',
         allowed_actions: task.allowedActions,
         save_mode: task.saveMode, target_version: task.snapshot.version,
         staged_actions: [...task.staged.values()].map(c => ({ segment_id: c.segment_id, action: c.action })),
@@ -268,7 +279,6 @@ export class AIConnector {
       const suggestions = [...task.staged.values()].filter(c => c.action !== 'edit' || c.before !== c.after)
         .map(c => ({ id: c.segment_id, text: c.after, action: c.action, reason: task.rules.join('; ') }));
       if (!suggestions.length) {
-        await task.snapshot.remember?.(task.rules);
         task.state = 'completed'; task.result = { saved: false, reason: 'no_changes', source_version: task.snapshot.label,
           save_mode: task.saveMode, new_version_created: false, result_version: task.snapshot.version };
         return task.result;
@@ -278,10 +288,8 @@ export class AIConnector {
       task.promise = this.host.publish(task.snapshot.transcript, suggestions, task.name, {
         save_mode: task.saveMode, source_version: task.snapshot.version, identity: task.snapshot.identity, task_id: task.id,
       }).then(async result => {
-        let rulesSaved = true;
-        try { await task.snapshot.remember?.(task.rules); } catch { rulesSaved = false; }
         task.result = { ...result, saved: true, save_mode: task.saveMode, new_version_created: task.saveMode === 'new_version',
-          rules_saved: rulesSaved, changed_segments: suggestions.length,
+          rules_scope: 'this-task-only', changed_segments: suggestions.length,
           deleted_segments: suggestions.filter(c => c.action === 'delete').length,
           merged_segments: suggestions.filter(c => c.action === 'merge_previous').length, source_version: task.snapshot.label };
         task.state = 'completed'; return task.result;

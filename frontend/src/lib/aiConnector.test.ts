@@ -339,3 +339,28 @@ it('does not auto-merge for deletion alone, or bypass the range, partial target 
  expect(await h.c.handle('publish',{task_id:q.task_id,confirmed_summary:q.summary})).toMatchObject({deleted_segments:1,merged_segments:0});
  expect(h.current.transcript.segments).toHaveLength(2);
 });
+
+
+it.each([false, true])('keeps atomic task rules task-only, including unchanged=%s', async unchanged => {
+  const f = fixture(), remember = vi.fn(async () => {});
+  f.current = { ...f.current, remember, rules: ['Explicit lasting preference'] };
+  const task = await prepare(f);
+  await f.c.handle('stage', { task_id: task.task_id, changes: [{ ...change, after: unchanged ? change.before : change.after }] });
+  await f.c.handle('publish', { task_id: task.task_id, confirmed_summary: task.summary });
+  expect(remember).not.toHaveBeenCalled();
+  expect(await f.c.handle('read_current', {})).toMatchObject({ current_interview_rules: ['Explicit lasting preference'] });
+  expect((await f.c.handle('status', { task_id: task.task_id })).summary).toBeUndefined();
+  expect(await f.c.handle('status', { task_id: task.task_id, include_history_details: true })).toMatchObject({ summary: task.summary, rules_scope: 'historical-not-current-instructions' });
+});
+
+it('requires explicit future preference agreement and supports replacement and clearing', async () => {
+  const f = fixture(), remember = vi.fn(async (rules: string[]) => { f.current.rules = rules; });
+  f.current.remember = remember;
+  const read = await f.c.handle('read_current', {});
+  await expect(f.c.handle('set_rules', { snapshot: read.snapshot, rules: ['Keep uncertainty'] })).rejects.toThrow('explicit_future_rules_confirmation_required');
+  expect(remember).not.toHaveBeenCalled();
+  await f.c.handle('set_rules', { snapshot: read.snapshot, rules: ['Keep uncertainty'], confirmed_for_future_tasks: true });
+  expect((await f.c.handle('read_current', {})).current_interview_rules).toEqual(['Keep uncertainty']);
+  await f.c.handle('set_rules', { snapshot: read.snapshot, rules: [], confirmed_for_future_tasks: true });
+  expect((await f.c.handle('read_current', {})).current_interview_rules).toEqual([]);
+});

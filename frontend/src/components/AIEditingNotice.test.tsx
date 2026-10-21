@@ -72,3 +72,12 @@ it.each([1, 2])('uses total %i for the English stage and completion plural, not 
     expect(screen.getByText(`AI editing completed. ${total} / ${total} ${noun} saved.`)).toBeTruthy();
   } finally { await setInterfaceLanguage('zh-CN'); }
 });
+
+
+it.each(['zh-CN','zh-TW','en'] as const)('explains permanent ending without requiring an extra confirmation in %s', async language => {
+  await setInterfaceLanguage(language);
+  try {
+    render(<AIEditingNotice activities={[task]} onEnd={vi.fn()}/>);
+    expect(screen.getByText(language==='en' ? /Ending retains saved changes/ : language==='zh-TW' ? /結束會保留已儲存內容/ : /结束会保留已保存内容/)).toBeTruthy();
+  } finally { await setInterfaceLanguage('zh-CN'); }
+});

@@ -29,6 +29,7 @@ export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurr
           <span>{complete ? msg('aiEditing.completed', { saved: task.saved, total: task.total, count: task.total }) : ending ? msg('aiEditing.ending') : task.state === 'failed' ? msg('aiEditing.failed') : task.state === 'paused' ? msg('aiEditing.paused') : active ? msg(isCurrent(task) ? 'aiEditing.locked' : 'aiEditing.background', { client, recording: task.target?.recording ?? task.version }) : msg('aiEditing.ended')}</span>
           <span className="ai-editing-detail">{task.target ? `${task.target.recording} · ${task.version}` : task.version}
             {!complete && <> · {msg(`aiEditing.${!task.total ? 'preparing' : active ? task.state : 'counts'}`, { processed: task.processed, saved: task.saved, total: task.total, count: task.total })}</>}</span>
+          {protectedTask && !ending && <span className="ai-editing-detail">{msg('aiEditing.endHelp')}</span>}
         </div>
         <button type="button" className={protectedTask ? 'ai-editing-end' : 'ai-editing-close'} disabled={busy === task.task_id || ending} onClick={() => void run(task)} aria-label={protectedTask ? undefined : msg('aiEditing.dismiss')}>
           {protectedTask ? msg(ending ? 'aiEditing.endingAction' : 'aiEditing.end') : '×'}

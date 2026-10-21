@@ -30,6 +30,7 @@ export function isContinuationTask(value: unknown): value is ContinuationTask {
     strings(value.rules) && strings(value.actions) && value.actions.every(action => ['edit', 'delete', 'merge_previous'].includes(action)) &&
     new Set(ids).size === ids.length && strings(value.done) && value.done.every(id => ids.includes(id)) &&
     ['draft', 'paused', 'completed', 'cancelled'].includes(String(value.state)) &&
+    (value.previous_task_id === undefined || typeof value.previous_task_id === 'string' && /^[a-f0-9-]{36}$/.test(value.previous_task_id)) &&
     (value.owner_client === undefined || typeof value.owner_client === 'string') &&
     (value.reason === undefined || typeof value.reason === 'string') &&
     Array.isArray(value.held) && value.held.every(batch) && (value.batch === undefined || batch(value.batch)) &&

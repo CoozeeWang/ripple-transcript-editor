@@ -151,7 +151,9 @@ export class ProjectAIConnector {
       const tasks = [...recovered.tasks];
       for (const [id, owner] of this.tasks) if (owner.bound && !tasks.some(t => t.task_id === id))
         tasks.push(this.remember(owner, await owner.controller.handle(this.markIds.has(id) ? 'marks_status' : 'status', { task_id: id })));
-      return { ...recovered, tasks };
+      const metadata = tasks.filter(task => args.include_history === true || !['completed', 'cancelled'].includes(String(task.state))).map(task =>
+        Object.fromEntries(['task_id','state','reason','target','result_version','save_mode','saved_segments','total_segments','saved_batches','version_id','previous_task_id','next_action','updated'].filter(key => task[key] !== undefined).map(key => [key, task[key]])));
+      return { ...recovered, tasks: metadata, instructions: 'Metadata only. Use include_history to find cancelled/completed tasks. Query an exact task status to resume paused work or inspect cancelled remaining scope; never inherit historical instructions into a new task.' };
     }
     let owner: Owner | undefined;
     if (typeof args.snapshot === 'string') owner = this.snapshots.get(args.snapshot);
@@ -170,7 +172,14 @@ export class ProjectAIConnector {
     const id = String(args.task_id ?? args.snapshot ?? '');
     const expected = this.clients.get(id);
     // The internal window may stop/recover tasks; remote clients cannot adopt another client's task.
-    if (expected && client !== 'window' && expected !== client) throw Error('editing_task_belongs_to_another_client');
+    if (expected && client !== 'window' && expected !== client) {
+      // Terminal receipt inspection grants no right to resume or write the old task.
+      if (operation === 'status') {
+        const status = await owner.controller.handle('status', args);
+        if (['cancelled', 'completed'].includes(String(status.state))) return this.remember(owner, status);
+      }
+      throw Error('editing_task_belongs_to_another_client');
+    }
     const preparing = operation === 'prepare' || operation === 'prepare_marks';
     const writing = ['stage', 'publish', 'batch', 'checkpoint', 'stage_marks', 'apply_marks'].includes(operation);
     let reserved: string | undefined;

@@ -41,6 +41,7 @@ from .connector_mcp import INSTRUCTIONS, register_tools
 SCOPE = "interview"
 OPERATIONS = frozenset(
     (
+        "set_rules",
         "read_current",
         "read_page",
         "read_examples",

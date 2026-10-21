@@ -12,6 +12,7 @@ interface Batch {
 }
 export interface ContinuationTask {
   owner_client?: string;
+  previous_task_id?: string;
   schema: 1; id: string; source: ConnectorVersion; target: ConnectorVersion;
   saveMode: ConnectorSaveMode; name: string; rules: string[]; actions: Action[];
   ids: string[]; done: string[]; summary: string;
@@ -95,16 +96,20 @@ export class IncrementalContinuation {
     task.done = [...new Set([...task.done, ...receipt.processed_ids])];
     task.lastReceipt = receipt; task.pending = undefined; task.batch = undefined; task.reason = undefined;
     task.receipts=[...(task.receipts??[]).filter(r=>r.batch_id!==receipt.batch_id),receipt];
-    task.state = task.done.length === task.ids.length ? 'completed' : 'draft';
+    if (task.state !== 'cancelled') task.state = task.done.length === task.ids.length ? 'completed' : 'draft';
+    else task.reason = 'user_cancelled';
   }
   private requireTarget(task: ContinuationTask, doc: ConnectorDocument) {
     if (doc.version.id !== task.target.id) fail('open_task_target_version_first');
   }
-  private result(task: ContinuationTask, doc: ConnectorDocument) {
+  private result(task: ContinuationTask, doc: ConnectorDocument, includeHistory = false) {
     return { ...progress(task, doc), result_version: task.target.id===doc.version.id?doc.version:task.target, save_mode: task.saveMode,
       batch_id: task.lastReceipt?.batch_id ?? null, changed_segments: task.lastReceipt?.changed_segments ?? 0,
       deleted_segments: task.lastReceipt?.deleted_segments ?? 0, merged_segments: task.lastReceipt?.merged_segments ?? 0,
-      complete: task.state === 'completed', summary: task.summary };
+      complete: task.state === 'completed', previous_task_id: task.previous_task_id,
+      next_action: task.pending ? 'check_status_before_retry' : task.state === 'cancelled' ? (task.done.length === task.ids.length ? 'none' : 'prepare_remaining_as_new_task') : task.state === 'completed' ? 'none' : task.state === 'paused' ? 'resume_after_user_request' : 'continue_task',
+      ...(task.state === 'draft' || task.state === 'paused' || includeHistory ? { summary: task.summary,
+        rules_scope: task.state === 'cancelled' || task.state === 'completed' ? 'historical-not-current-instructions' : 'this-task-only' } : {}) };
   }
   prepare(doc: ConnectorDocument, a: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.serial(async () => {
@@ -125,10 +130,25 @@ export class IncrementalContinuation {
       if ([...this.tasks.values()].some(t => t.target.id === doc.version.id && ['draft','paused'].includes(t.state))) fail('resume_or_cancel_existing_continuation');
       const ids = segments.slice(first,last+1).map(s => s.id);
       if (ids.length !== new Set(ids).size || segments.slice(first,last+1).some(s => s.text.length > 12000)) fail('segment_too_large_or_duplicate');
+      let previous: ContinuationTask | undefined;
+      if (a.previous_task_id !== undefined) {
+        previous = this.tasks.get(String(a.previous_task_id));
+        if (!previous || previous.state !== 'cancelled') fail('successor_requires_cancelled_task');
+        if (previous.pending) fail('previous_save_uncertain_check_status');
+        if (previous.target.id !== doc.version.id) fail('successor_requires_exact_saved_version');
+        const savedReceipt = doc.transcript.aiContinuationReceipts?.[previous.id];
+        if (previous.done.length && (!previous.lastReceipt || savedReceipt?.batch_id !== previous.lastReceipt.batch_id || savedReceipt.version_id !== doc.version.id)) fail('saved_receipt_missing_review_current_manuscript');
+        if ([...this.tasks.values()].some(t => t.previous_task_id === previous!.id)) fail('successor_already_exists_list_history');
+        const remaining = previous.ids.filter(id => !previous!.done.includes(id));
+        if (!remaining.length) fail('no_remaining_segments');
+        // Exact ID order excludes already-saved segments and detects structural edits.
+        // Fresh snapshots/batches then read current text rather than replaying proposals.
+        if (JSON.stringify(ids) !== JSON.stringify(remaining)) fail('remaining_scope_changed_review_current_manuscript');
+      }
       const name = a.save_mode === 'new_version' ? nextAIEditName(doc.label,doc.names) : doc.label;
       const id = crypto.randomUUID();
-      const summary = JSON.stringify({ ...(doc.target ? { target: doc.target } : {}), source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
-      const task: ContinuationTask = { owner_client: typeof a.owner_client === 'string' ? a.owner_client : undefined, schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
+      const summary = JSON.stringify({ ...(doc.target ? { target: doc.target } : {}), ...(previous ? { previous_task_id: previous.id } : {}), source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
+      const task: ContinuationTask = { previous_task_id: previous?.id, owner_client: typeof a.owner_client === 'string' ? a.owner_client : undefined, schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
       await this.save(task,doc);
       return { task_id:id,summary,segment_count:ids.length,delivery_mode:'incremental',target_version:doc.version,
         instruction:'Confirm this scope and save choice once. Read a continuation batch, stage changed segments and unchanged_ids, then save_continuation_batch using its batch_id and the agreed summary. Each saved batch is visible in Ripple. Repeat until complete. Resume a paused batch only after the user asks; do not overwrite manual changes.' };
@@ -142,7 +162,7 @@ export class IncrementalContinuation {
   }
   private async execute(operation:string,a:Record<string,unknown>):Promise<Record<string,unknown>> {
       const doc = await this.host.current(); await this.load(doc);
-      if (operation === 'tasks') return { tasks:[...this.tasks.values()].map(t => progress(t,doc)),current_version:doc.version };
+      if (operation === 'tasks') return { tasks:[...this.tasks.values()].filter(t => a.include_history === true || t.state === 'draft' || t.state === 'paused').map(t => ({ ...progress(t,doc), previous_task_id: t.previous_task_id })),current_version:doc.version };
       const task = this.tasks.get(String(a.task_id)); if (!task) fail('task_not_found_in_current_interview');
       if(operation==='proposals') {
         const batch=task.batch?.changes.length?task.batch:task.held.at(-1);
@@ -152,13 +172,16 @@ export class IncrementalContinuation {
           index:doc.transcript.segments.findIndex(s=>s.id===c.segment_id)+1,
         }))};
       }
-      if (operation === 'status') return { ...this.result(task,doc), published:task.done.length > 0,
+      if (operation === 'status') return { ...this.result(task,doc,a.include_history_details === true), published:task.done.length > 0,
         remaining_ids:task.ids.filter(id => !task.done.includes(id)).slice(0,32),
+        remaining_count: task.ids.length - task.done.length,
+        remaining_start_id: task.ids.find(id => !task.done.includes(id)) ?? null,
+        remaining_end_id: task.ids.filter(id => !task.done.includes(id)).at(-1) ?? null,
         pending_batch_id:task.batch?.id ?? null, pending_changes:task.batch?.changes.length ?? 0 };
       this.requireTarget(task,doc);
       if (operation === 'cancel') {
         if (task.state === 'completed') fail('task_already_completed');
-        task.state='cancelled';task.reason='user_cancelled';await this.save(task,doc);
+        const cancelled = structuredClone(task); cancelled.state='cancelled';cancelled.reason='user_cancelled';await this.save(cancelled,doc);
         return { cancelled:true,saved_segments:task.done.length,already_saved_batches_retained:true };
       }
       if (operation === 'pause') {
@@ -268,10 +291,9 @@ export class IncrementalContinuation {
           const version=result.result_version as ConnectorVersion|undefined;if(!version)fail('batch_save_result_unavailable');
           receipt.version_id=version.id;const committed=structuredClone(task);this.finish(committed,receipt,version);
           await this.save(committed,doc);
-          let rulesSaved=true;try{await doc.remember?.(task.rules);}catch{rulesSaved=false;}
           let nextBatch:Record<string,unknown>|null=null,nextError:string|undefined;
           if(committed.state!=='completed')try{nextBatch=await this.execute('batch',{task_id:task.id});}catch(error){const message=error instanceof Error?error.message:'';nextError=/^[a-z_]+$/.test(message)?message:'next_batch_unavailable';}
-          return {...this.result(committed,{...doc,version}),saved:true,rules_saved:rulesSaved,new_version_created:version.id!==doc.version.id,next_batch:nextBatch,next_batch_error:nextError};
+          return {...this.result(committed,{...doc,version}),saved:true,rules_scope:'this-task-only',new_version_created:version.id!==doc.version.id,next_batch:nextBatch,next_batch_error:nextError};
         } catch(error) {
           const message=error instanceof Error?error.message:'';
           task.state='paused';task.reason=/^[a-z_]+$/.test(message)?message:'batch_save_failed';

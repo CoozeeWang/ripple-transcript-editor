@@ -117,7 +117,7 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     key_file.write_text('synthetic-not-real-credential-' * 3)
     server = create_server('http://127.0.0.1:18701', key_file)
     tools = asyncio.run(server.list_tools())
-    assert len(tools) == 20
+    assert len(tools) == 22
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
@@ -190,3 +190,33 @@ def test_structural_continuation_schema_and_backward_compatible_default(tmp_path
     assert Change(segment_id='s', before='Synthetic', after='', action='delete').action == 'delete'
     with pytest.raises(ValidationError):
         Change(segment_id='s', before='Synthetic', after='', action='delete_file')
+
+
+def test_capabilities_reports_server_catalogue_without_claiming_client_visibility_or_writing():
+    from app.connector_mcp import register_tools
+    from mcp.server import MCPServer
+
+    calls = []
+
+    async def call(operation, arguments):
+        calls.append((operation, arguments))
+        return {"ok": True}
+
+    server = register_tools(MCPServer("Synthetic"), call)
+
+    async def run():
+        result = await server.call_tool("connection_capabilities", {})
+        assert calls == []
+        # Structured MCP result remains independent of any desktop / manuscript RPC.
+        data = result.structured_content
+        assert data["write_verified"] is False
+        assert data["client_visible_tools"] == "unknown"
+        assert data["desktop_connection"] == "not_probed"
+        assert {t["name"] for t in data["tools"]} >= {"prepare_continuation", "save_continuation_batch", "set_interview_rules"}
+        await server.call_tool("prepare_continuation", {"snapshot":"synthetic", "rules":["New rule"], "delivery_mode":"incremental", "previous_task_id":"old"})
+        assert calls[-1][1]["previous_task_id"] == "old"
+        await server.call_tool("continuation_status", {"task_id":"old"})
+        assert calls[-1][1]["include_history_details"] is False
+        await server.call_tool("set_interview_rules", {"snapshot":"synthetic", "rules":[]})
+        assert calls[-1][1]["confirmed_for_future_tasks"] is False
+    asyncio.run(run())

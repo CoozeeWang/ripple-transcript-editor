@@ -53,3 +53,8 @@ Windows 自动打开 Claude 扩展前会查询 `.mcpb` 的有效打开程序；�
 Save unfinished manuscript changes and exit Ripple normally before upgrading. The installer checks for this installation's desktop, backend and adapter processes before replacing files. It stops only Ripple's own adapters after potential writers have exited; it does not close Claude, WorkBuddy or other MCP services. If an adapter immediately returns, temporarily disable only the Ripple connector in its client and choose Retry. Unresolved file locks show the resource and, where Windows can identify it, its owning application/PID. Cancel leaves the preflight without replacing files; files cannot be skipped with Ignore.
 
 After installation, open Ripple first. If a client does not reconnect automatically, click its reconnect action, re-enable its Ripple connector, or restart that client. Keep existing connection settings and keys. The AI in a chat cannot repair a disconnected transport itself.
+
+
+### Connected, but a chat reports no editing tools
+
+Check the task state separately: cancelled tasks retain saved work but cannot resume; see [safe continuation](AI_CONNECTOR.md#task-rules-preferences-and-safe-continuation). Cancellation does not hide writing tools. Use `connection_capabilities` to inspect the server catalogue, then rediscover tools in the affected client. The diagnostic cannot see that chat’s loaded tools or permissions and does not perform a trial write. If necessary, compare a fresh session with the same plugin. Do not infer that reinstallation or broader permissions are needed merely because a model reports missing tools. After an upgrade that changes tools or input fields, refresh the client metadata where supported.

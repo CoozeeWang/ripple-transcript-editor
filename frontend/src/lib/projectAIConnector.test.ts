@@ -3,7 +3,7 @@ import { syntheticDirectory } from '../testUtils/syntheticDirectory';
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectAIConnector } from './projectAIConnector';
 import { projectConnectorFixture as fixture } from '../testUtils/syntheticProjectConnector';
-import { readContinuationTasks, readModelEdit, readManifest, saveActiveEdit, removeEdit } from '../localStore';
+import { readConnectorRules, writeConnectorRules, readContinuationTasks, readModelEdit, readManifest, saveActiveEdit, removeEdit } from '../localStore';
 
 const readB = (c: ProjectAIConnector, version_id = 'm1:e1') => c.handle('read_project', { interview_id: 'session-b', recording_id: 'recording-session-b', version_id });
 const changedB = { segment_id: 's1', before: 'B0', after: 'B0 Test' };
@@ -138,7 +138,7 @@ describe('current-project AI routing', () => {
     expect((await readModelEdit(f.dirB, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0');
     expect((await readModelEdit(f.dirB, 'session-b.wav', 'm1', 'e2'))!.transcript.segments[0].text).toBe('B0 Test');
     const reconnected = f.connector();
-    const tasks = await reconnected.handle('project_tasks', {});
+    const tasks = await reconnected.handle('project_tasks', { include_history: true });
     expect(tasks.tasks).toMatchObject([{ task_id: task.task_id, target: { version_id: 'm1:e2' }, state: 'completed' }]);
     expect(await reconnected.handle('checkpoint', { task_id: task.task_id, batch_id: batch.batch_id, confirmed_summary: task.summary })).toMatchObject({ saved: true, repeated: true });
   });
@@ -212,4 +212,43 @@ it('recovers a copied project task beside a damaged journal and saves only to th
   expect((await readModelEdit(copiedDir, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0 Test');
   expect((await readModelEdit(f.dirB, 'session-b.wav', 'm1', 'e1'))!.transcript.segments[0].text).toBe('B0');
   expect((await readContinuationTasks(f.dirB, 'session-b.wav'))[0].state).toBe('draft');
+});
+
+
+it('keeps legacy rules inert, explicitly manages future preferences and preserves both on portable copy', async () => {
+  const f = await fixture(), c = f.connector();
+  const container = await f.dirB.getDirectoryHandle('session-b.transcript');
+  const legacy = JSON.stringify({rules:['Synthetic previous task only'],scope:'current-interview'});
+  const file = await container.getFileHandle('ai-connector-rules.json',{create:true});
+  const writer = await file.createWritable(); await writer.write(legacy); await writer.close();
+  expect((await readB(c)).current_interview_rules).toEqual([]);
+  await writeConnectorRules(f.dirB,'session-b.wav',['Explicit future preference']);
+  expect((await readB(f.connector())).current_interview_rules).toEqual(['Explicit future preference']);
+  expect(await (await file.getFile()).text()).toBe(legacy);
+  const copy = await savePortableProject(f.project!, syntheticDirectory('synthetic rules copy').handle, 'Synthetic copy');
+  const copiedDir = await recordingDirectory(copy, 'session-b', copy.data.interviews.find(i => i.id === 'session-b')!.recordings[0]);
+  expect(await readConnectorRules(copiedDir,'session-b.wav')).toEqual(['Explicit future preference']);
+  await writeConnectorRules(f.dirB,'session-b.wav',[]);
+  expect((await readB(f.connector())).current_interview_rules).toEqual([]);
+  expect(await (await file.getFile()).text()).toBe(legacy);
+});
+
+it('exposes metadata across clients but never historical instructions by default or old write rights', async () => {
+  const f=await fixture(), c=f.connector();
+  const target={interview_id:'session-b',recording_id:'recording-session-b',version_id:'m1:e1'};
+  const read=await c.handle('read_project',target,'chatgpt');
+  const task=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s1',end_id:'s1',rules:['Synthetic private task rule'],save_mode:'current_version',delivery_mode:'incremental'},'chatgpt');
+  expect(JSON.stringify(await c.handle('project_tasks',{},'workbuddy'))).not.toContain('Synthetic private task rule');
+  await expect(c.handle('status',{task_id:task.task_id},'workbuddy')).rejects.toThrow('editing_task_belongs_to_another_client');
+  await c.handle('cancel',{task_id:task.task_id},'chatgpt');
+  const fresh=f.connector();
+  expect((await fresh.handle('project_tasks',{},'workbuddy')).tasks).toEqual([]);
+  expect(JSON.stringify(await fresh.handle('project_tasks',{include_history:true},'workbuddy'))).not.toContain('Synthetic private task rule');
+  expect(await fresh.handle('status',{task_id:task.task_id},'workbuddy')).toMatchObject({state:'cancelled',remaining_start_id:'s1',remaining_end_id:'s1'});
+  expect((await fresh.handle('status',{task_id:task.task_id},'workbuddy')).summary).toBeUndefined();
+  expect(await fresh.handle('status',{task_id:task.task_id,include_history_details:true},'workbuddy')).toMatchObject({summary:task.summary,rules_scope:'historical-not-current-instructions'});
+  await expect(fresh.handle('resume',{task_id:task.task_id},'workbuddy')).rejects.toThrow('editing_task_belongs_to_another_client');
+  const selected=await fresh.handle('read_project',target,'workbuddy');
+  expect(await fresh.handle('prepare',{snapshot:selected.snapshot,start_id:'s1',end_id:'s1',rules:['New explicit rule'],save_mode:'current_version',delivery_mode:'incremental',previous_task_id:task.task_id},'workbuddy')).toMatchObject({segment_count:1});
+  expect(await fresh.handle('stage',{task_id:task.task_id,changes:[changedB]},'chatgpt')).toMatchObject({state:'cancelled',saved:false});
 });

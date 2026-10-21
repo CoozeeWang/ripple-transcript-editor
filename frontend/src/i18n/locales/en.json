@@ -1799,6 +1799,7 @@
     "unreadableJournals": "Some AI task records could not be read. Their original files are retained, and other tasks remain available. Keep a project copy and check the affected tasks."
   },
   "aiEditing": {
+    "endHelp": "Ending retains saved changes. To continue later, ask AI to check the remaining scope and create a new task.",
     "title": "AI-assisted editing",
     "locked": "{{client}} is editing with AI assistance. This manuscript is temporarily read-only; you can browse and find.",
     "end": "End editing",

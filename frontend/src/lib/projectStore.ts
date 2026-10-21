@@ -345,8 +345,10 @@ async function copyTree(source: FileSystemDirectoryHandle, target: FileSystemDir
 }
 /** Only manuscript-owned AI state travels with a portable project, never device configuration. */
 async function copyManuscriptWork(source: FileSystemDirectoryHandle, target: FileSystemDirectoryHandle, projectId: string, projectTitle: string) {
-  const rules = await readText(source, 'ai-connector-rules.json');
-  if (rules !== null) await writeText(target, 'ai-connector-rules.json', rules);
+  for (const name of ['ai-connector-rules.json', 'ai-interview-preferences.json']) {
+    const rules = await readText(source, name);
+    if (rules !== null) await writeText(target, name, rules);
+  }
   let tasks: FileSystemDirectoryHandle;
   try { tasks = await source.getDirectoryHandle('ai-continuation-tasks'); }
   catch (error) { if (notFound(error)) return; throw error; }
