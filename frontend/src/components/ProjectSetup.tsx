@@ -20,6 +20,7 @@ import { InlineEdit } from './InlineEdit';
 import { adjacentSessionRow, focusSessionRowFromClick } from './sessionRowKeyboard';
 import { AudioPreview, PreviewDialog } from './MaterialImport';
 import { ProjectIcon } from './ProjectIcon';
+import { ProjectFileName } from './ProjectFileName';
 import './projectSetup.css';
 
 type Material = ImportMaterial & { referenceable: boolean };
@@ -124,12 +125,13 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
   function zone(kind: 'audio' | 'manuscript', label: string, audioId = '') {
     return <><button type="button" className="setup-drop setup-file-picker" disabled={busy} aria-label={label} title={msg('ProjectSetup.m0790')} onClick={()=>chooseFiles(kind,audioId)} onDragOver={e => { if(!busy && !e.dataTransfer.types.includes(SORT)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';} }} onDrop={e => drop(e,kind,audioId)}><ProjectIcon kind={kind==='audio'?'audio':'document'} /><span>{label}</span></button>{kind==='manuscript'&&<ManuscriptImportHint/>}</>;
   }
+  const [renamingManuscript,setRenamingManuscript]=useState<string|null>(null);
   function document(item: Material, peers: Material[]) {
     return <div className="setup-document" key={item.id} {...sortZone(item.id,`docs:${selected}:${item.audioId}`)}>
-      <ProjectIcon kind="document" /><span className="setup-document-name"><InlineEdit doubleClick disabled={busy} value={item.name} ariaLabel={msg('ProjectSetup.m0791')} onCommit={name=>rename(item.id,name)} />
+      <ProjectIcon kind="document" /><span className="setup-document-name"><ProjectFileName nameAction="rename" name={item.name} label={msg('ProjectBoard.m0665')} editing={renamingManuscript===item.id} disabled={busy} onOpen={()=>setRenamingManuscript(item.id)} onRename={name=>rename(item.id,name)} onFinish={()=>setRenamingManuscript(null)}/>
       {item.isOriginal && <span className="manuscript-original-badge" title={msg('ProjectSetup.m0792')}>{msg('ProjectSetup.m0793')}</span>}
       {manuscriptImportNotice(item)&&<small className="manuscript-import-notice">{manuscriptImportNotice(item)}</small>}</span>
-      <span className="setup-row-actions"><button type="button" className="material-remove" disabled={busy} aria-label={`${item.isOriginal?msg('ProjectSetup.m0794'):msg('ProjectSetup.m0795')} ${item.name}`} data-tip={item.isOriginal?msg('ProjectSetup.m0796'):msg('ProjectSetup.m0797')} data-tip-pos="top" aria-pressed={!!item.isOriginal} onClick={()=>{if(!item.isOriginal&&!window.confirm(msg('ProjectSetup.m0798')))return;setItems(previous=>previous.map(m=>m.id===item.id?{...m,isOriginal:!m.isOriginal}:m));}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 3h14v18l-7-4-7 4V3Z"/></svg></button>
+      <span className="setup-row-actions"><button type="button" className="material-remove" disabled={busy} aria-label={msg('VersionPicker.m1097', {v0:item.name})} data-tip={msg('VersionPicker.m1096')} data-tip-pos="top" onClick={()=>setRenamingManuscript(item.id)}><ProjectIcon kind="rename"/></button><button type="button" className="material-remove" disabled={busy} aria-label={`${item.isOriginal?msg('ProjectSetup.m0794'):msg('ProjectSetup.m0795')} ${item.name}`} data-tip={item.isOriginal?msg('ProjectSetup.m0796'):msg('ProjectSetup.m0797')} data-tip-pos="top" aria-pressed={!!item.isOriginal} onClick={()=>{if(!item.isOriginal&&!window.confirm(msg('ProjectSetup.m0798')))return;setItems(previous=>previous.map(m=>m.id===item.id?{...m,isOriginal:!m.isOriginal}:m));}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 3h14v18l-7-4-7 4V3Z"/></svg></button>
       <button className="material-remove" type="button" disabled={busy} aria-label={msg('ProjectSetup.m0799', { v0: item.name })} data-tip={msg('ProjectSetup.m0800')} data-tip-pos="top" onClick={()=>setPreview(item)}><ProjectIcon kind="preview" /></button>
       {item.audioId && <button className="material-remove" type="button" disabled={busy} aria-label={msg('ProjectSetup.m0801', { v0: item.name })} data-tip={msg('ProjectSetup.m0802')} data-tip-pos="top" onClick={()=>setItems(previous=>previous.map(i=>i.id===item.id?{...i,audioId:''}:i))}><ProjectIcon kind="unlink" /></button>}
       <button className="material-remove" type="button" disabled={busy} aria-label={msg('ProjectSetup.m0803', { v0: item.name })} data-tip={msg('ProjectSetup.m0804')} data-tip-pos="top" onClick={()=>ignore(item)}><ProjectIcon kind="ignore" /></button>

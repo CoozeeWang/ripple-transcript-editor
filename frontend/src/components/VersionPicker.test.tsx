@@ -19,7 +19,7 @@ it("shows the engine rather than the legacy model label and keeps original read-
  expect(screen.getByText("转录引擎")).toBeTruthy();
  expect(screen.getByText("ElevenLabs Scribe v2")).toBeTruthy();
  expect(screen.getByText(/分段合并/)).toBeTruthy();
- expect(screen.queryByRole("button",{name:/重命名原始/})).toBeNull();
+ expect(screen.getByRole("button",{name:"重命名转录稿 ElevenLabs Scribe v2 · 分段合并"})).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"ElevenLabs Scribe v2 · 分段合并（只读）"}));
  expect(select).toHaveBeenCalledWith("m1","original");
  expect(displayEngineLabel("ElevenLabs Scribe v2 · 分段合并")).toBe("ElevenLabs Scribe v2");
@@ -196,4 +196,40 @@ it('refreshes open menu and trigger punctuation without changing its selected ve
   expect(within(menu).getByRole('button',{name:'v1'}).getAttribute('aria-pressed')).toBe('true');
   expect(select).not.toHaveBeenCalled();
  } finally { await act(()=>setInterfaceLanguage('zh-CN')); }
+});
+
+it.each(['zh-CN','zh-TW','en'] as const)('renames engine originals in either picker without selecting or changing content (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const {msg}=await import('../i18n');
+ const select=vi.fn(),rename=vi.fn();
+ for(const variant of ['current','comparison'] as const){
+  const view=render(<VersionPicker models={models} value="m1:original" variant={variant} onSelect={select} onRename={rename}/>);
+  fireEvent.click(view.container.querySelector('.version-picker-trigger')!);
+  fireEvent.click(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:models[0].label!})}));
+  const input=screen.getByRole('textbox',{name:msg('VersionPicker.m1093')});
+  expect(document.activeElement).toBe(input);
+  fireEvent.change(input,{target:{value:'Synthetic renamed original'}});
+  await act(async()=>fireEvent.click(screen.getByRole('button',{name:msg('VersionPicker.m1097',{v0:models[0].label!})})));
+  expect(rename).toHaveBeenLastCalledWith('m1','model-name','Synthetic renamed original');
+  expect(select).not.toHaveBeenCalled();expect(models[0].original).toBe('original.json');
+  view.unmount();
+ }
+ await setInterfaceLanguage('zh-CN');
+});
+
+it('keeps an original rename draft on failure, supports cancel, and disables mutations',async()=>{
+ await setInterfaceLanguage('zh-CN');
+ const rename=vi.fn().mockRejectedValue(new Error('Synthetic write failure'));
+ const props={models,value:'m1:original',variant:'current' as const,onSelect:vi.fn(),onRename:rename};
+ const view=render(<VersionPicker {...props}/>);
+ fireEvent.click(view.container.querySelector('.version-picker-trigger')!);
+ const action=screen.getByRole('button',{name:'重命名转录稿 '+models[0].label});
+ fireEvent.click(action);const input=screen.getByRole('textbox');
+ fireEvent.change(input,{target:{value:'   '}});await act(async()=>fireEvent.keyDown(input,{key:'Enter'}));
+ expect(rename).not.toHaveBeenCalled();expect(screen.getByRole('alert')).toBeTruthy();
+ fireEvent.change(input,{target:{value:'Synthetic rename'}});await act(async()=>fireEvent.keyDown(input,{key:'Enter'}));
+ expect(screen.getByRole('alert').textContent).toBe('Synthetic write failure');expect((input as HTMLInputElement).value).toBe('Synthetic rename');
+ fireEvent.keyDown(input,{key:'Escape'});expect(screen.queryByRole('textbox')).toBeNull();
+ view.rerender(<VersionPicker {...props} mutationDisabled/>);
+ expect(screen.getByRole('button',{name:'重命名转录稿 '+models[0].label}).hasAttribute('disabled')).toBe(true);
 });

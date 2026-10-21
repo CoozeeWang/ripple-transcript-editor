@@ -2,7 +2,8 @@ import { msg, useInterfaceLanguage } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { registerEditorDraft } from '../lib/editorDrafts';
 
-export function ProjectFileName({ name, label, editing, disabled, onOpen, onRename, onFinish }: {
+export function ProjectFileName({ name, label, editing, disabled, onOpen, onRename, onFinish, nameAction = 'open' }: {
+  nameAction?: 'open' | 'rename';
   name: string; label: string; editing: boolean; disabled: boolean;
   onOpen: () => void; onRename: (name: string) => void; onFinish: () => void;
 }) {
@@ -32,5 +33,5 @@ export function ProjectFileName({ name, label, editing, disabled, onOpen, onRena
     onChange={e => setDraft(e.target.value)} onBlur={() => finish(true)} onKeyDown={e => {
       if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); restoreKeyboardFocus.current = true; finish(e.key === 'Enter'); }
-    }}/> : <button ref={openButton} type="button" className="project-file-open" disabled={disabled} aria-label={msg('ProjectFileName.m0767', { v0: label, v1: name })} data-tip={msg('ProjectFileName.m0768')} data-tip-pos="top" onClick={onOpen}>{name}</button>;
+    }}/> : <button ref={openButton} type="button" className="project-file-open" disabled={disabled} aria-label={nameAction === 'rename' ? msg('ProjectFileName.m0766', {v0:label}) : msg('ProjectFileName.m0767', { v0: label, v1: name })} data-tip={nameAction === 'rename' ? msg('VersionPicker.m1096') : msg('ProjectFileName.m0768')} data-tip-pos="top" onClick={nameAction === 'open' ? onOpen : undefined} onDoubleClick={nameAction === 'rename' ? onOpen : undefined} onKeyDown={event=>{if(nameAction === 'rename' && !event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === ' ')){event.preventDefault();onOpen();}}}>{name}</button>;
 }
