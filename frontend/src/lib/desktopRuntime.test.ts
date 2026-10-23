@@ -20,3 +20,17 @@ it.each(['zh-CN', 'en'] as const)('localizes service startup failure in %s', asy
     ? 'Ripple’s local service couldn’t start. Restart Ripple or check the application logs.'
     : 'Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。');
 });
+it('forwards the native open-project action to the workspace once', async () => {
+  let openProject: (() => void) | undefined;
+  const listen = vi.fn(async (name: string, callback: () => void) => {
+    if (name === 'ripple-open-project') openProject = callback;
+    return vi.fn();
+  });
+  Object.assign(window, { __TAURI__: { core: { invoke: vi.fn(async () => true) }, event: { listen } } });
+  await installDesktopRuntime();
+  const received = vi.fn();
+  window.addEventListener('ripple-open-project', received, { once: true });
+  openProject?.();
+  expect(received).toHaveBeenCalledOnce();
+  expect(listen).toHaveBeenCalledWith('ripple-open-project', expect.any(Function));
+});

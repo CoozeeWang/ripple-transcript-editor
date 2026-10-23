@@ -20,6 +20,7 @@ The project folder contains its index, sessions, project-owned audio, and manusc
 
 | Shortcut | Action |
 | --- | --- |
+| `Cmd + O` / `Ctrl + O` | Open another project in the desktop app |
 | `Space` | Play / pause when focus is outside an editor field |
 | `↑` / `↓` | Select previous / next segment |
 | `↑` / `↓` with a project session row focused | Focus and select the previous / next session |

@@ -28,7 +28,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 #[cfg(debug_assertions)]
@@ -746,6 +746,10 @@ fn main() {
         .on_menu_event(|app, event| {
             if event.id().as_ref() == native_menu::UPDATE_ID {
                 if let Err(error) = update_window::open(app) { eprintln!("Update window failed: {error}"); }
+            } else if event.id().as_ref() == native_menu::OPEN_PROJECT_ID {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.emit("ripple-open-project", ()) { eprintln!("Open project menu event failed: {error}"); }
+                }
             }
         })
         .on_window_event(|window, event| {

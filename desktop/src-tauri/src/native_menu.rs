@@ -23,9 +23,11 @@ pub fn diagnostic(app: &tauri::AppHandle, key: &str) -> String {
 }
 
 pub const UPDATE_ID: &str = "check-for-updates";
+pub const OPEN_PROJECT_ID: &str = "file-open-project";
 fn update_parent(macos: bool, index: usize, text: &str) -> bool {
     if macos { index == 0 } else { text.replace('&', "") == "Help" }
 }
+fn file_parent(text: &str) -> bool { text.replace('&', "") == "File" }
 
 fn label(text: &str, labels: &HashMap<String, String>, app_name: &str) -> Option<String> {
     let plain = text.replace('&', "");
@@ -63,6 +65,11 @@ pub fn set_menu_language(app: tauri::AppHandle, labels: HashMap<String, String>,
     let menu = Menu::default(&app).map_err(|error| error.to_string())?;
     for (index, item) in menu.items().map_err(|e| e.to_string())?.into_iter().enumerate() {
         if let MenuItemKind::Submenu(parent) = item {
+            if file_parent(&parent.text().map_err(|error| error.to_string())?) {
+                let text = labels.get("Open Project…").map(String::as_str).unwrap_or("Open Project…");
+                let entry = MenuItem::with_id(&app, OPEN_PROJECT_ID, text, true, Some("CmdOrCtrl+O")).map_err(|error| error.to_string())?;
+                parent.insert(&entry, 0).map_err(|error| error.to_string())?;
+            }
             if update_parent(cfg!(target_os = "macos"), index, &parent.text().map_err(|e|e.to_string())?) {
                 let text = labels.get("Check for Updates…").map(String::as_str).unwrap_or("Check for Updates…");
                 let entry = MenuItem::with_id(&app, UPDATE_ID, text, true, None::<&str>).map_err(|e|e.to_string())?;
@@ -82,6 +89,7 @@ mod tests {
     fn update_entry_uses_platform_convention() {
         assert!(update_parent(true,0,"Ripple")); assert!(!update_parent(true,5,"Help"));
         assert!(update_parent(false,4,"&Help")); assert!(!update_parent(false,0,"Ripple"));
+        assert!(file_parent("&File")); assert!(file_parent("File")); assert!(!file_parent("Edit"));
     }
     #[test]
     fn translates_default_mnemonics_and_keeps_app_identity() {

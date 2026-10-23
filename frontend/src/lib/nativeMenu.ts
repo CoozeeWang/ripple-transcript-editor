@@ -3,6 +3,7 @@ import { IS_MAC } from './format';
 
 const menuKeys = {
   'Check for Updates…':'checkUpdates', 'Software Update':'updateTitle',
+  'Open Project…':'openProject',
   File: 'file', Edit: 'edit', View: 'view', Window: 'window', Help: 'help',
   About: 'about', Services: 'services', Hide: 'hide', 'Hide Others': 'hideOthers',
   'Show All': 'showAll', Quit: 'quit', Exit: 'quit',

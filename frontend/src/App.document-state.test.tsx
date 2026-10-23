@@ -44,7 +44,7 @@ function loadFresh(name: string) {
 }
 
 vi.mock("./localStore", async original=>({...await original<typeof local>(),readModelOriginal:vi.fn()}));
-afterEach(() => { fixture.directory=null;cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { fixture.directory=null;fixture.flush.mockReset().mockResolvedValue(undefined);cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 it('expires loaded segment-count success, restarts on reopening and preserves load errors and text', () => {
   vi.useFakeTimers();
@@ -132,6 +132,30 @@ it('waits for successful persistence before leaving the editor for projects', as
   expect(screen.getByText(/保存失败，请重试/)).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '返回项目' })); });
   expect(leave).toHaveBeenCalledOnce();
+});
+
+it('keeps the editor open when native project opening is cancelled or saving fails', async () => {
+  const open = vi.fn(async () => { throw new DOMException('Cancelled', 'AbortError'); });
+  render(<App onOpenProject={open} onReturnToProjects={vi.fn()} />);
+  load('A.wav');
+  fixture.flush.mockRejectedValueOnce(new Error('Synthetic save failure'));
+  await act(async () => { window.dispatchEvent(new Event('ripple-open-project')); });
+  expect(open).not.toHaveBeenCalled();
+  expect(screen.getByText('A.wav的内容')).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('Synthetic save failure');
+  await act(async () => { window.dispatchEvent(new Event('ripple-open-project')); });
+  expect(open).toHaveBeenCalledOnce();
+  expect(screen.getByText('A.wav的内容')).toBeTruthy();
+});
+
+it('finishes saving before opening the native project picker', async () => {
+  const order: string[] = [];
+  fixture.flush.mockImplementationOnce(async () => { order.push('save'); });
+  const open = vi.fn(async () => { order.push('picker'); });
+  render(<App onOpenProject={open} onReturnToProjects={vi.fn()} />);
+  load('A.wav');
+  await act(async () => { window.dispatchEvent(new Event('ripple-open-project')); });
+  expect(order).toEqual(['save','picker']);
 });
 
 it('opens an original with readable markers and disables their modification', async () => {

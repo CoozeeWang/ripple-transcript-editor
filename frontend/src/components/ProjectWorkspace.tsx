@@ -129,7 +129,9 @@ export function ProjectWorkspace() {
     try { await work(); } catch (e) { if ((e as { name?: string }).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectWorkspace.m0901')); }
     finally { busyRef.current = false; setBusy(false); setShowProgress(false); setQuietSaving(false); setImportStage(null); }
   };
-  const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => {
+  const projectHasAIWork = () => Boolean(aiConnector?.state.activities?.some(blocksHumanEditing));
+  const openChosenProject = async (directory?: FileSystemDirectoryHandle, expectedId?: string) => {
+    if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
     let handle = directory;
     if (handle && expectedId && nativeDesktopAvailable()) {
       const status = await nativeAccessStatus(handle);
@@ -151,7 +153,33 @@ export function ProjectWorkspace() {
       throw error;
     }
     if (expectedId && next.data.id !== expectedId) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
-    setRecentRecovery(null); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined); await publish(next); setLegacyCandidates(null); setArchiving(false);
+    if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
+    setRecentRecovery(null); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined);
+    setEditingDescription(null); setDescriptionDrafts({}); setCreating(false);
+    setEditor(null); editorLease.current?.(); editorLease.current = null;
+    await publish(next); setLegacyCandidates(null); setArchiving(false);
+  };
+  const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(() => openChosenProject(directory, expectedId));
+  const openProjectFromEditor = async () => {
+    if (busyRef.current) throw Error(msg('ProjectWorkspace.openProjectBusy'));
+    if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
+    busyRef.current = true; setBusy(true);
+    try { await openChosenProject(); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
+  useEffect(() => {
+    if (editor || settings) return;
+    const onOpenProject = () => {
+      if (busyRef.current) { setError(msg('ProjectWorkspace.openProjectBusy')); return; }
+      if (projectHasAIWork()) { setError(msg('ProjectWorkspace.openProjectAI')); return; }
+      const dirty = creating || materialTarget !== undefined || hasEditorDrafts() ||
+        (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
+      if (dirty) { setError(msg('ProjectWorkspace.openProjectUnsaved')); return; }
+      if (document.querySelector('dialog[open], [role="dialog"]')) return;
+      void chooseProject();
+    };
+    window.addEventListener('ripple-open-project', onOpenProject);
+    return () => window.removeEventListener('ripple-open-project', onOpenProject);
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
   const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string, editId?: string) => {
@@ -207,7 +235,7 @@ export function ProjectWorkspace() {
         ? { ...item, recordings: item.recordings.map(entry => entry.id === recording.id ? { ...entry, draft } : entry) }
         : item);
       await publish(await saveProject(snapshot, { ...snapshot.data, interviews }));
-    }} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
+    }} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onOpenProject={openProjectFromEditor} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
   const welcoming = !project && !creating;
   return <main className={`project-home${welcoming ? ' project-home--welcome' : ''}${quietSaving ? ' project-home--quiet-saving' : ''}`}>
     {!welcoming && <header className="project-home__header">
