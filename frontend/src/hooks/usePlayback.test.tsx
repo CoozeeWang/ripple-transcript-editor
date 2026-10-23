@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayback } from "./usePlayback";
+import { PlayerBar } from "../components/PlayerBar";
 import { attachEditor, type ParagraphEditorElement } from "../lib/paragraphEditor";
 import type { Transcript } from "../types";
 
@@ -12,7 +13,7 @@ const transcript: Transcript = {
     {id: "b", speaker_id: "s", text: "乙", start: 10, end: 20},
   ],
 };
-afterEach(() => {cleanup(); localStorage.clear(); vi.restoreAllMocks();});
+afterEach(() => {cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers();});
 function setup(editors = new Map<string, ParagraphEditorElement>()) {
   let playback!: ReturnType<typeof usePlayback>;
   let selected = "";
@@ -24,7 +25,7 @@ function setup(editors = new Map<string, ParagraphEditorElement>()) {
       setActiveSegmentId: setActive, setSelectedSegmentId: setSelection,
       effectiveSelectedSegmentId: selection, textareaRefs: {current: editors}, setLoadError: () => {}});
     return <section data-testid="panel" ref={playback.transcriptPanelRef}>
-      <audio ref={playback.audioRef}/>
+      <audio ref={playback.audioRef} src={playback.audioUrl || undefined}/>
       <button onClick={() => setSelection("a")}>选择甲</button>
     </section>;
   }
@@ -32,6 +33,46 @@ function setup(editors = new Map<string, ParagraphEditorElement>()) {
   act(() => playback.setAudioUrl("test.wav"));
   return {ui, get playback() {return playback;}, get selected() {return selected;}};
 }
+
+it("waits for a stable duration instead of displaying a provisional trailing minute value", () => {
+  vi.useFakeTimers();
+  const app = setup();
+  let reportedDuration = 367;
+  Object.defineProperty(app.playback.audioRef.current!, "duration", {
+    configurable: true, get: () => reportedDuration,
+  });
+  act(() => app.playback.handleAudioMetadata());
+  expect(app.playback.actualDuration).toBe(0);
+  act(() => vi.advanceTimersByTime(2500));
+  reportedDuration = 3967;
+  act(() => app.playback.handleAudioDurationChange());
+  act(() => vi.advanceTimersByTime(3999));
+  expect(app.playback.actualDuration).toBe(0);
+  act(() => vi.advanceTimersByTime(1));
+  expect(app.playback.actualDuration).toBe(3967);
+});
+
+it("discards pending duration readings when the audio source changes", () => {
+  vi.useFakeTimers();
+  const app = setup();
+  Object.defineProperty(app.playback.audioRef.current!, "duration", {configurable: true, value: 3967});
+  act(() => app.playback.handleAudioMetadata());
+  act(() => app.playback.setAudioUrl("another.wav"));
+  act(() => vi.advanceTimersByTime(5000));
+  expect(app.playback.actualDuration).toBe(0);
+});
+
+it("shows an unknown duration and disables seeking until media duration settles", () => {
+  const ui = render(<PlayerBar
+    audioRef={{current: null}} audioUrl="test.wav" isPlaying={false} currentTime={0} duration={0}
+    skipSeconds={3} playbackRate={1} selectedIndex={-1} segmentCount={0}
+    handleAudioMetadata={() => {}} handleAudioDurationChange={() => {}} handleAudioError={() => {}}
+    updateCurrentSegment={() => {}} setIsPlaying={() => {}} togglePlayback={() => {}}
+    seekTo={() => {}} setPlaybackRate={() => {}}
+  />);
+  expect(ui.getByText("--:--")).toBeTruthy();
+  expect((ui.container.querySelector('input[type="range"]') as HTMLInputElement).disabled).toBe(true);
+});
 describe("one current segment for playback and side panels", () => {
   it("updates selection immediately on seek and retains it after pause", () => {
     const app = setup();
