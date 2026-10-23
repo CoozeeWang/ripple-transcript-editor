@@ -16,6 +16,8 @@ import {
 import { reanchorCharacters, timeForCharacter } from "../lib/transcriptOps";
 
 const DEFAULT_SKIP_SECONDS = 3;
+// Some media containers first report only the trailing minutes, then correct their duration.
+const DURATION_STABLE_MS = 4000;
 
 /** 播放控制跨领域依赖：本 hook 只拥有音频元素与播放/跟随状态，
  *  transcript 编辑、选中片段、错误提示等共享状态通过回调注入解耦。 */
@@ -36,10 +38,19 @@ export interface UsePlaybackDeps {
 export function usePlayback(deps: UsePlaybackDeps) {
   const { transcript, setActiveSegmentId, setSelectedSegmentId, setLoadError, textareaRefs } = deps;
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioUrl, setAudioUrl] = useState("");
+  const [audioUrl, updateAudioUrl] = useState("");
   const [audioFilename, setAudioFilename] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [actualDuration, setActualDuration] = useState(0);
+  const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioSourceIdRef = useRef(0);
+  const setAudioUrl = useCallback((url: string) => {
+    audioSourceIdRef.current++;
+    if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
+    durationTimerRef.current = null;
+    setActualDuration(0);
+    updateAudioUrl(url);
+  }, []);
   const [isPlaying, updateIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(() => loadNumberPreference(PLAYBACK_RATE_KEY, 1));
   const [skipSeconds, setSkipSeconds] = useState(() => loadNumberPreference(SKIP_SECONDS_KEY, DEFAULT_SKIP_SECONDS));
@@ -93,10 +104,16 @@ export function usePlayback(deps: UsePlaybackDeps) {
 
 
   useEffect(() => {
+    if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
+    durationTimerRef.current = null;
     lastEditorCursorRef.current = null;
     pendingCursorRef.current = false;
     playRequestedRef.current = false;
     playRequestIdRef.current++;
+    return () => {
+      if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
+      durationTimerRef.current = null;
+    };
   }, [audioUrl]);
 
   const playAudio = useCallback(() => {
@@ -182,16 +199,36 @@ export function usePlayback(deps: UsePlaybackDeps) {
 
   const togglePlayFromCursor = togglePlayback;
 
+  const handleAudioDurationChange = () => {
+    const audio = audioRef.current;
+    if (!audio || !audioUrl || audio.getAttribute("src") !== audioUrl) return;
+    if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
+    durationTimerRef.current = null;
+    setActualDuration(0);
+    const duration = audio.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    const sourceId = audioSourceIdRef.current;
+    durationTimerRef.current = setTimeout(() => {
+      durationTimerRef.current = null;
+      if (sourceId !== audioSourceIdRef.current || audio !== audioRef.current || audio.getAttribute("src") !== audioUrl) return;
+      // A container can revise duration without another durationchange event.
+      if (Math.abs(audio.duration - duration) > 0.05) {
+        handleAudioDurationChange();
+        return;
+      }
+      setActualDuration(duration);
+      deps.mutateTranscript((current) => ({
+        ...current,
+        audio: { filename: audioFilename, duration },
+      }));
+    }, DURATION_STABLE_MS);
+  };
+
   const handleAudioMetadata = () => {
-    const duration = audioRef.current?.duration ?? 0;
     // 载入音频时套用偏好里的默认播放速度。
     if (audioRef.current) audioRef.current.playbackRate = playbackRate || defaultPlaybackRate;
     setPlaybackRate(playbackRate || defaultPlaybackRate);
-    setActualDuration(duration);
-    deps.mutateTranscript((current) => ({
-      ...current,
-      audio: { filename: audioFilename, duration },
-    }));
+    handleAudioDurationChange();
   };
 
   /**
@@ -200,6 +237,9 @@ export function usePlayback(deps: UsePlaybackDeps) {
    */
   const handleAudioError = () => {
     if (!audioUrl) return;
+    if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
+    durationTimerRef.current = null;
+    setActualDuration(0);
     const name = audioFilename || msg('usePlayback.m1141');
     const code = audioRef.current?.error?.code;
     if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
@@ -322,6 +362,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
     updateCurrentSegment,
     resumeFollow,
     handleAudioMetadata,
+    handleAudioDurationChange,
     handleAudioError,
   };
 }

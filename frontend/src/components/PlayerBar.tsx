@@ -16,6 +16,7 @@ export interface PlayerBarProps {
   selectedIndex: number;
   segmentCount: number;
   handleAudioMetadata: () => void;
+  handleAudioDurationChange: () => void;
   handleAudioError: () => void;
   updateCurrentSegment: () => void;
   setIsPlaying: (playing: boolean) => void;
@@ -37,6 +38,7 @@ export function PlayerBar(props: PlayerBarProps) {
     selectedIndex,
     segmentCount,
     handleAudioMetadata,
+    handleAudioDurationChange,
     handleAudioError,
     updateCurrentSegment,
     setIsPlaying,
@@ -51,6 +53,7 @@ export function PlayerBar(props: PlayerBarProps) {
         ref={audioRef}
         src={audioUrl || undefined}
         onLoadedMetadata={handleAudioMetadata}
+        onDurationChange={handleAudioDurationChange}
         onError={handleAudioError}
         onTimeUpdate={updateCurrentSegment}
         onPlay={() => setIsPlaying(true)}
@@ -98,7 +101,7 @@ export function PlayerBar(props: PlayerBarProps) {
           step="0.05"
           value={Math.min(currentTime, duration || 0)}
           onChange={(event) => seekTo(Number(event.target.value))}
-          disabled={!audioUrl}
+          disabled={!audioUrl || duration <= 0}
           aria-label={msg('PlayerBar.m0631')}
           style={
             {
@@ -108,7 +111,7 @@ export function PlayerBar(props: PlayerBarProps) {
         />
         <div className="time-labels">
           <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
+          <span>{duration > 0 ? formatTime(duration) : "--:--"}</span>
         </div>
       </div>
       <button

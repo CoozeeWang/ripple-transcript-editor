@@ -281,6 +281,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     updateCurrentSegment,
     resumeFollow,
     handleAudioMetadata,
+    handleAudioDurationChange,
     handleAudioError,
   } = usePlayback({
     transcript,
@@ -985,7 +986,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     );
   }
 
-  const duration = actualDuration || transcript.audio.duration;
+  const duration = actualDuration;
   const selectedIndex = transcript.segments.findIndex(
     (segment) => segment.id === effectiveSelectedSegmentId,
   );
@@ -1282,6 +1283,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         selectedIndex={selectedIndex}
         segmentCount={transcript.segments.length}
         handleAudioMetadata={handleAudioMetadata}
+        handleAudioDurationChange={handleAudioDurationChange}
         handleAudioError={handleAudioError}
         updateCurrentSegment={updateCurrentSegment}
         setIsPlaying={setIsPlaying}
