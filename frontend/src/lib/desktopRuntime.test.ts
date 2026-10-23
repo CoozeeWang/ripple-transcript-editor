@@ -20,3 +20,23 @@ it.each(['zh-CN', 'en'] as const)('localizes service startup failure in %s', asy
     ? 'Ripple’s local service couldn’t start. Restart Ripple or check the application logs.'
     : 'Ripple 本地服务未能启动。请重新启动 Ripple，或查看应用日志。');
 });
+it('forwards the native open-project action to the workspace once', async () => {
+  let openProject: ((event:{payload:string}) => void) | undefined;
+  let openRecent: ((event:{payload:string}) => void) | undefined;
+  const listen = vi.fn(async (name: string, callback: (event:{payload:string}) => void) => {
+    if (name === 'ripple-open-project') openProject = callback;
+    if (name === 'ripple-open-recent-project') openRecent = callback;
+    return vi.fn();
+  });
+  Object.assign(window, { __TAURI__: { core: { invoke: vi.fn(async () => true) }, event: { listen } } });
+  await installDesktopRuntime();
+  const received = vi.fn();
+  window.addEventListener('ripple-open-project', received, { once: true });
+  openProject?.({payload:''});
+  expect(received).toHaveBeenCalledOnce();
+  expect(listen).toHaveBeenCalledWith('ripple-open-project', expect.any(Function));
+  const receivedRecent = vi.fn();
+  window.addEventListener('ripple-open-recent-project', receivedRecent, { once: true });
+  openRecent?.({payload:'synthetic-one'});
+  expect((receivedRecent.mock.calls[0][0] as CustomEvent<string>).detail).toBe('synthetic-one');
+});

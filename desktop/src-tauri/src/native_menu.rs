@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use tauri::menu::{Menu, MenuItem, MenuItemKind};
+use tauri::menu::{Menu, MenuItem, MenuItemKind, Submenu};
+use serde::Deserialize;
 
 pub fn normalize_language(value: &str) -> &'static str {
     match value { "en" => "en", "zh-TW" => "zh-TW", _ => "zh-CN" }
@@ -23,8 +24,18 @@ pub fn diagnostic(app: &tauri::AppHandle, key: &str) -> String {
 }
 
 pub const UPDATE_ID: &str = "check-for-updates";
+pub const OPEN_PROJECT_ID: &str = "file-open-project";
+pub const RECENT_PROJECT_PREFIX: &str = "file-recent-project-";
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentProjectMenuEntry { id: String, title: String }
 fn update_parent(macos: bool, index: usize, text: &str) -> bool {
     if macos { index == 0 } else { text.replace('&', "") == "Help" }
+}
+fn file_parent(text: &str) -> bool { text.replace('&', "") == "File" }
+fn recent_title(title: &str, windows: bool) -> String {
+    let text: String = title.trim().chars().filter(|ch| !ch.is_control()).take(120).collect();
+    if windows { text.replace('&', "&&") } else { text }
 }
 
 fn label(text: &str, labels: &HashMap<String, String>, app_name: &str) -> Option<String> {
@@ -53,7 +64,7 @@ fn translate(items: Vec<MenuItemKind<tauri::Wry>>, labels: &HashMap<String, Stri
     Ok(())
 }
 #[tauri::command]
-pub fn set_menu_language(app: tauri::AppHandle, labels: HashMap<String, String>, language: String) -> Result<(), String> {
+pub fn set_menu_language(app: tauri::AppHandle, labels: HashMap<String, String>, language: String, recent_projects: Vec<RecentProjectMenuEntry>) -> Result<(), String> {
     let language = normalize_language(&language);
     if let Ok(path) = crate::app_data(&app) {
         if let Err(error) = std::fs::create_dir_all(&path).and_then(|_| std::fs::write(path.join("interface-language"), language)) {
@@ -63,6 +74,28 @@ pub fn set_menu_language(app: tauri::AppHandle, labels: HashMap<String, String>,
     let menu = Menu::default(&app).map_err(|error| error.to_string())?;
     for (index, item) in menu.items().map_err(|e| e.to_string())?.into_iter().enumerate() {
         if let MenuItemKind::Submenu(parent) = item {
+            if file_parent(&parent.text().map_err(|error| error.to_string())?) {
+                let text = labels.get("Open Project…").map(String::as_str).unwrap_or("Open Project…");
+                let entry = MenuItem::with_id(&app, OPEN_PROJECT_ID, text, true, Some("CmdOrCtrl+O")).map_err(|error| error.to_string())?;
+                parent.insert(&entry, 0).map_err(|error| error.to_string())?;
+                let text = labels.get("Recent Projects").map(String::as_str).unwrap_or("Recent Projects");
+                let recent_menu = Submenu::with_id(&app, "file-recent-projects", text, true).map_err(|error| error.to_string())?;
+                let mut added = 0;
+                for recent in recent_projects.iter().take(20) {
+                    if recent.id.is_empty() || recent.id.len() > 80 || !recent.id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-') { continue; }
+                    let title = recent_title(&recent.title, cfg!(target_os = "windows"));
+                    if title.is_empty() { continue; }
+                    let entry = MenuItem::with_id(&app, format!("{RECENT_PROJECT_PREFIX}{}", recent.id), title, true, None::<&str>).map_err(|error| error.to_string())?;
+                    recent_menu.append(&entry).map_err(|error| error.to_string())?;
+                    added += 1;
+                }
+                if added == 0 {
+                    let text = labels.get("No Recent Projects").map(String::as_str).unwrap_or("No Recent Projects");
+                    let empty = MenuItem::with_id(&app, "file-no-recent-projects", text, false, None::<&str>).map_err(|error| error.to_string())?;
+                    recent_menu.append(&empty).map_err(|error| error.to_string())?;
+                }
+                parent.insert(&recent_menu, 1).map_err(|error| error.to_string())?;
+            }
             if update_parent(cfg!(target_os = "macos"), index, &parent.text().map_err(|e|e.to_string())?) {
                 let text = labels.get("Check for Updates…").map(String::as_str).unwrap_or("Check for Updates…");
                 let entry = MenuItem::with_id(&app, UPDATE_ID, text, true, None::<&str>).map_err(|e|e.to_string())?;
@@ -82,6 +115,9 @@ mod tests {
     fn update_entry_uses_platform_convention() {
         assert!(update_parent(true,0,"Ripple")); assert!(!update_parent(true,5,"Help"));
         assert!(update_parent(false,4,"&Help")); assert!(!update_parent(false,0,"Ripple"));
+        assert!(file_parent("&File")); assert!(file_parent("File")); assert!(!file_parent("Edit"));
+        assert_eq!(recent_title(" Sample & Co. ", true), "Sample && Co.");
+        assert_eq!(recent_title(" Sample & Co. ", false), "Sample & Co.");
     }
     #[test]
     fn translates_default_mnemonics_and_keeps_app_identity() {

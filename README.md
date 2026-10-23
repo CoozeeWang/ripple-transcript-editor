@@ -20,6 +20,8 @@ The project folder contains its index, sessions, project-owned audio, and manusc
 
 | Shortcut | Action |
 | --- | --- |
+| `Cmd + O` / `Ctrl + O` | Open another project in the desktop app |
+
 | `Space` | Play / pause when focus is outside an editor field |
 | `↑` / `↓` | Select previous / next segment |
 | `↑` / `↓` with a project session row focused | Focus and select the previous / next session |
@@ -29,6 +31,8 @@ The project folder contains its index, sessions, project-owned audio, and manusc
 | `Cmd + Shift + Z` / `Ctrl + Shift + Z` | Redo |
 | `Cmd + S` / `Ctrl + S` | Save the current transcript |
 | `Cmd + E` / `Ctrl + Shift + E` | Open export |
+
+The desktop **File → Recent Projects** submenu opens projects already listed on the welcome screen. If access has expired, Ripple asks you to reselect the original project folder.
 
 ## MCP connection
 

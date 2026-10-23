@@ -109,6 +109,7 @@ export interface ProjectEditorProps {
   recordingLabel?: string;
   onRenameInterview?: (title: string) => Promise<void>;
   onReturnToProjects?: () => void;
+  onOpenProject?: (recentId?: string) => Promise<void>;
   onExportProjectFiles?: () => void;
   openSettingsInitially?: boolean;
 }
@@ -231,6 +232,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const renamingRef = useRef(false);
   const canChangeDocumentRef = useRef<() => boolean>(() => true);
+  const openingProjectRef = useRef(false);
   const beforeChangeRef = useRef<() => Promise<void>>(async () => {});
   const latestExport = useRef({ transcript, metadata });
   useLayoutEffect(() => { latestExport.current = { transcript, metadata }; }, [transcript, metadata]);
@@ -962,6 +964,35 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     try { await flushPendingSave(); if (exportFiles) projectProps.onExportProjectFiles?.(); else projectProps.onReturnToProjects?.(); }
     catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0018')); }
   };
+  useEffect(() => {
+    if (!projectProps.onOpenProject) return;
+    const onOpenProject = (recentId?: string) => {
+      if (openingProjectRef.current) return;
+      // The native menu must not open a second picker above an application dialog.
+      if (document.querySelector('dialog[open], [role="dialog"]')) return;
+      if (renaming || versionBusy || transcribing || processStatus === 'uploading' || (saveStatus === 'loading' && transcript)) {
+        setLoadError(msg('ProjectWorkspace.openProjectBusy')); return;
+      }
+      openingProjectRef.current = true;
+      void (async () => {
+        try {
+          await flushPendingSave();
+          await projectProps.onOpenProject?.(recentId);
+        } catch (error) {
+          if ((error as {name?:string})?.name !== 'AbortError')
+            setLoadError(error instanceof Error ? error.message : msg('App.m0018'));
+        } finally { openingProjectRef.current = false; }
+      })();
+    };
+    const onOpenDirectory = () => onOpenProject();
+    const onOpenRecent = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (typeof id === 'string') onOpenProject(id);
+    };
+    window.addEventListener('ripple-open-project', onOpenDirectory);
+    window.addEventListener('ripple-open-recent-project', onOpenRecent);
+    return () => { window.removeEventListener('ripple-open-project', onOpenDirectory); window.removeEventListener('ripple-open-recent-project', onOpenRecent); };
+  });
   const projectNav = projectProps.onReturnToProjects && <div className="project-editor-nav">
     <button type="button" className="cred-btn" disabled={renaming || versionBusy || transcribing}
       aria-label={projectProps.projectLabel ? msg('App.m0019', { v0: projectProps.projectLabel }) : msg('App.m0020')}

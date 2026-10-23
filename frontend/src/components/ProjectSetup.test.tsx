@@ -25,11 +25,11 @@ it('stages separate materials, associates multiple transcripts, sorts, ignores a
  fireEvent.click(screen.getByText('撤销'));expect(screen.getByText('初稿.txt').closest('.setup-linked')).toBeTruthy();
 });
 it('opens the folder picker from the organizer and keeps the draft and target project after a failed import',async()=>{
- const project={data:{id:'p',title:'河东河西',interviews:[],revision:0},directory:{}} as unknown as store.OpenProject;
+ const project={data:{id:'p',title:'示例项目',interviews:[],revision:0},directory:{}} as unknown as store.OpenProject;
  vi.mocked(store.createProject).mockResolvedValue(project);vi.mocked(store.importProjectMaterials).mockRejectedValueOnce(new Error('磁盘空间不足')).mockResolvedValueOnce(project);
  Object.assign(window,{showDirectoryPicker:vi.fn(async()=>({name:'项目目录'}))});const done=vi.fn();
  render(<ProjectSetup onDone={done} onCancel={vi.fn()}/>);
- fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'河东河西'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
+ fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'示例项目'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
  drop('选择或拖入独立转录稿，不关联音频',[textFile('访谈.txt')]);await screen.findByText('访谈.txt');
  expect(store.createProject).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'保存项目'}));await screen.findByText('磁盘空间不足');expect(done).not.toHaveBeenCalled();
  expect(screen.getByText('访谈.txt')).toBeTruthy();
@@ -41,7 +41,7 @@ it('keeps the organizer intact when the save-location picker is cancelled',async
  Object.assign(window,{showDirectoryPicker:picker});
  const done=vi.fn();
  render(<ProjectSetup onDone={done} onCancel={vi.fn()}/>);
- fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'河东河西'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
+ fireEvent.click(screen.getByRole('button',{name:'项目名称'}));fireEvent.change(screen.getByRole('textbox',{name:'项目名称'}),{target:{value:'示例项目'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'项目名称'}),{key:'Enter'});scene();
  drop('选择或拖入独立转录稿，不关联音频',[textFile('访谈.txt')]);await screen.findByText('访谈.txt');
  fireEvent.click(screen.getByRole('button',{name:'保存项目'}));
  await waitFor(()=>expect(screen.getByRole('region',{name:'整理项目材料'}).getAttribute('aria-busy')).toBe('false'));

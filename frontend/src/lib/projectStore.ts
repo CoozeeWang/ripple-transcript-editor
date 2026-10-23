@@ -162,11 +162,13 @@ export async function rememberProject(project: OpenProject) {
     const recent = await recentProjects();
     await handleValue('recent', [{ title: project.data.title, id: project.data.id, directory: project.directory }, ...recent.filter(p => p.id !== project.data.id)].slice(0, 20));
   });
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('ripple-recent-projects-changed'));
 }
 export async function forgetRecentProject(projectId: string) {
   await locked('recent-projects', async () => {
     await handleValue('recent', (await recentProjects()).filter(p => p.id !== projectId));
   });
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('ripple-recent-projects-changed'));
 }
 export async function permit(handle: FileSystemHandle, mode: 'read' | 'readwrite') {
   const h = handle as FileSystemHandle & { requestPermission?: (options: { mode: string }) => Promise<string> };
