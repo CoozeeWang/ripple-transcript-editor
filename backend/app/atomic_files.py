@@ -1,9 +1,15 @@
 """Publish one complete file with a unique same-directory temporary file."""
 import os
+import threading
 import uuid
 from pathlib import Path
 
 from .private_files import protect_private_fd
+
+# Windows can deny a replacement while another thread is replacing the same
+# destination. Keep the final publish step sequential within this process;
+# temporary files remain unique and are still written independently.
+_publish_lock = threading.Lock()
 
 
 def atomic_write_text(destination: Path, text: str, *, private: bool = False) -> Path:
@@ -18,7 +24,8 @@ def atomic_write_text(destination: Path, text: str, *, private: bool = False) ->
             output.write(text)
             output.flush()
             os.fsync(output.fileno())
-        temporary.replace(destination)
+        with _publish_lock:
+            temporary.replace(destination)
     finally:
         if created:
             temporary.unlink(missing_ok=True)

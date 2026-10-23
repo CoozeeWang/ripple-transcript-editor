@@ -19,6 +19,30 @@ from pathlib import Path
 
 SECRET = "synthetic-public-connector-runtime-test-key-123456"
 TEXT = "Synthetic 合成片段：中文路径与空格。"
+EXPECTED_TOOLS = {
+    "connection_capabilities",
+    "set_interview_rules",
+    "list_project_interviews",
+    "read_project_interview",
+    "list_project_continuations",
+    "read_current_interview",
+    "read_interview_page",
+    "read_editing_examples",
+    "prepare_continuation",
+    "stage_continuation",
+    "list_continuations",
+    "read_continuation_batch",
+    "save_continuation_batch",
+    "resume_continuation",
+    "publish_continuation",
+    "continuation_status",
+    "cancel_continuation",
+    "prepare_interview_marks",
+    "stage_interview_marks",
+    "apply_interview_marks",
+    "interview_marks_status",
+    "cancel_interview_marks",
+}
 
 
 class SyntheticBackend(BaseHTTPRequestHandler):
@@ -94,7 +118,10 @@ def handshake(command, env):
         assert result["serverInfo"]["name"] == "Ripple"
         send("notifications/initialized", {})
         tools = send("tools/list", {}, 2)["tools"]
-        assert len(tools) == 20 and any(tool["name"] == "read_current_interview" for tool in tools)
+        names = [tool["name"] for tool in tools]
+        assert len(names) == len(EXPECTED_TOOLS) and set(names) == EXPECTED_TOOLS, (
+            f"MCP tool mismatch: missing={sorted(EXPECTED_TOOLS - set(names))}, "
+            f"unexpected={sorted(set(names) - EXPECTED_TOOLS)}")
         read = send("tools/call", {"name": "read_current_interview", "arguments": {}}, 3)
         assert not read.get("isError"), read
         assert read["structuredContent"]["text"] == TEXT
@@ -172,7 +199,7 @@ def verify(resources: Path, tunnel_client: Path | None = None):
                 handshake(shlex.split(command), env)
             assert (directory / "runtime.key").read_text(encoding="utf-8") == SECRET
         return {"packagedImports": True, "utf8InputWithGbkStdin": True,
-                "initialize": True, "toolCount": 20, "syntheticUtf8Read": True,
+                "initialize": True, "toolCount": len(EXPECTED_TOOLS), "syntheticUtf8Read": True,
                 "freshStartsPerClient": 2, "adapterEntrypoints": ["chatgpt", "claude", "workbuddy"],
                 "vendorTunnelCommandParser": tunnel_client is not None,
                 "externalClientGuiAcceptance": "pending", "cloudTunnelAcceptance": "pending"}
