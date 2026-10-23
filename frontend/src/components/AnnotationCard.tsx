@@ -1,6 +1,6 @@
 import { msg, useInterfaceLanguage } from '../i18n';
 import { registerEditorDraft } from "../lib/editorDrafts";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Annotation } from "../types";
 import { formatRelativeTime, keys } from "../lib/format";
 
@@ -26,8 +26,15 @@ export function AnnotationCard({ annotation, onCommit, onDelete, onJump, meta, i
     window.addEventListener("te:flush-drafts", flush);
     return () => { unregister(); window.removeEventListener("te:flush-drafts", flush); };
   }, [editing, draft, annotation.text, onCommit, readOnly]);
+  const commit = () => {
+    if (readOnly || !editing) return;
+    if (draft.trim() !== annotation.text.trim()) onCommit(draft.trim());
+    setEditing(false);
+  };
   return (
-    <div className={`annotation-card${isCurrent ? " annotation-card--current" : ""}`} data-current={isCurrent ? "true" : undefined}
+    <div onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) commit();
+    }} className={`annotation-card${isCurrent ? " annotation-card--current" : ""}`} data-current={isCurrent ? "true" : undefined}
       tabIndex={editing ? -1 : 0}
       onClick={() => { if (!editing) onJump?.(); }}
       onDoubleClick={(event) => {
@@ -52,24 +59,38 @@ export function AnnotationCard({ annotation, onCommit, onDelete, onJump, meta, i
         className="annotation-text"
         value={draft}
         onChange={(event) => { setDraft(event.target.value); window.dispatchEvent(new Event("te:draft-dirty")); }}
-        onBlur={() => {
-          setEditing(false);
-          if (draft.trim() !== annotation.text.trim()) onCommit(draft.trim());
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            event.stopPropagation();
+            commit();
+            event.currentTarget.closest<HTMLElement>(".annotation-card")?.focus();
+          }
         }}
         rows={2}
       /> : <div className="annotation-text annotation-text--readonly" title={msg(readOnly ? 'AnnotationCard.readOnly' : 'AnnotationCard.m0317')}>{annotation.text}</div>}
       <div className="annotation-card-actions">
         <span className="annotation-time">{formatRelativeTime(annotation.createdAt)}</span>
+        <span className="annotation-card-buttons">
+        {editing && !readOnly && <button type="button" className="annotation-delete annotation-save"
+          data-tip={msg('AnnotationCard.saveShortcut', { v0: keys("↵") })}
+          onClick={(event) => { event.stopPropagation(); commit(); event.currentTarget.closest<HTMLElement>(".annotation-card")?.focus(); }}>
+          {msg('AnnotationCard.save')}
+        </button>}
         <button type="button" className="annotation-delete" disabled={readOnly} onClick={(event) => { event.stopPropagation(); onDelete(); }} data-tip={msg('AnnotationCard.m0318')}>
           {msg('AnnotationCard.m0319')}</button>
+        </span>
       </div>
     </div>
   );
 }
 
-export function AnnotationAddBox({ onSubmit, disabled = false }: { onSubmit: (text: string) => void; disabled?: boolean }) {
+export function AnnotationAddBox({ onSubmit, disabled = false, draftKey = "default", children }: { onSubmit: (text: string) => void; disabled?: boolean; draftKey?: string; children?: ReactNode }) {
   useInterfaceLanguage();
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draft = drafts[draftKey] ?? "";
+  const setDraft = (text: string) => setDrafts((previous) => ({ ...previous, [draftKey]: text }));
   const submit = () => {
     const text = draft.trim();
     if (disabled || !text) return;
@@ -78,6 +99,7 @@ export function AnnotationAddBox({ onSubmit, disabled = false }: { onSubmit: (te
   };
   return (
     <div className="annotation-add">
+      {children}
       <textarea
         disabled={disabled}
         value={draft}

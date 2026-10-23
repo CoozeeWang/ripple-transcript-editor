@@ -779,6 +779,8 @@
     "m0147": "Start transcription"
   },
   "AnnotationCard": {
+    "save": "Save",
+    "saveShortcut": "Save annotation ({{v0}})",
     "m0316": "Edit annotation",
     "m0317": "Click to go to the segment; double-click to edit",
     "m0318": "Delete annotation",

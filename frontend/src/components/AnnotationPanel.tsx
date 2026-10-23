@@ -226,13 +226,14 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
                       ))
                     )}
                   </div>
-                  <AnnotationAddBox disabled={readOnly} onSubmit={(text) => addAnnotation(currentSegment.id, text)} />
+                  <AnnotationAddBox draftKey={currentSegment.id} disabled={readOnly} onSubmit={(text) => addAnnotation(currentSegment.id, text)} />
                 </>
               ) : (
                 <p className="annotation-empty">{msg('AnnotationPanel.m0332')}</p>
               )}
             </div>
           ) : (
+            <div className="annotation-body">
             <div className="annotation-list annotation-list--all" ref={annotationListRef}>
               {transcript?.segments
                 .filter((segment) => !hiddenSpeakerIds.has(segment.speaker_id))
@@ -257,6 +258,13 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
                     )),
                   )
               )}
+            </div>
+            {currentSegment ? <AnnotationAddBox draftKey={currentSegment.id} disabled={readOnly} onSubmit={(text) => addAnnotation(currentSegment.id, text)}>
+              <div className="annotation-add-target">
+                <span>{msg('AnnotationPanel.m0330', { v0: transcript!.segments.findIndex((s) => s.id === currentSegment.id) + 1 })}</span>
+                <span>{formatTime(currentSegment.start)}–{formatTime(currentSegment.end)}</span>
+              </div>
+            </AnnotationAddBox> : <p className="annotation-empty">{msg('AnnotationPanel.m0332')}</p>}
             </div>
           )}
         </>

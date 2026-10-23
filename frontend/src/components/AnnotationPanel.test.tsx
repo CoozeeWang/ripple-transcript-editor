@@ -34,3 +34,21 @@ it("routes card title, background, excerpt and keyboard to the highlight jump bu
   expect(remove).toHaveBeenCalledTimes(1);
   frame.mockRestore(); panel.remove();
 });
+
+it('adds to the selected segment from All, keeps drafts scoped to their target and respects read-only', () => {
+ const first={id:'s1',speaker_id:'a',start:0,end:1,text:'First'}, second={id:'s2',speaker_id:'a',start:1,end:2,text:'Second'};
+ const add=vi.fn();
+ const props:AnnotationPanelProps={transcript:{audio:{filename:'synthetic.wav',duration:2},segments:[first,second],speakers:[]},annotationView:'all',setAnnotationView:vi.fn(),panelTab:'annotation',setPanelTab:vi.fn(),currentSegment:first,currentSegmentId:first.id,hiddenSpeakerIds:new Set(),annotationListRef:{current:null},collapsed:false,setCollapsed:vi.fn(),highlightGroups:[],highlightCount:0,setSelectedSegmentId:vi.fn(),seekTo:vi.fn(),updateAnnotation:vi.fn(),deleteAnnotation:vi.fn(),addAnnotation:add,onJumpToHighlight:vi.fn(),onRemoveHighlight:vi.fn()};
+ const ui=render(<AnnotationPanel {...props}/>);
+ fireEvent.change(ui.getByRole('textbox'),{target:{value:'Synthetic note'}});
+ fireEvent.keyDown(ui.getByRole('textbox'),{key:'Enter',metaKey:true});
+ expect(add).toHaveBeenCalledExactlyOnceWith('s1','Synthetic note');
+ fireEvent.change(ui.getByRole('textbox'),{target:{value:'Unsent'}});
+ ui.rerender(<AnnotationPanel {...props} currentSegment={second} currentSegmentId={second.id}/>);
+ expect((ui.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+ ui.rerender(<AnnotationPanel {...props} readOnly/>);
+ expect((ui.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
+ expect((ui.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unsent');
+ ui.rerender(<AnnotationPanel {...props} currentSegment={undefined} currentSegmentId=''/>);
+ expect(ui.queryByRole('textbox')).toBeNull();
+});
