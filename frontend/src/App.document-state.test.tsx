@@ -158,6 +158,16 @@ it('finishes saving before opening the native project picker', async () => {
   expect(order).toEqual(['save','picker']);
 });
 
+it('saves before opening a recent project selected from the native menu', async () => {
+  const order: string[] = [];
+  fixture.flush.mockImplementationOnce(async () => { order.push('save'); });
+  const open = vi.fn(async (id?: string) => { order.push(id ?? 'none'); });
+  render(<App onOpenProject={open} onReturnToProjects={vi.fn()} />);
+  load('Synthetic.wav');
+  await act(async () => { window.dispatchEvent(new CustomEvent('ripple-open-recent-project', {detail:'synthetic-one'})); });
+  expect(order).toEqual(['save','synthetic-one']);
+});
+
 it('opens an original with readable markers and disables their modification', async () => {
   Object.assign(HTMLElement.prototype, { scrollIntoView: vi.fn() });
   render(<App />);

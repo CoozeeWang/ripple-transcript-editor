@@ -137,7 +137,7 @@ export function ProjectWorkspace() {
       const status = await nativeAccessStatus(handle);
       if (status !== 'granted') {
         setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,reason:status});
-        return;
+        return false;
       }
     }
     handle ??= await chooseDirectory('open-project');
@@ -148,38 +148,52 @@ export function ProjectWorkspace() {
       if (directory && expectedId) {
         setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,
           reason:(error as {name?:string})?.name==='NotFoundError'?'missing':'unreadable'});
-        return;
+        return false;
       }
       throw error;
     }
     if (expectedId && next.data.id !== expectedId) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
     if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
-    setRecentRecovery(null); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined);
+    setRecentRecovery(null); setRecentOpen(false); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined);
     setEditingDescription(null); setDescriptionDrafts({}); setCreating(false);
     setEditor(null); editorLease.current?.(); editorLease.current = null;
     await publish(next); setLegacyCandidates(null); setArchiving(false);
+    return true;
   };
-  const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(() => openChosenProject(directory, expectedId));
-  const openProjectFromEditor = async () => {
+  const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => { await openChosenProject(directory, expectedId); });
+  const openProjectFromEditor = async (recentId?: string) => {
     if (busyRef.current) throw Error(msg('ProjectWorkspace.openProjectBusy'));
     if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
     busyRef.current = true; setBusy(true);
-    try { await openChosenProject(); }
+    try {
+      const item = recentId ? (await recentProjects()).find(entry => entry.id === recentId) : undefined;
+      if (recentId && !item) throw Error(msg('ProjectWorkspace.m0919'));
+      const opened = await openChosenProject(item?.directory, item?.id);
+      if (!opened) { setEditor(null); editorLease.current?.(); editorLease.current = null; }
+    }
     finally { busyRef.current = false; setBusy(false); }
   };
   useEffect(() => {
     if (editor || settings) return;
-    const onOpenProject = () => {
+    const onOpenProject = (recentId?: string) => {
       if (busyRef.current) { setError(msg('ProjectWorkspace.openProjectBusy')); return; }
       if (projectHasAIWork()) { setError(msg('ProjectWorkspace.openProjectAI')); return; }
       const dirty = creating || materialTarget !== undefined || hasEditorDrafts() ||
         (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
       if (dirty) { setError(msg('ProjectWorkspace.openProjectUnsaved')); return; }
       if (document.querySelector('dialog[open], [role="dialog"]')) return;
-      void chooseProject();
+      const item = recentId ? recent.find(entry => entry.id === recentId) : undefined;
+      if (recentId && !item) { setError(msg('ProjectWorkspace.m0919')); return; }
+      void chooseProject(item?.directory, item?.id);
     };
-    window.addEventListener('ripple-open-project', onOpenProject);
-    return () => window.removeEventListener('ripple-open-project', onOpenProject);
+    const onOpenDirectory = () => onOpenProject();
+    const onOpenRecent = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (typeof id === 'string') onOpenProject(id);
+    };
+    window.addEventListener('ripple-open-project', onOpenDirectory);
+    window.addEventListener('ripple-open-recent-project', onOpenRecent);
+    return () => { window.removeEventListener('ripple-open-project', onOpenDirectory); window.removeEventListener('ripple-open-recent-project', onOpenRecent); };
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
   const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string, editId?: string) => {

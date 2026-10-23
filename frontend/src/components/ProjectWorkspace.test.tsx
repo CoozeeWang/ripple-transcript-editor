@@ -6,17 +6,18 @@ import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
 import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
-vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: () => Promise<void>; onExportProjectFiles?: () => void; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
+vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
 vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
 const project = { directory: { name: '测试.ripple' }, data: { id: 'p', title: '测试项目', description: '', revision: 0, interviews: [{ id: 'i', title: '第一次访谈', recordings: [{ id: 'r', name: '录音.wav', storage: 'copy' }] }] } } as store.OpenProject;
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(store.recentProjects).mockReset().mockResolvedValue([]);
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
-  state.picker.mockResolvedValue(project.directory);
+  state.picker.mockReset().mockResolvedValue(project.directory);
   Object.assign(window, { showDirectoryPicker: state.picker });
-  vi.mocked(store.openProject).mockResolvedValue(project);
+  vi.mocked(store.openProject).mockReset().mockResolvedValue(project);
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI__?: unknown }).__TAURI__; });
 afterEach(async () => { await setInterfaceLanguage('zh-CN'); });
@@ -45,6 +46,16 @@ it('uses the native menu event from welcome and retains welcome when the picker 
   expect(store.openProject).not.toHaveBeenCalled();
   fireEvent(window, new Event('ripple-open-project'));
   expect(await screen.findByText('测试项目')).toBeTruthy();
+});
+it('opens an authorized recent project from the native menu without a picker', async () => {
+  vi.mocked(store.recentProjects).mockResolvedValue([{id:'p',title:'测试项目',directory:project.directory}]);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', {name:'最近项目'}));
+  await screen.findByRole('button', {name:'测试项目'});
+  await act(async () => { window.dispatchEvent(new CustomEvent('ripple-open-recent-project', {detail:'p'})); });
+  expect(await screen.findByText('测试项目')).toBeTruthy();
+  expect(state.picker).not.toHaveBeenCalled();
+  expect(store.openProject).toHaveBeenCalledWith(project.directory);
 });
 it('keeps a project description draft when the native menu requests another project', async () => {
   render(<ProjectWorkspace />);
@@ -91,6 +102,34 @@ it('does not leave the editor until the selected project opens successfully', as
   expect(await screen.findByText('Other synthetic project')).toBeTruthy();
   expect(state.release).toHaveBeenCalledOnce();
 });
+it('switches from the editor to an authorized recent project without a picker', async () => {
+  const other = { ...project, directory: {name:'Other.ripple'}, data:{...project.data,id:'synthetic-other',title:'Other synthetic project'} } as store.OpenProject;
+  vi.mocked(store.recentProjects).mockResolvedValue([{id:'synthetic-other',title:other.data.title,directory:other.directory}]);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', {name:'打开项目'}));
+  await screen.findByText('测试项目');
+  fireEvent.click(await screen.findByRole('button', {name:'打开 音频 录音.wav'}));
+  await screen.findByText('编辑 第一次访谈');
+  vi.mocked(store.openProject).mockResolvedValueOnce(other);
+  fireEvent.click(screen.getByRole('button', {name:'从菜单打开最近项目'}));
+  expect(await screen.findByText('Other synthetic project')).toBeTruthy();
+  expect(state.picker).toHaveBeenCalledOnce();
+  expect(state.release).toHaveBeenCalledOnce();
+});
+it('shows recovery instead of opening a stale recent project from the editor', async () => {
+  const stale = {name:'Missing.ripple',queryPermission:vi.fn(async()=> 'prompt')} as unknown as FileSystemDirectoryHandle;
+  vi.mocked(store.recentProjects).mockResolvedValue([{id:'synthetic-other',title:'Missing synthetic project',directory:stale}]);
+  Object.assign(window, {__TAURI__:{core:{}}});
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', {name:'打开项目'}));
+  await screen.findByText('测试项目');
+  fireEvent.click(await screen.findByRole('button', {name:'打开 音频 录音.wav'}));
+  await screen.findByText('编辑 第一次访谈');
+  fireEvent.click(screen.getByRole('button', {name:'从菜单打开最近项目'}));
+  expect(await screen.findByRole('button', {name:'重新选择原项目'})).toBeTruthy();
+  expect(state.picker).toHaveBeenCalledOnce();
+  expect(store.openProject).toHaveBeenCalledOnce();
+});
 it('keeps an unsaved project description when returning from settings', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
@@ -115,12 +154,12 @@ it('returns keyboard focus to settings after the project page remounts', async (
 });
 
 it('removes a recent entry without attempting to open its missing directory', async () => {
-  vi.mocked(store.recentProjects).mockResolvedValueOnce([{ id: 'gone', title: '河东河西', directory: project.directory }]).mockResolvedValue([]);
+  vi.mocked(store.recentProjects).mockResolvedValueOnce([{ id: 'gone', title: '示例项目', directory: project.directory }]).mockResolvedValue([]);
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
-  const remove = await screen.findByRole('button', { name: '从最近项目移除“河东河西”' });
+  const remove = await screen.findByRole('button', { name: '从最近项目移除“示例项目”' });
   fireEvent.click(remove);
-  await waitFor(() => expect(screen.queryByText('河东河西')).toBeNull());
+  await waitFor(() => expect(screen.queryByText('示例项目')).toBeNull());
   expect(store.forgetRecentProject).toHaveBeenCalledWith('gone');
   expect(store.openProject).not.toHaveBeenCalled();
 });

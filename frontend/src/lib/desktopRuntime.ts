@@ -8,6 +8,7 @@ const API_ROOT = import.meta.env.DEV ? '' : 'http://127.0.0.1:18701';
 
 let removeMenuLanguage: (() => void) | undefined;
 let removeOpenProjectMenu: (() => void) | undefined;
+let removeRecentProjectMenu: (() => void) | undefined;
 
 function apiUrl(url: string): string {
   return url.startsWith('/api/') ? `${API_ROOT}${url}` : url;
@@ -31,13 +32,16 @@ export async function installDesktopRuntime(): Promise<void> {
   const invoke = (window as unknown as { __TAURI__: { core: { invoke: (name: string, args?: Record<string, unknown>) => Promise<boolean> } } }).__TAURI__.core.invoke;
   removeMenuLanguage?.();
   removeOpenProjectMenu?.();
-  const tauriEvents = (window as unknown as { __TAURI__: { event?: { listen: (name: string, callback: () => void) => Promise<() => void> } } }).__TAURI__.event;
+  removeRecentProjectMenu?.();
+  const tauriEvents = (window as unknown as { __TAURI__: { event?: { listen: (name: string, callback: (event: {payload:string}) => void) => Promise<() => void> } } }).__TAURI__.event;
   removeOpenProjectMenu = tauriEvents ? await tauriEvents.listen('ripple-open-project', () => window.dispatchEvent(new Event('ripple-open-project'))) : undefined;
+  removeRecentProjectMenu = tauriEvents ? await tauriEvents.listen('ripple-open-recent-project', event => window.dispatchEvent(new CustomEvent('ripple-open-recent-project', { detail: event.payload }))) : undefined;
   const removeUpdateBridge = await installDesktopUpdateBridge();
   removeMenuLanguage = installNativeMenuLanguage(invoke);
   if (import.meta.hot) import.meta.hot.dispose(removeUpdateBridge);
   if (import.meta.hot) import.meta.hot.dispose(() => removeMenuLanguage?.());
   if (import.meta.hot) import.meta.hot.dispose(() => removeOpenProjectMenu?.());
+  if (import.meta.hot) import.meta.hot.dispose(() => removeRecentProjectMenu?.());
   for (let attempt = 0; attempt < 100; attempt++) {
     if (await invoke('backend_ready')) return;
     await new Promise(resolve => setTimeout(resolve, 100));

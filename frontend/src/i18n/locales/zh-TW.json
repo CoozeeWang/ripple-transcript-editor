@@ -1743,6 +1743,8 @@
   "nativeMenu": {
     "file": "檔案",
     "openProject": "開啟專案…",
+    "recentProjects": "最近專案",
+    "noRecentProjects": "尚無最近專案",
     "edit": "編輯",
     "view": "顯示",
     "window": "視窗",

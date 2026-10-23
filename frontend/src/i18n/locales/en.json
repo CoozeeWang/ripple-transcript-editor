@@ -1743,6 +1743,8 @@
   "nativeMenu": {
     "file": "File",
     "openProject": "Open Project…",
+    "recentProjects": "Recent Projects",
+    "noRecentProjects": "No Recent Projects",
     "edit": "Edit",
     "view": "View",
     "window": "Window",

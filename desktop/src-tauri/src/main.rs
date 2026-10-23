@@ -750,6 +750,10 @@ fn main() {
                 if let Some(window) = app.get_webview_window("main") {
                     if let Err(error) = window.emit("ripple-open-project", ()) { eprintln!("Open project menu event failed: {error}"); }
                 }
+            } else if let Some(id) = event.id().as_ref().strip_prefix(native_menu::RECENT_PROJECT_PREFIX) {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.emit("ripple-open-recent-project", id) { eprintln!("Recent project menu event failed: {error}"); }
+                }
             }
         })
         .on_window_event(|window, event| {

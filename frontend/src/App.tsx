@@ -109,7 +109,7 @@ export interface ProjectEditorProps {
   recordingLabel?: string;
   onRenameInterview?: (title: string) => Promise<void>;
   onReturnToProjects?: () => void;
-  onOpenProject?: () => Promise<void>;
+  onOpenProject?: (recentId?: string) => Promise<void>;
   onExportProjectFiles?: () => void;
   openSettingsInitially?: boolean;
 }
@@ -966,7 +966,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
   useEffect(() => {
     if (!projectProps.onOpenProject) return;
-    const onOpenProject = () => {
+    const onOpenProject = (recentId?: string) => {
       if (openingProjectRef.current) return;
       // The native menu must not open a second picker above an application dialog.
       if (document.querySelector('dialog[open], [role="dialog"]')) return;
@@ -977,15 +977,21 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       void (async () => {
         try {
           await flushPendingSave();
-          await projectProps.onOpenProject?.();
+          await projectProps.onOpenProject?.(recentId);
         } catch (error) {
           if ((error as {name?:string})?.name !== 'AbortError')
             setLoadError(error instanceof Error ? error.message : msg('App.m0018'));
         } finally { openingProjectRef.current = false; }
       })();
     };
-    window.addEventListener('ripple-open-project', onOpenProject);
-    return () => window.removeEventListener('ripple-open-project', onOpenProject);
+    const onOpenDirectory = () => onOpenProject();
+    const onOpenRecent = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (typeof id === 'string') onOpenProject(id);
+    };
+    window.addEventListener('ripple-open-project', onOpenDirectory);
+    window.addEventListener('ripple-open-recent-project', onOpenRecent);
+    return () => { window.removeEventListener('ripple-open-project', onOpenDirectory); window.removeEventListener('ripple-open-recent-project', onOpenRecent); };
   });
   const projectNav = projectProps.onReturnToProjects && <div className="project-editor-nav">
     <button type="button" className="cred-btn" disabled={renaming || versionBusy || transcribing}
