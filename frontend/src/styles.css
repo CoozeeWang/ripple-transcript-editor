@@ -1370,6 +1370,8 @@ button.brand:disabled { opacity: .5; cursor: default; }
 }
 .annotation-card-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
   justify-content: space-between;
   margin-top: 6px;
@@ -1384,6 +1386,10 @@ button.brand:disabled { opacity: .5; cursor: default; }
   padding: 2px 4px;
 }
 .annotation-delete:hover { text-decoration: underline; }
+.annotation-save { color: var(--color-accent); }
+.annotation-card-buttons { display: inline-flex; align-items: center; gap: 12px; }
+.annotation-add-target { display: flex; justify-content: space-between; gap: 12px; color: var(--color-text-3); font-size: 0.74rem; }
+.annotation-list--all { padding-bottom: 16px; }
 .annotation-empty { padding: 14px; color: var(--color-text-3); font-size: 0.74rem; line-height: 1.6; }
 
 .annotation-add {
