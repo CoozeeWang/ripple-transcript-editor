@@ -1,14 +1,29 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Lock
+from time import sleep
 
 import pytest
 
 from app.atomic_files import atomic_write_text
 
 
-def test_concurrent_publishes_use_independent_temporary_files(tmp_path):
+def test_concurrent_publishes_use_independent_temporary_files(tmp_path, monkeypatch):
     target = tmp_path / "synthetic.json"
     values = [str(i) * 4096 for i in range(12)]
+    replace = Path.replace
+    replacing = Lock()
+
+    def deny_overlapping_replacements(source, destination):
+        if not replacing.acquire(blocking=False):
+            raise PermissionError("synthetic concurrent replacement")
+        try:
+            sleep(0.01)
+            return replace(source, destination)
+        finally:
+            replacing.release()
+
+    monkeypatch.setattr(Path, "replace", deny_overlapping_replacements)
     with ThreadPoolExecutor(max_workers=6) as pool:
         list(pool.map(lambda text: atomic_write_text(target, text), values))
     assert target.read_text(encoding="utf-8") in values
