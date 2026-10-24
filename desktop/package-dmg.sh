@@ -25,7 +25,11 @@ PY
 )
 printf 'Packaging %s\n' "$META"
 BUILD=$(plutil -extract CFBundleVersion raw -o - "$APP/Contents/Info.plist")
-VOLUME="Ripple Install b$BUILD"
+VOLUME="Ripple b$BUILD"
+if mount | grep -Fq "on /Volumes/$VOLUME ("; then
+    echo "Eject the existing $VOLUME disk image before packaging" >&2
+    exit 1
+fi
 
 TEMP=$(mktemp -d "${TMPDIR:-/tmp/}ripple-dmg.XXXXXX")
 MOUNT="$TEMP/$VOLUME"

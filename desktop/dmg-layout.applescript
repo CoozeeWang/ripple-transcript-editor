@@ -8,7 +8,7 @@ on run argv
                 set current view to icon view
                 set toolbar visible to false
                 set statusbar visible to false
-                set bounds to {120, 120, 920, 680}
+                set bounds to {120, 120, 780, 560}
             end tell
             set viewOptions to icon view options of container window
             tell viewOptions
@@ -17,14 +17,14 @@ on run argv
                 set text size to 14
             end tell
             set background picture of viewOptions to file ".background:Install.png"
-            set position of item "Ripple.app" to {205, 205}
-            set position of item "Applications" to {595, 205}
+            set position of item "Ripple.app" to {170, 190}
+            set position of item "Applications" to {490, 190}
             close
             open
             delay 1
-            tell container window to set bounds to {120, 120, 910, 670}
+            tell container window to set bounds to {120, 120, 770, 550}
             delay 1
-            tell container window to set bounds to {120, 120, 920, 680}
+            tell container window to set bounds to {120, 120, 780, 560}
             delay 3
         end tell
     end tell
