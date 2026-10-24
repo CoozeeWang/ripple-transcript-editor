@@ -1,3 +1,4 @@
+import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
