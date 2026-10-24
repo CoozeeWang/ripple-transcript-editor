@@ -61,6 +61,7 @@ cp "$DESKTOP/src-tauri/icons/icon.icns" "$APP/Contents/Resources/$ICON_NAME"
 rm -rf "$APP/Contents/Resources/backend"
 cp -R "$STAGED_BACKEND" "$APP/Contents/Resources/backend"
 rm -rf "$APP/Contents/Resources/backend/data"
+rm -f "$APP/Contents/Resources/backend/verify.py"
 python3 - "$APP/Contents/Info.plist" "$VERSION" "$BUILD_NUMBER" "$COMMIT" "$ICON_NAME" <<'PY'
 import plistlib
 import sys
