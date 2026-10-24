@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { normalizeInterfaceLanguage, setInterfaceLanguage, useInterfaceLanguage } from '../i18n';
 import { desktopUpdateInvoke } from '../lib/desktopUpdates';
 import { trapDialogFocus } from '../lib/dialogFocus';
@@ -7,8 +7,7 @@ import './updateWindow.css';
 
 export function UpdateWindow() {
   useInterfaceLanguage();
-  const [critical,setCritical]=useState(false);
-  const close=()=>{ if(!critical) void desktopUpdateInvoke('update_close').catch(()=>{}); };
+  const close=()=>{ void desktopUpdateInvoke('update_close').catch(()=>{}); };
   useEffect(()=>{
     let disposed=false,unlisten:(()=>void)|undefined;
     const api=(window as unknown as {__TAURI__?:{event?:{listen:(name:string,handler:(event:{payload:string})=>void)=>Promise<()=>void>}}}).__TAURI__?.event;
@@ -17,6 +16,6 @@ export function UpdateWindow() {
   },[]);
   return <main className="desktop-update-window" role="dialog" aria-labelledby="desktop-update-title" tabIndex={-1}
     onKeyDown={event=>{trapDialogFocus(event);if(event.key==='Escape'&&!event.defaultPrevented){event.preventDefault();close();}}}>
-    <UpdateSettings autoCheck onCriticalChange={setCritical} onClose={close}/>
+    <UpdateSettings autoCheck onClose={close}/>
   </main>;
 }

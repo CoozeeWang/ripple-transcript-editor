@@ -1,1 +1,0 @@
-Public synthetic update signature fixture.

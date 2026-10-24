@@ -5,7 +5,6 @@ import type { ConnectorHost } from '../lib/aiConnector';
 import type { ProjectConnectorAccess } from '../lib/projectConnectorHost';
 import { AIEditingNotice } from './AIEditingNotice';
 import { ContinuationProgress } from './ContinuationProgress';
-import { assertDesktopUpdateIdle, desktopUpdatePreparing } from '../lib/desktopUpdates';
 
 /** The transport and task identities belong to the window, never to a keyed editor. */
 export function AIConnectorProvider({ children }: { children: ReactNode }) {
@@ -22,25 +21,21 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
   }, []);
   const host: ConnectorHost = {
     current: async () => {
-      assertDesktopUpdateIdle();
       if (!binding.current) throw Error('no_editable_interview');
       const current=await binding.current.host.current();
-      assertDesktopUpdateIdle();
       return current;
     },
     publish: async (...args) => {
-      assertDesktopUpdateIdle();
       if (!binding.current) throw Error('interview_changed');
       return binding.current.host.publish(...args);
     },
     applyMarks: async (...args) => {
-      assertDesktopUpdateIdle();
       if (!binding.current?.host.applyMarks) throw Error('interview_changed');
       return binding.current.host.applyMarks(...args);
     },
   };
   const project: ProjectConnectorAccess = {
-    project: () => desktopUpdatePreparing() ? null : (binding.current?.project ?? retainedProject.current)?.project() ?? null,
+    project: () => (binding.current?.project ?? retainedProject.current)?.project() ?? null,
     active: () => binding.current?.project?.active() ?? { interview_id: '', recording_id: '', version_id: null, directory: null },
     onSaved: target => binding.current?.project?.onSaved?.(target),
   };

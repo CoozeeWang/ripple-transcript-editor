@@ -98,7 +98,7 @@ Projects, sessions, recordings, manuscripts, and editable versions have distinct
 
 ## Code health and acceptance
 
-See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance. As of 2026-10-20, Mac internal build b83 has been accepted by the maintainer; Windows packaging/installed acceptance and a full published, signed online upgrade remain pending before Release. This is not a public release announcement. See [verification boundaries](docs/README.md#验证状态与发布前待验).
+See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance. As of 2026-10-20, Mac internal build b83 has been accepted by the maintainer; Windows packaging/installed acceptance and the new manual release-download flow still need installed-app checks. This is not a public release announcement. See [verification boundaries](docs/README.md#验证状态与发布前待验).
 
 For contributors, [development workflow](docs/WORKFLOW.md) defines branches, checks, review and delivery. [Ripple Stylebook](docs/STYLEBOOK.md) records current interface rules; read the relevant sections when changing visible behavior. Private planning and acceptance records remain outside this public source repository.
 
