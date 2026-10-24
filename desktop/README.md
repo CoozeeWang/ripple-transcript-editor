@@ -21,7 +21,7 @@ The staging command prints the backend directory. `RIPPLE_DATA_DIR` must point t
 
 Choose an unused positive `RIPPLE_BUILD_NUMBER` higher than all existing delivery records and the installed app; do not infer the next number from an old example in this document. Package with `desktop/package-mac.sh <printed-backend-directory> [output-app-path]`. This writes the application version, build number, and exact Git commit to `Contents/Info.plist`; verify the finished bundle before naming a compressed delivery package. Reusing or lowering the build number when replacing an existing output app is rejected.
 
-Backend state is stored under the app's user data directory. Selected project and audio files remain in their chosen locations. Closing the window stops the owned backend. The personal internal build uses an ad hoc signature and is not notarized. As of 2026-10-20, Mac b83 has maintainer acceptance; later dependency changes require their own package verification. Windows packaging/installed acceptance and a complete published, signed online upgrade remain pending before Release.
+Backend state is stored under the app's user data directory. Selected project and audio files remain in their chosen locations. Closing the window stops the owned backend. The personal internal build uses an ad hoc signature and is not notarized. As of 2026-10-20, Mac b83 has maintainer acceptance; later dependency changes require their own package verification. Windows packaging/installed acceptance and the manual release-download flow still need installed-app checks.
 
 The main window sets `dragDropEnabled: false` so file drops reach the editor's HTML drop zones. Tauri's native drop interception must not consume these events: the app uses the same target validation and import flow as its browser version. When WebKit supplies a dropped File without a persistent file handle, audio can be copied into the project; external-reference storage still requires the file picker. This also leaves the editor's internal drag sorting available.
 
@@ -41,7 +41,7 @@ On macOS, creating or opening a valid `.ripple` project automatically sets its F
 
 ## Desktop updates
 
-The installed app offers a user-initiated **Update and restart…** flow from Ripple → Check for Updates… on Mac or Help → Check for Updates… on Windows, in a standalone update window. See [update source, signing, preservation and release preparation](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger public updates; publishing a signed catalog is a separate release action.
+The installed app offers **Check for Updates…** from the Ripple menu on Mac or Help menu on Windows, in a standalone update window. It shows release notes and opens the matching official release page for manual download and installation. See [desktop update checks](../docs/DESKTOP_UPDATES.md). Internal build numbers do not trigger a public version update.
 
 ## Native development on macOS
 

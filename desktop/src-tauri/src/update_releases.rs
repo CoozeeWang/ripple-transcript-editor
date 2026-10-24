@@ -1,9 +1,9 @@
-//! Published stable and Beta releases. Internal builds are never compared as versions.
+//! Published official releases with a manual download for this platform.
 use serde::Deserialize;
 use url::Url;
 
+pub const RELEASES: &str = "https://github.com/CoozeeWang/ripple-transcript-editor/releases";
 const API: &str = "https://api.github.com/repos/CoozeeWang/ripple-transcript-editor/releases";
-const DOWNLOADS: &str = "https://github.com/CoozeeWang/ripple-transcript-editor/releases/download/";
 const PAGE_SIZE: usize = 100;
 const MAX_PAGES: usize = 10;
 const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
@@ -14,39 +14,45 @@ struct Release {
     draft: bool,
     prerelease: bool,
     published_at: Option<String>,
+    body: Option<String>,
     assets: Vec<Asset>,
 }
 #[derive(Deserialize)]
-struct Asset { name: String, browser_download_url: String }
+struct Asset { name: String }
 #[derive(Debug)]
-pub struct Catalog { pub version: semver::Version, pub url: Url }
+pub struct Catalog { pub version: semver::Version, pub url: Url, pub notes: Option<String>, pub platform_available: bool }
 
 pub fn client(timeout: std::time::Duration) -> Result<reqwest::Client, &'static str> {
-    // Use the same ring provider as Tauri's updater, including before its first check.
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
-    reqwest::Client::builder().user_agent("Ripple-Updater").timeout(timeout)
+    reqwest::Client::builder().user_agent("Ripple-Release-Check").timeout(timeout)
         .build().map_err(|_| "update_check_failed")
 }
-
-fn catalogs(releases: Vec<Release>) -> Vec<Catalog> {
+fn manual_asset(name: &str, platform: &str) -> bool {
+    if !name.starts_with("Ripple-") { return false; }
+    match platform {
+        "macos" => name.ends_with(".dmg") || (name.ends_with(".zip") && name.to_ascii_lowercase().contains("mac")),
+        "windows" => name.ends_with(".exe"),
+        _ => false,
+    }
+}
+fn catalogs(releases: Vec<Release>, platform: &str) -> Vec<Catalog> {
     releases.into_iter().filter_map(|release| {
         if release.draft || release.published_at.as_deref().is_none_or(str::is_empty) { return None; }
+        if !release.tag_name.bytes().all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b)) { return None; }
         let version = semver::Version::parse(release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name)).ok()?;
         let beta = version.pre.as_str().strip_prefix("beta.")
             .is_some_and(|number| number.parse::<u64>().is_ok_and(|n| n > 0));
         if (!version.pre.is_empty() && !beta) || (release.prerelease && !beta) { return None; }
-        let expected = Url::parse(&format!("{DOWNLOADS}{}/latest.json", release.tag_name)).ok()?;
-        release.assets.iter().any(|asset| asset.name == "latest.json" && Url::parse(&asset.browser_download_url).ok().as_ref() == Some(&expected))
-            .then_some(Catalog { version, url: expected })
+        // Construct the page ourselves, so API content cannot redirect to another host.
+        let url = Url::parse(&format!("{RELEASES}/tag/{}", release.tag_name)).ok()?;
+        Some(Catalog { version, url, notes: release.body,
+            platform_available: release.assets.iter().any(|asset| manual_asset(&asset.name, platform)) })
     }).collect()
 }
-fn sort_catalogs(found: &mut [Catalog]) {
-    found.sort_by(|a,b| b.version.cmp_precedence(&a.version).then_with(||a.url.as_str().cmp(b.url.as_str())));
-}
-
 pub async fn discover(client: &reqwest::Client) -> Result<Vec<Catalog>, &'static str> {
+    let platform = if cfg!(target_os = "macos") { "macos" } else if cfg!(windows) { "windows" } else { "unsupported" };
     let mut found = Vec::new();
     for page in 1..=MAX_PAGES {
         let mut response = client.get(format!("{API}?per_page={PAGE_SIZE}&page={page}"))
@@ -60,58 +66,43 @@ pub async fn discover(client: &reqwest::Client) -> Result<Vec<Catalog>, &'static
         }
         let releases: Vec<Release> = serde_json::from_slice(&bytes).map_err(|_| "update_check_failed")?;
         let complete = releases.len() < PAGE_SIZE;
-        found.extend(catalogs(releases));
+        found.extend(catalogs(releases, platform));
         if complete {
-            sort_catalogs(&mut found);
+            found.sort_by(|a,b| b.version.cmp_precedence(&a.version));
             return Ok(found);
         }
     }
-    // A truncated listing cannot prove that there is no newer version.
     Err("update_check_failed")
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn http_client_initializes_tls_without_a_prior_plugin_check() {
-        client(std::time::Duration::from_secs(20)).unwrap();
-        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
-    }
-    fn release(tag: &str, prerelease: bool) -> serde_json::Value {
-        serde_json::json!({"tag_name":tag,"draft":false,"prerelease":prerelease,"published_at":"2026-01-01T00:00:00Z",
-            "assets":[{"name":"latest.json","browser_download_url":format!("{DOWNLOADS}{tag}/latest.json")}]})
-    }
-    fn parse(values: Vec<serde_json::Value>) -> Vec<Catalog> { catalogs(serde_json::from_value(serde_json::Value::Array(values)).unwrap()) }
-    #[test]
-    fn published_beta_and_stable_are_included_but_not_drafts_or_other_prereleases() {
-        let mut draft=release("v9.0.0",false);draft["draft"]=true.into();
-        let mut unpublished=release("v8.0.0",false);unpublished["published_at"]=serde_json::Value::Null;
-        let found=parse(vec![release("v0.2.0-beta.2",true),release("v0.2.0",false),draft,unpublished,release("v1.0.0-rc.1",true),release("b76",false)]);
-        assert_eq!(found.iter().map(|c|c.version.to_string()).collect::<Vec<_>>(),["0.2.0-beta.2","0.2.0"]);
+    fn release(tag: &str, assets: &[&str]) -> serde_json::Value {
+        serde_json::json!({"tag_name":tag,"draft":false,"prerelease":tag.contains("beta"),
+            "published_at":"2026-01-01T00:00:00Z","body":"Synthetic release notes",
+            "assets":assets.iter().map(|name|serde_json::json!({"name":name})).collect::<Vec<_>>()})
     }
     #[test]
-    fn requires_a_catalog_asset_in_the_same_official_release() {
-        let mut missing=release("v1.2.3",false);missing["assets"]=serde_json::json!([]);
-        let mut external=release("v1.2.4",false);external["assets"][0]["browser_download_url"]="https://example.invalid/latest.json".into();
-        let mut different_tag=release("v1.2.5",false);different_tag["assets"][0]["browser_download_url"]=format!("{DOWNLOADS}v1.2.0/latest.json").into();
-        assert!(parse(vec![missing,external,different_tag]).is_empty());
+    fn filters_releases_and_matches_manual_assets() {
+        let mut draft = release("v9.0.0", &["Ripple-9.0.0.dmg"]); draft["draft"] = true.into();
+        let values = vec![draft, release("v0.2.0-beta.2", &["Ripple-0.2.0-beta.2-macOS.zip"]),
+            release("v0.2.0", &["Ripple-0.2.0.app.tar.gz"]), release("v1.0.0-rc.1", &["Ripple-1.0.0.exe"]),
+            release("v0.3.0", &["Ripple-0.3.0-Windows.exe"]), release("v1.0.0%2felse", &["Ripple-1.0.0.dmg"])];
+        let parsed: Vec<Release> = serde_json::from_value(serde_json::Value::Array(values)).unwrap();
+        let mac = catalogs(parsed,"macos");
+        assert_eq!(mac.len(),3);
+        assert!(mac[0].platform_available);
+        assert!(!mac[1].platform_available);
+        assert!(!mac[2].platform_available);
+        assert_eq!(mac[0].notes.as_deref(),Some("Synthetic release notes"));
+        assert_eq!(mac[0].url.as_str(),"https://github.com/CoozeeWang/ripple-transcript-editor/releases/tag/v0.2.0-beta.2");
     }
     #[test]
-    fn beta_order_uses_semver_and_same_product_build_metadata_has_no_priority() {
-        let beta2=semver::Version::parse("0.2.0-beta.2").unwrap();
-        let beta10=semver::Version::parse("0.2.0-beta.10").unwrap();
-        let stable=semver::Version::parse("0.2.0").unwrap();
-        assert!(stable.cmp_precedence(&beta10).is_gt());assert!(beta10.cmp_precedence(&beta2).is_gt());
-        assert!(semver::Version::parse("0.2.0-beta.1+76").unwrap().cmp_precedence(&semver::Version::parse("0.2.0-beta.1+75").unwrap()).is_eq());
-        let mut found=parse(vec![release("v0.2.0-beta.2",true),release("v0.2.0",false),release("v0.2.0-beta.10",true)]);
-        sort_catalogs(&mut found);
-        assert_eq!(found.iter().map(|c|c.version.to_string()).collect::<Vec<_>>(),["0.2.0","0.2.0-beta.10","0.2.0-beta.2"]);
-    }
-    #[tokio::test]
-    #[ignore = "read-only live GitHub smoke; not an offline unit test"]
-    async fn queries_published_release_index() {
-        let client=client(std::time::Duration::from_secs(20)).unwrap();
-        discover(&client).await.expect("official public Release index is readable");
+    fn assets_are_platform_specific() {
+        assert!(manual_asset("Ripple-0.2.0-macOS.dmg","macos"));
+        assert!(!manual_asset("Ripple-0.2.0.app.tar.gz","macos"));
+        assert!(!manual_asset("Ripple-0.2.0-Windows.zip","macos"));
+        assert!(manual_asset("Ripple-0.2.0-Windows.exe","windows"));
+        assert!(!manual_asset("other.exe","windows"));
     }
 }

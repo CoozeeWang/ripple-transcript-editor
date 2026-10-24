@@ -16,7 +16,6 @@ mod connector_config;
 mod install_target;
 mod updates;
 mod update_window;
-mod update_install;
 mod update_releases;
 use grants::{Grant, Grants, io_error};
 use serde::Serialize;
@@ -677,19 +676,7 @@ fn stop_backend(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn owned_process_ids(app: &tauri::AppHandle) -> Vec<u32> {
-    let mut ids = vec![std::process::id()];
-    if let Some(state) = app.try_state::<Backend>() { if let Ok(lock) = state.0.lock() { if let Some(child) = lock.as_ref() { ids.push(child.id()); } } }
-    if let Some(state) = app.try_state::<ConnectorTunnel>() { if let Ok(lock) = state.0.lock() { if let Some(child) = lock.child.as_ref() { ids.push(child.id()); } } }
-    ids
-}
-
 fn main() {
-    #[cfg(target_os = "macos")]
-    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--ripple-apply-update")) {
-        std::process::exit(update_install::run(&std::env::args_os().skip(1).collect::<Vec<_>>()));
-    }
     if std::env::args().any(|arg| arg == "--ripple-build-info") {
         let info = serde_json::json!({
             "custom_protocol": cfg!(feature = "custom-protocol"),
@@ -711,7 +698,7 @@ fn main() {
     if cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.dev" {
         for window in &mut context.config_mut().app.windows { window.create = false; }
     }
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_updater::Builder::new().pubkey(include_str!("../update-public.key.pub").trim()).build())
+    tauri::Builder::default().plugin(tauri_plugin_dialog::init())
         .manage(Writes::default())
         .manage(ConnectorTunnel(Mutex::new(TunnelState::default())))
         .setup(|app| {
@@ -739,7 +726,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![update_window::update_prepare, update_window::update_prepared, update_window::update_close, updates::update_status, updates::update_check, updates::update_download, updates::update_cancel, updates::update_install, updates::update_open_releases, updates::update_dismiss_result, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+        .invoke_handler(tauri::generate_handler![update_window::update_close, updates::update_status, updates::update_check, updates::update_open_releases, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_status, connector_local_ready, connector_tunnel_stop])
@@ -757,11 +744,6 @@ fn main() {
             }
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.app_handle().state::<update_window::UpdateWindow>().busy() {
-                    api.prevent_close(); return;
-                }
-            }
             if pdf_print::main_window(window.label()) && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 stop_backend(window.app_handle());
                 window.app_handle().exit(0);
@@ -769,11 +751,6 @@ fn main() {
         })
         .build(context).expect("Ripple failed to start")
         .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
-                if app.state::<update_window::UpdateWindow>().busy() && !updates::installing(app) {
-                    api.prevent_exit(); return;
-                }
-            }
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) { stop_backend(app); }
         });
 }

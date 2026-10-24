@@ -1,7 +1,5 @@
 import { visibleAIActivities } from './lib/aiEditOwnership';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
-import { registerDesktopUpdateGuard } from './lib/desktopUpdates';
-import { blocksHumanEditing } from './lib/aiEditOwnership';
 import { flushSync } from "react-dom";
 import { applyAIMarks } from "./lib/aiMarks";
 import { useAIConnector } from "./hooks/useAIConnector";
@@ -677,18 +675,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       directory: dirHandleRef.current, version_id: activeModelId
         ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : null }),
   } : undefined);
-
-  const updateBlocked = useRef(false);
-  useLayoutEffect(() => {
-    updateBlocked.current = transcribing || versionBusy || renamingRef.current || (saveStatus === 'loading' && Boolean(transcript)) || processStatus === 'uploading' || connector.activities.some(blocksHumanEditing);
-  });
-  useEffect(() => registerDesktopUpdateGuard(async () => {
-    if (updateBlocked.current) throw Error('update_work_in_progress');
-    try { await flushPendingSave(); }
-    catch { throw Error('update_unsaved_project'); }
-    if (updateBlocked.current) throw Error('update_work_in_progress');
-    audioRef.current?.pause();
-  }));
 
   const aiVersionId = activeModelId ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : '';
   const aiLocked = connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, aiIdentity);

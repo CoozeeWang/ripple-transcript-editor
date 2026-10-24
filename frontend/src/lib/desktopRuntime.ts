@@ -1,4 +1,3 @@
-import { installDesktopUpdateBridge } from './desktopUpdates';
 import { installNativeMenuLanguage } from './nativeMenu';
 import { msg } from '../i18n';
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
@@ -36,9 +35,7 @@ export async function installDesktopRuntime(): Promise<void> {
   const tauriEvents = (window as unknown as { __TAURI__: { event?: { listen: (name: string, callback: (event: {payload:string}) => void) => Promise<() => void> } } }).__TAURI__.event;
   removeOpenProjectMenu = tauriEvents ? await tauriEvents.listen('ripple-open-project', () => window.dispatchEvent(new Event('ripple-open-project'))) : undefined;
   removeRecentProjectMenu = tauriEvents ? await tauriEvents.listen('ripple-open-recent-project', event => window.dispatchEvent(new CustomEvent('ripple-open-recent-project', { detail: event.payload }))) : undefined;
-  const removeUpdateBridge = await installDesktopUpdateBridge();
   removeMenuLanguage = installNativeMenuLanguage(invoke);
-  if (import.meta.hot) import.meta.hot.dispose(removeUpdateBridge);
   if (import.meta.hot) import.meta.hot.dispose(() => removeMenuLanguage?.());
   if (import.meta.hot) import.meta.hot.dispose(() => removeOpenProjectMenu?.());
   if (import.meta.hot) import.meta.hot.dispose(() => removeRecentProjectMenu?.());
