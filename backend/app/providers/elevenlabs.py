@@ -1,9 +1,11 @@
 import mimetypes
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, ClassVar
 
 import httpx
 
+from .. import progress
 from ..models import AudioInfo, Segment, Speaker, Transcript, TranscriptionOptions, Word
 from ..settings import get_credential
 from .base import Capabilities, CredentialField, ProviderError, TranscriptionProvider
@@ -36,6 +38,23 @@ def describe_upstream_error(status_code: int, raw: str) -> tuple[str, str]:
     return "upstream_error", "ElevenLabs 服务暂时不可用"
 
 
+class _UploadPhaseStream(httpx.SyncByteStream):
+    """Advance only after the transport consumes the complete request body."""
+
+    def __init__(self, stream: httpx.SyncByteStream):
+        self.stream = stream
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield from self.stream
+        job_id = progress.current_job()
+        if job_id:
+            # The synchronous API has no separate recognition-start signal.
+            progress.REGISTRY.switch_phase(job_id, progress.PHASE_PROCESSING)
+
+    def close(self) -> None:
+        self.stream.close()
+
+
 def transcribe_audio(
     audio_path: Path,
     original_filename: str,
@@ -55,15 +74,20 @@ def transcribe_audio(
         form_data["num_speakers"] = str(options.num_speakers)
 
     try:
-        with audio_path.open("rb") as audio_file, httpx.Client(
-            timeout=httpx.Timeout(7200, connect=30)
-        ) as client:
-            response = client.post(
-                ELEVENLABS_STT_URL,
+        # A zero total explicitly means phase-only progress, never 0%/100%.
+        with (
+            progress.report_upload(original_filename, 0),
+            audio_path.open("rb") as audio_file,
+            httpx.Client(timeout=httpx.Timeout(7200, connect=30)) as client,
+        ):
+            request = client.build_request(
+                "POST", ELEVENLABS_STT_URL,
                 headers={"xi-api-key": api_key},
                 data=form_data,
                 files={"file": (original_filename, audio_file, content_type)},
             )
+            request.stream = _UploadPhaseStream(request.stream)
+            response = client.send(request)
     except httpx.HTTPError as error:
         raise ElevenLabsError(
             "连不上 ElevenLabs，请检查网络（或代理）后重试",

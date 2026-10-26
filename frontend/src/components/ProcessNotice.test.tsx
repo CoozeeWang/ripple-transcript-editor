@@ -25,3 +25,15 @@ it('highlights only the current stage, leaving recognition percentage unknown',(
  expect(screen.getByText('上传音频').className).toContain('is-complete');
  expect(screen.queryByRole('progressbar')).toBeNull();
 });
+it('phase-only upload has no fabricated percentage and remains incomplete until processing',()=>{
+ const ui=render(<ProcessNotice {...props} phase="sending" ratio={null}/>);
+ expect(screen.getByRole('status').textContent).toBe('正在上传音频');
+ expect(screen.getByText('上传音频').getAttribute('aria-current')).toBe('step');
+ expect(screen.getByText('上传音频').className).not.toContain('is-complete');
+ expect(screen.queryByRole('progressbar')).toBeNull();
+ ui.rerender(<ProcessNotice {...props} phase="processing" ratio={null}/>);
+ expect(screen.getByRole('status').textContent).toBe('正在转录音频');
+ expect(screen.getByText('上传音频').className).toContain('is-complete');
+ expect(screen.getByText('转录音频').getAttribute('aria-current')).toBe('step');
+ expect(screen.queryByRole('progressbar')).toBeNull();
+});

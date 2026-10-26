@@ -12,7 +12,7 @@ export interface ProcessNoticeProps {
   elapsed?: number;
   status: ProcessStatus;
   phase: "uploading" | "sending" | "processing" | string;
-  ratio: number;
+  ratio: number | null;
   hint: string;
   raw: string;
   onDismiss?: () => void;
@@ -33,12 +33,12 @@ export function ProcessNotice(props: ProcessNoticeProps) {
     setTranscriptionDialogOpen,
   } = props;
 
-  // 读取和上传有真实进度；识别阶段仅显示活动指示，不伪造百分比。
-  const hasRatio = phase === "uploading" || phase === "sending";
+  // 有字节上报时显示真实比例；仅有阶段信号时不伪造百分比。
+  const hasRatio = (phase === "uploading" || phase === "sending") && ratio !== null && Number.isFinite(ratio);
 
   if (props.card) {
     const running = status === "transcribing";
-    const percent = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+    const percent = Math.max(0, Math.min(100, Math.round((ratio ?? 0) * 100)));
     const stage = phase === "uploading" ? msg('ProcessNotice.m0634') : phase === "sending" ? msg('ProcessNotice.m0635') : phase === "saving" ? msg('ProcessNotice.m0636') : msg('ProcessNotice.m0637');
     return <section className={`transcription-card${props.compact ? " transcription-card--compact" : ""}${running ? "" : " transcription-card--error"}`} aria-label={running ? msg('ProcessNotice.m0638') : msg('ProcessNotice.m0639')}>
       <div className="transcription-card-heading">
@@ -84,7 +84,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
             <div
               className="process-progress__bar"
               style={{
-                width: hasRatio ? `${Math.round(ratio * 100)}%` : "0%",
+                width: hasRatio ? `${Math.round((ratio ?? 0) * 100)}%` : "0%",
               }}
             />
           </div>

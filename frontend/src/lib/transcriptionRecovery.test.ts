@@ -48,3 +48,25 @@ it('stopping a recovered task does not delete it',async()=>{
   expect(dir.removeEntry).not.toHaveBeenCalled();
   expect(fetcher).not.toHaveBeenCalled();
 });
+it.each([
+ ['elevenlabs',{active:false},'sending',undefined],
+ ['elevenlabs',{active:true,phase:'sending',total_bytes:0},'sending',undefined],
+ ['elevenlabs',{active:true,phase:'processing'},'processing',undefined],
+ ['test',{active:false},'processing',undefined],
+ ['test',{active:true,phase:'sending',sent_bytes:42,total_bytes:100},'sending',.42],
+] as const)('uses confirmed server stages for %s (%j)',async(providerId,progress,phase,ratio)=>{
+ vi.useFakeTimers();
+ let jobs=0;
+ const dir=fixture();
+ const file=new File(['audio'],'sample.wav',{lastModified:123});
+ const marker={jobId:'saved-job',signature:JSON.stringify([file.size,file.lastModified,providerId,options])};
+ vi.mocked(dir.getFileHandle).mockImplementation(async(name:string)=>({getFile:async()=>name==='sample.wav'?file:{text:async()=>JSON.stringify(marker)}}) as FileSystemFileHandle);
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.includes('/progress')?progress:++jobs===1?{state:'running'}:{state:'completed',transcript:{segments:[]}}))));
+ const onProgress=vi.fn();
+ try {
+   const result=transcribeAudio(dir,'sample.wav',options,{providerId,onProgress});
+   await vi.runAllTimersAsync();await result;
+   expect(onProgress.mock.calls[0]?.[0]).toBe(phase);
+   expect(onProgress.mock.calls[0]?.[1]).toBe(ratio);
+ } finally {vi.useRealTimers();}
+});
