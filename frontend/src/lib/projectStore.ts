@@ -8,11 +8,21 @@ import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decor
 
 export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
+  /** Last duration accepted by the player for this exact audio content. */
+  duration?: { seconds: number; fingerprint: string };
   manuscriptDirectory?: string;
   manuscriptOrder?: string[];
   /** Details entered before the first transcript exists. Scoped to this audio. */
   draft?: { metadata: InterviewMetadata; speakers: Speaker[] };
 }
+/** A cache is not a second media probe; stale or malformed entries stay unknown. */
+export function recordingDuration(recording: ProjectRecording): number | null {
+  const cached = recording.duration;
+  if (recording.storage === 'none' || !cached || cached.fingerprint !== recording.fingerprint ||
+      !Number.isFinite(cached.seconds) || cached.seconds <= 0) return null;
+  return cached.seconds;
+}
+
 export interface ProjectInterview { id: string; title: string; metadata?: InterviewMetadata; recordings: ProjectRecording[] }
 export interface ProjectTrashItem {
   id: string; name: string; deletedAt: string; interviewId: string;
@@ -84,6 +94,17 @@ async function writeText(dir: FileSystemDirectoryHandle, name: string, text: str
   catch (error) { await stream.abort().catch(() => {}); throw error; }
   if (await readText(dir, name) !== text) throw new Error(msg('projectStore.m1392'));
 }
+/** Save only to the originally opened audio; revisions prevent overwriting concurrent edits. */
+export async function saveRecordingDuration(project: OpenProject, recordingId: string, fingerprint: string, seconds: number): Promise<OpenProject> {
+  const recording = project.data.interviews.flatMap(session => session.recordings).find(item => item.id === recordingId);
+  if (!recording || recording.storage === 'none' || recording.fingerprint !== fingerprint ||
+      !Number.isFinite(seconds) || seconds <= 0 || recordingDuration(recording) === seconds) return project;
+  return saveProject(project, { ...project.data, interviews: project.data.interviews.map(session => ({
+    ...session, recordings: session.recordings.map(item => item.id === recordingId
+      ? { ...item, duration: { seconds, fingerprint } } : item),
+  })) });
+}
+
 export async function openProject(directory: FileSystemDirectoryHandle): Promise<OpenProject> {
   const raw = await readText(directory, INDEX);
   if (raw === null) throw new Error(msg('projectStore.m1393'));

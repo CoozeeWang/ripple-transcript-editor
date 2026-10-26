@@ -25,7 +25,7 @@ import { ProjectBoard } from './ProjectBoard';
 import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
 import { useDismissable } from '../useDismissable';
-import { moveProjectRecordings, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject,
+import { moveProjectRecordings, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject, saveRecordingDuration,
   type ExistingManuscript, type OpenProject, type ProjectRecording, type ProjectImportStage } from '../lib/projectStore';
 import './projectWorkspace.css';
 
@@ -227,6 +227,17 @@ export function ProjectWorkspace() {
   if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
     connectorProject={() => current.current} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
+    onAudioDuration={async seconds => {
+      const snapshot = current.current;
+      if (!snapshot || snapshot.data.id !== project.data.id) return;
+      try {
+        const next = await saveRecordingDuration(snapshot, editor.recording.id, editor.recording.fingerprint, seconds);
+        if (next !== snapshot && current.current?.data.id === snapshot.data.id && current.current.data.revision <= next.data.revision) await publish(next);
+      } catch (error) {
+        setError(msg('audioDuration.saveFailed'));
+        throw error;
+      }
+    }}
     onRenameInterview={async title => {
       const snapshot = current.current!;
       const interviews = snapshot.data.interviews.map(session => ({...session, recordings: session.recordings.map(recording =>

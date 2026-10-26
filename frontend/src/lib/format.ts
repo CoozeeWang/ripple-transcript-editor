@@ -19,6 +19,12 @@ export function formatTime(seconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+/** 播放器与项目音频卡固定保留小时位；不改变稿件时间戳格式。 */
+export function formatPlaybackTime(seconds: number): string {
+  const total = Math.floor(Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
+  return `${String(Math.floor(total / 3600)).padStart(2, "0")}:${String(Math.floor(total / 60) % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 // ===== 快捷键显示（Windows 兼容：mac 显示 ⌘，win/linux 显示 Ctrl） =====
 export const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? "");
 

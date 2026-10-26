@@ -1,7 +1,7 @@
 import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { moveProjectRecordings, referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
+import { recordingDuration, saveRecordingDuration, moveProjectRecordings, referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
 import { createEdit, setModelOriginal, saveActiveEdit, createModel, persistActiveModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
@@ -1041,4 +1041,31 @@ it('keeps a project copy incomplete when manuscript AI state cannot be read', as
   expect(incomplete.files.has('COPY-INCOMPLETE.txt')).toBe(true);
   expect(incomplete.files.has('ripple-project.json')).toBe(false);
   expect(await getText(p.directory, 'ripple-project.json')).toBe(originalIndex);
+});
+
+it('persists only player-observed duration for the exact recording and reopens it without a transcript', async () => {
+  const root=directory();
+  let project=await createProject(root.handle,'Synthetic duration project');
+  project=await addInterview(project,'Synthetic session');
+  const audio=new File(['synthetic audio'],'synthetic.wav');
+  const handle={getFile:async()=>audio} as FileSystemFileHandle;
+  project=await addRecordings(project,project.data.interviews[0].id,[handle],'copy');
+  const recording=project.data.interviews[0].recordings[0];
+  expect(recordingDuration(recording)).toBeNull();
+  project=await saveRecordingDuration(project,recording.id,recording.fingerprint,3924);
+  const reopened=await openProject(project.directory);
+  expect(recordingDuration(reopened.data.interviews[0].recordings[0])).toBe(3924);
+  expect(await saveRecordingDuration(project,recording.id,recording.fingerprint,3924)).toBe(project);
+  expect(await saveRecordingDuration(project,recording.id,'different-file',12)).toBe(project);
+  expect(await saveRecordingDuration(project,'other-recording',recording.fingerprint,12)).toBe(project);
+  expect(await saveRecordingDuration(project,recording.id,recording.fingerprint,NaN)).toBe(project);
+  expect(await saveRecordingDuration(project,recording.id,recording.fingerprint,0)).toBe(project);
+  const corrected=await saveRecordingDuration(project,recording.id,recording.fingerprint,7524);
+  expect(recordingDuration(corrected.data.interviews[0].recordings[0])).toBe(7524);
+  expect(recordingDuration({...recording,duration:{seconds:3924,fingerprint:'different-file'}})).toBeNull();
+  expect(recordingDuration({...recording,duration:{seconds:NaN,fingerprint:recording.fingerprint}})).toBeNull();
+  expect(recordingDuration({...recording,storage:'none',duration:{seconds:3924,fingerprint:recording.fingerprint}})).toBeNull();
+  // An older snapshot cannot overwrite a later correction or concurrent project edits.
+  await expect(saveRecordingDuration(project,recording.id,recording.fingerprint,99)).rejects.toThrow();
+  expect(recordingDuration((await openProject(project.directory)).data.interviews[0].recordings[0])).toBe(7524);
 });

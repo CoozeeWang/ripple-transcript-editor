@@ -1843,5 +1843,9 @@
     "selected_other": "已选 {{count}} 条录音",
     "actionSelected_one": "移动所选 {{count}} 条录音到其他场次",
     "actionSelected_other": "移动所选 {{count}} 条录音到其他场次"
+  },
+  "audioDuration": {
+    "label": "音频时长",
+    "saveFailed": "音频时长未能保存到项目，重开音频后可重试。"
   }
 }

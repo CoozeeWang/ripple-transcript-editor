@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatRelativeTime, formatTime, toDatetimeLocalValue, today } from "./format";
+import { formatRelativeTime, formatTime, formatPlaybackTime, toDatetimeLocalValue, today } from "./format";
 
 describe("formatTime", () => {
   it("不足 1 小时 → mm:ss", () => {
@@ -96,4 +96,10 @@ it('keeps date-only metadata date-only when reopening',()=>{
 it('preserves year and month precision without inventing dates',()=>{
  expect(toDatetimeLocalValue('2026')).toBe('2026');
  expect(toDatetimeLocalValue('2026-09')).toBe('2026-09');
+});
+
+describe("playback time always includes hours without changing transcript timecodes", () => {
+  it.each([[0,"00:00:00"],[3000,"00:50:00"],[3924,"01:05:24"],[360000,"100:00:00"],[NaN,"00:00:00"]])("formats %s as %s", (seconds, expected) => {
+    expect(formatPlaybackTime(seconds)).toBe(expected);
+  });
 });

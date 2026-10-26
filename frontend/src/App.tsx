@@ -105,6 +105,7 @@ export interface ProjectEditorProps {
   saveRecordingDraft?: (draft: { metadata: InterviewMetadata; speakers: Speaker[] }) => Promise<void>;
   onPatchInterview?: (patch: Partial<InterviewMetadata>) => Promise<void>;
   recordingLabel?: string;
+  onAudioDuration?: (seconds: number) => Promise<void>;
   onRenameInterview?: (title: string) => Promise<void>;
   onReturnToProjects?: () => void;
   onOpenProject?: (recentId?: string) => Promise<void>;
@@ -292,6 +293,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     effectiveSelectedSegmentId,
     textareaRefs,
     setLoadError,
+    onDurationConfirmed: seconds => {
+      void projectProps.onAudioDuration?.(seconds).catch(() => setLoadError(msg('audioDuration.saveFailed')));
+    },
   });
 
   useOpeningPosition(openingPosition, transcriptPanelRef, hasLoadedTranscript);

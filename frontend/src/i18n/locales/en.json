@@ -1843,5 +1843,9 @@
     "selected_other": "{{count}} recordings selected",
     "actionSelected_one": "Move {{count}} selected recording to another session",
     "actionSelected_other": "Move {{count}} selected recordings to another session"
+  },
+  "audioDuration": {
+    "label": "Audio duration",
+    "saveFailed": "Could not save the audio duration to the project. Reopen the audio to try again."
   }
 }

@@ -222,3 +222,18 @@ it('shows damaged-journal recovery when no AI activity or healthy task could be 
   expect(state.taskAction).toHaveBeenCalledWith('tasks', undefined);
   expect(screen.getByText('Synthetic.wav的内容')).toBeTruthy();
 });
+
+it('sends accepted media duration to the project without using transcript duration', async () => {
+  vi.useFakeTimers();
+  const onAudioDuration=vi.fn(async()=>{});
+  const ui=render(<App onAudioDuration={onAudioDuration}/>);
+  act(()=>{fixture.folder!.onLoaded({url:'synthetic.wav',manifest:null,edited:null},'synthetic.wav');});
+  const audio=ui.container.querySelector('audio')!;
+  Object.defineProperty(audio,'duration',{configurable:true,value:3924});
+  act(()=>fireEvent.loadedMetadata(audio));
+  expect(ui.getByText('--:--:--')).toBeTruthy();
+  expect(onAudioDuration).not.toHaveBeenCalled();
+  await act(async()=>vi.advanceTimersByTime(4000));
+  expect(ui.getByText('01:05:24')).toBeTruthy();
+  expect(onAudioDuration).toHaveBeenCalledExactlyOnceWith(3924);
+});
