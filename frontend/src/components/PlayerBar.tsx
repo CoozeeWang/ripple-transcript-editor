@@ -47,6 +47,9 @@ export function PlayerBar(props: PlayerBarProps) {
     setPlaybackRate,
   } = props;
 
+  const currentTimeLabel = formatTime(currentTime);
+  const durationLabel = duration > 0 ? formatTime(duration) : "--:--";
+
   return (
     <footer className="player-bar">
       <audio
@@ -110,8 +113,10 @@ export function PlayerBar(props: PlayerBarProps) {
           }
         />
         <div className="time-labels">
-          <span>{formatTime(currentTime)}</span>
-          <span>{duration > 0 ? formatTime(duration) : "--:--"}</span>
+          {/* Recreate the text box when its digit count changes so the desktop
+              webview cannot retain the shorter label's painted bounds. */}
+          <span key={`current-${currentTimeLabel.length}`}>{currentTimeLabel}</span>
+          <span key={`duration-${durationLabel.length}`}>{durationLabel}</span>
         </div>
       </div>
       <button
