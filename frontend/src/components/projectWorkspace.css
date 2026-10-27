@@ -323,3 +323,10 @@ body:has(.project-home--welcome) { min-width: 0; }
 .recording-move-dialog .settings-hint { font-size:12px; line-height:1.6; }
 .recording-move-feedback { margin:12px 0 0; font-size:13px; overflow-wrap:anywhere; }
 .recording-move-dialog .audio-project-footer { flex-shrink:0; margin-top:20px; }
+
+.project-session-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
+.project-session-heading h2 { flex:1; min-width:0; overflow-wrap:anywhere; }
+.icon-button.project-session-delete { width:28px; height:28px; min-height:28px; padding:5px; flex:none; }
+.project-session-delete > svg.action-icon { width:16px; height:16px; }
+.project-session-delete:hover:not(:disabled) { color:var(--color-danger); border-color:var(--color-danger); }
+@media(max-width:760px) { .project-saved-title { padding-inline:16px; } }

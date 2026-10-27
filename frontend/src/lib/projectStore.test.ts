@@ -1,7 +1,7 @@
 import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { recordingDuration, saveRecordingDuration, moveProjectRecordings, referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
+import { trashProjectInterview, restoreProjectInterview, restoreProjectTrashItem, projectTrashCount, recordingDuration, saveRecordingDuration, moveProjectRecordings, referenceAudioNotice, readProjectMedia, mediaFailure, mutateProjectManuscript, checkedMediaFile, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, reassignManuscript, importProjectMaterials, forgetRecentProject, rememberProject, recentProjects, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, createProject, openProject, addInterview, addRecordings, recordingDirectory, saveProject, mediaFingerprint, relinkMedia, savePortableProject, parseProject, searchProject } from './projectStore';
 import { createEdit, setModelOriginal, saveActiveEdit, createModel, persistActiveModel, readEdited, readManifest, readModelOriginal, readModelEdit, removeModelOriginal, renameModelLabel } from '../localStore';
 
 interface TestDirectory { handle: FileSystemDirectoryHandle; files: Map<string, File>; dirs: Map<string, TestDirectory> }
@@ -1068,4 +1068,148 @@ it('persists only player-observed duration for the exact recording and reopens i
   // An older snapshot cannot overwrite a later correction or concurrent project edits.
   await expect(saveRecordingDuration(project,recording.id,recording.fingerprint,99)).rejects.toThrow();
   expect(recordingDuration((await openProject(project.directory)).data.interviews[0].recordings[0])).toBe(7524);
+});
+
+async function materialBytes(folder: FileSystemDirectoryHandle, prefix = ''): Promise<Record<string, string>> {
+ const result: Record<string,string> = {};
+ for await (const [name,entry] of (folder as FileSystemDirectoryHandle & {entries():AsyncIterableIterator<[string,FileSystemHandle]>}).entries()) {
+  if(!prefix && name.startsWith('ripple-project.json')) continue;
+  if(entry.kind==='directory') Object.assign(result,await materialBytes(entry as FileSystemDirectoryHandle,`${prefix}${name}/`));
+  else result[`${prefix}${name}`]=Array.from(new Uint8Array(await(await(entry as FileSystemFileHandle).getFile()).arrayBuffer())).join(',');
+ }
+ return result;
+}
+it.each(['copy','reference'] as const)('restores an entire %s session after reopen without changing any material bytes',async storage=>{
+ const {p,interview,recording,source}=await fixture(storage);
+ const view=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:2},speakers:[],segments:[{id:'synthetic',speaker_id:'sp',start:0,end:2,text:'Synthetic original',annotations:[{id:'note',text:'Synthetic note',createdAt:'2026-01-01T00:00:00Z'}]}]};
+ const made=await createModel(view,recording.file,{engine:'synthetic',transcript,original:transcript});
+ await createEdit(view,recording.file,made.model.id,{fromOriginal:true,label:'Synthetic revision'});
+ const before=await materialBytes(p.directory);
+ const deleted=await trashProjectInterview(p,interview.id);
+ expect(deleted.data.interviews).toEqual([]);expect(projectTrashCount(deleted)).toBe(1);
+ expect(await materialBytes(p.directory)).toEqual(before);
+ const reopened=await openProject(p.directory);
+ const restored=await restoreProjectTrashItem(reopened,reopened.data.sessionTrash![0].id);
+ expect(restored.data.interviews).toEqual(p.data.interviews);
+ expect(restored.data.sessionTrash).toEqual([]);
+ expect(await materialBytes(p.directory)).toEqual(before);
+ expect(await source.files.get('interview.wav')!.text()).toBe('original audio');
+ expect(await(await readProjectMedia(restored,interview.id,recording)).text()).toBe('original audio');
+ expect((await readManifest(await recordingDirectory(restored,interview.id,recording),recording.file))?.models[0].edits).toHaveLength(2);
+});
+it('restores empty and last sessions with their original metadata and ordering',async()=>{
+ const parent=directory();let p=await createProject(parent.handle,'Synthetic project');
+ for(const title of ['Synthetic A','Synthetic B','Synthetic C']) p=await addInterview(p,title);
+ const original=p.data.interviews;
+ const deleted=await trashProjectInterview(p,original[1].id);
+ const restored=await restoreProjectInterview(await openProject(p.directory),deleted.data.sessionTrash![0].id);
+ expect(restored.data.interviews).toEqual(original);
+ let empty=restored;
+ for(const session of original) empty=await trashProjectInterview(empty,session.id);
+ expect(empty.data.interviews).toHaveLength(0);
+ expect(projectTrashCount(empty)).toBe(3);
+ expect((await restoreProjectInterview(empty,empty.data.sessionTrash![0].id)).data.interviews).toHaveLength(1);
+});
+it('bundles earlier child deletions with a deleted session and keeps them deleted on parent recovery',async()=>{
+ const {p,interview,recording}=await fixture();
+ const child=await trashProjectMaterial(p,interview.id,recording.id);
+ const deleted=await trashProjectInterview(child,interview.id);
+ expect(deleted.data.trash).toEqual([]);
+ expect(deleted.data.sessionTrash![0].materialTrash).toEqual(child.data.trash);
+ const restored=await restoreProjectInterview(deleted,deleted.data.sessionTrash![0].id);
+ expect(restored.data.interviews[0].recordings).toHaveLength(0);
+ expect(restored.data.trash).toEqual(child.data.trash);
+ const complete=await restoreProjectMaterial(restored,child.data.trash![0].id);
+ expect(complete.data.interviews[0].recordings).toEqual([recording]);
+});
+it('does not need access to offline referenced audio to delete and restore its session',async()=>{
+ const {p,source,interview}=await fixture('reference');source.files.clear();
+ const deleted=await trashProjectInterview(p,interview.id);
+ const restored=await restoreProjectInterview(deleted,deleted.data.sessionTrash![0].id);
+ expect(restored.data.interviews).toEqual(p.data.interviews);
+});
+it.each(['delete','restore','clear'] as const)('keeps the recoverable index and every file intact if session %s fails to commit',async operation=>{
+ const f=await fixture();let p=f.p;
+ if(operation!=='delete') p=await trashProjectInterview(p,f.interview.id);
+ const before=await materialBytes(p.directory), index=await(await(await p.directory.getFileHandle('ripple-project.json')).getFile()).text();
+ const get=p.directory.getFileHandle.bind(p.directory);let fail=true;
+ vi.spyOn(p.directory,'getFileHandle').mockImplementation(async(name,options)=>{
+  if(name==='ripple-project.json'&&options?.create&&fail){fail=false;throw Error('synthetic disk full');}
+  return get(name,options);
+ });
+ const task=operation==='delete'?trashProjectInterview(p,f.interview.id):operation==='restore'?restoreProjectInterview(p,p.data.sessionTrash![0].id):clearProjectTrash(p);
+ await expect(task).rejects.toThrow('synthetic disk full');
+ expect((await openProject(p.directory)).data).toEqual(p.data);
+ expect(await(await(await p.directory.getFileHandle('ripple-project.json')).getFile()).text()).toBe(index);
+ expect(await materialBytes(p.directory)).toEqual(before);
+});
+it('rejects stale session deletion and stale restoration without changing materials',async()=>{
+ const {p,interview}=await fixture();const deleted=await trashProjectInterview(p,interview.id);
+ await expect(trashProjectInterview(p,interview.id)).rejects.toThrow();
+ const fresh=await saveProject(deleted,{...deleted.data,title:'Synthetic renamed project'});
+ await expect(restoreProjectInterview(deleted,deleted.data.sessionTrash![0].id)).rejects.toThrow();
+ expect((await openProject(p.directory)).data).toEqual(fresh.data);
+});
+it('validates archived session identities, nested entries and compatibility with projects without session trash',async()=>{
+ const {p,interview}=await fixture();expect(parseProject(JSON.stringify(p.data))).toEqual(p.data);
+ const deleted=await trashProjectInterview(p,interview.id);const item=deleted.data.sessionTrash![0];
+ expect(()=>parseProject(JSON.stringify({...deleted.data,sessionTrash:[{...item,interview:{...item.interview,id:'../escape'}}]}))).toThrow();
+ expect(()=>parseProject(JSON.stringify({...deleted.data,interviews:[interview]}))).toThrow();
+ expect(()=>parseProject(JSON.stringify({...deleted.data,sessionTrash:[item,{...item,id:'different-trash-id'}]}))).toThrow();
+ expect(()=>parseProject(JSON.stringify({...deleted.data,sessionTrash:[{...item,materialTrash:[{id:'bad',interviewId:'other-session',position:0,deletedAt:'synthetic',name:'Synthetic',recording:interview.recordings[0]}]}]}))).toThrow();
+});
+it('excludes archived sessions from portable copies and only cleans their folders on explicit permanent clear',async()=>{
+ const {p,source,interview}=await fixture('reference');
+ const active=await addInterview(p,'Synthetic active');
+ const deleted=await trashProjectInterview(active,interview.id);
+ source.files.set('preserve.txt',new File(['Synthetic external original'],'preserve.txt'));
+ const copy=await savePortableProject(deleted,directory('destination').handle,'Synthetic copy');
+ expect(copy.data.interviews).toEqual(deleted.data.interviews);
+ expect(copy.data.sessionTrash).toEqual([]);
+ expect((await openProject(p.directory)).data.sessionTrash).toHaveLength(1);
+ const cleared=await clearProjectTrash(deleted);
+ expect(projectTrashCount(cleared)).toBe(0);
+ expect(await source.files.get('interview.wav')!.text()).toBe('original audio');
+ const sessions=await p.directory.getDirectoryHandle('interviews');
+ await expect(sessions.getDirectoryHandle(interview.id)).rejects.toMatchObject({name:'NotFoundError'});
+ expect(await sessions.getDirectoryHandle(cleared.data.interviews[0].id)).toBeTruthy();
+});
+
+it('refuses session mutations while an editor lease is held',async()=>{
+ const {p,interview}=await fixture();
+ vi.stubGlobal('navigator',{locks:{request:async(_name:string,_options:unknown,work:(lock:null)=>Promise<void>)=>work(null)}});
+ const before=await materialBytes(p.directory);
+ await expect(trashProjectInterview(p,interview.id)).rejects.toThrow();
+ expect((await openProject(p.directory)).data).toEqual(p.data);
+ expect(await materialBytes(p.directory)).toEqual(before);
+});
+
+it('recovers standalone manuscripts, drafts, cached duration and opaque task recovery files with the session',async()=>{
+ const {p,interview,recording}=await fixture();
+ const standalone={id:'synthetic-standalone',name:'Synthetic independent manuscript',file:'independent.wav',storage:'none' as const,fingerprint:''};
+ const audio={...recording,duration:{seconds:65,fingerprint:recording.fingerprint},draft:{metadata:{...interview.metadata!,location:'Synthetic audio location'},speakers:[{id:'sp',name:'Synthetic speaker',colorIndex:0}]}};
+ const prepared=await saveProject(p,{...p.data,interviews:[{...interview,recordings:[audio,standalone]}]});
+ const view=await recordingDirectory(prepared,interview.id,standalone);
+ const transcript={audio:{filename:'',duration:0},speakers:[],segments:[{id:'s1',speaker_id:'sp',start:0,end:1,text:'Synthetic standalone content'}]};
+ await createModel(view,standalone.file,{engine:'import',sourceKind:'import',transcript});
+ const folder=await(await prepared.directory.getDirectoryHandle('interviews')).getDirectoryHandle(interview.id);
+ const recovery=await(await folder.getDirectoryHandle('independent.transcript')).getFileHandle('synthetic-task-recovery.json',{create:true});
+ const writer=await recovery.createWritable();await writer.write('{"synthetic_recovery":"preserve"}');await writer.close();
+ const before=await materialBytes(prepared.directory);
+ const deleted=await trashProjectInterview(prepared,interview.id);
+ const restored=await restoreProjectInterview(await openProject(prepared.directory),deleted.data.sessionTrash![0].id);
+ expect(restored.data.interviews).toEqual(prepared.data.interviews);
+ expect(await materialBytes(prepared.directory)).toEqual(before);
+ expect((await readEdited(await recordingDirectory(restored,interview.id,standalone),standalone.file))?.transcript.segments[0].text).toBe('Synthetic standalone content');
+});
+
+it('retains session ordering when several deleted sessions are restored in reverse order',async()=>{
+ let p=await createProject(directory().handle,'Synthetic ordered project');
+ for(const title of ['Synthetic A','Synthetic B','Synthetic C'])p=await addInterview(p,title);
+ const original=p.data.interviews;
+ for(const session of original)p=await trashProjectInterview(p,session.id);
+ const ids=p.data.sessionTrash!.map(item=>item.id).reverse();
+ for(const id of ids)p=await restoreProjectInterview(p,id);
+ expect(p.data.interviews).toEqual(original);
 });

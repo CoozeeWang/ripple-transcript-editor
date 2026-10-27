@@ -1847,5 +1847,20 @@
   "audioDuration": {
     "label": "Audio duration",
     "saveFailed": "Could not save the audio duration to the project. Reopen the audio to try again."
+  },
+  "sessionTrash": {
+    "deleteAction": "Delete session {{name}}",
+    "deleteTitle": "Delete session?",
+    "deleteDescription": "The session and all its audio, transcripts, versions and annotations will move to project Trash together and can be restored together. Audio and transcript contents will not be rewritten. Referenced external files will not be deleted.",
+    "confirm": "Move to Trash",
+    "cancel": "Cancel",
+    "sessionLabel": "Session",
+    "sessionContents": "Includes all audio and manuscripts in the session",
+    "restoreAction": "Restore session {{name}}",
+    "missing": "This session or Trash entry could not be found. Reopen the project and try again.",
+    "restoreConflict": "This session cannot be restored because material with the same identity already exists. Existing material and the Trash entry have been kept.",
+    "trashHint": "Deleted audio, manuscripts and entire sessions are kept here. Restoring a session brings back its audio and manuscripts. Emptying Trash is permanent; referenced external files are not affected.",
+    "clearDescription": "Permanently remove {{count}} Trash entries, including deleted sessions and their audio and manuscripts? This cannot be undone. Referenced external files will not be deleted.",
+    "changed": "The project has changed. Cancel this deletion and review the session again before retrying."
   }
 }

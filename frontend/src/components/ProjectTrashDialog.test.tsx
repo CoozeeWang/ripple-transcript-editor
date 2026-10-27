@@ -58,3 +58,13 @@ it('starts deletion on cancel and restores the triggering focus',()=>{
  expect(screen.getAllByRole('radio').map(r=>r.tabIndex)).toEqual([0,-1]);
  ui.unmount();expect(document.activeElement).toBe(trigger);trigger.remove();
 });
+
+it('distinguishes a whole session from individual material and restores its exact bundle',()=>{
+ const project={data:{interviews:[],sessionTrash:[{id:'session-trash',deletedAt:'2026-01-01',position:0,interview:{id:'s',title:'Synthetic session',recordings:[]}}],trash:[]}} as unknown as OpenProject;
+ const restore=vi.fn(),clear=vi.fn();
+ render(<ProjectTrashDialog project={project} busy={false} onClose={vi.fn()} onRestore={restore} onClear={clear}/>);
+ expect(screen.getByText('Synthetic session')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'恢复场次 Synthetic session'}));expect(restore).toHaveBeenCalledWith('session-trash');
+ fireEvent.click(screen.getByRole('button',{name:'清空回收站'}));
+ expect(screen.getByText(/包括已删除场次及其中的音频和稿件/)).toBeTruthy();expect(clear).not.toHaveBeenCalled();
+});

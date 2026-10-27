@@ -8,6 +8,7 @@ import { chooseDirectory, pickerLocation, OPEN_LAST_PROJECT, restoredInterview, 
 import { loadBooleanPreference } from '../lib/preferences';
 import { AssociateAudioDialog } from './AssociateAudioDialog';
 import { TrashUndoNotice } from './TrashUndoNotice';
+import { DeleteSessionDialog } from './DeleteSessionDialog';
 import { DeleteMaterialDialog, ProjectTrashDialog } from './ProjectTrashDialog';
 import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
@@ -27,8 +28,8 @@ import { ProjectBoard } from './ProjectBoard';
 import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
 import { useDismissable } from '../useDismissable';
-import { moveProjectRecordings, trashProjectMaterial, restoreProjectMaterial, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject, saveRecordingDuration,
-  type ExistingManuscript, type OpenProject, type ProjectRecording, type ProjectImportStage } from '../lib/projectStore';
+import { moveProjectRecordings, trashProjectInterview, trashProjectMaterial, restoreProjectTrashItem, clearProjectTrash, importProjectMaterials, findExistingManuscripts, importExistingManuscript, acquireProjectEditor, openProject, permit, forgetRecentProject, recentProjects, recordingDirectory, reassignManuscript, relinkMedia, rememberProject, resolveMedia, saveProject, saveRecordingDuration,
+  type ExistingManuscript, type OpenProject, type ProjectInterview, type ProjectRecording, type ProjectImportStage } from '../lib/projectStore';
 import './projectWorkspace.css';
 
 type Picker = Window & {
@@ -41,6 +42,8 @@ export function ProjectWorkspace() {
   useInterfaceLanguage();
   const audioStorage = useAudioStorageChoice();
   const [trashOpen,setTrashOpen]=useState(false);
+  const [sessionDelete,setSessionDelete]=useState<{session:ProjectInterview;revision:number}|null>(null);
+  const focusAfterTrash=useRef(false);
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
   const [deleteTarget,setDeleteTarget]=useState<{recording:ProjectRecording;modelId?:string;name:string;hasDocuments:boolean;sessionId:string}|null>(null);
   const [project, setProject] = useState<OpenProject | null>(null);
@@ -48,7 +51,7 @@ export function ProjectWorkspace() {
   useLayoutEffect(() => { reportProject?.(project?.data.id ?? ''); }, [reportProject, project?.data.id]);
   const [mediaRevision, setMediaRevision] = useState(0);
   const assertRecordingMutable = (session: string, recording: string) => {
-    if (aiConnector?.state.targetLocked('', recording, session, project?.data.id)) throw Error(msg('aiEditing.inUse'));
+    if (aiConnector?.state.targetLocked?.('', recording, session, project?.data.id)) throw Error(msg('aiEditing.inUse'));
   };
   const [recent, setRecent] = useState<Awaited<ReturnType<typeof recentProjects>>>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
@@ -201,6 +204,22 @@ export function ProjectWorkspace() {
     return () => { window.removeEventListener('ripple-open-project', onOpenDirectory); window.removeEventListener('ripple-open-recent-project', onOpenRecent); };
   });
   const interview = project?.data.interviews.find(i => i.id === (interviewId ?? project.data.interviews[0]?.id));
+  const canDeleteSession = (session: ProjectInterview) => !session.recordings.some(recording =>
+    aiConnector?.state.targetLocked?.('', recording.id, session.id, project?.data.id));
+  const restoreTrash = async (id: string) => {
+    const snapshot = current.current!;
+    const restoredSession = snapshot.data.sessionTrash?.find(item => item.id === id)?.interview;
+    const next = await restoreProjectTrashItem(snapshot, id);
+    await publish(next);
+    if (restoredSession) { setInterviewId(restoredSession.id); focusAfterTrash.current = true; }
+    if (undoTrash === id) setUndoTrash(null);
+  };
+  useEffect(() => {
+    if (!focusAfterTrash.current || trashOpen || sessionDelete || busy) return;
+    focusAfterTrash.current = false;
+    const selected = Array.from(document.querySelectorAll<HTMLElement>('[data-session-id]')).find(row => row.dataset.sessionId === interviewId);
+    (selected ?? document.querySelector<HTMLElement>('.setup-new'))?.focus();
+  }, [project, interviewId, trashOpen, sessionDelete, busy]);
   const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string, editId?: string) => {
     if (!project || !targetId) return;
     const target = project.data.interviews.find(i => i.id === targetId);
@@ -229,7 +248,7 @@ export function ProjectWorkspace() {
     const dirty = creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
     if (dirty && !window.confirm(msg('ProjectWorkspace.m0904'))) return;
     clearPageFeedback();
-    setTrashOpen(false);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice(NO_IMPORT_NOTES); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
+    setTrashOpen(false);setSessionDelete(null);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice(NO_IMPORT_NOTES); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
@@ -269,6 +288,7 @@ export function ProjectWorkspace() {
     {!welcoming && <header className="project-home__header">
       {!welcoming && <button type="button" className="brand project-brand-home" aria-label={msg('ProjectWorkspace.m0905')} data-tip={msg('ProjectWorkspace.m0906')} data-tip-pos="bottom" disabled={busy} onClick={returnHome}><img className="brand-mark" src="/ripple-icon.svg" alt="" /><div><p className="product-name">Ripple</p><p className="file-name">Transcription Editor</p></div></button>}
       <nav aria-label={msg('ProjectWorkspace.m0907')}>
+        {project && <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy || creating || materialTarget !== undefined} onClick={()=>{setError('');setTrashOpen(true);}}><ActionIcon kind="trash"/></button>}
         <button ref={settingsButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0908')} data-tip={msg('ProjectWorkspace.m0909')} data-tip-pos="bottom" disabled={busy || creating || materialTarget !== undefined} onClick={() => { clearPageFeedback(); setSettings(true); }}><ActionIcon kind="settings"/></button>
         <LanguageControl />
       </nav>
@@ -321,11 +341,24 @@ export function ProjectWorkspace() {
         </section>}
       </> : <>
         {deleteTarget&&<DeleteMaterialDialog name={deleteTarget.name} audio={!deleteTarget.modelId} referenced={!deleteTarget.modelId&&deleteTarget.recording.storage==='reference'} hasDocuments={deleteTarget.hasDocuments} busy={busy} error={error} onCancel={()=>setDeleteTarget(null)} onDelete={keepDocuments=>void run(async()=>{assertRecordingMutable(deleteTarget.sessionId,deleteTarget.recording.id);const next=await trashProjectMaterial(current.current!,deleteTarget.sessionId,deleteTarget.recording.id,{modelId:deleteTarget.modelId,keepDocuments});await publish(next);setUndoTrash(next.data.trash!.at(-1)!.id);setDeleteTarget(null);},false)}/>}
-        {trashOpen&&<ProjectTrashDialog project={project} busy={busy} error={error} onClose={()=>setTrashOpen(false)} onRestore={id=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,id));if(undoTrash===id)setUndoTrash(null);},false)} onClear={()=>void run(async()=>{await publish(await clearProjectTrash(current.current!));setUndoTrash(null);},false)}/>}
-        {undoTrash&&project.data.trash?.some(t=>t.id===undoTrash)&&!trashOpen&&<TrashUndoNotice key={undoTrash} busy={busy} onUndo={()=>void run(async()=>{await publish(await restoreProjectMaterial(current.current!,undoTrash));setUndoTrash(null);},false)} onDismiss={()=>setUndoTrash(null)}/>}
+        {sessionDelete && <DeleteSessionDialog name={sessionDelete.session.title} busy={busy} changed={project.data.revision !== sessionDelete.revision} error={error}
+          onCancel={() => { setSessionDelete(null); setError(''); }} onDelete={() => void run(async () => {
+            const snapshot = current.current!;
+            if (snapshot.data.revision !== sessionDelete.revision) throw Error(msg('sessionTrash.changed'));
+            const session = snapshot.data.interviews.find(item => item.id === sessionDelete.session.id);
+            if (!session) throw Error(msg('sessionTrash.missing'));
+            session.recordings.forEach(recording => assertRecordingMutable(session.id, recording.id));
+            const position = snapshot.data.interviews.findIndex(item => item.id === session.id);
+            const next = await trashProjectInterview(snapshot, session.id);
+            await publish(next); clearPageFeedback();
+            setInterviewId(next.data.interviews[Math.min(position, next.data.interviews.length - 1)]?.id ?? null);
+            setUndoTrash(next.data.sessionTrash!.at(-1)!.id);
+            focusAfterTrash.current = true; setSessionDelete(null);
+          }, false)}/>}
+        {trashOpen&&<ProjectTrashDialog project={project} busy={busy} error={error} onClose={()=>setTrashOpen(false)} onRestore={id=>void run(()=>restoreTrash(id),false)} onClear={()=>void run(async()=>{await publish(await clearProjectTrash(current.current!));setUndoTrash(null);},false)}/>}
+        {undoTrash&&(project.data.trash?.some(t=>t.id===undoTrash)||project.data.sessionTrash?.some(t=>t.id===undoTrash))&&!trashOpen&&<TrashUndoNotice key={undoTrash} busy={busy} onUndo={()=>void run(()=>restoreTrash(undoTrash),false)} onDismiss={()=>setUndoTrash(null)}/>}
         <div className="setup-title project-saved-title" hidden={materialTarget !== undefined}><ProjectIcon kind="project" /><div className="project-title-content"><div className="project-title-row"><div className="project-title-heading"><h1><InlineEdit doubleClick disabled={busy} value={project.data.title} ariaLabel={msg('ProjectWorkspace.m0922')} onCommit={next => { void run(async () => { if (!next.trim()) throw new Error(msg('ProjectWorkspace.m0923')); await publish(await saveProject(project, { ...project.data, title: next.trim() })); }); }} /></h1>
           </div><div className="project-title-actions">
-          <button type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0925')} data-tip={msg('ProjectWorkspace.m0926')} data-tip-pos="bottom" disabled={busy} onClick={()=>{setError('');setTrashOpen(true);}}><ActionIcon kind="trash"/></button>
           {project.data.interviews.length > 0 && <button ref={exportButton} type="button" className="icon-button" aria-label={msg('ProjectWorkspace.m0927')} data-tip={msg('ProjectWorkspace.m0928')} data-tip-pos="bottom" aria-expanded={archiving} disabled={busy} onClick={() => { setArchiving(true); }}>
             <ActionIcon kind="export"/>
           </button>}</div>
@@ -343,7 +376,7 @@ export function ProjectWorkspace() {
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
         <MaterialImportNotice notes={importNotice} onDismiss={()=>setImportNotice(NO_IMPORT_NOTES)} />
-        <ProjectBoard key={project.data.id} project={project} mediaRevision={mediaRevision} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={(id,preserveFeedback)=>{setError('');clearPageFeedback(preserveFeedback);setInterviewId(id);}}
+        <ProjectBoard deleteSession={session=>{setError('');setSessionDelete({session,revision:project.data.revision});}} canDeleteSession={canDeleteSession} key={project.data.id} project={project} mediaRevision={mediaRevision} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={(id,preserveFeedback)=>{setError('');clearPageFeedback(preserveFeedback);setInterviewId(id);}}
           save={interviews => { void run(async () => {
             const snapshot = current.current!;
             setProject({ ...snapshot, data: { ...snapshot.data, interviews } });

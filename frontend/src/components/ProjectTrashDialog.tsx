@@ -39,12 +39,17 @@ export function ProjectTrashDialog({project,busy,error,onClose,onRestore,onClear
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, []);
- const items=project.data.trash??[];
- const signature = JSON.stringify(items.map(item => item.id).sort());
+ const items = [
+   ...(project.data.sessionTrash ?? []).map(item => ({ id:item.id, name:item.interview.title, kind:'project' as const, session:true,
+     detail:msg('sessionTrash.sessionContents'), deletedAt:item.deletedAt })),
+   ...(project.data.trash ?? []).map(item => ({ id:item.id, name:item.name, kind:item.recording.storage==='none'?'document' as const:'audio' as const, session:false,
+     detail:project.data.interviews.find(session => session.id===item.interviewId)?.title ?? '', deletedAt:item.deletedAt })),
+ ];
+ const signature = JSON.stringify([project.data.revision, items.map(item => item.id).sort()]);
  return createPortal(<><dialog ref={ref} className="material-preview-dialog audio-project-dialog" aria-label={msg('ProjectTrashDialog.m0884')} onKeyDown={trapDialogFocus} onCancel={e=>{e.preventDefault();if(!busy)onClose();}}>
  <div className="dialog-header"><h2>{msg('ProjectTrashDialog.m0885')}</h2><button className="icon-button" aria-label={msg('ProjectTrashDialog.m0886')} data-tip={msg('ProjectTrashDialog.m0887')} disabled={busy} onClick={onClose}>×</button></div>
- <p className="settings-hint">{msg('ProjectTrashDialog.m0888')}</p>
- {error&&<p className="form-error" role="alert">{uiMessage(error)}</p>}<div className="project-trash-list">{!items.length?<p className="settings-hint">{msg('ProjectTrashDialog.m0889')}</p>:items.map(item=><div className="project-trash-row" key={item.id}><ProjectIcon kind={item.recording.storage==='none'?'document':'audio'}/><div><span>{item.name}</span><small>{project.data.interviews.find(i=>i.id===item.interviewId)?.title} · {new Date(item.deletedAt).toLocaleDateString(interfaceLanguage())}</small></div><button className="cred-btn" disabled={busy} onClick={()=>onRestore(item.id)}>{msg('ProjectTrashDialog.m0890')}</button></div>)}</div>
+ <p className="settings-hint">{msg('sessionTrash.trashHint')}</p>
+ {error&&<p className="form-error" role="alert">{uiMessage(error)}</p>}<div className="project-trash-list">{!items.length?<p className="settings-hint">{msg('ProjectTrashDialog.m0889')}</p>:items.map(item=><div className="project-trash-row" key={item.id}><ProjectIcon kind={item.kind}/><div><span>{item.session && <strong className="project-trash-kind">{msg('sessionTrash.sessionLabel')} · </strong>}{item.name}</span><small>{item.detail} · {new Date(item.deletedAt).toLocaleDateString(interfaceLanguage())}</small></div><button className="cred-btn" disabled={busy} aria-label={item.session?msg('sessionTrash.restoreAction',{name:item.name}):undefined} onClick={()=>onRestore(item.id)}>{msg('ProjectTrashDialog.m0890')}</button></div>)}</div>
  <div className="project-actions audio-project-footer">{items.length>0&&<button className="button button--danger" disabled={busy} onClick={()=>setConfirm(signature)}>{msg('ProjectTrashDialog.m0891')}</button>}<button className="button button--secondary" disabled={busy} onClick={onClose}>{msg('ProjectTrashDialog.m0892')}</button></div>
  </dialog>{confirm !== null && <ClearTrashConfirmation count={items.length} changed={confirm !== signature} busy={busy} onCancel={()=>setConfirm(null)} onConfirm={()=>{ if (confirm === signature && !busy) { setConfirm(null); onClear(); } }}/>}</>,document.body);
 }
@@ -67,7 +72,7 @@ function ClearTrashConfirmation({ count, changed, busy, onCancel, onConfirm }: {
  }, []);
  return <dialog ref={ref} className="material-preview-dialog audio-project-dialog" aria-labelledby="clear-trash-title" aria-describedby="clear-trash-description" onKeyDown={trapDialogFocus} onCancel={event=>{event.preventDefault();if(!busy)onCancel();}}>
    <div className="dialog-header"><h2 id="clear-trash-title">{msg('ProjectTrashDialog.m0893')}</h2></div>
-   <p id="clear-trash-description" className="settings-hint">{msg('review.emptyTrash', { count })}</p>
+   <p id="clear-trash-description" className="settings-hint">{msg('sessionTrash.clearDescription', { count })}</p>
    {changed && <p className="form-error" role="alert">{msg('ProjectTrashDialog.m0896')}</p>}
    <div className="project-actions audio-project-footer">
      <button ref={cancelRef} className="button button--secondary" disabled={busy} onClick={onCancel}>{msg('ProjectTrashDialog.m0897')}</button>
