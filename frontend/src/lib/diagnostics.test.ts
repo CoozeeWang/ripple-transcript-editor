@@ -30,3 +30,6 @@ it("reports the product version in copied details and exported environment", () 
  expect(problemDetails(problem)).toContain(`Ripple ${productVersion}`);
  expect(diagnosticEnvironment().version).toBe(productVersion);
 });
+it.each(['too_long','file_too_large'])('classifies %s as an input limit rather than a format failure',code=>{
+ expect(recordProblem('transcription',Object.assign(new Error('Synthetic input'),{code})).reason).toBe('input_limit');
+});

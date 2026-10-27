@@ -501,6 +501,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setViewingOriginal,
     dirHandleRef,
     selectedAudio,
+    confirmedAudioDuration: { audio: audioFilename, seconds: actualDuration },
     providers,
     setActiveProviderName,
     processStatus,

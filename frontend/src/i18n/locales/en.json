@@ -1105,7 +1105,7 @@
     "m1151": "Check the provider account’s remaining quota, or choose another available configuration.",
     "m1152": "Too many requests at once or in a short period. Wait a minute or two and try again.",
     "m1153": "Convert the audio to mp3, lower its bitrate, or split it into smaller files before trying again.",
-    "m1154": "Split the audio and transcribe each part separately.",
+    "m1154": "Split the audio, or choose an engine that supports longer recordings.",
     "m1155": "Convert audio to mp3 / wav / m4a and try again.",
     "m1156": "This engine doesn’t support the option. Try another model or engine.",
     "m1157": "Enable speech recognition in the provider’s console, then try again.",
@@ -1881,5 +1881,10 @@
   "projectSessions": {
     "list": "Session list",
     "content": "Session content"
+  },
+  "transcriptionErrors": {
+    "durationLimit": "This audio is {{duration}} long, exceeding the {{limit}} limit for “{{engine}}”. It has not been submitted for transcription.",
+    "decodeFailed": "The transcription engine cannot decode this audio or does not support it.",
+    "inputLimit": "Audio exceeds the selected engine’s limits"
   }
 }

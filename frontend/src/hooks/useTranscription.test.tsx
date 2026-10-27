@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { msg, setInterfaceLanguage } from '../i18n';
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -186,4 +187,37 @@ test("有任务在跑时再点开始转录：报错点名是谁在跑，并指�
     await expect(result.current.startTranscription(options, "iflytek")).rejects.toThrow("停止等待");
   });
   expect(store.transcribeAudio).toHaveBeenCalledTimes(1);
+});
+
+test.each(['zh-CN','zh-TW','en'] as const)('rejects confirmed overlong audio before upload or writes in %s',async language=>{
+ try{
+  await act(()=>setInterfaceLanguage(language));
+  store.transcribeAudio.mockRejectedValue(new Error('Synthetic unexpected upload'));
+  const deps=makeDeps({selectedAudio:'Synthetic long.m4a',confirmedAudioDuration:{audio:'Synthetic long.m4a',seconds:11169},providers:[{id:'tencent_flash',name:'腾讯云录音文件识别（极速版）',capabilities:{max_duration_seconds:7200}}]});
+  const {result}=renderHook(()=>useTranscription(deps));
+  await act(async()=>{await expect(result.current.startTranscription(options,'tencent_flash')).rejects.toMatchObject({code:'too_long'});});
+  expect(store.transcribeAudio).not.toHaveBeenCalled();expect(store.createModel).not.toHaveBeenCalled();expect(deps.beforeChange).not.toHaveBeenCalled();
+  expect(deps.setProcessMessage).toHaveBeenLastCalledWith(expect.stringContaining('03:06:09'));
+  expect(deps.setProcessMessage).toHaveBeenLastCalledWith(expect.stringContaining('02:00:00'));
+  expect(result.current.transcribeHint).not.toBe(msg('useTranscription.m1155'));expect(result.current.transcribeJob).toBeNull();
+ }finally{await act(()=>setInterfaceLanguage('zh-CN'));}
+});
+
+test.each([
+ [7200,7200,'a.wav'],[12,7200,'a.wav'],[0,7200,'a.wav'],[NaN,7200,'a.wav'],[Infinity,7200,'a.wav'],
+ [11169,18000,'a.wav'],[11169,null,'a.wav'],[11169,7200,'Synthetic different.wav'],
+] as const)('preserves allowed or unknown audio flow (%s, %s, %s)',async(seconds,limit,audio)=>{
+ const transcript=transcriptWith('Synthetic recognized words');
+ store.transcribeAudio.mockResolvedValue(transcript);store.createModel.mockResolvedValue({model:{id:'m1'},manifest:{models:[],activeModelId:'m1'},edited:{metadata:null,transcript}});
+ const deps=makeDeps({confirmedAudioDuration:{audio,seconds},providers:[{id:'iflytek',name:'Synthetic provider',capabilities:{max_duration_seconds:limit}}]});
+ const {result}=renderHook(()=>useTranscription(deps));
+ await act(async()=>{await result.current.startTranscription(options,'iflytek');});
+ expect(store.transcribeAudio).toHaveBeenCalledTimes(1);expect(store.createModel).toHaveBeenCalledTimes(1);
+});
+
+test('does not repeat an action hint as the primary error and hint',async()=>{
+ const message=msg('useTranscription.m1155');store.transcribeAudio.mockRejectedValue(new TranscriptionError(message,'unsupported_format'));
+ const deps=makeDeps();const {result}=renderHook(()=>useTranscription(deps));
+ await act(async()=>{await expect(result.current.startTranscription(options,'iflytek')).rejects.toThrow(message);});
+ expect(deps.setProcessMessage).toHaveBeenLastCalledWith(message);expect(result.current.transcribeHint).toBe('');
 });

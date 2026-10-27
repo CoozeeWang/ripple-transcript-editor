@@ -1,0 +1,5 @@
+# Transcription error review
+
+Use a dedicated Vite origin with `RIPPLE_DATA_DIR` pointing outside the repository. Open `/tests/transcription-errors-review.html?lang=zh-CN&mode=limit`; languages also include `zh-TW` and `en`, and `mode=decode` checks decoder-failure wording. The real transcription hook rejects a synthetic confirmed duration before file reads, writes or network requests. The fixture denies all such access, and captures copied diagnostics inside the page instead of the system clipboard. It never submits audio or opens a user project.
+
+Press **Run synthetic check**, then inspect the error reason, separate action hint, retry/close buttons, mouse and keyboard focus, and copied product version. Add `review=1` to exercise the rejection and copy button automatically, emitting geometry and zero-access assertions as JSON. A native WebKit host can register the `review` script-message handler. Check all three languages at 920 × 600 and 1100 × 900. These source/browser/isolated-WebKit checks do not replace acceptance in an installed Mac or Windows app.
