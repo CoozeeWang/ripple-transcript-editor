@@ -2984,6 +2984,10 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .diagnostic-list li p { margin: 0 0 6px; font-size: .82rem; }
 .diagnostic-list small { display: block; margin-bottom: 8px; color: var(--color-text-3); font-size: .74rem; }
 .diagnostic-copy { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.diagnostic-copy-labels { display: inline-grid; }
+.diagnostic-copy-labels > span { grid-area: 1 / 1; white-space: nowrap; }
+.diagnostic-copy-check { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
+.diagnostic-copy-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .diagnostic-copy [role="status"] { font-size: .74rem; color: var(--color-text-3); }
 .diagnostic-problems li { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .diagnostic-problems li:first-child { border-top: 0; }
