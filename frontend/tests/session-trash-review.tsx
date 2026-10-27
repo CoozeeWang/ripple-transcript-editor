@@ -52,6 +52,12 @@ window.fetch=async()=>new Response(JSON.stringify({configured:false,engines:[],d
 Object.assign(window,{showDirectoryPicker:async()=>root.getDirectoryHandle('Synthetic session project.ripple')});
 localStorage.setItem('ripple-mcp-enabled','0');
 await seed();await setInterfaceLanguage(language);
+const syntheticInputs=await root.getDirectoryHandle('synthetic-inputs',{create:true});
+try{await syntheticInputs.getFileHandle('Synthetic imported manuscript.txt');}catch{
+ const handle=await syntheticInputs.getFileHandle('Synthetic imported manuscript.txt',{create:true}),writer=await handle.createWritable();
+ await writer.write('Synthetic standalone import keeps its source name.');await writer.close();
+}
+Object.assign(window,{showOpenFilePicker:async()=>[await syntheticInputs.getFileHandle('Synthetic imported manuscript.txt')]});
 const review=query.get('review')==='1',mode=query.get('mode')||'default';
 if(review){const project=await openProject(await root.getDirectoryHandle('Synthetic session project.ripple'));
  const active=project.data.interviews.find(session=>session.title==='Synthetic session A');

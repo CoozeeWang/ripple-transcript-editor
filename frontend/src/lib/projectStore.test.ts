@@ -288,7 +288,7 @@ it('imports manuscript-only interviews as editable files, archives them, and lat
   const manuscript = await view.getDirectoryHandle(recording.file.replace('.wav', '.transcript'));
   const manifest = JSON.parse(await (await (await manuscript.getFileHandle('manifest.json')).getFile()).text());
   expect(manifest.models[0].sourceKind).toBe('import');
-  expect(manifest.models[0].label).toBe('已有访谈');
+  expect(manifest.models[0].label).toBe('已有访谈.txt');
   expect(manifest.models[0].original).toBeUndefined();
   const baseline = await (await manuscript.getFileHandle(manifest.models[0].edits[0].file)).getFile();
   expect(JSON.parse(await baseline.text()).transcript.segments[0].text).toBe('口述原话');
@@ -413,7 +413,7 @@ it('imports multiple editable transcripts for one audio with independent files a
     expect(interview.recordings).toHaveLength(1);
     const view = await recordingDirectory(project, interview.id, recording);
     const manifest = await readManifest(view, recording.file);
-    expect(manifest?.models.map(m => m.label)).toEqual(['机器', '人工', '整理']);
+    expect(manifest?.models.map(m => m.label)).toEqual(['机器.txt', '人工.txt', '整理.txt']);
     expect(manifest?.models.every(m => !m.original)).toBe(true);
     expect(new Set(manifest?.models.map(m => m.edits[0].file)).size).toBe(3);
     for (const model of manifest!.models) expect((await readModelEdit(view, recording.file, model.id, model.activeEditId))?.transcript.segments[0].text).toBe(model.sourceName);
@@ -1212,4 +1212,48 @@ it('retains session ordering when several deleted sessions are restored in rever
  const ids=p.data.sessionTrash!.map(item=>item.id).reverse();
  for(const id of ids)p=await restoreProjectInterview(p,id);
  expect(p.data.interviews).toEqual(original);
+});
+
+it.each([false,true])('uses source filenames for editable import versions (linked=%s) without renaming source files',async linked=>{
+ const {p,interview,recording,source:audioSource}=await fixture();const source=directory('synthetic imports');
+ source.files.set('Synthetic manuscript.v2.txt',new File(['Synthetic imported text'],'Synthetic manuscript.v2.txt'));
+ const materials=await prepareMaterials([{handle:await source.handle.getFileHandle('Synthetic manuscript.v2.txt'),group:interview.id}]);
+ if(linked){materials[0].audioId=recording.id;materials.push({id:recording.id,existingRecordingId:recording.id,kind:'audio',name:recording.name,group:interview.id,audioId:'',handle:await audioSource.handle.getFileHandle('interview.wav')});}
+ const imported=await importProjectMaterials(p,materials,'copy',interview.id);
+ const target=linked?imported.data.interviews[0].recordings.find(r=>r.id===recording.id)!:imported.data.interviews[0].recordings.find(r=>r.storage==='none')!;
+ const view=await recordingDirectory(imported,interview.id,target),manifest=await readManifest(view,target.file);
+ expect(manifest?.models[0].label).toBe('Synthetic manuscript.v2.txt');
+ expect(manifest?.models[0].edits[0].label).toBe('Synthetic manuscript.v2.txt');
+ expect(await source.files.get('Synthetic manuscript.v2.txt')!.text()).toBe('Synthetic imported text');
+ expect((await readEdited(view,target.file))?.transcript.segments[0].text).toBe('Synthetic imported text');
+});
+it('uses the imported manuscript name when an original-only import first becomes editable',async()=>{
+ const {p,interview,recording}=await fixture();const view=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:0},speakers:[],segments:[]};
+ const original=await createModel(view,recording.file,{engine:'imported',sourceKind:'import',sourceName:'Synthetic original.docx',transcript,original:transcript,originalOnly:true,designatedOriginal:true});
+ const editable=await setModelOriginal(view,recording.file,original.model.id,false);
+ expect(editable.models[0].edits[0].label).toBe('Synthetic original.docx');
+});
+it('keeps explicit import version names and backend transcription defaults',async()=>{
+ const {p,interview,recording}=await fixture();const view=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:0},speakers:[],segments:[]};
+ const named=await createModel(view,recording.file,{engine:'imported',sourceKind:'import',sourceName:'Synthetic source.txt',editLabel:'Synthetic chosen version',transcript});
+ const copied=await createModel(view,recording.file,{engine:'imported',sourceKind:'import',sourceName:'Synthetic source.txt',label:'Synthetic named copy',transcript});
+ const engine=await createModel(view,recording.file,{engine:'synthetic',transcript});
+ expect(named.model.edits[0].label).toBe('Synthetic chosen version');
+ expect(copied.model.edits[0].label).toBe('Synthetic named copy');
+ expect(engine.model.edits[0].label).toBe('修改稿 v1');
+ expect((await readManifest(view,recording.file))?.models[0].edits[0].label).toBe('Synthetic chosen version');
+});
+it('keeps duplicate external filenames intact while storing each imported manuscript independently',async()=>{
+ const {p,interview,recording}=await fixture();const view=await recordingDirectory(p,interview.id,recording);
+ for(const text of ['Synthetic first document','Synthetic second document']){
+  const transcript={audio:{filename:recording.file,duration:0},speakers:[],segments:[{id:'s1',speaker_id:'sp',start:0,end:1,text}]};
+  await createModel(view,recording.file,{engine:'imported',sourceKind:'import',sourceName:'Synthetic same-name.txt',transcript});
+ }
+ const models=(await readManifest(view,recording.file))!.models;
+ expect(models.map(model=>model.edits[0].label)).toEqual(['Synthetic same-name.txt','Synthetic same-name.txt']);
+ expect(new Set(models.map(model=>model.edits[0].file)).size).toBe(2);
+ expect((await readModelEdit(view,recording.file,models[0].id,models[0].activeEditId))?.transcript.segments[0].text).toBe('Synthetic first document');
+ expect((await readModelEdit(view,recording.file,models[1].id,models[1].activeEditId))?.transcript.segments[0].text).toBe('Synthetic second document');
 });

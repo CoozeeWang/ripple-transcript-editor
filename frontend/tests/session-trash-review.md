@@ -9,3 +9,5 @@ Run Vite and open `/tests/session-trash-review.html?lang=zh-CN` (also `zh-TW` an
 5. Delete the empty session as well. Deleting the last session keeps the project and project Trash accessible. Restore it from Trash or use Undo. Closing the short Undo never removes the recovery record.
 
 Do not clear the fixture through a real user project. Permanent-clear tests run against disposable synthetic files only. Browser/isolated WebKit checks are separate from Mac/Windows installed-app acceptance.
+
+The synthetic file picker also provides `Synthetic imported manuscript.txt`. Import it once as a standalone transcript and once into the recording. Both must show the complete filename, including `.txt`, and retain independent stored content. This exercises the same preparation/import pipeline used by external drops; no OS file picker or user document is opened.
