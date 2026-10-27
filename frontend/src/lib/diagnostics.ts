@@ -1,5 +1,5 @@
 import { msg } from '../i18n';
-import { version } from "../../package.json";
+import { version } from "../../../desktop/src-tauri/tauri.conf.json";
 
 export const DIAGNOSTICS_KEY = "ripple-diagnostics-v1";
 export const DIAGNOSTICS_EVENT = "ripple:diagnostics";
@@ -15,6 +15,7 @@ export const reasons = {
   get connect_timeout() { return msg('diagnostics.m1261'); }, get read_timeout() { return msg('diagnostics.m1262'); }, get write_timeout() { return msg('diagnostics.m1263'); }, get pool_timeout() { return msg('diagnostics.m1264'); },
   get proxy() { return msg('diagnostics.m1265'); }, get connect() { return msg('diagnostics.m1266'); }, get connection_lost() { return msg('diagnostics.m1267'); }, get write() { return msg('diagnostics.m1268'); }, get upstream_http() { return msg('diagnostics.m1269'); }, get output_limit() { return msg('diagnostics.m1270'); },
   get permission() { return msg('diagnostics.m1271'); }, get network() { return msg('diagnostics.m1272'); }, get timeout() { return msg('diagnostics.m1273'); },
+  get input_limit() { return msg('transcriptionErrors.inputLimit'); },
   get storage() { return msg('diagnostics.m1274'); }, get format() { return msg('diagnostics.m1275'); },
   get missing() { return msg('diagnostics.m1276'); }, get rate_limit() { return msg('diagnostics.m1277'); },
   get unknown() { return msg('diagnostics.m1278'); },
@@ -30,6 +31,7 @@ function reasonOf(error: unknown): Reason {
   const value = error as { name?: unknown; code?: unknown; message?: unknown } | null;
   // Inspect only to classify. Never retain exception messages, stacks or upstream bodies.
   const text = [value?.name, value?.code, value?.message].filter(v => typeof v === "string").join(" ");
+  if (/^(too_long|file_too_large)$/.test(String(value?.code ?? ""))) return "input_limit";
   if (/NotAllowed|SecurityError|permission|权限|密钥|401|403/i.test(text)) return "permission";
   if (/timeout|timed out|超时/i.test(text)) return "timeout";
   if (/QuotaExceeded|ENOSPC|空间不足|写入/i.test(text)) return "storage";

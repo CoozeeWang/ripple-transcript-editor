@@ -206,6 +206,8 @@ export interface TranscriptEdit {
 }
 
 export interface TranscriptModel {
+  /** Stable provenance shared by an original and all its related editing versions. */
+  originalGroupId?: string;
   designatedOriginal?: boolean;
   designatedOriginalEditId?: string;
   sourceKind?: "transcription" | "import";

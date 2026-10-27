@@ -1,4 +1,18 @@
 {
+  "originalGroups": {
+    "unlinked": "未关联原始稿",
+    "unavailable": "来源原始稿不在当前列表中"
+  },
+  "transcriptionAction": {
+    "transcribe": "转录音频",
+    "running": "此音频正在转录，完成或取消后可再次转录。",
+    "editingLocked": "请先结束当前 AI 编辑任务，再转录音频。",
+    "loading": "稿件正在切换，请稍候。",
+    "audioUnavailable": "音频尚未就绪，请先恢复音频访问。",
+    "preserve": "将生成新的原始转录稿，已有稿件保留。",
+    "preserveDetails": "原有原始稿、修改稿、批注和高亮均不会被覆盖或删除。",
+    "confirm": "确认并开始转录"
+  },
   "desktopUpdate": {
     "title": "软件更新",
     "versionBuild": "当前版本 {{version}} · b{{build}}",
@@ -1105,7 +1119,7 @@
     "m1151": "检查服务商账户的可用额度，或选择其他可用配置。",
     "m1152": "请求过多或过于频繁。请等待一两分钟后重试。",
     "m1153": "将音频转为 mp3、降低码率，或切成几段后重试。",
-    "m1154": "把音频切成几段分别转录。",
+    "m1154": "请切分音频，或改用支持更长音频的引擎。",
     "m1155": "把音频转成 mp3 / wav / m4a 后再试。",
     "m1156": "所选引擎不支持这个选项。请换一个模型或引擎再试。",
     "m1157": "请到服务商控制台开通语音识别服务，然后重试。",
@@ -1881,5 +1895,10 @@
   "projectSessions": {
     "list": "场次列表",
     "content": "场次内容"
+  },
+  "transcriptionErrors": {
+    "durationLimit": "音频时长为 {{duration}}，超过“{{engine}}”的 {{limit}} 上限，尚未提交转录。",
+    "decodeFailed": "转录引擎无法解码或不支持这段音频。",
+    "inputLimit": "音频超过所选引擎的限制"
   }
 }

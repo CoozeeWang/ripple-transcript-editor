@@ -2,7 +2,7 @@ import { serviceText } from './i18n/serviceText';
 import { msg, useInterfaceLanguage } from './i18n';
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
-import { useDismissable } from "./useDismissable";
+import { trapDialogFocus, useModalDialog } from './lib/dialogFocus';
 import type { CredentialListView, ProviderInfo, TranscriptionOptions } from "./types";
 
 interface TranscriptionDialogProps {
@@ -14,6 +14,7 @@ interface TranscriptionDialogProps {
   hasAudio: boolean;
   audioFilename: string;
   busy: boolean;
+  preserveExisting?: boolean;
   onClose: () => void;
   onStart: (options: TranscriptionOptions, providerId: string) => Promise<void>;
 }
@@ -25,6 +26,7 @@ export function TranscriptionDialog({
   hasAudio,
   audioFilename,
   busy,
+  preserveExisting = false,
   onClose,
   onStart,
 }: TranscriptionDialogProps) {
@@ -69,9 +71,11 @@ export function TranscriptionDialog({
   const [requestedProfileId, setSelectedProfileId] = useState<string | null>(null);
   // 每个 provider 的「原 active id」，提交时临时切回。
   const originalActiveRef = useRef<Record<string, string | null>>({});
-  const dialogRef = useRef<HTMLElement>(null);
-
-  useDismissable(dialogRef, true, onClose);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const attemptRef = useRef<AbortController | null>(null);
+  useModalDialog(dialogRef);
+  useEffect(() => () => { attemptRef.current?.abort(); }, []);
+  const dismiss = () => { attemptRef.current?.abort(); onClose(); };
 
   const selectedProvider = providers.find((p) => p.id === selectedProviderId) ?? providers[0];
   const selectedList = selectedProvider ? profilesByProvider[selectedProvider.id] : undefined;
@@ -109,7 +113,9 @@ export function TranscriptionDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (!selectedProvider || !selectedProfileId || submitting || busy) return;
+    if (!selectedProvider || !selectedProfileId || !hasAudio || submitting || busy || attemptRef.current) return;
+    const attempt = new AbortController();
+    attemptRef.current = attempt;
     setSubmitting(true);
     const targetProfileId = selectedProfileId;
     const originalProfileId = originalActiveRef.current[selectedProvider.id];
@@ -119,10 +125,11 @@ export function TranscriptionDialog({
       if (shouldSwitch) {
         const r = await fetch(
           `/api/providers/${selectedProvider.id}/credentials/${targetProfileId}/activate`,
-          { method: "POST" },
+          { method: "POST", signal: attempt.signal },
         );
         if (!r.ok) throw new Error(msg('TranscriptionDialog.m0113'));
       }
+      if (attempt.signal.aborted) return;
       await onStart(
         {
           language_code: capabilities?.language_selection ? languageCode || null : null,
@@ -138,9 +145,8 @@ export function TranscriptionDialog({
         selectedProvider.id,
       );
     } catch (startError) {
-      handleFailure(startError);
+      if (!attempt.signal.aborted) handleFailure(startError);
     } finally {
-      setSubmitting(false);
       // 无论成功失败，都把 active 还原到转录前的状态（不污染设置页的全局默认）
       if (shouldSwitch && originalProfileId) {
         try {
@@ -152,25 +158,39 @@ export function TranscriptionDialog({
           /* 还原失败不阻塞 UI；下次进转录弹窗会重新拉取 */
         }
       }
+      if (attemptRef.current === attempt) attemptRef.current = null;
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <section
+      <dialog
         ref={dialogRef}
         className="interview-dialog transcription-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="transcription-dialog-title"
+        aria-describedby={preserveExisting ? 'transcription-preserve' : undefined}
+        onKeyDown={trapDialogFocus}
+        onCancel={event => { event.preventDefault(); dismiss(); }}
+        onPointerDown={event => {
+          if (event.target !== event.currentTarget) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dismiss();
+        }}
       >
         <header className="dialog-header">
           <div>
             <p className="section-label">{(selectedProvider ? serviceText(selectedProvider.name) : undefined) ?? msg('TranscriptionDialog.m0114')}</p>
             <h2 id="transcription-dialog-title">{msg('TranscriptionDialog.m0115')}</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label={msg('TranscriptionDialog.m0116')}>×</button>
+          <button type="button" onClick={dismiss} aria-label={msg('TranscriptionDialog.m0116')}>×</button>
         </header>
+
+        {preserveExisting && <div className="transcription-preserve" id="transcription-preserve">
+          <strong>{msg('transcriptionAction.preserve')}</strong>
+          <p>{msg('transcriptionAction.preserveDetails')}</p>
+        </div>}
 
         <form onSubmit={(event) => void submit(event)}>
           <section className="settings-block">
@@ -208,7 +228,7 @@ export function TranscriptionDialog({
               {capabilities?.language_selection && (
                 <label className="field">
                   <span>{msg('TranscriptionDialog.m0130')}</span>
-                  <select value={languageCode} onChange={(event) => setLanguageCode(event.target.value)}>
+                  <select disabled={busy || submitting} value={languageCode} onChange={(event) => setLanguageCode(event.target.value)}>
                     <option value="zho">{msg('TranscriptionDialog.m0131')}</option>
                     <option value="">{msg('TranscriptionDialog.m0132')}</option>
                     <option value="yue">{msg('TranscriptionDialog.m0133')}</option>
@@ -221,6 +241,7 @@ export function TranscriptionDialog({
                   <span>{msg('TranscriptionDialog.m0135')}</span>
                   <input
                     type="number"
+                    disabled={busy || submitting}
                     min="1"
                     max="32"
                     value={speakerCount}
@@ -233,13 +254,13 @@ export function TranscriptionDialog({
             <div className="option-list">
               {capabilities?.diarization && (
                 <label>
-                  <input type="checkbox" checked={diarize} onChange={(event) => setDiarize(event.target.checked)} />
+                  <input type="checkbox" disabled={busy || submitting} checked={diarize} onChange={(event) => setDiarize(event.target.checked)} />
                   <span><strong>{msg('TranscriptionDialog.m0137')}</strong><small>{msg('TranscriptionDialog.m0138')}</small></span>
                 </label>
               )}
               {capabilities?.audio_events && (
                 <label>
-                  <input type="checkbox" checked={tagAudioEvents} onChange={(event) => setTagAudioEvents(event.target.checked)} />
+                  <input type="checkbox" disabled={busy || submitting} checked={tagAudioEvents} onChange={(event) => setTagAudioEvents(event.target.checked)} />
                   <span><strong>{msg('TranscriptionDialog.m0139')}</strong><small>{msg('TranscriptionDialog.m0140')}</small></span>
                 </label>
               )}
@@ -268,17 +289,16 @@ export function TranscriptionDialog({
             </div>
           )}
           <footer className="dialog-actions">
-            <button className="button button--secondary" type="button" onClick={onClose}>{msg('TranscriptionDialog.m0145')}</button>
+            <button className="button button--secondary" type="button" data-dialog-initial-focus onClick={dismiss}>{msg('TranscriptionDialog.m0145')}</button>
             <button
               className="button button--primary"
               type="submit"
               disabled={!selectedProfileId || !hasAudio || busy || submitting}
             >
-              {busy || submitting ? msg('TranscriptionDialog.m0146') : msg('TranscriptionDialog.m0147')}
+              {busy || submitting ? msg('TranscriptionDialog.m0146') : preserveExisting ? msg('transcriptionAction.confirm') : msg('TranscriptionDialog.m0147')}
             </button>
           </footer>
         </form>
-      </section>
-    </div>
+      </dialog>
   );
 }

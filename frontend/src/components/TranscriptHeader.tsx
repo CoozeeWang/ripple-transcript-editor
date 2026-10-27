@@ -8,6 +8,7 @@ import { InlineEdit } from "./InlineEdit";
  *  元数据修改与版本操作通过 props 注入。 */
 export interface TranscriptHeaderProps {
   comparisonControls?: ReactNode;
+  transcriptionControl?: ReactNode;
   preparing?: boolean;
   editingLocked?: boolean;
   metadata: InterviewMetadata | null;
@@ -35,7 +36,7 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
           {/* 中文标签，与左「说话人」右「批注」同为 section-label 视觉语言。
                text-transform: uppercase 对中文无效，字间距在 CSS 里单独收紧。 */}
           <p className="section-label">{msg('TranscriptHeader.m1066')}</p>
-          <h1>
+          <div className="transcript-title-row"><h1>
             {props.preparing ? (metadata?.title || msg('TranscriptHeader.m1067')) : <InlineEdit disabled={props.editingLocked}
               value={metadata?.title ?? ""}
               placeholder={msg('TranscriptHeader.m1068')}
@@ -44,7 +45,7 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
               onCommit={(next) => void patchMetadata({ title: next.trim() || msg('TranscriptHeader.m1070') })}
             />}
 
-          </h1>
+          </h1>{props.transcriptionControl}</div>
           {metadata && !props.preparing && (
             <div className="metadata-summary">
               <InlineEdit disabled={props.editingLocked}

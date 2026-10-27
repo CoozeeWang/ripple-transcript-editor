@@ -9,6 +9,7 @@ import { PLAYBACK_RATE_KEY, SKIP_SECONDS_KEY } from '../src/lib/preferences';
 import type { CredentialListView, ProviderInfo } from '../src/types';
 
 const noop = () => {};
+Object.assign(HTMLDialogElement.prototype, { showModal(this: HTMLDialogElement) { this.open = true; } });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); });
 
 function provider(id: string): ProviderInfo {
@@ -50,7 +51,7 @@ test('transcription selects a saved configuration without fetching secrets and r
   fireEvent.click(ui.getByText('开始转录'));
   await waitFor(() => expect(onStart).toHaveBeenCalled());
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/providers/a/credentials/a-profile/activate', { method: 'POST' }));
-  expect(fetchMock).toHaveBeenCalledWith('/api/providers/a/credentials/a-second/activate', { method: 'POST' });
+  expect(fetchMock).toHaveBeenCalledWith('/api/providers/a/credentials/a-second/activate', expect.objectContaining({ method: 'POST', signal: expect.any(AbortSignal) }));
   ui.rerender(<TranscriptionDialog {...props} selectedProviderId="b" />);
   expect((ui.getByLabelText('转录配置') as HTMLSelectElement).value).toBe('b:b-profile');
 });

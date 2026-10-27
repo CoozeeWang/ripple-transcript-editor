@@ -16,7 +16,7 @@ const generic: Record<string, string> = {
   invalid_api_key: 'localStore.m1521', no_api_key: 'localStore.m1524', quota_exceeded: 'localStore.m1523',
   file_too_large: 'localStore.m1525', bad_request: 'localStore.m1526', rate_limited: 'localStore.m1527',
   upstream_error: 'localStore.m1528', backend_unreachable: 'useTranscription.m1162',
-  empty_result: 'useTranscription.m1164', unsupported_format: 'useTranscription.m1155',
+  empty_result: 'useTranscription.m1164', unsupported_format: 'transcriptionErrors.decodeFailed',
   unsupported_option: 'useTranscription.m1156', service_not_enabled: 'useTranscription.m1157',
   too_long: 'useTranscription.m1154', network: 'useTranscription.m1159',
   upload_timeout: 'useTranscription.m1160', response_timeout: 'useTranscription.m1161',

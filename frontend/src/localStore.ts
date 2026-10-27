@@ -1,4 +1,5 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
+import { hasVisibleOriginal, withOriginalGroups } from './lib/originalGroups';
 import { stampContinuationReceipt } from './lib/continuationBatch';
 import type { ContinuationTask } from './lib/incrementalContinuation';
 import { isContinuationTask } from './lib/continuationJournal';
@@ -904,7 +905,7 @@ async function readManifestUnlocked(
       const parsed = JSON.parse(raw) as Partial<TranscriptManifest> & {
         versions?: TranscriptVersion[]; activeId?: string;
       };
-      if (Array.isArray(parsed.models)) return parsed as TranscriptManifest;
+      if (Array.isArray(parsed.models)) return withOriginalGroups(parsed as TranscriptManifest, file => readFileText(tDir, file));
       if (Array.isArray(parsed.versions)) {
         const migrated = migrateV1ToV2({ schemaVersion: 1, audio: parsed.audio ?? name,
           audioHash: parsed.audioHash, activeId: parsed.activeId ?? parsed.versions[0]?.id ?? "",
@@ -1072,6 +1073,9 @@ async function createModelUnlocked(
     metadata?: InterviewMetadata;
     sharedSpeakers?: Speaker[];
     setActive?: boolean;
+    originalGroupId?: string;
+    /** Used only while publishing a fork from a legacy original without a group ID. */
+    originalSourceModelId?: string;
   },
 ): Promise<{ model: TranscriptModel; manifest: TranscriptManifest; edited: EditedFile }> {
   const stem = stemOf(name);
@@ -1115,6 +1119,8 @@ async function createModelUnlocked(
     id,
     engine: params.engine,
     sourceKind: params.sourceKind ?? "transcription",
+    ...((params.originalGroupId || params.designatedOriginal || (params.original && params.sourceKind !== 'import'))
+      ? { originalGroupId:params.originalGroupId ?? crypto.randomUUID() } : {}),
     ...((params.designatedOriginal || (params.sourceKind !== "import" && params.originalOnly && params.original))?{designatedOriginal:true}:{}),
     ...(params.sourceName ? { sourceName: params.sourceName } : {}),
     label: params.label ?? (params.sourceKind === "import" && params.sourceName ? params.sourceName : `${defaultModelLabel(params.engine)} · ${createdAt.slice(0, 19).replace("T", " ")}`),
@@ -1131,7 +1137,8 @@ async function createModelUnlocked(
     audio: name,
     audioFingerprint: existing.audioFingerprint ?? (await safeAudioFingerprint(dir, name)),
     activeModelId: params.setActive === false && existing.activeModelId ? existing.activeModelId : id,
-    models: [...existing.models, model],
+    models: [...existing.models.map(source => source.id === params.originalSourceModelId
+      ? { ...source, originalGroupId:model.originalGroupId } : source), model],
   };
   await writeFileJson(tDir, MANIFEST_NAME, newManifest);
   return { model, manifest: newManifest, edited };
@@ -1180,6 +1187,8 @@ async function createEditUnlocked(
       label: params.reviewed?.label ?? params.label ?? `${model.label || model.sourceName || model.engine} 副本`,
       setActive: params.setActive,
       editLabel: params.reviewed?.label ?? params.label,
+      originalGroupId: model.originalGroupId ?? crypto.randomUUID(),
+      originalSourceModelId: model.id,
     });
     return { ...result, edit: result.model.edits[0] };
   }
@@ -1206,6 +1215,7 @@ async function createEditUnlocked(
   edited.transcript = stampContinuationReceipt(edited.transcript, `${modelId}:${id}`);
   const newModel: TranscriptModel = {
     ...model,
+    ...(hasVisibleOriginal(model) && !model.originalGroupId ? { originalGroupId:crypto.randomUUID() } : {}),
     designatedOriginal: model.designatedOriginal,
     edits: [...model.edits, edit],
     activeEditId: params.setActive === false ? model.activeEditId : id,
@@ -1380,6 +1390,7 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
   const designatedEditId = editId ?? model.activeEditId ?? model.edits[0]?.id;
   if (designatedOriginal && editId && !model.edits.some(edit => edit.id === editId)) throw new Error(msg('localStore.m1504'));
   const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal,
+    ...(designatedOriginal && !hasVisibleOriginal(m) ? { originalGroupId:crypto.randomUUID() } : {}),
     ...(designatedOriginal && editId ? { activeEditId: editId } : {}),
     designatedOriginalEditId: designatedOriginal ? designatedEditId : undefined } : m) };
   await writeFileJson(tDir, MANIFEST_NAME, next);

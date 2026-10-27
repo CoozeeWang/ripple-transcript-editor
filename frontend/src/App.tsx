@@ -32,6 +32,7 @@ import {
 } from "react";
 
 import { TranscriptionDialog } from "./TranscriptionDialog";
+import { TranscribeAudioButton } from './components/TranscribeAudioButton';
 import type {
   Highlight,
   InterviewMetadata,
@@ -501,6 +502,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setViewingOriginal,
     dirHandleRef,
     selectedAudio,
+    confirmedAudioDuration: { audio: audioFilename, seconds: actualDuration },
     providers,
     setActiveProviderName,
     processStatus,
@@ -1157,6 +1159,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         <TranscriptHeader
           preparing={preparingTranscript}
           editingLocked={aiLocked}
+          transcriptionControl={selectedAudio && <TranscribeAudioButton
+            disabledReason={transcribing ? msg('transcriptionAction.running')
+              : aiLocked ? msg('transcriptionAction.editingLocked')
+              : versionBusy ? msg('transcriptionAction.loading')
+              : !audioUrl ? msg('transcriptionAction.audioUnavailable') : undefined}
+            onClick={() => setTranscriptionDialogOpen(true)} />}
           comparisonControls={<>
             <button type="button" className={`comparison-toggle${comparison.shown ? " is-active" : ""}`} aria-pressed={comparison.shown}
               disabled={viewingOriginal || !comparison.options.length || versionBusy} data-tip-pos="top" data-tip={msg('App.m0039', { v0: keys("Y",true) })} onClick={comparison.toggle}><span className="comparison-toggle-track" aria-hidden="true" /><span>{msg('App.m0040')}</span></button>
@@ -1319,6 +1327,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           hasAudio={!!selectedAudio && !!audioUrl}
           audioFilename={audioFilename || transcript.audio.filename}
           busy={transcribing}
+          preserveExisting={models.length > 0}
           onClose={() => setTranscriptionDialogOpen(false)}
           onStart={startTranscription}
         />

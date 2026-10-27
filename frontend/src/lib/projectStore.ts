@@ -1,4 +1,5 @@
 import { msg } from '../i18n';
+import { validOriginalGroupId, withOriginalGroups } from './originalGroups';
 import { readRecoverableManifest } from './manifestRecovery';
 import { isContinuationTask } from './continuationJournal';
 import type { ImportMaterial } from './materialImport';
@@ -545,6 +546,7 @@ async function validateManuscript(directory: FileSystemDirectoryHandle, manifest
   for (const model of manifest.models) {
     if (!model || !id(model.id) || ids.has(model.id) || !Array.isArray(model.edits) || (!model.edits.length && !(allowReadOnly && model.original)) || typeof model.engine !== 'string') throw new Error(msg('projectStore.m1426'));
     ids.add(model.id);
+    if (model.originalGroupId !== undefined && !validOriginalGroupId(model.originalGroupId)) throw new Error(msg('projectStore.m1426'));
     const edits = new Set<string>();
     for (const edit of model.edits) {
       if (!edit || !id(edit.id) || edits.has(edit.id)) throw new Error(msg('projectStore.m1427'));
@@ -727,8 +729,9 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
     if (!interview || !source || sourceId === targetId || (targetId && (!target || target.storage === 'none'))) throw new Error(msg('projectStore.m1450'));
     const directory = await interviewDirectory(project, interviewId);
     const manuscript = await directory.getDirectoryHandle(source.manuscriptDirectory ?? `${stemOf(source.file)}.transcript`);
-    const sourceManifest = JSON.parse(await readManuscriptIndex(manuscript) ?? 'null');
-    if (!sourceManifest?.models?.length) throw new Error(msg('projectStore.m1451'));
+    const parsedSource = JSON.parse(await readManuscriptIndex(manuscript) ?? 'null');
+    if (!parsedSource?.models?.length) throw new Error(msg('projectStore.m1451'));
+    const sourceManifest = await withOriginalGroups(parsedSource, file => readText(manuscript, file));
     if (modelId && !sourceManifest.models.some((m: { id: string }) => m.id === modelId)) throw new Error(msg('projectStore.m1452'));
     // Whole-history legacy moves still require an empty destination. Individual documents can append.
     let targetSnapshot: { folder: FileSystemDirectoryHandle; manifest: TranscriptManifest } | undefined;
@@ -737,7 +740,8 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
       try { existing = await directory.getDirectoryHandle(target.manuscriptDirectory ?? `${stemOf(target.file)}.transcript`); }
       catch (e) { if (!notFound(e)) throw e; }
       if (existing) {
-        const manifest = JSON.parse(await readManuscriptIndex(existing) ?? 'null');
+        const parsed = JSON.parse(await readManuscriptIndex(existing) ?? 'null');
+        const manifest = parsed?.models ? await withOriginalGroups(parsed, file => readText(existing!, file)) : parsed;
         if (!Array.isArray(manifest?.models) || (!modelId && manifest.models.length)) throw new Error(msg('projectStore.m1453'));
         targetSnapshot={folder:existing,manifest};
       }
@@ -846,8 +850,9 @@ async function manuscriptSnapshot(project: OpenProject, interviewId: string, rec
   catch (error) { if (notFound(error)) return null; throw error; }
   const raw = await readManuscriptIndex(folder);
   if (!raw) throw new Error(msg('projectStore.m1458'));
-  const manifest = JSON.parse(raw) as TranscriptManifest;
-  if (!Array.isArray(manifest.models)) throw new Error(msg('projectStore.m1459'));
+  const parsed = JSON.parse(raw) as TranscriptManifest;
+  if (!Array.isArray(parsed.models)) throw new Error(msg('projectStore.m1459'));
+  const manifest = await withOriginalGroups(parsed, file => readText(folder, file));
   return { directory, folder, manifest };
 }
 async function stageModels(directory: FileSystemDirectoryHandle, source: FileSystemDirectoryHandle | null, manifest: TranscriptManifest) {

@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { setInterfaceLanguage } from './index';
+import { msg, setInterfaceLanguage } from './index';
 import { apiErrorMessage } from './errors';
 import { serviceText } from './serviceText';
 import { buildExportModel, buildJsonPayload, renderMarkdown, renderTxt, renderPdfHtml } from '../lib/export';
@@ -48,4 +48,10 @@ it('localizes missing interview and audio errors from current and legacy service
  expect(apiErrorMessage({detail:'Audio not found'},404)).toBe('找不到音频。请重新选择原音频后重试。');
  await setInterfaceLanguage('en');
  expect(apiErrorMessage({message_code:'ripple_audio_missing'},404)).toContain('Select the original audio and try again.');
+});
+
+it.each(['zh-CN','zh-TW','en'] as const)('separates decoder failure from its suggested action in %s',async language=>{
+ await setInterfaceLanguage(language);
+ const text=apiErrorMessage({detail:{code:'unsupported_format',message:'Synthetic upstream decoder rejection',raw:'private upstream payload'}},502);
+ expect(text).toBe(msg('transcriptionErrors.decodeFailed'));expect(text).not.toBe(msg('useTranscription.m1155'));expect(text).not.toContain('private upstream payload');
 });

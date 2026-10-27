@@ -1,4 +1,6 @@
 import { msg } from '../i18n';
+import { serviceText } from '../i18n/serviceText';
+import { formatPlaybackTime } from '../lib/format';
 import { startTranscriptionTiming } from "../lib/transcriptionTimings";
 import { recordProblem } from "../lib/diagnostics";
 import { useLayoutEffect, useEffect, useRef, useState } from "react";
@@ -65,7 +67,9 @@ export interface UseTranscriptionDeps {
   setViewingOriginal?: (value: boolean) => void;
   dirHandleRef: { current: FileSystemDirectoryHandle | null };
   selectedAudio: string | null;
-  providers: { id: string; name: string }[];
+  /** Only a player-confirmed duration with its source identity may enforce a limit. */
+  confirmedAudioDuration?: { audio: string; seconds: number } | null;
+  providers: { id: string; name: string; capabilities?: { max_duration_seconds?: number | null } }[];
   setActiveProviderName: (name: string) => void;
   processStatus: ProcessStatus;
   setProcessStatus: (s: ProcessStatus) => void;
@@ -133,8 +137,8 @@ export function useTranscription(deps: UseTranscriptionDeps) {
     abortRef.current = controller;
     // 关掉设置弹窗，否则它会盖住顶部的进度条和取消按钮。
     setTranscriptionDialogOpen(false);
-    const engineLabel =
-      deps.providers.find((p) => p.id === providerId)?.name ?? msg('useTranscription.m1169');
+    const provider = deps.providers.find((p) => p.id === providerId);
+    const engineLabel = provider?.name ?? msg('useTranscription.m1169');
     // 先登记任务，再改状态：任务身份是「转录中」这块界面唯一的依据。
     setTranscribeJob({ audio: audioName, contextKey, engine: engineLabel });
     deps.setProcessStatus("transcribing");
@@ -149,6 +153,14 @@ export function useTranscription(deps: UseTranscriptionDeps) {
     let saved = false;
     let wasCancelled = false;
     try {
+      const duration = deps.confirmedAudioDuration;
+      const limit = provider?.capabilities?.max_duration_seconds;
+      if (duration?.audio === audioName && Number.isFinite(duration.seconds) && duration.seconds > 0
+        && typeof limit === 'number' && Number.isFinite(limit) && limit > 0 && duration.seconds > limit) {
+        throw new TranscriptionError(msg('transcriptionErrors.durationLimit', {
+          duration: formatPlaybackTime(duration.seconds), limit: formatPlaybackTime(limit), engine: serviceText(engineLabel),
+        }), 'too_long');
+      }
       await deps.beforeChange?.();
       const initialMetadata = latest.current.initialMetadata;
       const initialSpeakers = latest.current.initialSpeakers;
@@ -233,7 +245,8 @@ export function useTranscription(deps: UseTranscriptionDeps) {
       }
       deps.setProcessStatus(cancelled ? "idle" : "error");
       deps.setProcessMessage(failure.message);
-      setTranscribeHint(cancelled ? "" : TRANSCRIPTION_HINTS[failure.code] ?? "");
+      const hint = TRANSCRIPTION_HINTS[failure.code] ?? "";
+      setTranscribeHint(cancelled || hint.trim() === failure.message.trim() ? "" : hint);
       setTranscribeRaw(cancelled ? "" : failure.raw ?? "");
       throw error;
     } finally {

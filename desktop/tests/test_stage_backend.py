@@ -26,6 +26,9 @@ class StageBackendTest(unittest.TestCase):
         (self.root / "repo/data/private.txt").write_text("must not ship", encoding="utf-8")
         (self.root / "python/python.exe").write_bytes(b"synthetic")
         (self.root / "packages/synthetic.py").write_text("# synthetic", encoding="utf-8")
+        config = self.root / "repo/desktop/src-tauri/tauri.conf.json"
+        config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({"version": "9.8.7-beta.2"}), encoding="utf-8")
         self.info = {"base": str(self.root / "python"), "packages": str(self.root / "packages"), "version": [3, 12]}
 
     def test_staging_copies_runtime_without_project_data_and_refuses_overwrite(self):
@@ -36,6 +39,7 @@ class StageBackendTest(unittest.TestCase):
             self.assertTrue((stage / "backend/app/main.py").is_file())
             self.assertEqual(list((stage / "data").iterdir()), [])
             self.assertFalse((stage / "data/private.txt").exists())
+            self.assertEqual(json.loads((stage / "product-version.json").read_text()), {"version": "9.8.7-beta.2"})
             (stage / "marker.txt").write_text("keep", encoding="utf-8")
             with self.assertRaises(FileExistsError):
                 module.stage_backend(self.root / "repo", stage)
@@ -79,3 +83,11 @@ class StageBackendTest(unittest.TestCase):
             module.stage_backend(self.root / "repo", stage)
         self.assertFalse((stage / "site-packages/__pycache__").exists())
         self.assertFalse((stage / "python/legacy.pyo").exists())
+
+    def test_invalid_product_identity_fails_before_creating_output(self):
+        (self.root / "repo/desktop/src-tauri/tauri.conf.json").write_text('{"version":"invalid"}')
+        stage = self.root / "invalid-version"
+        with patch.object(module.subprocess, "check_output", return_value=json.dumps(self.info)):
+            with self.assertRaisesRegex(ValueError, "product version"):
+                module.stage_backend(self.root / "repo", stage)
+        self.assertFalse(stage.exists())

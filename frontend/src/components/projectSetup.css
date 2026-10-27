@@ -184,5 +184,8 @@
 .setup-document > svg { margin-top:3px; }
 
 .setup-document-version { margin-left:24px; }
+.setup-original-group { min-width:0; }
+.setup-original-group + .setup-original-group { margin-top:12px; padding-top:12px; border-top:1px solid var(--color-border); }
+.setup-original-group-label { margin:0 0 8px; color:var(--color-text-3); font-size:.72rem; }
 
 .setup-audio-name .setup-audio-duration { font-variant-numeric: tabular-nums; white-space: nowrap; }

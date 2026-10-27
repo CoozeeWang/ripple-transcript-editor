@@ -17,6 +17,8 @@ from .models import (
     Transcript,
     TranscriptionOptions,
 )
+from .product_version import PRODUCT_VERSION
+from .provider_errors import provider_http_error
 from .providers.base import ProviderError, ProviderInfo
 from .providers.diagnostics import human_bytes, provider_call
 from .providers.registry import PROVIDERS, get_provider, list_providers
@@ -38,7 +40,6 @@ from .settings import (
     update_profile,
     upsert_active,
 )
-from .provider_errors import provider_http_error
 
 
 @asynccontextmanager
@@ -48,7 +49,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="Ripple", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Ripple", version=PRODUCT_VERSION, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],

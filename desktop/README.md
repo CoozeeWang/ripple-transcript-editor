@@ -17,7 +17,7 @@ npm --prefix frontend run build
 python3 desktop/stage-backend.py
 ```
 
-The staging command prints the backend directory. `RIPPLE_DATA_DIR` must point to an absolute directory outside the repository whenever running local services. Staging is not installation or acceptance.
+The staging command prints the backend directory and carries the canonical product version in `product-version.json`; relocated backend diagnostics use this code resource instead of an engineering package version. `RIPPLE_DATA_DIR` must point to an absolute directory outside the repository whenever running local services. Staging is not installation or acceptance.
 
 Choose an unused positive `RIPPLE_BUILD_NUMBER` higher than all existing delivery records and the installed app; do not infer the next number from an old example in this document. Package with `desktop/package-mac.sh <printed-backend-directory> [output-app-path]`. This writes the application version, build number, and exact Git commit to `Contents/Info.plist`; verify the finished bundle before naming a compressed delivery package. Reusing or lowering the build number when replacing an existing output app is rejected.
 
