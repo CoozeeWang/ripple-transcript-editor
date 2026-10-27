@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -41,6 +42,12 @@ def stage_backend(repo: Path, output: Path | None = None) -> Path:
     )
     if info["version"] != [3, 12]:
         raise ValueError("The bundled backend requires Python 3.12")
+    try:
+        version = json.loads((repo / "desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ValueError("Invalid product version metadata") from error
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", version):
+        raise ValueError("Invalid product version metadata")
     stage = output or Path(tempfile.mkdtemp(prefix="ripple-backend-sidecar-"))
     if output:
         stage.mkdir(parents=True, exist_ok=False)
@@ -51,6 +58,7 @@ def stage_backend(repo: Path, output: Path | None = None) -> Path:
     (stage / "mock-data").mkdir()
     for name in ("sample-transcript.json", "sample-metadata.json"):
         shutil.copy2(repo / "mock-data" / name, stage / "mock-data" / name)
+    (stage / "product-version.json").write_text(json.dumps({"version": version}) + "\n", encoding="utf-8")
     (stage / "data").mkdir()
     shutil.copy2(
         Path(__file__).with_name("verify-staged-backend.py"), stage / "verify.py"

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
+from .product_version import PRODUCT_VERSION
 from .runtime_paths import DATA_ROOT
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
@@ -98,7 +99,7 @@ def record_failure(operation: str, status: int, reason: str | None = None, code:
 @router.get("")
 def diagnostics():
     records = recent_problems()
-    return {"version": "0.1.0", "records": records, "storageAvailable": _storage_available}
+    return {"version": PRODUCT_VERSION, "records": records, "storageAvailable": _storage_available}
 
 
 def request_operation(route: str):

@@ -1,5 +1,5 @@
 import { msg } from '../i18n';
-import { version } from "../../package.json";
+import { version } from "../../../desktop/src-tauri/tauri.conf.json";
 
 export const DIAGNOSTICS_KEY = "ripple-diagnostics-v1";
 export const DIAGNOSTICS_EVENT = "ripple:diagnostics";

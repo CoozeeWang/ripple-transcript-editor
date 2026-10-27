@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { DIAGNOSTICS_KEY, MAX_PROBLEMS, recordProblem, readProblems, problemDetails } from "./diagnostics";
+import { version as productVersion } from "../../../desktop/src-tauri/tauri.conf.json";
+import { DIAGNOSTICS_KEY, MAX_PROBLEMS, recordProblem, readProblems, problemDetails, diagnosticEnvironment } from "./diagnostics";
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 it("keeps useful classifications without storing messages, filenames or document contents", () => {
   const error = Object.assign(new Error('secret-key 私有访谈全文 /Users/person/private.wav'), { code: 'response_timeout' });
@@ -22,4 +23,10 @@ it("does not export extra fields from stored data", () => {
   const p = recordProblem('rename');
   localStorage.setItem(DIAGNOSTICS_KEY, JSON.stringify([{ ...p, raw: 'secret-key' }]));
   expect(JSON.stringify(readProblems())).not.toContain('secret-key');
+});
+
+it("reports the product version in copied details and exported environment", () => {
+ const problem=recordProblem('transcription');
+ expect(problemDetails(problem)).toContain(`Ripple ${productVersion}`);
+ expect(diagnosticEnvironment().version).toBe(productVersion);
 });
