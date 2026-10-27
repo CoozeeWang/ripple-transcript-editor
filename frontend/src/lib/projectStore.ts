@@ -5,6 +5,7 @@ import type { ImportMaterial } from './materialImport';
 import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
 import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decorateNativeProject, NativeFileHandle } from './desktopFs';
+import { readNativeRecentProjects, writeNativeRecentProjects, type RecentProject } from './nativeRecentProjects';
 
 export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
@@ -200,19 +201,27 @@ export async function handleValue<T>(key: string, value?: T): Promise<T | undefi
     tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
   }); } finally { db.close(); }
 }
-export async function recentProjects(): Promise<{ title: string; id: string; directory: FileSystemDirectoryHandle }[]> {
+export async function recentProjects(): Promise<RecentProject[]> {
+  if (nativeDesktopAvailable()) {
+    const stored = readNativeRecentProjects();
+    if (stored !== undefined) return stored;
+  }
   return await handleValue('recent') ?? [];
+}
+async function writeRecentProjects(items: RecentProject[]) {
+  if (nativeDesktopAvailable()) writeNativeRecentProjects(items);
+  else await handleValue('recent', items);
 }
 export async function rememberProject(project: OpenProject) {
   await locked('recent-projects', async () => {
     const recent = await recentProjects();
-    await handleValue('recent', [{ title: project.data.title, id: project.data.id, directory: project.directory }, ...recent.filter(p => p.id !== project.data.id)].slice(0, 20));
+    await writeRecentProjects([{ title: project.data.title, id: project.data.id, directory: project.directory }, ...recent.filter(p => p.id !== project.data.id)].slice(0, 20));
   });
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('ripple-recent-projects-changed'));
 }
 export async function forgetRecentProject(projectId: string) {
   await locked('recent-projects', async () => {
-    await handleValue('recent', (await recentProjects()).filter(p => p.id !== projectId));
+    await writeRecentProjects((await recentProjects()).filter(p => p.id !== projectId));
   });
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('ripple-recent-projects-changed'));
 }

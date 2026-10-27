@@ -1871,5 +1871,11 @@
     "save": "Choose location and save project",
     "saving": "Saving project…",
     "saveFailed": "Unable to save the project. Check write permission for the selected location, or choose another location and retry."
+  },
+  "recentProjects": {
+    "updateFailed": "You can continue using this project, but Recent Projects could not be updated. Please retry.",
+    "retry": "Retry",
+    "unreadable": "Unable to read Recent Projects. Use “Open project” to select a project. Your project files are unaffected.",
+    "notSaved": "Recent Projects could not be saved. Please retry."
   }
 }

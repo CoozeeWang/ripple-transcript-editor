@@ -1,5 +1,6 @@
 import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
+import { recordProblem } from '../lib/diagnostics';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
 import { LanguageControl } from './LanguageControl';
@@ -25,6 +26,7 @@ import { hasEditorDrafts } from '../lib/editorDrafts';
 import { persistActiveModel } from '../localStore';
 import { ProjectSetup } from './ProjectSetup';
 import { ProjectCreate } from './ProjectCreate';
+import { RecentProjectsNotice } from './RecentProjectsNotice';
 import { ProjectBoard } from './ProjectBoard';
 import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
@@ -59,6 +61,8 @@ export function ProjectWorkspace() {
   const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string; originalModelId?: string } | null>(null);
   const [association, setAssociation] = useState<{ source: string; modelId: string; name: string; anchor:DOMRect } | null>(null);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [recentWriteFailure, setRecentWriteFailure] = useState<string | null>(null);
+  const recentWriteAttempt = useRef(0);
   const [recentRecovery, setRecentRecovery] = useState<{id:string;title:string;reason:'missing'|'permission'|'unreadable'} | null>(null);
   const recentRef = useRef<HTMLDivElement>(null);
   useDismissable(recentRef, recentOpen, () => setRecentOpen(false));
@@ -126,9 +130,23 @@ export function ProjectWorkspace() {
     const id = interviewId ?? project?.data.interviews[0]?.id;
     if (project && id && project.data.interviews.some(i => i.id === id)) rememberInterview(project.data.id, id);
   }, [project, interviewId]);
+  const updateRecent = async (next: OpenProject) => {
+    const attempt = ++recentWriteAttempt.current;
+    try {
+      await rememberProject(next);
+      const items = await recentProjects();
+      if (attempt === recentWriteAttempt.current) {
+        setRecent(items);
+        if (current.current?.data.id === next.data.id) setRecentWriteFailure(null);
+      }
+    } catch (error) {
+      recordProblem('save', error);
+      if (attempt === recentWriteAttempt.current && current.current?.data.id === next.data.id) setRecentWriteFailure(next.data.id);
+    }
+  };
   const publish = async (next: OpenProject) => {
     setProject(next); current.current = next;
-    try { await rememberProject(next); setRecent(await recentProjects()); } catch { /* Project itself is safely stored. */ }
+    await updateRecent(next);
   };
   const run = async (work: () => Promise<void>, progress = true) => {
     if (busyRef.current) return;
@@ -249,6 +267,7 @@ export function ProjectWorkspace() {
     const dirty = creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
     if (dirty && !window.confirm(msg('ProjectWorkspace.m0904'))) return;
     clearPageFeedback();
+    setRecentWriteFailure(null);
     setTrashOpen(false);setSessionDelete(null);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice(NO_IMPORT_NOTES); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
@@ -296,6 +315,8 @@ export function ProjectWorkspace() {
     </header>}
     {audioStorage.dialog}<section className="project-home__content" aria-busy={busy}>
       {project?.finderIconWarning && <p role="status" className="settings-hint">{msg('ProjectWorkspace.finderIconWarning')}</p>}
+      {project && recentWriteFailure === project.data.id && <RecentProjectsNotice busy={busy}
+        onRetry={()=>void run(async()=>{const snapshot=current.current;if(snapshot)await updateRecent(snapshot);},false)} onDismiss={()=>setRecentWriteFailure(null)}/>}
       {recentRecovery && <div className="project-error-notice recent-project-recovery" role="status">
         <p>{msg(recentRecovery.reason==='missing'?'ProjectWorkspace.recentMissing':recentRecovery.reason==='permission'?'ProjectWorkspace.recentPermission':'ProjectWorkspace.recentUnreadable',{title:recentRecovery.title})}</p>
         <div className="recent-project-recovery__actions">

@@ -15,6 +15,7 @@ beforeEach(() => {
   vi.mocked(store.trashProjectInterview).mockReset();
   vi.mocked(store.restoreProjectTrashItem).mockReset();
   vi.mocked(store.recentProjects).mockReset().mockResolvedValue([]);
+  vi.mocked(store.rememberProject).mockReset().mockResolvedValue(undefined);
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   state.picker.mockReset().mockResolvedValue(project.directory);
@@ -240,6 +241,54 @@ it('clears a failed open-project error when starting a new project', async () =>
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
   await screen.findByRole('textbox', { name: '项目名称' });
   expect(screen.queryByText(openError)).toBeNull();
+});
+
+it('keeps an opened project usable when remembering it fails and offers an effective retry', async () => {
+  vi.mocked(store.rememberProject).mockRejectedValueOnce(new Error('Synthetic preference failure'));
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  const warning = await screen.findByRole('alert');
+  expect(warning.textContent).toContain(msg('recentProjects.updateFailed'));
+  expect(screen.getByRole('button', { name: '打开 音频 录音.wav' })).toBeTruthy();
+  expect(store.saveProject).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', { name: msg('recentProjects.retry') }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  expect(store.rememberProject).toHaveBeenCalledTimes(2);
+});
+
+it('clears recent-write feedback on leaving its project and ignores a late failure from a prior project', async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(store.rememberProject).mockReturnValueOnce(new Promise<void>((_, fail) => { reject = fail; }));
+  const empty = { ...project, data: { ...project.data, id: 'synthetic-created', interviews: [] } };
+  vi.mocked(store.createProject).mockResolvedValueOnce(empty);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Synthetic created project' } });
+  fireEvent.click(screen.getByRole('button', { name: msg('ProjectCreate.save') }));
+  await screen.findByRole('button', { name: '新增场次' });
+  fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
+  fireEvent.click(await screen.findByRole('button', { name: '打开项目' }));
+  await screen.findByRole('button', { name: '打开 音频 录音.wav' });
+  await act(async () => { reject(new Error('Synthetic late failure')); });
+  expect(screen.queryByText(msg('recentProjects.updateFailed'))).toBeNull();
+});
+
+it('refreshes welcome recents when a newly saved project finishes remembering after returning home', async () => {
+  let finish!: () => void;
+  vi.mocked(store.rememberProject).mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+  const empty = { ...project, data: { ...project.data, id: 'synthetic-created', title: 'Synthetic saved project', interviews: [] } };
+  vi.mocked(store.createProject).mockResolvedValueOnce(empty);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: empty.data.title } });
+  fireEvent.click(screen.getByRole('button', { name: msg('ProjectCreate.save') }));
+  await screen.findByRole('button', { name: '新增场次' });
+  fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
+  vi.mocked(store.recentProjects).mockResolvedValue([{ id: empty.data.id, title: empty.data.title, directory: empty.directory }]);
+  await act(async () => { finish(); });
+  fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
+  expect(await screen.findByRole('button', { name: empty.data.title })).toBeTruthy();
+  expect(screen.queryByText(msg('recentProjects.updateFailed'))).toBeNull();
 });
 
 it('imports documents from the independent drop zone into the selected interview without audio association', async () => {
@@ -663,12 +712,15 @@ it('dismisses or expires completed import limitations without changing the impor
   fireEvent.click(zone);
   const text = await screen.findByText(new RegExp(warning));
   const notice = text.closest('[role="status"]')!;
+  await waitFor(() => expect(timer.mock.calls.some(([, delay]) => delay === 4000)).toBe(true));
   const first = timer.mock.calls.find(([, delay]) => delay === 4000)![0] as () => void;
   expect(notice.lastElementChild?.tagName).toBe('BUTTON');
   fireEvent.click(notice.querySelector('button')!);
   expect(screen.queryByText(new RegExp(warning))).toBeNull();
+  const scheduled = timer.mock.calls.filter(([, delay]) => delay === 4000).length;
   fireEvent.click(zone);
   await screen.findByText(new RegExp(warning));
+  await waitFor(() => expect(timer.mock.calls.filter(([, delay]) => delay === 4000).length).toBeGreaterThan(scheduled));
   await act(async () => first());
   expect(screen.getByText(new RegExp(warning))).toBeTruthy();
   const latest = timer.mock.calls.filter(([, delay]) => delay === 4000).at(-1)![0] as () => void;
