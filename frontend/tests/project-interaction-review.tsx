@@ -77,7 +77,7 @@ export function Harness() {
         acted = true;
         const values = new Map<string, string>(), transfer = { types: ['Files'], effectAllowed: '', dropEffect: '', setData(t: string, v: string) { values.set(t, v); if (!this.types.includes(t)) this.types.push(t); }, getData: (t: string) => values.get(t) || '' };
         const session = mode === 'sort-session', source = document.querySelector<HTMLElement>(session ? '.setup-session .setup-grip' : '.setup-audio .setup-grip')!;
-        const target = document.querySelector<HTMLElement>(session ? '.setup-sidebar' : mode === 'sort-nested' ? '.setup-audio:last-of-type > .setup-drop' : '.setup-canvas')!;
+        const target = document.querySelector<HTMLElement>(session ? '.setup-session-list' : mode === 'sort-nested' ? '.setup-audio:last-of-type > .setup-drop' : '.setup-canvas')!;
         const last = (session ? document.querySelectorAll<HTMLElement>('.setup-session')[2] : rows[2]).getBoundingClientRect();
         const y = mode === 'sort-gap' ? (rows[1].getBoundingClientRect().bottom + last.top) / 2 : last.bottom - 2;
         const dispatch = (type: string, at: HTMLElement) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientY: y }); Object.defineProperty(e, 'dataTransfer', { value: transfer }); at.dispatchEvent(e); };

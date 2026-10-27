@@ -217,12 +217,12 @@ it('requires saving a named project before exposing session creation or material
   vi.mocked(store.createProject).mockResolvedValueOnce(empty);
   fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: empty.data.title } });
   fireEvent.click(screen.getByRole('button', { name: '选择位置并保存项目' }));
-  expect(await screen.findByRole('button', { name: '新增场次' })).toBeTruthy();
+  expect((await screen.findAllByRole('button', { name: '新增场次' }))[0]).toBeTruthy();
   expect(store.createProject).toHaveBeenCalledWith(project.directory, empty.data.title);
   expect(store.importProjectMaterials).not.toHaveBeenCalled();
   expect(store.rememberProject).toHaveBeenCalledWith(empty);
   vi.mocked(store.saveProject).mockImplementationOnce(async (p, data) => ({ ...p, data }));
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   fireEvent.click(screen.getByRole('button', { name: '场次名称' }));
   const sessionName = screen.getByRole('textbox', { name: '场次名称' });
   fireEvent.change(sessionName, { target: { value: 'Synthetic saved session' } });
@@ -265,7 +265,7 @@ it('clears recent-write feedback on leaving its project and ignores a late failu
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
   fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Synthetic created project' } });
   fireEvent.click(screen.getByRole('button', { name: msg('ProjectCreate.save') }));
-  await screen.findByRole('button', { name: '新增场次' });
+  await screen.findAllByRole('button', { name: '新增场次' });
   fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
   fireEvent.click(await screen.findByRole('button', { name: '打开项目' }));
   await screen.findByRole('button', { name: '打开 音频 录音.wav' });
@@ -282,7 +282,7 @@ it('refreshes welcome recents when a newly saved project finishes remembering af
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
   fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: empty.data.title } });
   fireEvent.click(screen.getByRole('button', { name: msg('ProjectCreate.save') }));
-  await screen.findByRole('button', { name: '新增场次' });
+  await screen.findAllByRole('button', { name: '新增场次' });
   fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
   vi.mocked(store.recentProjects).mockResolvedValue([{ id: empty.data.id, title: empty.data.title, directory: empty.directory }]);
   await act(async () => { finish(); });
@@ -413,7 +413,7 @@ it('adds a session in the existing board while preserving earlier sessions and a
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText('测试项目');
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   expect(screen.getAllByRole('heading', { name: '测试项目' })).toHaveLength(1);
   expect(screen.getByRole('button', { name: /第一次访谈.*音频：1 个/ })).toBeTruthy();
   fireEvent.click(screen.getByText('点击填写场次名称'));
@@ -464,7 +464,7 @@ it('clears the active session highlight while adding and restores it on cancel',
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   const previous = await screen.findByRole('button', { name: /第一次访谈.*音频：1 个/ });
   expect(previous.getAttribute('aria-pressed')).toBe('true');
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   expect(previous.getAttribute('aria-pressed')).toBe('false');
   expect(previous.closest('.setup-session')?.classList.contains('is-selected')).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: '取消' }));
@@ -477,7 +477,7 @@ it('returns home through the brand and confirms discarding an unconfirmed sessio
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText('测试项目');
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
   expect(confirm).toHaveBeenCalledOnce();
   expect(screen.getByRole('heading', { name: '点击填写场次名称' })).toBeTruthy();
@@ -770,7 +770,7 @@ it('puts project Trash before settings and confirms, deletes and restores the la
   await waitFor(()=>expect(store.trashProjectInterview).toHaveBeenCalledWith(project,'i'));
   await waitFor(()=>expect(screen.queryByRole('button',{name:'打开 音频 录音.wav'})).toBeNull());
   expect(await screen.findByRole('button',{name:msg('ProjectWorkspace.m0925')})).toBeTruthy();
-  await waitFor(()=>expect(document.activeElement).toBe(document.querySelector('.setup-new')));
+  await waitFor(()=>expect(document.activeElement).toBe(document.querySelector('.setup-session-add')));
   fireEvent.click(screen.getByRole('button',{name:msg('ProjectWorkspace.m0925')}));
   fireEvent.click(await screen.findByRole('button',{name:'恢复场次 第一次访谈'}));
   await waitFor(()=>expect(store.restoreProjectTrashItem).toHaveBeenCalledWith(deleted,'synthetic-trash'));

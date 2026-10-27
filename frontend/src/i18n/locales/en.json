@@ -1877,5 +1877,9 @@
     "retry": "Retry",
     "unreadable": "Unable to read Recent Projects. Use “Open project” to select a project. Your project files are unaffected.",
     "notSaved": "Recent Projects could not be saved. Please retry."
+  },
+  "projectSessions": {
+    "list": "Session list",
+    "content": "Session content"
   }
 }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { msg, setInterfaceLanguage } from '../i18n';
@@ -109,7 +109,7 @@ function renderBoard(project:OpenProject,save=vi.fn(),select=vi.fn(),selected=pr
 it('stores a padded date when adding a scene to an existing project',async()=>{
  const project=boardProject(),createSession=vi.fn();
  render(<ProjectBoard project={project} selected="reference" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={createSession} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
- fireEvent.click(screen.getByRole('button',{name:'新增场次'}));
+ fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
  fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'新场次'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});
  fireEvent.change(screen.getByRole('textbox',{name:'场次日期：年'}),{target:{value:'2020'}});
  fireEvent.change(screen.getByRole('textbox',{name:'场次日期：月'}),{target:{value:'10'}});
@@ -123,6 +123,37 @@ it('shows the session count beside the session list heading',()=>{
  renderBoard(project);
  const sidebar=screen.getByRole('complementary',{name:'场次'});
  expect(sidebar.querySelector('.panel-heading__count')?.textContent).toBe('3');
+});
+
+it.each([['zh-CN','新增场次','场次列表'],['zh-TW','新增場次','場次清單'],['en','Add session','Session list']] as const)('keeps the %s add control outside the scroll list with localized hover text',async(language,label,listLabel)=>{
+ try{
+  await act(()=>setInterfaceLanguage(language));
+  const project=boardProject();
+  const props={project,selected:'reference',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>work(),legacy:()=>{},relink:()=>{},associate:()=>{}};
+  const view=render(<ProjectBoard {...props}/>);
+  const heading=view.container.querySelector('.setup-sidebar-heading')!;
+  const top=within(heading as HTMLElement).getByRole('button',{name:label});
+  const list=screen.getByRole('region',{name:listLabel});
+  expect(top.getAttribute('data-tip')).toBe(label);
+  expect(list.contains(top)).toBe(false);
+  expect(heading.querySelector('.panel-heading__count')?.textContent).toBe('3');
+  expect(list.querySelectorAll('[data-session-id]')).toHaveLength(3);
+  fireEvent.click(top);
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0685')}));
+  const name=screen.getByRole('textbox',{name:msg('ProjectBoard.m0685')});
+  fireEvent.change(name,{target:{value:'Synthetic retained draft'}});
+  fireEvent.keyDown(name,{key:'Enter'});
+  fireEvent.click(top);
+  expect(view.container.querySelector('.setup-session-form h2')?.textContent).toBe('Synthetic retained draft');
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0694')}));
+  fireEvent.click(within(list).getByRole('button',{name:label}));
+  expect(view.container.querySelector('.setup-session-form')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0694')}));
+  view.rerender(<ProjectBoard {...props} busy/>);
+  expect((top as HTMLButtonElement).disabled).toBe(true);
+  expect((within(list).getByRole('button',{name:label}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(top);expect(view.container.querySelector('.setup-session-form')).toBeNull();
+ }finally{await act(()=>setInterfaceLanguage('zh-CN'));}
 });
 
 it('keeps session focus and selection together when clicking, tabbing, and using arrow keys',()=>{
@@ -205,7 +236,7 @@ it('accepts a session drop in the list gap, keeps move semantics and persists th
  const rows=Array.from(document.querySelectorAll('.setup-session'));rowsAt(rows);
  fireEvent.dragStart(screen.getByRole('button',{name:'调整Reference顺序'}),{dataTransfer:transfer});
  expect(transfer.effectAllowed).toBe('move');expect(transfer.getData('text/plain')).toBe('reference');
- const sidebar=screen.getByRole('complementary',{name:'场次'});
+ const sidebar=screen.getByRole('region',{name:'场次列表'});
  orderEvent('dragEnter',sidebar,transfer,450);
  expect(transfer.dropEffect).toBe('move');expect(rows[2].getAttribute('data-sort-edge')).toBe('before');
  orderEvent('dragOver',sidebar,transfer,450);

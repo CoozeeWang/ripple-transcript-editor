@@ -237,7 +237,7 @@ export function ProjectWorkspace() {
     if (!focusProjectSelection.current || trashOpen || sessionDelete || busy) return;
     focusProjectSelection.current = false;
     const selected = Array.from(document.querySelectorAll<HTMLElement>('[data-session-id]')).find(row => row.dataset.sessionId === interviewId);
-    (selected ?? document.querySelector<HTMLElement>('.setup-new'))?.focus();
+    (selected ?? document.querySelector<HTMLElement>('.setup-session-add'))?.focus();
   }, [project, interviewId, trashOpen, sessionDelete, busy]);
   const enterRecording = async (project: OpenProject, recording: ProjectRecording, targetId: string, modelId?: string, editId?: string) => {
     if (!project || !targetId) return;
@@ -304,7 +304,7 @@ export function ProjectWorkspace() {
       await publish(await saveProject(snapshot, { ...snapshot.data, interviews }));
     }} onExportProjectFiles={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; setArchiving(true); }} onOpenProject={openProjectFromEditor} onReturnToProjects={() => { setEditor(null); editorLease.current?.(); editorLease.current = null; }} />;
   const welcoming = !project && !creating;
-  return <main className={`project-home${welcoming ? ' project-home--welcome' : ''}${quietSaving ? ' project-home--quiet-saving' : ''}`}>
+  return <main className={`project-home${welcoming ? ' project-home--welcome' : ''}${quietSaving ? ' project-home--quiet-saving' : ''}${project && materialTarget === undefined ? ' project-home--board' : ''}`}>
     {!welcoming && <header className="project-home__header">
       {!welcoming && <button type="button" className="brand project-brand-home" aria-label={msg('ProjectWorkspace.m0905')} data-tip={msg('ProjectWorkspace.m0906')} data-tip-pos="bottom" disabled={busy} onClick={returnHome}><img className="brand-mark" src="/ripple-icon.svg" alt="" /><div><p className="product-name">Ripple</p><p className="file-name">Transcription Editor</p></div></button>}
       <nav aria-label={msg('ProjectWorkspace.m0907')}>
@@ -441,7 +441,7 @@ export function ProjectWorkspace() {
           remove={(recording,model,hasDocuments=false)=>{setError('');setDeleteTarget({recording,modelId:model?.id,name:model?.label||model?.sourceName||model?.engine||recording.name,hasDocuments,sessionId:interviewId??project.data.interviews[0].id});}}
           detach={async (recording, modelId) => { assertRecordingMutable(interviewId!,recording.id); const snapshot=current.current!; await publish(await reassignManuscript(snapshot, interviewId ?? snapshot.data.interviews[0].id, recording.id, '', modelId)); }}
           associate={(recording,model,anchor) => { setError('');setInterviewId(interviewId ?? project.data.interviews[0].id); setAssociation({ source: recording.id, modelId:model.id, name:model.label||model.sourceName||model.engine,anchor }); }}
-          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) { assertRecordingMutable(interviewId!,recording.id); await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); setMediaRevision(value => value + 1); } }); }} />
+          relink={recording => { void run(async () => { const [handle] = await (window as unknown as Picker).showOpenFilePicker({ ...await pickerLocation('open-audio', 'read'), multiple: false }); if (handle) { assertRecordingMutable(interviewId!,recording.id); await publish(await relinkMedia(project, interviewId ?? project.data.interviews[0].id, recording, handle)); setMediaRevision(value => value + 1); } }); }}>
             {interview && legacyCandidates?.interviewId === interview.id && legacyCandidates.items.map((candidate, index) => <div className="project-section project-import-existing" key={`${candidate.recordingId}:${index}`}>
               <strong>{msg('ProjectWorkspace.m0938')}</strong>
               <p>{candidate.directory.name}</p>
@@ -454,6 +454,7 @@ export function ProjectWorkspace() {
 
               })}>{msg('ProjectWorkspace.m0941')}</button><button className="cred-btn" disabled={busy} onClick={() => { setLegacyCandidates(null); }}>{msg('ProjectWorkspace.m0942')}</button></div>
             </div>)}
+          </ProjectBoard>
             {interview && association && <AssociateAudioDialog anchor={association.anchor} name={association.name} recordings={interview.recordings.filter(r=>r.storage!=='none')} busy={busy} error={error} onClose={()=>setAssociation(null)} onConfirm={target=>void run(async()=>{assertRecordingMutable(interview.id,association.source);assertRecordingMutable(interview.id,target);await publish(await reassignManuscript(current.current!,interview.id,association.source,target,association.modelId));setAssociation(null);},false)}/>}
 
 
