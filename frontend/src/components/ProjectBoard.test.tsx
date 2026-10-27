@@ -190,6 +190,46 @@ it('reorders saved-project sessions by dragging the grip onto another session',(
  expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
 });
 
+function transferForOrder() {
+ const values=new Map<string,string>();
+ return {types:['Files'],items:[],effectAllowed:'',dropEffect:'none',setData(type:string,value:string){values.set(type,value);if(!this.types.includes(type))this.types.push(type);},getData:(type:string)=>values.get(type)??''};
+}
+function orderEvent(type:'dragOver'|'drop',target:Element,transfer:ReturnType<typeof transferForOrder>,clientY:number){
+ const event=(type==='drop'?createEvent.drop:createEvent.dragOver)(target,{dataTransfer:transfer});
+ Object.defineProperty(event,'clientY',{value:clientY});fireEvent(target,event);
+}
+function rowsAt(rows:Element[]){rows.forEach((row,index)=>vi.spyOn(row,'getBoundingClientRect').mockReturnValue({top:100+index*200,bottom:200+index*200,height:100} as DOMRect));}
+
+it('accepts a session drop in the list gap, keeps move semantics and persists the intended order',()=>{
+ const project=boardProject(),save=renderBoard(project),transfer=transferForOrder();
+ const rows=Array.from(document.querySelectorAll('.setup-session'));rowsAt(rows);
+ fireEvent.dragStart(screen.getByRole('button',{name:'调整Reference顺序'}),{dataTransfer:transfer});
+ expect(transfer.effectAllowed).toBe('move');expect(transfer.getData('text/plain')).toBe('reference');
+ const sidebar=screen.getByRole('complementary',{name:'场次'});
+ orderEvent('dragOver',sidebar,transfer,450);
+ expect(transfer.dropEffect).toBe('move');expect(rows[2].getAttribute('data-sort-edge')).toBe('before');
+ orderEvent('drop',sidebar,transfer,450);
+ expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
+});
+
+it.each(['manuscript zone','audio list end','audio list gap'])('sorts audio through the %s without importing a Files-advertising internal drag',async targetKind=>{
+ vi.mocked(local.readManifest).mockResolvedValue(null);
+ vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockResolvedValue({} as FileSystemDirectoryHandle);
+ const recordings=['a','b','c'].map(id=>({id,file:`${id}.wav`,name:`Synthetic ${id}.wav`,storage:'copy' as const}));
+ const session={id:'s',title:'Synthetic session',recordings};
+ const project={data:{id:'p',interviews:[session]}} as OpenProject;
+ const save=vi.fn(),importDocuments=vi.fn(),transfer=transferForOrder();
+ render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={save} add={()=>{}} importDocuments={importDocuments} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ const rows=Array.from(document.querySelectorAll('.setup-audio'));rowsAt(rows);
+ fireEvent.dragStart(screen.getByRole('button',{name:'调整Synthetic a.wav顺序'}),{dataTransfer:transfer});
+ const target=targetKind==='manuscript zone'?screen.getByRole('button',{name:'向 Synthetic b.wav 添加转录稿'}):targetKind==='audio list end'?screen.getByRole('button',{name:'选择或拖入音频，加入这个场次'}):document.querySelector('.setup-canvas')!;
+ const y=targetKind==='manuscript zone'?390:targetKind==='audio list end'?900:450;
+ orderEvent('dragOver',target,transfer,y);expect(transfer.dropEffect).toBe('move');
+ orderEvent('drop',target,transfer,y);
+ expect(save).toHaveBeenCalledWith([{...session,recordings:targetKind==='audio list end'?[recordings[1],recordings[2],recordings[0]]:[recordings[1],recordings[0],recordings[2]]}]);
+ expect(importDocuments).not.toHaveBeenCalled();expect(document.querySelector('.is-over')).toBeNull();
+});
+
 it('updates the reference permission notice when switching interface language', async () => {
  const store=await import('../lib/projectStore'); const {setInterfaceLanguage}=await import('../i18n');
  vi.mocked(store.checkProjectMedia).mockRejectedValueOnce(new DOMException('denied','NotAllowedError'));
