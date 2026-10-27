@@ -16,6 +16,7 @@ interviews/
 !mock-data/**/*.mp3
 !mock-data/**/*.amr
 !mock-data/**/*.wma
+!mock-data/audio-playback-test/synthetic-32k.aac
 
 # Python
 backend/.venv/

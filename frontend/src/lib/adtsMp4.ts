@@ -4,6 +4,8 @@ export class UnsupportedAdtsError extends Error {}
 
 const SAMPLE_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 const MAX_U32 = 0xffffffff;
+const PLAYBACK_BATCH_FRAMES = 2048;
+const PLAYBACK_BATCH_BYTES = 1024 * 1024;
 
 function bytes(...values: number[]): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(values);
@@ -115,6 +117,17 @@ export async function remuxAdtsToMp4(blob: Blob): Promise<Blob> {
 
   const sampleSizes: number[] = [];
   const audioParts: Blob[] = [];
+  let pendingParts: Blob[] = [];
+  let pendingBytes = 0;
+  async function flushParts(): Promise<void> {
+    if (!pendingParts.length) return;
+    // WebKit cannot reliably read a Blob containing hundreds of thousands of
+    // frame slices. Materialize small batches; nesting Blobs alone still leaves
+    // the same underlying fragments. This changes neither samples nor source.
+    audioParts.push(new Blob([await new Blob(pendingParts).arrayBuffer()]));
+    pendingParts = [];
+    pendingBytes = 0;
+  }
   let dataSize = 0;
   let offset = 0;
   while (offset < blob.size) {
@@ -131,13 +144,16 @@ export async function remuxAdtsToMp4(blob: Blob): Promise<Blob> {
     }
     const payloadSize = frameSize - headerSize;
     sampleSizes.push(payloadSize);
-    audioParts.push(blob.slice(offset + headerSize, offset + frameSize));
+    pendingParts.push(blob.slice(offset + headerSize, offset + frameSize));
+    pendingBytes += payloadSize;
+    if (pendingParts.length >= PLAYBACK_BATCH_FRAMES || pendingBytes >= PLAYBACK_BATCH_BYTES) await flushParts();
     dataSize += payloadSize;
     offset += frameSize;
   }
   if (!sampleSizes.length || sampleSizes.length * 1024 > MAX_U32 || dataSize + 8 > MAX_U32) {
     throw new UnsupportedAdtsError('ADTS recording exceeds playback container limits');
   }
+  await flushParts();
 
   const ftyp = box('ftyp', ascii('isom'), u32(0x200), ascii('isomiso2mp41'));
   const initialMovie = movie(rateIndex, sampleRate, channels, sampleSizes, 0);
