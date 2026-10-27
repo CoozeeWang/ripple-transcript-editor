@@ -243,7 +243,8 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .version-picker-trigger:disabled { opacity: .55; cursor: default; }
 .version-picker-menu { position: fixed; inset: auto; margin: 0; z-index: 95; width: min(360px, calc(100vw - 120px)); max-height: 50vh; overflow: auto; padding: 6px; border: 1px solid var(--color-border-2); border-radius: 8px; background: var(--color-surface, #fffdf9); box-shadow: 0 6px 18px #28241e1a; font-family: var(--font-sans); font-size: 0.86rem; font-weight: 400; }
 
-.version-picker-group + .version-picker-group { margin-top: 4px; }
+.version-picker-group + .version-picker-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--color-border); }
+.version-picker-group-label { margin: 6px 8px; font-size: .7rem; color: var(--color-text-3); }
 .version-picker-engine { display: flex; align-items: baseline; gap: 7px; padding: 6px 8px 8px; font-size: 0.72rem; color: var(--color-text-2); }
 .version-picker-engine > span { flex-shrink: 0; font-size: 0.66rem; color: var(--color-text-3); }
 .version-picker-engine strong { overflow-wrap: anywhere; font-weight: 500; }
@@ -255,9 +256,11 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .version-picker-menu button { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
 .version-picker-option { position: relative; flex: 1; min-width: 0; text-align: left; padding: 6px 8px; overflow-wrap: anywhere; line-height: 1.4; }
 .version-picker-row--original .version-picker-option { padding-left: 20px; }
-.version-picker-row--edit .version-picker-option { padding-left: 32px; }
+.version-picker-row--edit .version-picker-option { padding-left: 44px; }
 .version-picker-selection { position: absolute; left: 4px; width: 12px; text-align: center; }
-.version-picker-row--edit .version-picker-selection { left: 16px; }
+.version-picker-row--edit .version-picker-selection { left: 28px; }
+.version-picker-group--unlinked .version-picker-option { padding-left: 20px; }
+.version-picker-group--unlinked .version-picker-selection { left: 4px; }
 .version-picker-actions { display: inline-flex; flex-shrink: 0; gap: 2px; padding-right: 4px; opacity: 1; transition: opacity .12s; }
 .version-picker-row:hover .version-picker-actions, .version-picker-row:focus-within .version-picker-actions { opacity: 1; }
 @media (hover: none) { .version-picker-actions { opacity: 1; } }

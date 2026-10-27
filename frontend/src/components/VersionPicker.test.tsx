@@ -233,3 +233,23 @@ it('keeps an original rename draft on failure, supports cancel, and disables mut
  view.rerender(<VersionPicker {...props} mutationDisabled/>);
  expect(screen.getByRole('button',{name:'重命名转录稿 '+models[0].label}).hasAttribute('disabled')).toBe(true);
 });
+
+it.each(['zh-CN','zh-TW','en'] as const)('groups related models under originals with flat edit rows and stable selection in %s',async language=>{
+ await setInterfaceLanguage(language);
+ const edit=(id:string,label:string)=>({id,label,file:`${label}.json`,updated_at:''});
+ const root=(id:string,group:string):TranscriptModel=>({id,label:`Original ${id}`,engine:'Synthetic engine',designatedOriginal:true,original:`${id}.json`,originalGroupId:group,edits:[],activeEditId:''});
+ const a=root('a','group-a'),b=root('b','group-b');
+ const child:TranscriptModel={id:'ac',engine:'Synthetic engine',originalGroupId:'group-a',edits:[edit('e1','A edit 1'),edit('e2','A edit 2')],activeEditId:'e2'};
+ const sibling:TranscriptModel={id:'as',engine:'Synthetic engine',originalGroupId:'group-a',edits:[edit('e1','A copy')],activeEditId:'e1'};
+ const unknown:TranscriptModel={id:'u',engine:'imported',sourceKind:'import',edits:[edit('e1','Unlinked 1'),edit('e2','Unlinked 2')],activeEditId:'e1'};
+ const select=vi.fn();const ui=render(<VersionPicker models={[child,b,a,sibling,unknown]} value="ac:e2" variant="current" onSelect={select} onRename={vi.fn()}/>);
+ fireEvent.click(ui.container.querySelector('.version-picker-trigger')!);
+ const group=ui.container.querySelector('[data-original-group="group-a"]')!;
+ expect(group.querySelectorAll('.version-picker-row')).toHaveLength(4);
+ for(const name of ['A edit 1','A edit 2','A copy']) expect(screen.getByRole('button',{name}).closest('section')).toBe(group);
+ expect(group.querySelectorAll('.version-picker-row--edit')).toHaveLength(3);
+ expect(screen.getByRole('button',{name:'A edit 2'}).getAttribute('aria-pressed')).toBe('true');
+ expect(screen.getByText('Unlinked 2',{exact:true}).closest('section')?.classList.contains('version-picker-group--unlinked')).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'A edit 1'}));expect(select).toHaveBeenLastCalledWith('ac','e1');
+ cleanup();await setInterfaceLanguage('zh-CN');
+});

@@ -1,4 +1,8 @@
 {
+  "originalGroups": {
+    "unlinked": "No linked original",
+    "unavailable": "The source original is not in this list"
+  },
   "transcriptionAction": {
     "transcribe": "Transcribe audio",
     "running": "This audio is being transcribed. Wait for it to finish or cancel before starting again.",

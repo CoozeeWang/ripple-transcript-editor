@@ -11,7 +11,7 @@ vi.mock('../localStore',async original=>({...await original<typeof local>(),read
 vi.mock('../lib/projectStore',async original=>({...await original<typeof import('../lib/projectStore')>(),mutateProjectManuscript:vi.fn(async(_p,work)=>work()),checkProjectMedia:vi.fn(async()=>new File(['synthetic'],'audio.wav')),recordingDirectory:vi.fn(async()=>({}))}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 it.each([false,true])('opens names, removes previews, and copies the current document (original=%s)',async original=>{
- const model={id:'m',label:'采访稿',engine:'test',sourceKind:'import',designatedOriginal:original,edits:original?[]:[{id:'e2'}],activeEditId:original?'':'e2'} as TranscriptModel;
+ const model={id:'m',label:'采访稿',engine:'test',sourceKind:'import',designatedOriginal:original,originalGroupId:original?'synthetic-original-group':undefined,edits:original?[]:[{id:'e2'}],activeEditId:original?'':'e2'} as TranscriptModel;
  const copy={...model,id:'copy',label:'采访稿 副本',designatedOriginal:false,edits:[{id:'e1'}],activeEditId:'e2'} as TranscriptModel;
  vi.mocked(local.readManifest).mockResolvedValue({models:[model]} as never);
  const transcript={segments:[{id:'1',text:'保留原内容'}]};
@@ -27,6 +27,7 @@ it.each([false,true])('opens names, removes previews, and copies the current doc
  fireEvent.click(screen.getByRole('button',{name:'将 采访稿 复制为编辑稿'}));
  await waitFor(()=>expect(local.createModel).toHaveBeenCalled());
  expect(vi.mocked(local.createModel).mock.calls[0][2]).toMatchObject({transcript,label:'采访稿 副本',setActive:false});
+ if(original)expect(vi.mocked(local.createModel).mock.calls[0][2]).toMatchObject({originalGroupId:'synthetic-original-group',originalSourceModelId:'m'});
  expect(vi.mocked(local.createModel).mock.calls[0][2].designatedOriginal).toBeUndefined();
  expect((await screen.findByRole('textbox',{name:'重命名 转录稿'}) as HTMLInputElement).value).toBe('采访稿 副本');
  expect(screen.getByRole('button',{name:'打开 转录稿 采访稿'})).toBeTruthy();
@@ -301,7 +302,7 @@ it('shows AI and manual revisions together and opens or renames the requested ID
  expect(screen.queryByText(/snapshot/)).toBeNull();
  const root=screen.getByRole('button',{name:'打开 转录稿 修改稿 v1'}).closest('.setup-document')!;
  const ai=screen.getByRole('button',{name:'打开 转录稿 修改稿 v1 · AI 辅助 01'}).closest('.setup-document')!;
- expect(root.getAttribute('data-root-version-id')).toBe('m:e1');expect(ai.classList.contains('setup-document-version')).toBe(true);
+ expect(root.getAttribute('data-root-version-id')).toBe('m:e1');expect(ai.classList.contains('setup-document-version')).toBe(false);
  expect(root.compareDocumentPosition(ai)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'打开 转录稿 修改稿 v1'}));expect(open).toHaveBeenLastCalledWith(recording,'m','e1');
 
@@ -434,4 +435,30 @@ it('keeps an original-designation failure attached to its own session', async ()
   expect(screen.queryByText('Synthetic designation failure')).toBeNull();
   ui.rerender(<ProjectBoard {...props} selected="a"/>);
   expect(screen.getByText('Synthetic designation failure')).toBeTruthy();
+});
+
+it.each(['zh-CN','zh-TW','en'] as const)('shows each original with flat related versions, including copies, in %s',async language=>{
+ await setInterfaceLanguage(language);
+ const edit=(id:string,label:string)=>({id,label,file:`${label}.json`,updated_at:''});
+ const root=(id:string,group:string):TranscriptModel=>({id,label:`Original ${id}`,engine:'Synthetic engine',designatedOriginal:true,original:`${id}.json`,originalGroupId:group,edits:[],activeEditId:''});
+ const a=root('a','group-a'),b=root('b','group-b');
+ const child:TranscriptModel={id:'ac',engine:'Synthetic engine',originalGroupId:'group-a',edits:[edit('e1','A edit 1'),edit('e2','A edit 2')],activeEditId:'e2'};
+ const sibling:TranscriptModel={id:'as',engine:'Synthetic engine',originalGroupId:'group-a',edits:[edit('e1','A copy')],activeEditId:'e1'};
+ const unknown:TranscriptModel={id:'u',engine:'imported',sourceKind:'import',edits:[edit('e1','Unlinked 1'),edit('e2','Unlinked 2')],activeEditId:'e1'};
+ vi.mocked(local.readManifest).mockResolvedValue({models:[child,b,a,sibling,unknown]} as never);
+ const recording={id:'r',file:'Synthetic.wav',name:'Synthetic audio',storage:'copy'};
+ const project={data:{id:'synthetic-flat',interviews:[{id:'s',title:'Synthetic session',recordings:[recording]}]}} as OpenProject;
+ const open=vi.fn(),save=vi.fn(),ui=render(<ProjectBoard {...{project,selected:'s',busy:false,select:vi.fn(),save,add:vi.fn(),importDocuments:vi.fn(),createSession:vi.fn(),open,run:async work=>{await work();},legacy:vi.fn(),relink:vi.fn(),associate:vi.fn()}}/>);
+ await waitFor(()=>expect(ui.container.querySelector('[data-version-id="ac:e2"]')).toBeTruthy());
+ const group=ui.container.querySelector('[data-original-group="group-a"]')!;
+ const versions=group.querySelectorAll('.setup-document-version');expect(versions).toHaveLength(3);
+ expect(group.querySelector('[data-root-version-id="a:original"]')).toBeTruthy();
+ for(const row of versions) expect(row.parentElement?.closest('.setup-document-version')).toBeNull();
+ expect(ui.container.querySelector('[data-root-version-id="u:e1"]')?.classList.contains('setup-document-version')).toBe(false);
+ expect(ui.container.querySelector('[data-version-id="u:e2"]')?.classList.contains('setup-document-version')).toBe(false);
+ fireEvent.click(group.querySelector('[data-version-id="ac:e2"] .project-file-open')!);
+ expect(open).toHaveBeenLastCalledWith(recording,'ac','e2');
+ fireEvent.keyDown(group.querySelector('[data-root-version-id="a:original"] .setup-grip')!,{key:'ArrowUp',altKey:true});
+ expect(save.mock.calls.at(-1)?.[0][0].recordings[0].manuscriptOrder).toEqual(['a','ac','as','b','u']);
+ cleanup();await setInterfaceLanguage('zh-CN');
 });

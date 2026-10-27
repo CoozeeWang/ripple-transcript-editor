@@ -76,3 +76,20 @@ it('compares against a designated existing version without requiring a snapshot 
  await waitFor(()=>expect(result.current.loading).toBe(false));
  expect(result.current.base).toBe('source:original');
 });
+
+it('defaults to the linked original instead of another original earlier in the list',()=>{
+ const a:TranscriptModel={id:'a',engine:'test',original:'a.json',designatedOriginal:true,originalGroupId:'a-group',edits:[],activeEditId:''};
+ const b:TranscriptModel={...a,id:'b',original:'b.json',originalGroupId:'b-group'};
+ const child:TranscriptModel={id:'child',engine:'test',originalGroupId:'b-group',edits:[{id:'e1',file:'child.json',updated_at:''}],activeEditId:'e1'};
+ const {result}=renderHook(()=>useVersionComparison(null,'synthetic.wav',[a,b,child],'child','e1',false));
+ expect(result.current.base).toBe('b:original');
+ act(()=>result.current.choose('a:original'));expect(result.current.base).toBe('a:original');
+});
+
+it('does not replace a missing linked original with an unrelated original',()=>{
+ const other:TranscriptModel={id:'m1',engine:'test',original:'other.json',designatedOriginal:true,originalGroupId:'other-group',edits:[],activeEditId:''};
+ const child:TranscriptModel={id:'child',engine:'test',originalGroupId:'missing-group',edits:[{id:'e1',file:'child.json',updated_at:''}],activeEditId:'e1'};
+ const {result}=renderHook(()=>useVersionComparison(null,'synthetic.wav',[other,child],'child','e1',false));
+ expect(result.current.base).toBe('');
+ act(()=>result.current.choose('m1:original'));expect(result.current.base).toBe('m1:original');
+});

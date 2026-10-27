@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Transcript, TranscriptModel } from "../types";
 import { defaultEditLabel, readModelEdit, readModelOriginal } from "../localStore";
 import { originalVersionLabel } from '../lib/transcriptLabels';
+import { originalGroups } from '../lib/originalGroups';
 import { flushEditorDrafts } from "../lib/editorDrafts";
 import { useComparisonReadingPosition } from "./useComparisonReadingPosition";
 
@@ -19,11 +20,15 @@ export function useVersionComparison(dir: FileSystemDirectoryHandle | null, audi
     ...model.edits.filter(edit=>!model.designatedOriginal || edit.id!==(model.designatedOriginalEditId ?? model.activeEditId)).map((edit,i)=>({value:`${model.id}:${edit.id}`,model:model.id,edit:edit.id,label:edit.label ?? defaultEditLabel(i)})),
   ]).filter(option=>option.value!==`${modelId}:${original ? "original" : editId}`); }, [models,modelId,editId,original,language]);
   const preferred=models.find(m=>m.id===modelId)?.edits.find(e=>e.id===editId)?.comparisonBaseId;
+  const sourceOriginal=originalGroups(models).find(group=>group.models.some(model=>model.id===modelId))?.original;
+  const knownSource=Boolean(models.find(model=>model.id===modelId)?.originalGroupId);
+  const fallback=knownSource ? options.find(option=>option.model===modelId && option.edit!=='original')?.value ?? ''
+    : options.find(option=>option.edit==='original' && models.find(model=>model.id===option.model)?.designatedOriginal)?.value
+      ?? options.find(option=>option.model===modelId && option.edit==='original')?.value ?? options[0]?.value ?? '';
   const same = state.dir===dir && state.context===context;
   const base = same && options.some(o=>o.value===state.base) ? state.base
     : options.find(o=>o.value===`${modelId}:${preferred}`)?.value
-      ?? options.find(o=>o.edit==="original" && models.find(m=>m.id===o.model)?.designatedOriginal)?.value
-      ?? options.find(o=>o.model===modelId && o.edit==="original")?.value ?? options[0]?.value ?? "";
+      ?? options.find(o=>o.model===sourceOriginal?.id && o.edit==='original')?.value ?? fallback;
   const shown = !original && same && state.shown;
   const toggle = () => { if (original) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:!shown,base}); };
   const choose = (base:string) => { if (original) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:true,base}); };

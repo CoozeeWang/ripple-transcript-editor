@@ -26,6 +26,15 @@
 | `transcriptionAction.preserveDetails` | 原有原始稿、修改稿、批注和高亮均不会被覆盖或删除。 | 原有原始稿、修改稿、批註和醒目提示均不會被覆寫或刪除。 | Existing originals, edited versions, annotations and highlights will not be overwritten or deleted. |
 | `transcriptionAction.confirm` | 确认并开始转录 | 確認並開始轉錄 | Confirm and start transcription |
 
+## 原始稿归属
+
+项目页与版本菜单按“原始稿 → 相关修改稿各版本”展示，修改稿之间不分层级。未关联稿件及来源原稿不在当前列表时，使用中性说明，不误挂靠到其他原始稿。
+
+| 消息键 | 简体中文 | 繁體中文（台灣） | English |
+| --- | --- | --- | --- |
+| `originalGroups.unlinked` | 未关联原始稿 | 未關聯原始稿 | No linked original |
+| `originalGroups.unavailable` | 来源原始稿不在当前列表中 | 來源原始稿不在目前清單中 | The source original is not in this list |
+
 ## 参数与显示约定
 
 - `duration`：当前音频由播放器确认稳定后的时长，采用 `HH:MM:SS`，例如 `03:06:09`。未知值、无效值和其他音频的时长均不能用于判定超限。

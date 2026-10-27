@@ -4,6 +4,7 @@ import type { TranscriptModel } from "../types";
 import { defaultEditLabel, displayEngineLabel } from "../localStore";
 import { useDismissable } from "../useDismissable";
 import { originalVersionLabel } from '../lib/transcriptLabels';
+import { originalGroups, visibleEdits } from '../lib/originalGroups';
 
 export interface VersionPickerProps {
   models: TranscriptModel[];
@@ -95,11 +96,15 @@ export function VersionPicker({models,value,variant,excluded,disabled,mutationDi
   const imported=orderedModels.filter(model=>model.sourceKind === "import")
     .sort((a,b)=>Number(!!b.designatedOriginal)-Number(!!a.designatedOriginal));
   let importIndex=0;
-  const groups=orderedModels.map(model=>model.sourceKind === "import" ? imported[importIndex++] : model).map(model=>({model,entries:[
-    ...((model.designatedOriginal || (model.original && model.sourceKind !== "import")) ? [{id:"original",label:originalVersionLabel(model)}] : []),
-    ...(model.designatedOriginal && variant === "current" ? [] : model.edits).map((edit,index)=>({id:edit.id,label:edit.label ?? defaultEditLabel(index)})),
-  ].filter(entry=>`${model.id}:${entry.id}`!==excluded)})).filter(group=>group.entries.length);
-  const selected=groups.flatMap(({model,entries})=>entries.map(entry=>({...entry,value:`${model.id}:${entry.id}`}))).find(entry=>entry.value===value);
+  const groups=originalGroups(orderedModels.map(model=>model.sourceKind === "import" ? imported[importIndex++] : model)).map(group=>({
+    model:group.original ?? group.models[0], original:group.original, missingOriginal:group.missingOriginal,
+    entries:[
+      ...(group.original ? [{model:group.original,id:"original",label:originalVersionLabel(group.original)}] : []),
+      ...group.models.flatMap(model=>(variant === "current" ? visibleEdits(model) : model.edits)
+        .map((edit,index)=>({model,id:edit.id,label:edit.label ?? defaultEditLabel(index)}))),
+    ].filter(entry=>`${entry.model.id}:${entry.id}`!==excluded),
+  })).filter(group=>group.entries.length);
+  const selected=groups.flatMap(({entries})=>entries.map(entry=>({...entry,value:`${entry.model.id}:${entry.id}`}))).find(entry=>entry.value===value);
   const title=variant==="current" ? msg('VersionPicker.m1087') : msg('VersionPicker.m1088');
   const run=(action:()=>void)=>{clearClick();setEditing(null);setOpen(false);trigger.current?.focus();action();};
   return <div className={`version-picker version-picker--${variant}${variant==="current" && selected?.id==="original" ? " version-picker--original" : ""}`} ref={root}
@@ -129,9 +134,10 @@ export function VersionPicker({models,value,variant,excluded,disabled,mutationDi
         // existing focus until click, otherwise onBlur unmounts this menu.
         if(event.button===0 && (event.target as HTMLElement).closest('button')) event.preventDefault();
       }}>
-      {groups.map(({model,entries})=><section key={model.id} className={`version-picker-group${model.sourceKind === "import" ? " version-picker-group--import" : ""}`}>
+      {groups.map(({model,original,entries,missingOriginal})=><section key={model.id} data-original-group={original?.originalGroupId ?? original?.id} className={`version-picker-group${model.sourceKind === "import" ? " version-picker-group--import" : ""}${original ? "" : " version-picker-group--unlinked"}`}>
+        {!original && <p className="version-picker-group-label">{msg(missingOriginal ? 'originalGroups.unavailable' : 'originalGroups.unlinked')}</p>}
 
-        {entries.map(entry=><div key={entry.id} className={`version-picker-row version-picker-row--${entry.id==="original" ? "original" : "edit"}${`${model.id}:${entry.id}`===value ? " is-selected" : ""}`}>
+        {entries.map(entry=>{const model=entry.model;return <div key={`${model.id}:${entry.id}`} className={`version-picker-row version-picker-row--${entry.id==="original" ? "original" : "edit"}${`${model.id}:${entry.id}`===value ? " is-selected" : ""}`}>
           {entry.id === "original" && model.sourceKind !== "import" && <div className="version-picker-engine"><span>{msg('VersionPicker.m1092')}</span><strong>{displayEngineLabel(model.engine)}</strong></div>}
           {editing?.model===model.id && (editing.edit===entry.id || (editing.edit==="model-name" && entry===entries[0])) ? <div className="version-picker-inline">
             <input ref={input} aria-label={editing.edit === "model-name" ? msg('VersionPicker.m1093') : msg('VersionPicker.m1094')} value={draft} maxLength={100} readOnly={saving} aria-invalid={!!error}
@@ -152,7 +158,7 @@ export function VersionPicker({models,value,variant,excluded,disabled,mutationDi
             {onDelete && <button disabled={saving||disabled||mutationDisabled} type="button" className="version-picker-delete" data-tip={entry.id==="original" ? (model.sourceKind === "import" && !model.designatedOriginal ? msg('VersionPicker.m1106') : msg('VersionPicker.m1107')) : msg('VersionPicker.m1108')} aria-label={msg('VersionPicker.m1109', { v0: entry.label })}
               onClick={()=>run(()=>onDelete(model.id,entry.id,entry.label,entry.id==="original" ? !model.edits.length : !model.original && model.edits.length===1))}><VersionActionIcon action="delete"/></button>}
           </div>
-        </div>)}
+        </div>;})}
       </section>)}
     </div>}
   </div>;

@@ -1,4 +1,8 @@
 {
+  "originalGroups": {
+    "unlinked": "未关联原始稿",
+    "unavailable": "来源原始稿不在当前列表中"
+  },
   "transcriptionAction": {
     "transcribe": "转录音频",
     "running": "此音频正在转录，完成或取消后可再次转录。",
