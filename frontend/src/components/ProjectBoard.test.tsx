@@ -194,8 +194,8 @@ function transferForOrder() {
  const values=new Map<string,string>();
  return {types:['Files'],items:[],effectAllowed:'',dropEffect:'none',setData(type:string,value:string){values.set(type,value);if(!this.types.includes(type))this.types.push(type);},getData:(type:string)=>values.get(type)??''};
 }
-function orderEvent(type:'dragOver'|'drop',target:Element,transfer:ReturnType<typeof transferForOrder>,clientY:number){
- const event=(type==='drop'?createEvent.drop:createEvent.dragOver)(target,{dataTransfer:transfer});
+function orderEvent(type:'dragEnter'|'dragOver'|'drop',target:Element,transfer:ReturnType<typeof transferForOrder>,clientY:number){
+ const event=(type==='drop'?createEvent.drop:type==='dragEnter'?createEvent.dragEnter:createEvent.dragOver)(target,{dataTransfer:transfer});
  Object.defineProperty(event,'clientY',{value:clientY});fireEvent(target,event);
 }
 function rowsAt(rows:Element[]){rows.forEach((row,index)=>vi.spyOn(row,'getBoundingClientRect').mockReturnValue({top:100+index*200,bottom:200+index*200,height:100} as DOMRect));}
@@ -206,6 +206,8 @@ it('accepts a session drop in the list gap, keeps move semantics and persists th
  fireEvent.dragStart(screen.getByRole('button',{name:'调整Reference顺序'}),{dataTransfer:transfer});
  expect(transfer.effectAllowed).toBe('move');expect(transfer.getData('text/plain')).toBe('reference');
  const sidebar=screen.getByRole('complementary',{name:'场次'});
+ orderEvent('dragEnter',sidebar,transfer,450);
+ expect(transfer.dropEffect).toBe('move');expect(rows[2].getAttribute('data-sort-edge')).toBe('before');
  orderEvent('dragOver',sidebar,transfer,450);
  expect(transfer.dropEffect).toBe('move');expect(rows[2].getAttribute('data-sort-edge')).toBe('before');
  orderEvent('drop',sidebar,transfer,450);
