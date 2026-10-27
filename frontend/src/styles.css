@@ -1490,7 +1490,14 @@ button.brand:disabled { opacity: .5; cursor: default; }
   padding: 0 clamp(28px, 4vw, 60px) 54px;
 }
 .transcript-heading { align-items: flex-end; margin-bottom: 19px; flex-wrap: wrap; gap: 12px; }
-.transcript-heading > div:first-child { min-width: 0; }
+.transcript-heading > div:first-child { min-width: 0; width: 100%; }
+.transcript-title-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0; }
+.transcript-title-row h1 { min-width: 0; }
+.transcription-control { display: inline-flex; flex: none; margin-top: 7px; }
+.transcribe-audio-button { width: 40px; height: 40px; color: var(--color-accent); }
+.transcription-control::after { left: auto; right: 0; transform: translateY(-3px); }
+.transcription-control:hover::after, .transcription-control:focus-visible::after,
+.transcription-control:focus-within::after { opacity: 1; transform: translateY(0); transition-delay: 140ms; }
 .transcript-heading-status { display: flex; align-items: center; gap: 16px; margin-left: auto; flex-wrap: wrap; }
 .transcript-heading-status p { white-space: nowrap; margin: 0; }
 .transcript-heading-status .segment-count { color: var(--color-text-muted); font-size: 0.74rem; }
@@ -2348,7 +2355,12 @@ button.brand:disabled { opacity: .5; cursor: default; }
   border-top: 1px solid #e1dfd7;
 }
 
-.transcription-dialog { width: min(640px, 100%); }
+.transcription-dialog { width: min(640px, calc(100vw - 48px)); max-height: calc(100dvh - 48px); }
+.transcription-dialog::backdrop { background: rgba(29, 29, 24, 0.46); backdrop-filter: blur(5px); }
+.transcription-preserve { margin-bottom: 20px; padding: 13px 15px; border: 1px solid var(--color-border-dialog); border-radius: 10px; background: var(--color-panel-bg); }
+.transcription-preserve strong { font-size: 0.86rem; line-height: 1.6; color: var(--color-accent); }
+.transcription-preserve p { margin: 5px 0 0; font-size: 0.76rem; line-height: 1.7; color: var(--color-text-2); }
+.transcription-dialog .dialog-actions { position: sticky; bottom: -26px; padding-bottom: 18px; background: var(--color-surface-dialog); z-index: 1; }
 .merge-dialog { width: min(520px, 100%); }
 .merge-prompt-text {
   margin: 0;

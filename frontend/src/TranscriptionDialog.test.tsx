@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {afterEach,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {TranscriptionDialog} from './TranscriptionDialog';
 import type {ProviderInfo} from './types';
 const providers:ProviderInfo[]=[{id:'qa',name:'测试引擎',configured:true,models:[],credential_fields:[],capabilities:{diarization:false,language_selection:false,speaker_count_hint:false,audio_events:false,word_timestamps:true}}];
+beforeEach(()=>{HTMLDialogElement.prototype.showModal=function(){this.open=true;};});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 it('retries failed configuration loading in place without starting transcription',async()=>{
  const fetch=vi.fn().mockResolvedValueOnce({ok:false}).mockResolvedValueOnce({ok:true,json:async()=>({active_profile_id:'p',profiles:[{id:'p',name:'可用配置',is_default:true}]})});

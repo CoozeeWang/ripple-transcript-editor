@@ -1,4 +1,14 @@
 {
+  "transcriptionAction": {
+    "transcribe": "转录音频",
+    "running": "此音频正在转录，完成或取消后可再次转录。",
+    "editingLocked": "请先结束当前 AI 编辑任务，再转录音频。",
+    "loading": "稿件正在切换，请稍候。",
+    "audioUnavailable": "音频尚未就绪，请先恢复音频访问。",
+    "preserve": "将生成新的原始转录稿，已有稿件保留。",
+    "preserveDetails": "原有原始稿、修改稿、批注和高亮均不会被覆盖或删除。",
+    "confirm": "确认并开始转录"
+  },
   "desktopUpdate": {
     "title": "软件更新",
     "versionBuild": "当前版本 {{version}} · b{{build}}",

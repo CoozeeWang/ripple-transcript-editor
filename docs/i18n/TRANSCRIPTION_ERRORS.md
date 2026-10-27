@@ -11,6 +11,21 @@
 | `transcriptionErrors.inputLimit` | 诊断原因分类；对应稳定分类码 `input_limit`。 | 音频超过所选引擎的限制 | 音訊超過所選引擎的限制 | Audio exceeds the selected engine’s limits |
 | `useTranscription.m1154` | 超时长后的操作建议；本轮更新既有条目。 | 请切分音频，或改用支持更长音频的引擎。 | 請分割音訊，或改用支援更長音訊的引擎。 | Split the audio, or choose an engine that supports longer recordings. |
 
+## 转录入口与确认
+
+标题行右侧的图标只打开现有转录设置。已有稿件时，确认前说明新增原始稿及保留范围；点击确认后才调用引擎。此音频正在转录时禁用入口，不区分首次与再次转录的按钮名称。
+
+| 消息键 | 简体中文 | 繁體中文（台灣） | English |
+| --- | --- | --- | --- |
+| `transcriptionAction.transcribe` | 转录音频 | 轉錄音訊 | Transcribe audio |
+| `transcriptionAction.running` | 此音频正在转录，完成或取消后可再次转录。 | 此音訊正在轉錄，完成或取消後可再次轉錄。 | This audio is being transcribed. Wait for it to finish or cancel before starting again. |
+| `transcriptionAction.editingLocked` | 请先结束当前 AI 编辑任务，再转录音频。 | 請先結束目前的 AI 編輯任務，再轉錄音訊。 | End the current AI editing task before transcribing this audio. |
+| `transcriptionAction.loading` | 稿件正在切换，请稍候。 | 稿件正在切換，請稍候。 | Switching versions. Please wait. |
+| `transcriptionAction.audioUnavailable` | 音频尚未就绪，请先恢复音频访问。 | 音訊尚未就緒，請先恢復音訊存取權限。 | The audio is not ready. Restore audio access first. |
+| `transcriptionAction.preserve` | 将生成新的原始转录稿，已有稿件保留。 | 將產生新的原始轉錄稿，既有稿件保留。 | A new original transcript will be created. Existing versions will be kept. |
+| `transcriptionAction.preserveDetails` | 原有原始稿、修改稿、批注和高亮均不会被覆盖或删除。 | 原有原始稿、修改稿、批註和醒目提示均不會被覆寫或刪除。 | Existing originals, edited versions, annotations and highlights will not be overwritten or deleted. |
+| `transcriptionAction.confirm` | 确认并开始转录 | 確認並開始轉錄 | Confirm and start transcription |
+
 ## 参数与显示约定
 
 - `duration`：当前音频由播放器确认稳定后的时长，采用 `HH:MM:SS`，例如 `03:06:09`。未知值、无效值和其他音频的时长均不能用于判定超限。

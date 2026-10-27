@@ -1,4 +1,14 @@
 {
+  "transcriptionAction": {
+    "transcribe": "Transcribe audio",
+    "running": "This audio is being transcribed. Wait for it to finish or cancel before starting again.",
+    "editingLocked": "End the current AI editing task before transcribing this audio.",
+    "loading": "Switching versions. Please wait.",
+    "audioUnavailable": "The audio is not ready. Restore audio access first.",
+    "preserve": "A new original transcript will be created. Existing versions will be kept.",
+    "preserveDetails": "Existing originals, edited versions, annotations and highlights will not be overwritten or deleted.",
+    "confirm": "Confirm and start transcription"
+  },
   "desktopUpdate": {
     "title": "Software update",
     "versionBuild": "Current version {{version}} · b{{build}}",

@@ -1,4 +1,14 @@
 {
+  "transcriptionAction": {
+    "transcribe": "轉錄音訊",
+    "running": "此音訊正在轉錄，完成或取消後可再次轉錄。",
+    "editingLocked": "請先結束目前的 AI 編輯任務，再轉錄音訊。",
+    "loading": "稿件正在切換，請稍候。",
+    "audioUnavailable": "音訊尚未就緒，請先恢復音訊存取權限。",
+    "preserve": "將產生新的原始轉錄稿，既有稿件保留。",
+    "preserveDetails": "原有原始稿、修改稿、批註和醒目提示均不會被覆寫或刪除。",
+    "confirm": "確認並開始轉錄"
+  },
   "desktopUpdate": {
     "title": "軟體更新",
     "versionBuild": "目前版本 {{version}} · b{{build}}",
