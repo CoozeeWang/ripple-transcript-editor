@@ -202,14 +202,33 @@ it('does not replace a recent entry with a different project', async () => {
   expect(screen.queryByRole('heading', { name: '测试项目' })).toBeNull();
 });
 
-it('opens the organizer before choosing a save location or writing a project', async () => {
+it('requires saving a named project before exposing session creation or material import', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
   expect(screen.queryByText('最近项目')).toBeNull();
-  expect(screen.getByRole('heading', { name: '点击填写场次名称' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '保存项目' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('textbox', { name: '项目名称' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '选择位置并保存项目' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.queryByRole('button', { name: '新增场次' })).toBeNull();
+  expect(screen.queryByText('选择或拖入音频，加入这个场次')).toBeNull();
   expect(store.createProject).not.toHaveBeenCalled();
   expect(state.picker).not.toHaveBeenCalled();
+  const empty = { ...project, data: { ...project.data, interviews: [] } };
+  vi.mocked(store.createProject).mockResolvedValueOnce(empty);
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: empty.data.title } });
+  fireEvent.click(screen.getByRole('button', { name: '选择位置并保存项目' }));
+  expect(await screen.findByRole('button', { name: '新增场次' })).toBeTruthy();
+  expect(store.createProject).toHaveBeenCalledWith(project.directory, empty.data.title);
+  expect(store.importProjectMaterials).not.toHaveBeenCalled();
+  expect(store.rememberProject).toHaveBeenCalledWith(empty);
+  vi.mocked(store.saveProject).mockImplementationOnce(async (p, data) => ({ ...p, data }));
+  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getByRole('button', { name: '场次名称' }));
+  const sessionName = screen.getByRole('textbox', { name: '场次名称' });
+  fireEvent.change(sessionName, { target: { value: 'Synthetic saved session' } });
+  fireEvent.keyDown(sessionName, { key: 'Enter' });
+  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  expect(await screen.findByRole('button', { name: '选择或拖入音频，加入这个场次' })).toBeTruthy();
+  expect(store.saveProject).toHaveBeenCalledWith(empty, expect.objectContaining({ interviews: [expect.objectContaining({ title: 'Synthetic saved session' })] }));
 });
 
 it('clears a failed open-project error when starting a new project', async () => {
@@ -219,7 +238,7 @@ it('clears a failed open-project error when starting a new project', async () =>
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText(openError);
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
-  await screen.findByRole('heading', { name: '点击填写场次名称' });
+  await screen.findByRole('textbox', { name: '项目名称' });
   expect(screen.queryByText(openError)).toBeNull();
 });
 

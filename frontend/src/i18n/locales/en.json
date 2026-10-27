@@ -1862,5 +1862,14 @@
     "trashHint": "Deleted audio, manuscripts and entire sessions are kept here. Restoring a session brings back its audio and manuscripts. Emptying Trash is permanent; referenced external files are not affected.",
     "clearDescription": "Permanently remove {{count}} Trash entries, including deleted sessions and their audio and manuscripts? This cannot be undone. Referenced external files will not be deleted.",
     "changed": "The project has changed. Cancel this deletion and review the session again before retrying."
+  },
+  "ProjectCreate": {
+    "heading": "New project",
+    "hint": "Save the project first, then create sessions and import audio or manuscripts.",
+    "name": "Project name",
+    "cancel": "Cancel",
+    "save": "Choose location and save project",
+    "saving": "Saving project…",
+    "saveFailed": "Unable to save the project. Check write permission for the selected location, or choose another location and retry."
   }
 }

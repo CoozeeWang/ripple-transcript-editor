@@ -1,0 +1,8 @@
+.project-create { box-sizing: border-box; width: min(100%, 560px); margin: 32px auto; padding: 32px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-warm); display: grid; gap: 16px; }
+.project-create h1 { margin: 0; font: 500 28px/1.3 var(--font-serif); }
+.project-create__hint { margin: 0 0 8px; color: var(--color-text-3); font: 400 14px/1.6 var(--font-sans); }
+.project-create label { font: 500 14px/1.5 var(--font-sans); }
+.project-create input:focus-visible { outline: none; border-color: var(--color-focus); box-shadow: none; }
+.project-create .project-error-notice { margin: 0; }
+.project-create .project-error-notice p { flex: 1; }
+.project-create__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 8px; }

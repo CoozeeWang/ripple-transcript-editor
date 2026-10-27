@@ -24,6 +24,7 @@ import { ProjectExportDialog } from './ProjectExportDialog';
 import { hasEditorDrafts } from '../lib/editorDrafts';
 import { persistActiveModel } from '../localStore';
 import { ProjectSetup } from './ProjectSetup';
+import { ProjectCreate } from './ProjectCreate';
 import { ProjectBoard } from './ProjectBoard';
 import { ProjectIcon } from './ProjectIcon';
 import { InlineEdit } from './InlineEdit';
@@ -43,7 +44,7 @@ export function ProjectWorkspace() {
   const audioStorage = useAudioStorageChoice();
   const [trashOpen,setTrashOpen]=useState(false);
   const [sessionDelete,setSessionDelete]=useState<{session:ProjectInterview;revision:number}|null>(null);
-  const focusAfterTrash=useRef(false);
+  const focusProjectSelection=useRef(false);
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
   const [deleteTarget,setDeleteTarget]=useState<{recording:ProjectRecording;modelId?:string;name:string;hasDocuments:boolean;sessionId:string}|null>(null);
   const [project, setProject] = useState<OpenProject | null>(null);
@@ -211,12 +212,12 @@ export function ProjectWorkspace() {
     const restoredSession = snapshot.data.sessionTrash?.find(item => item.id === id)?.interview;
     const next = await restoreProjectTrashItem(snapshot, id);
     await publish(next);
-    if (restoredSession) { setInterviewId(restoredSession.id); focusAfterTrash.current = true; }
+    if (restoredSession) { setInterviewId(restoredSession.id); focusProjectSelection.current = true; }
     if (undoTrash === id) setUndoTrash(null);
   };
   useEffect(() => {
-    if (!focusAfterTrash.current || trashOpen || sessionDelete || busy) return;
-    focusAfterTrash.current = false;
+    if (!focusProjectSelection.current || trashOpen || sessionDelete || busy) return;
+    focusProjectSelection.current = false;
     const selected = Array.from(document.querySelectorAll<HTMLElement>('[data-session-id]')).find(row => row.dataset.sessionId === interviewId);
     (selected ?? document.querySelector<HTMLElement>('.setup-new'))?.focus();
   }, [project, interviewId, trashOpen, sessionDelete, busy]);
@@ -309,7 +310,7 @@ export function ProjectWorkspace() {
       {busy && showProgress && !importStage && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
       {successNotice && <ProcessingNotice onDismiss={()=>setSuccessNotice(null)}>{uiMessage(successNotice)}</ProcessingNotice>}
       {!project ? <>
-        {creating ? <ProjectSetup onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { void publish(next); setSuccessNotice(next.data.interviews.some(interview => interview.recordings.length > 0) ? msg('projectImport.materialsDone') : null); setCreating(false); setInterviewId(next.data.interviews[0]?.id ?? null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
+        {creating ? <ProjectCreate onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { focusProjectSelection.current = true; void publish(next); setCreating(false); setInterviewId(null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
           <div className="project-welcome__identity">
             <img src="/ripple-icon.svg" alt="" width="80" height="80" />
             <div className="project-welcome__title"><h1>Ripple</h1><p>{msg('ProjectWorkspace.m0912')}</p></div>
@@ -353,7 +354,7 @@ export function ProjectWorkspace() {
             await publish(next); clearPageFeedback();
             setInterviewId(next.data.interviews[Math.min(position, next.data.interviews.length - 1)]?.id ?? null);
             setUndoTrash(next.data.sessionTrash!.at(-1)!.id);
-            focusAfterTrash.current = true; setSessionDelete(null);
+            focusProjectSelection.current = true; setSessionDelete(null);
           }, false)}/>}
         {trashOpen&&<ProjectTrashDialog project={project} busy={busy} error={error} onClose={()=>setTrashOpen(false)} onRestore={id=>void run(()=>restoreTrash(id),false)} onClear={()=>void run(async()=>{await publish(await clearProjectTrash(current.current!));setUndoTrash(null);},false)}/>}
         {undoTrash&&(project.data.trash?.some(t=>t.id===undoTrash)||project.data.sessionTrash?.some(t=>t.id===undoTrash))&&!trashOpen&&<TrashUndoNotice key={undoTrash} busy={busy} onUndo={()=>void run(()=>restoreTrash(undoTrash),false)} onDismiss={()=>setUndoTrash(null)}/>}
