@@ -5,6 +5,7 @@ import { MaterialImportNotice, type MaterialImportNote } from '../src/components
 import { LoadErrorNotice, SaveToastNotice } from '../src/components/EditorFeedback';
 import { FeedbackNotice } from '../src/components/FeedbackNotice';
 import { ProcessingNotice } from '../src/components/ProcessingNotice';
+import { ContinuationProgress } from '../src/components/ContinuationProgress';
 import { AIEditingNotice } from '../src/components/AIEditingNotice';
 import { useTransientState, SUCCESS_FEEDBACK_MS } from '../src/hooks/useTransientState';
 import { msg, setInterfaceLanguage, type InterfaceLanguage } from '../src/i18n';
@@ -33,7 +34,7 @@ export function Review() {
     void document.fonts.ready.then(() => {
       const checks = [...document.querySelectorAll<HTMLElement>('.notice-row,.ai-editing-notice')].map(row => {
         const body = row.querySelector<HTMLElement>('.notice-row__message,.ai-editing-copy')!;
-        const close = row.querySelector<HTMLButtonElement>('.notice-dismiss,.feedback-dismiss,.ai-editing-close')!;
+        const close = row.querySelector<HTMLButtonElement>('.notice-row__actions,.notice-dismiss,.feedback-dismiss,.ai-editing-close')!;
         const r = row.getBoundingClientRect(), b = body.getBoundingClientRect(), c = close.getBoundingClientRect();
         return { name: row.className, rightOfText: c.left >= b.right - 1,
           sameRow: c.top < b.top + 32, inside: c.right <= r.right + 1,
@@ -60,6 +61,12 @@ export function Review() {
         {error && <FeedbackNotice error text={msg('connector.setup_error')} onDismiss={() => setError(false)}/>}
         {info && <FeedbackNotice text={msg('connector.added_claude')} onDismiss={() => setInfo(false)}/>}
       </section>}
+      {scope === 'progress' && error && <AIEditingNotice activities={[]} onEnd={async () => {}}>
+        <ContinuationProgress embedded tasks={[]} error="synthetic_progress_failure" onAction={async () => {}} onDismissError={() => setError(false)}/>
+      </AIEditingNotice>}
+      {scope === 'recovery' && <AIEditingNotice activities={[]} onEnd={async () => {}}>
+        <ContinuationProgress embedded tasks={[]} error="continuation_journal_unreadable" onAction={async () => {}}/>
+      </AIEditingNotice>}
       {scope === 'tasks' && <AIEditingNotice activities={[task]} onEnd={async () => {}} onDismiss={async () => setTask({ ...task, dismissed: true })}/>}
     </div>
     <pre id="audit" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{audit ? JSON.stringify(audit, null, 2) : 'Reviewing…'}</pre>

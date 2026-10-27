@@ -347,3 +347,18 @@ it.each(['zh-CN','zh-TW','en'] as const)('shows persistent duration beneath audi
   expect(ui.container.querySelector('.setup-audio-name strong + small')).toBeTruthy();
  } finally {await setInterfaceLanguage('zh-CN');}
 });
+
+it('keeps an original-designation failure attached to its own session', async () => {
+  const model={id:'m',label:'Synthetic manuscript',engine:'synthetic',sourceKind:'import',designatedOriginal:true,edits:[],activeEditId:''} as TranscriptModel;
+  vi.mocked(local.readManifest).mockResolvedValue({models:[model]} as never);
+  vi.mocked(local.setModelOriginal).mockRejectedValueOnce(Error('Synthetic designation failure'));
+  const project={data:{id:'synthetic-project',interviews:[{id:'a',title:'Synthetic A',recordings:[{id:'r',file:'synthetic.wav',name:'Synthetic audio',storage:'copy'}]},{id:'b',title:'Synthetic B',recordings:[]}]}} as OpenProject;
+  const props={project,busy:false,select:vi.fn(),save:vi.fn(),add:vi.fn(),importDocuments:async()=>{},createSession:async()=>{},open:vi.fn(),run:async(work:()=>Promise<void>)=>{await work();},legacy:vi.fn(),relink:vi.fn(),associate:vi.fn()};
+  const ui=render(<ProjectBoard {...props} selected="a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'取消“原始转录稿”标记 Synthetic manuscript'}));
+  await screen.findByRole('alert');
+  ui.rerender(<ProjectBoard {...props} selected="b"/>);
+  expect(screen.queryByText('Synthetic designation failure')).toBeNull();
+  ui.rerender(<ProjectBoard {...props} selected="a"/>);
+  expect(screen.getByText('Synthetic designation failure')).toBeTruthy();
+});

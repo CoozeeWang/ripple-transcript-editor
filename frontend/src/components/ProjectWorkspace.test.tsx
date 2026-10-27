@@ -658,3 +658,22 @@ it('dismisses or expires completed import limitations without changing the impor
   expect(screen.getByText('测试项目')).toBeTruthy();
   timer.mockRestore();
 });
+
+it.each(['settings','editor','session'] as const)('does not resurrect import feedback after visiting another %s view', async target => {
+  const next={...project,data:{...project.data,interviews:[...project.data.interviews,{id:'second',title:'Synthetic second session',recordings:[]}]}} as store.OpenProject;
+  vi.mocked(store.openProject).mockResolvedValue(next);
+  vi.mocked(store.importProjectMaterials).mockResolvedValue(next);
+  render(<ProjectWorkspace/>);
+  fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+  const zone=await screen.findByRole('button',{name:'选择或拖入独立转录稿，不关联音频'});
+  const file={name:'Synthetic notice.txt',text:async()=>'Synthetic text'} as File;
+  fireEvent.drop(zone,{dataTransfer:{types:['Files'],files:[file],items:[]}});
+  await screen.findByText(`Synthetic notice.txt：${msg('materialImport.m1379')}`);
+  if(target==='settings') fireEvent.click(screen.getByRole('button',{name:'设置'}));
+  else if(target==='editor') fireEvent.click(screen.getByRole('button',{name:'打开 音频 录音.wav'}));
+  else fireEvent.click(screen.getByRole('button',{name:/Synthetic second session.*音频：0 个/}));
+  if(target!=='session') fireEvent.click(await screen.findByRole('button',{name:'返回访谈'}));
+  else fireEvent.click(screen.getByRole('button',{name:/第一次访谈.*音频：1 个/}));
+  expect(screen.queryByText(`Synthetic notice.txt：${msg('materialImport.m1379')}`)).toBeNull();
+  expect(store.importProjectMaterials).toHaveBeenCalledOnce();
+});

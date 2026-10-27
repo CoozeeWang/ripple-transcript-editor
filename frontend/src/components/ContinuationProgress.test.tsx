@@ -175,3 +175,20 @@ it('expires only completed history, keeping pending proposals and task records i
     expect(screen.getByRole('button', { name: '查看待提交修改' })).toBeTruthy();
   } finally { vi.useRealTimers(); }
 });
+
+it('keeps error text, refresh and presentation-only close in one row', () => {
+  const action=vi.fn(), dismiss=vi.fn();
+  const ui=render(<ContinuationProgress embedded tasks={[]} error="synthetic_failure" onAction={action} onDismissError={dismiss}/>);
+  const row=screen.getByRole('alert');
+  expect(row.classList.contains('notice-row')).toBe(true);
+  expect(row.querySelector('.notice-row__message')?.textContent).toContain('无法更新编辑进度');
+  expect(row.contains(screen.getByRole('button',{name:'刷新进度'}))).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'关闭提示'}));
+  expect(dismiss).toHaveBeenCalledOnce(); expect(action).not.toHaveBeenCalled();
+  expect(ui.container.querySelector('.continuation-progress-row')).toBeNull();
+});
+it('keeps journal recovery actionable rather than silently dismissing it', () => {
+  render(<ContinuationProgress embedded tasks={[]} error="continuation_journal_unreadable" onAction={vi.fn()} onDismissError={vi.fn()}/>);
+  expect(screen.getByRole('button',{name:'刷新进度'})).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'关闭提示'})).toBeNull();
+});

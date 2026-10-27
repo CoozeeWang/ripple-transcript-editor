@@ -17,6 +17,7 @@ export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurr
   const run = async (task: AIEditActivity) => {
     setBusy(task.task_id);
     try { await (blocksHumanEditing(task) ? onEnd(task.task_id) : onDismiss?.(task.task_id)); }
+    catch { /* The window runtime retains the actionable failure. */ }
     finally { setBusy(null); }
   };
   // Recovery errors must remain visible even when no task could be recovered.

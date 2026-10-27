@@ -3314,6 +3314,8 @@ button > svg.action-icon[aria-hidden="true"] {
 .continuation-progress-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-inline-start: auto; }
 .continuation-progress .cred-btn { min-height: 28px; padding: 3px 8px; font-family: var(--font-sans); font-size: .78rem; }
 .continuation-progress-note, .continuation-progress-error { margin: 5px 0 0; line-height: 1.5; overflow-wrap: anywhere; color: var(--color-text-3); }
+.continuation-progress-error:first-child { margin-top: 0; }
+.continuation-progress-error.notice-row { align-items: center; }
 .continuation-progress-caution, .continuation-progress-error { color: var(--color-danger); }
 .continuation-proposals pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 8px; background: var(--color-page-bg); }
 .continuation-proposals { max-height: 16rem; overflow-y: auto; margin-top: 6px; }

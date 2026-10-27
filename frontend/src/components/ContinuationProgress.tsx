@@ -13,7 +13,7 @@ function currentTask(tasks:Progress[]) {
     (rank(task)===rank(best)&&(task.updated??'')>=(best.updated??''))?task:best,undefined);
 }
 
-export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embedded?:boolean;tasks:Progress[];error:string;onAction:(operation:string,task?:string)=>Promise<unknown>}) {
+export function ContinuationProgress({tasks,error,onAction,onDismissError,embedded=false}:{embedded?:boolean;onDismissError?:()=>void;tasks:Progress[];error:string;onAction:(operation:string,task?:string)=>Promise<unknown>}) {
   useInterfaceLanguage();const [busy,setBusy]=useState(false);
   const [preview,setPreview]=useState<{task:string;proposals:{index:number;action:string;current_text:string|null;after:string}[]}|null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
@@ -28,7 +28,7 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
   const message=task?(!canOperate?msg('continuation.openVersion'):task.state==='paused'?(task.reason==='user_paused'?msg('continuation.paused'):task.reason==='planned_segment_changed'?msg('continuation.scopeChanged'):task.reason==='batch_conflict_manual_changes_preserved'?msg('continuation.conflict'):msg('continuation.savePaused')):task.state==='completed'?msg('continuation.completed'):task.staged?msg('continuation.staged',{count:task.staged}):msg('continuation.ready')):'';
   const live=task?.state==='draft';
   return <section className={`continuation-progress${live&&!embedded?' is-running':''}${embedded?' is-embedded':''}`} aria-label={msg('continuation.title')}>
-    <div className="continuation-progress-row">
+    {(!embedded || task && (task.state==='paused' || task.staged>0 || task.held_batches>0)) && <div className="continuation-progress-row">
       {!embedded&&<><strong className="continuation-progress-title">{msg('continuation.title')}</strong>
       {task&&<>
         <span className="continuation-progress-version" title={task.project_target ? `${task.project_target.interview} · ${task.project_target.recording} · ${task.version}` : task.version}>{task.project_target ? `${task.project_target.recording} · ${task.version}` : task.version}</span>
@@ -40,7 +40,7 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
       </>}
       </>}
       <div className="continuation-progress-actions">
-        {(!embedded||task?.state==='paused'||error)&&<button className="cred-btn" type="button" disabled={busy} onClick={()=>void run('tasks')}>{msg('continuation.refresh')}</button>}
+        {!error&&(!embedded||task?.state==='paused')&&<button className="cred-btn" type="button" disabled={busy} onClick={()=>void run('tasks')}>{msg('continuation.refresh')}</button>}
         {task&&<>
           {!embedded&&task.state==='completed'&&!task.staged&&!task.held_batches&&<button type="button" className="feedback-dismiss" aria-label={msg('notice.dismiss')} onClick={() => setHidden(ids => [...ids, ...tasks.filter(item => item.state === 'completed').map(item => item.task_id)])}>×</button>}
           {(task.staged>0||task.held_batches>0)&&<button type="button" className="cred-btn" disabled={busy||!canOperate} onClick={()=>void showProposals(task.task_id)}>{msg('continuation.viewPending')}</button>}
@@ -49,8 +49,14 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
           {!embedded&&task.state!=='completed'&&<button type="button" className="cred-btn" disabled={busy||!canOperate} onClick={()=>void run('cancel',task.task_id)}>{msg('continuation.cancel')}</button>}
         </>}
       </div>
-    </div>
-    {error&&<p className="continuation-progress-error" role="alert">{msg(error==='continuation_journal_unreadable'?'continuation.unreadableJournals':'continuation.error')}</p>}
+    </div>}
+    {error&&<div className="continuation-progress-error notice-row" role="alert">
+      <span className="notice-row__message">{msg(error==='continuation_journal_unreadable'?'continuation.unreadableJournals':'continuation.error')}</span>
+      <div className="notice-row__actions">
+        <button className="cred-btn" type="button" disabled={busy} onClick={()=>void run('tasks')}>{msg('continuation.refresh')}</button>
+        {onDismissError&&error!=='continuation_journal_unreadable'&&<button className="notice-dismiss" type="button" aria-label={msg('notice.dismiss')} onClick={onDismissError}>×</button>}
+      </div>
+    </div>}
     {task&&(!embedded||task.state==='paused')&&<p className="continuation-progress-note"><span>{message}</span>{task.state!=='completed'&&!embedded&&<span> {msg('aiEditing.endHelp')}</span>}{live&&task.is_current&&<span className="continuation-progress-caution"> {msg('continuation.caution')}</span>}{task.held_batches>0&&<span> {msg('continuation.held')}</span>}</p>}
     {canOperate&&task&&(task.staged>0||task.held_batches>0)&&preview?.task===task.task_id&&<div className="continuation-proposals">
       <button type="button" className="cred-btn" onClick={()=>setPreview(null)}>{msg('continuation.hidePending')}</button>

@@ -214,7 +214,7 @@ it("publishes the exact loaded metadata and transcript references after applying
 
 it('shows damaged-journal recovery when no AI activity or healthy task could be recovered', async () => {
   const state: ConnectorState = { enabled: false, setEnabled: vi.fn(), reconnect: vi.fn(), status: 'off', activities: [], tasks: [],
-    taskError: 'continuation_journal_unreadable', taskAction: vi.fn(async () => ({})), targetLocked: () => false };
+    taskError: 'continuation_journal_unreadable', taskActionError: '', recoveryWarning: 'continuation_journal_unreadable', recoveryProjectIds: [''], dismissTaskError: vi.fn(), taskAction: vi.fn(async () => ({})), targetLocked: () => false };
   renderBase(<ConnectorContext.Provider value={{ state, register: vi.fn(), unregister: vi.fn() }}><App /></ConnectorContext.Provider>);
   load('Synthetic.wav');
   expect(screen.getByRole('alert').textContent).toContain('其他任务仍可使用');

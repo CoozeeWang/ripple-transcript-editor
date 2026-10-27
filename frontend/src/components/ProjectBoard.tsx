@@ -20,7 +20,7 @@ import { adjacentSessionRow, focusSessionRowFromClick } from './sessionRowKeyboa
 import { ProjectIcon } from './ProjectIcon';
 interface Props {
  project: OpenProject; mediaRevision?: number; selected: string | null; busy: boolean;
- select: (id: string)=>void; save: (interviews: ProjectInterview[])=>void;
+ select: (id: string, preserveFeedback?: boolean)=>void; save: (interviews: ProjectInterview[])=>void;
  add: (id?: string)=>void; importDocuments: (id: string, files: FileSystemFileHandle[], kind?: 'audio' | 'manuscript', audioId?: string, referenceable?: boolean)=>Promise<void>; createSession: (session: ProjectInterview)=>Promise<void>; open: (recording: ProjectRecording, modelId?: string, editId?: string)=>void;
  run: (work:()=>Promise<void>)=>Promise<void>;
  moveRecordings?: (source: string, target: string, ids: string[])=>Promise<void>;
@@ -61,7 +61,9 @@ export function ProjectBoard({project,mediaRevision=0,selected,busy,select,save,
  const [models,setModels]=useState<Record<string,TranscriptModel[]>>({});
  const [readError,setReadError]=useState({sessionId:'',message:''});
  const [originalTarget,setOriginalTarget]=useState<{recording:ProjectRecording;model:TranscriptModel}|null>(null);
- const [originalError,setOriginalError]=useState('');
+ const [originalFailure,setOriginalFailure]=useState({sessionId:'',message:''});
+ const originalError=originalFailure.sessionId===session?.id?originalFailure.message:'';
+ const setOriginalError=(message:string)=>setOriginalFailure({sessionId:session?.id??'',message});
  const [renaming,setRenaming]=useState<string|null>(null);
  const drag=useRef<{id:string;group:string}|null>(null);
  const [draggingSession,setDraggingSession]=useState<string|null>(null);
@@ -153,5 +155,5 @@ export function ProjectBoard({project,mediaRevision=0,selected,busy,select,save,
  onDragOver={e=>{if(!busy&&e.dataTransfer.types.includes('Files')){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';setDocumentDrag(true);}}}
  onDragLeave={()=>setDocumentDrag(false)} onDrop={e=>{e.preventDefault();e.stopPropagation();setDocumentDrag(false);if(busy||!e.dataTransfer.types.includes('Files'))return;const files=droppedFiles(e.dataTransfer);void run(async()=>{const selected=await files;if(selected.length)await importDocuments(session.id,selected.map(f=>f.handle));});}}><ProjectIcon kind="document"/>{msg('ProjectBoard.m0716')}</button><ManuscriptImportHint/></section>
  </>:<p className="settings-hint">{msg('ProjectBoard.m0717')}</p>}</div></div>{moving&&moveRecordings&&<MoveRecordingsDialog source={moving.source} sessions={project.data.interviews} count={moving.ids.length} names={moving.source.recordings.filter(r=>moving.ids.includes(r.id)).map(r=>r.name)} busy={busy} error={moveError}
- onCancel={()=>{if(!busy)setMoving(null);}} onConfirm={target=>{void run(async()=>{setMoveError('');try{await moveRecordings(moving.source.id,target,moving.ids);movedFocus.current=target;setMoving(null);setMoveSelection({sessionId:'',ids:[]});select(target);}catch(error){setMoveError(error instanceof Error&&error.message===msg('aiEditing.inUse')?error.message:msg('recordingMove.failed'));}});}}/>}{originalTarget&&<OriginalDesignationDialog name={originalTarget.model.label||originalTarget.model.sourceName||originalTarget.model.engine} busy={busy} error={originalError} onCancel={()=>setOriginalTarget(null)} onConfirm={()=>designate(originalTarget.recording,originalTarget.model,true)}/>} {!originalTarget&&originalError&&<p role="alert" className="form-error">{uiMessage(originalError)}</p>}</>;
+ onCancel={()=>{if(!busy)setMoving(null);}} onConfirm={target=>{void run(async()=>{setMoveError('');try{await moveRecordings(moving.source.id,target,moving.ids);movedFocus.current=target;setMoving(null);setMoveSelection({sessionId:'',ids:[]});select(target,true);}catch(error){setMoveError(error instanceof Error&&error.message===msg('aiEditing.inUse')?error.message:msg('recordingMove.failed'));}});}}/>}{originalTarget&&<OriginalDesignationDialog name={originalTarget.model.label||originalTarget.model.sourceName||originalTarget.model.engine} busy={busy} error={originalError} onCancel={()=>setOriginalTarget(null)} onConfirm={()=>designate(originalTarget.recording,originalTarget.model,true)}/>} {!originalTarget&&originalError&&<p role="alert" className="form-error">{uiMessage(originalError)}</p>}</>;
 }

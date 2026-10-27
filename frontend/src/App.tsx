@@ -1111,7 +1111,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
           ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
           : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
-          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
+          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction} onDismissError={connector.dismissTaskError}/>}
         </AIEditingNotice>
       {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice

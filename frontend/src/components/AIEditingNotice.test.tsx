@@ -97,3 +97,13 @@ it('expires completed presentation after four seconds without ending a task or d
     expect(screen.getByRole('button', { name: '结束编辑' })).toBeTruthy();
   } finally { vi.useRealTimers(); }
 });
+
+it('retains the task and restores its action after a failed end request', async () => {
+  await act(() => setInterfaceLanguage('zh-CN'));
+  const end=vi.fn(async()=>{throw Error('synthetic_end_failure');});
+  render(<AIEditingNotice activities={[task]} onEnd={end}/>);
+  await act(async () => fireEvent.click(screen.getByRole('button',{name:'结束编辑'})));
+  expect(end).toHaveBeenCalledWith(task.task_id);
+  expect((screen.getByRole('button',{name:'结束编辑'}) as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByRole('status').textContent).toContain('Synthetic v1');
+});
