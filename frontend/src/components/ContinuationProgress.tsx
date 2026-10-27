@@ -1,6 +1,9 @@
 import {useState} from 'react';
 import {msg,useInterfaceLanguage} from '../i18n';
 import type {ContinuationProgress as Progress} from '../lib/incrementalContinuation';
+import { useExpiredFeedback } from '../hooks/useExpiredFeedback';
+
+const receipt = (task: Progress) => JSON.stringify([task.task_id, task.updated, task.saved_segments, task.saved_batches]);
 
 /** Prefer recoverable work over completed history; never discard the stored tasks. */
 function currentTask(tasks:Progress[]) {
@@ -14,7 +17,9 @@ export function ContinuationProgress({tasks,error,onAction,embedded=false}:{embe
   useInterfaceLanguage();const [busy,setBusy]=useState(false);
   const [preview,setPreview]=useState<{task:string;proposals:{index:number;action:string;current_text:string|null;after:string}[]}|null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
-  const task=currentTask(tasks.filter(task => task.state !== 'completed' || !hidden.includes(task.task_id)));
+  const eligible = (task: Progress) => task.state === 'completed' && !task.staged && !task.held_batches;
+  const expired = useExpiredFeedback(embedded || error ? [] : tasks.filter(task => eligible(task) && task.is_current).map(receipt));
+  const task=currentTask(tasks.filter(task => task.state !== 'completed' || !hidden.includes(task.task_id) && (!eligible(task) || !expired.has(receipt(task)))));
   const canOperate=!!task&&(task.is_current||!!task.project_target);
   if(!task&&!error)return null;
   if(embedded&&!error&&task?.state!=='paused'&&!task?.staged&&!task?.held_batches)return null;

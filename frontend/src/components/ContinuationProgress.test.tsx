@@ -161,3 +161,17 @@ it.each(['zh-CN', 'zh-TW', 'en'] as const)('reports unreadable journals while re
   expect(screen.getByRole('alert').textContent).toContain(language === 'en' ? 'other tasks remain available' : language === 'zh-TW' ? '其他工作仍可使用' : '其他任务仍可使用');
   expect(screen.getAllByRole('button').some(button => !(button as HTMLButtonElement).disabled)).toBe(true);
 });
+
+it('expires only completed history, keeping pending proposals and task records intact', () => {
+  vi.useFakeTimers();
+  try {
+    const completed = { ...task, state: 'completed' as const, staged: 0, held_batches: 0 };
+    const action = vi.fn();
+    const { container, rerender } = render(<ContinuationProgress tasks={[completed]} error="" onAction={action}/>);
+    act(() => vi.advanceTimersByTime(4000)); expect(container.textContent).toBe('');
+    expect(action).not.toHaveBeenCalled(); expect(completed.state).toBe('completed');
+    rerender(<ContinuationProgress tasks={[{ ...completed, staged: 1 }]} error="" onAction={action}/>);
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.getByRole('button', { name: '查看待提交修改' })).toBeTruthy();
+  } finally { vi.useRealTimers(); }
+});

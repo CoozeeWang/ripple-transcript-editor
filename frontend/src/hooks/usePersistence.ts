@@ -1,4 +1,5 @@
 import { msg } from '../i18n';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from './useTransientState';
 import { recordProblem } from "../lib/diagnostics";
 import { flushEditorDrafts, hasEditorDrafts } from "../lib/editorDrafts";
 import { useLayoutEffect, useEffect, useRef, useState } from "react";
@@ -32,10 +33,10 @@ export interface UsePersistenceDeps {
 }
 
 export function usePersistence(deps: UsePersistenceDeps) {
-  const [saveToast, setSaveToast] = useState<{
+  const [saveToast, setSaveToast] = useTransientState<{
     kind: "error" | "ok";
     text: string;
-  } | null>(null);
+  } | null>(null, null, value => value?.kind === 'ok' ? SUCCESS_FEEDBACK_MS : null);
   const [saveFailure, setSaveFailure] = useState("");
   const [previousSaveStatus, setPreviousSaveStatus] = useState<SaveStatus>("loading");
 
@@ -170,12 +171,6 @@ export function usePersistence(deps: UsePersistenceDeps) {
       setSaveToast({ kind: "ok", text: previousSaveStatus === "error" ? msg('usePersistence.m1136') : msg('usePersistence.m1137') });
     }
   }
-
-  useEffect(() => {
-    if (saveToast?.kind !== "ok") return;
-    const timeout = window.setTimeout(() => setSaveToast(null), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [saveToast]);
 
   const handleSave = async () => {
     if (!snapshot()) { setSaveToast({kind:"error",text:msg('usePersistence.m1138')}); return; }

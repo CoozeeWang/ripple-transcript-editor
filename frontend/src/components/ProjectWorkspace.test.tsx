@@ -266,7 +266,7 @@ it('keeps copy and verification visible, blocks another import, and reports succ
   expect(screen.getByText('正在保存项目…')).toBeTruthy();
   await act(async () => finishSave());
   expect(await screen.findByText('音频已加入项目。')).toBeTruthy();
-  expect(screen.getByText('音频已加入项目。').className).toBe('processing-notice');
+  expect(screen.getByText('音频已加入项目。').closest('.processing-notice--dismissible')).toBeTruthy();
   expect(screen.queryByText('正在保存项目…')).toBeNull();
   await act(() => setInterfaceLanguage('en'));
   expect(screen.getByText('Audio added to the project.')).toBeTruthy();
@@ -628,4 +628,33 @@ it('publishes duration only after a successful recording-level save and reports 
  fireEvent.click(screen.getByRole('button',{name:'返回访谈'}));
  expect(await screen.findByText('音频时长未能保存到项目，重开音频后可重试。')).toBeTruthy();
  expect(screen.getByText('01:05:24')).toBeTruthy();
+});
+
+it('dismisses or expires completed import limitations without changing the imported project', async () => {
+  vi.mocked(store.importProjectMaterials).mockResolvedValue(project);
+  const file = { name: 'Synthetic.txt', text: async () => 'Synthetic untimed manuscript' };
+  Object.assign(window, { showOpenFilePicker: vi.fn(async () => [{ name: file.name, getFile: async () => file }]) });
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  const zone = await screen.findByRole('button', { name: '向 录音.wav 添加转录稿' });
+  const timer = vi.spyOn(window, 'setTimeout');
+  const warning = msg('materialImport.m1379');
+  fireEvent.click(zone);
+  const text = await screen.findByText(new RegExp(warning));
+  const notice = text.closest('[role="status"]')!;
+  const first = timer.mock.calls.find(([, delay]) => delay === 4000)![0] as () => void;
+  expect(notice.lastElementChild?.tagName).toBe('BUTTON');
+  fireEvent.click(notice.querySelector('button')!);
+  expect(screen.queryByText(new RegExp(warning))).toBeNull();
+  fireEvent.click(zone);
+  await screen.findByText(new RegExp(warning));
+  await act(async () => first());
+  expect(screen.getByText(new RegExp(warning))).toBeTruthy();
+  const latest = timer.mock.calls.filter(([, delay]) => delay === 4000).at(-1)![0] as () => void;
+  await act(async () => latest());
+  expect(screen.queryByText(new RegExp(warning))).toBeNull();
+  expect(store.importProjectMaterials).toHaveBeenCalledTimes(2);
+  expect(store.saveProject).not.toHaveBeenCalled();
+  expect(screen.getByText('测试项目')).toBeTruthy();
+  timer.mockRestore();
 });

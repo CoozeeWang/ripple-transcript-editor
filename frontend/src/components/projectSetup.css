@@ -150,6 +150,8 @@
 .manuscript-import-notice { display:block;margin-top:6px;color:var(--color-text-3);font:400 11px/1.6 var(--font-sans); }
 .project-import-notices { padding:12px 16px;border:1px solid var(--color-border);border-radius:var(--radius-md); }
 .project-import-notices p { margin:4px 0;color:var(--color-text-3);font:400 12px/1.7 var(--font-sans);overflow-wrap:anywhere; }
+.project-import-notices p:first-child { margin-top: 0; }
+.project-import-notices p:last-child { margin-bottom: 0; }
 @media(max-width:760px){.setup-audio>.manuscript-import-hint{margin-left:0}.manuscript-import-hint{flex-wrap:wrap}}
 
 .audio-storage-icon { display:inline-flex;align-items:center;justify-content:center;position:relative;flex:none;width:18px;height:28px;margin-right:4px;color:var(--color-brand); }

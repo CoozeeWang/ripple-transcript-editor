@@ -330,7 +330,7 @@ test('saved toast expires but a subsequent failure cancels its timeout',()=>{
   ui.rerender({...props,saveStatus:'saving'});
   ui.rerender({...props,saveStatus:'saved'});
   expect(ui.result.current.saveToast?.kind).toBe('ok');
-  act(()=>vi.advanceTimersByTime(2200));
+  act(()=>vi.advanceTimersByTime(4000));
   expect(ui.result.current.saveToast).toBeNull();
   ui.rerender({...props,saveStatus:'saving'});
   ui.rerender({...props,saveStatus:'saved'});

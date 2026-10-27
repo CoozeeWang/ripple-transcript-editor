@@ -11,6 +11,8 @@ import { TrashUndoNotice } from './TrashUndoNotice';
 import { DeleteMaterialDialog, ProjectTrashDialog } from './ProjectTrashDialog';
 import { useAudioStorageChoice } from './useAudioStorageChoice';
 import { ProcessingNotice } from './ProcessingNotice';
+import { MaterialImportNotice, type MaterialImportNote } from './MaterialImportNotice';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from '../hooks/useTransientState';
 import { ProjectImportStatus } from './ProjectImportStatus';
 import { manuscriptImportNoticeKeys } from '../lib/materialImport';
 import { useContext, useEffect, useRef, useState } from 'react';
@@ -33,9 +35,10 @@ type Picker = Window & {
   showDirectoryPicker: (options: { mode: string }) => Promise<FileSystemDirectoryHandle>;
   showOpenFilePicker: (options: { multiple: boolean; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
 };
+const NO_IMPORT_NOTES: MaterialImportNote[] = [];
 export function ProjectWorkspace() {
   const aiConnector = useContext(ConnectorContext);
-  const language = useInterfaceLanguage();
+  useInterfaceLanguage();
   const audioStorage = useAudioStorageChoice();
   const [trashOpen,setTrashOpen]=useState(false);
   const [undoTrash,setUndoTrash]=useState<string|null>(null);
@@ -77,15 +80,10 @@ export function ProjectWorkspace() {
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [archiving, setArchiving] = useState(false);
   const exportButton = useRef<HTMLButtonElement>(null);
-  const [importNotice, setImportNotice] = useState<{ name: string; keys: string[] }[]>([]);
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [importNotice, setImportNotice] = useTransientState<MaterialImportNote[]>(NO_IMPORT_NOTES, NO_IMPORT_NOTES, notes => notes.length ? SUCCESS_FEEDBACK_MS : null);
+  const [successNotice, setSuccessNotice] = useTransientState<string | null>(null, null);
   const [importStage, setImportStage] = useState<ProjectImportStage | null>(null);
   const importController = useRef<AbortController | null>(null);
-  useEffect(() => {
-    if (!successNotice) return;
-    const timer = window.setTimeout(() => setSuccessNotice(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [successNotice]);
   const [legacyCandidates, setLegacyCandidates] = useState<{ interviewId: string; items: ExistingManuscript[] } | null>(null);
   const busyRef = useRef(restoreOnStartup);
   const editorLease = useRef<(() => void) | null>(null);
@@ -124,7 +122,7 @@ export function ProjectWorkspace() {
   const run = async (work: () => Promise<void>, progress = true) => {
     if (busyRef.current) return;
     busyRef.current = true;
-    setShowProgress(progress); setQuietSaving(!progress); setBusy(true); setError('');
+    setShowProgress(progress); setQuietSaving(!progress); setBusy(true); setError(''); setImportNotice(NO_IMPORT_NOTES); setSuccessNotice(null);
     try { await work(); } catch (e) { if ((e as { name?: string }).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectWorkspace.m0901')); }
     finally { busyRef.current = false; setBusy(false); setShowProgress(false); setQuietSaving(false); setImportStage(null); }
   };
@@ -153,7 +151,7 @@ export function ProjectWorkspace() {
     }
     if (expectedId && next.data.id !== expectedId) throw new Error(msg('ProjectWorkspace.recentProjectMismatch'));
     if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
-    setRecentRecovery(null); setRecentOpen(false); setInterviewId(restoredInterview(next)); setImportNotice([]); setMaterialTarget(undefined);
+    setRecentRecovery(null); setRecentOpen(false); setInterviewId(restoredInterview(next)); setImportNotice(NO_IMPORT_NOTES); setMaterialTarget(undefined);
     setEditingDescription(null); setDescriptionDrafts({}); setCreating(false);
     setEditor(null); editorLease.current?.(); editorLease.current = null;
     await publish(next); setLegacyCandidates(null); setArchiving(false);
@@ -221,7 +219,7 @@ export function ProjectWorkspace() {
     if (busy) return;
     const dirty = creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
     if (dirty && !window.confirm(msg('ProjectWorkspace.m0904'))) return;
-    setTrashOpen(false);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice([]); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
+    setTrashOpen(false);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice(NO_IMPORT_NOTES); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
@@ -279,7 +277,7 @@ export function ProjectWorkspace() {
         <p>{uiMessage(error)}</p><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setError('')}>×</button>
       </div>}
       {busy && showProgress && !importStage && <ProcessingNotice>{msg('ProjectWorkspace.m0910')}</ProcessingNotice>}
-      {successNotice && <ProcessingNotice>{uiMessage(successNotice)}</ProcessingNotice>}
+      {successNotice && <ProcessingNotice onDismiss={()=>setSuccessNotice(null)}>{uiMessage(successNotice)}</ProcessingNotice>}
       {!project ? <>
         {creating ? <ProjectSetup onBusyChange={setBusy} onCancel={() => setCreating(false)} onDone={next => { void publish(next); setSuccessNotice(next.data.interviews.some(interview => interview.recordings.length > 0) ? msg('projectImport.materialsDone') : null); setCreating(false); setInterviewId(next.data.interviews[0]?.id ?? null); }} /> : <section className="project-welcome" aria-label={msg('ProjectWorkspace.m0911')}>
           <div className="project-welcome__identity">
@@ -334,8 +332,8 @@ export function ProjectWorkspace() {
         </div></div>
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}
-        {importNotice.length>0&&<div className="project-import-notices" role="status"><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setImportNotice([])}>×</button>{importNotice.map((note,index)=><p key={index}>{note.name}{language === 'en' ? ': ' : '：'}{note.keys.map(key => msg(key)).join(language === 'en' ? ' ' : '')}</p>)}</div>}
-        <ProjectBoard key={project.data.id} project={project} mediaRevision={mediaRevision} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={id=>{setError('');setImportNotice([]);setInterviewId(id);}}
+        <MaterialImportNotice notes={importNotice} onDismiss={()=>setImportNotice(NO_IMPORT_NOTES)} />
+        <ProjectBoard key={project.data.id} project={project} mediaRevision={mediaRevision} selected={interviewId ?? project.data.interviews[0]?.id ?? null} busy={busy} select={id=>{setError('');setImportNotice(NO_IMPORT_NOTES);setInterviewId(id);}}
           save={interviews => { void run(async () => {
             const snapshot = current.current!;
             setProject({ ...snapshot, data: { ...snapshot.data, interviews } });
@@ -359,7 +357,7 @@ export function ProjectWorkspace() {
             if (materials.some(item => item.kind !== kind)) throw new Error(kind === 'audio' ? msg('ProjectWorkspace.m0935') : msg('ProjectWorkspace.m0936'));
             const storage = kind === 'audio' ? await audioStorage.choose(materials.map(i=>i.name), referenceable, async()=>{ const selected=await selectAudioReferences(materials.map(i=>i.handle)); if(!selected)return false; materials.forEach((item,index)=>{item.handle=selected[index];}); return true; }) : 'copy';
             if (!storage) return;
-            if (kind === 'audio') { setImportNotice([]); setSuccessNotice(null); importController.current = new AbortController(); setImportStage('preparing'); }
+            if (kind === 'audio') { setImportNotice(NO_IMPORT_NOTES); setSuccessNotice(null); importController.current = new AbortController(); setImportStage('preparing'); }
             const snapshot = current.current!;
             const recording = audioId ? snapshot.data.interviews.find(session => session.id === id)?.recordings.find(item => item.id === audioId && item.storage !== 'none') : undefined;
             if (audioId && !recording) throw new Error(msg('ProjectWorkspace.m0937'));

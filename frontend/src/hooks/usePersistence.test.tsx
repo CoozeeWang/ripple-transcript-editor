@@ -134,3 +134,14 @@ it('blocks navigation after save failure, keeps dirty content and retries the sa
   expect(saveActiveEdit).toHaveBeenLastCalledWith(deps.dirHandleRef.current, 'synthetic.wav', 'm1', 'e1', expect.objectContaining({ transcript }));
   expect(deps.setSaveStatus).toHaveBeenLastCalledWith('saved');
 });
+
+it('expires save success after four seconds while retaining a newer save error', () => {
+  vi.useFakeTimers(); const { result } = renderHook(usePersistence, { initialProps: loadedDeps() });
+  act(() => result.current.setSaveToast({ kind: 'ok', text: 'Synthetic saved' }));
+  act(() => vi.advanceTimersByTime(3999)); expect(result.current.saveToast?.kind).toBe('ok');
+  act(() => vi.advanceTimersByTime(1)); expect(result.current.saveToast).toBeNull();
+  act(() => result.current.setSaveToast({ kind: 'ok', text: 'Synthetic saved' }));
+  act(() => vi.advanceTimersByTime(3000));
+  act(() => result.current.setSaveToast({ kind: 'error', text: 'Synthetic write failure' }));
+  act(() => vi.advanceTimersByTime(10000)); expect(result.current.saveToast?.kind).toBe('error');
+});

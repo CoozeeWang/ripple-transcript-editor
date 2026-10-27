@@ -19,5 +19,5 @@ export function CopyProblem({ problem, operation, iconOnly = false }: { problem?
   }}>{iconOnly ? (copied ? <span className="diagnostic-copy-check" aria-hidden="true">✓</span> : <DiagnosticCopyIcon />) : <span className="diagnostic-copy-labels" aria-hidden="true">
     <span style={{visibility: copied ? 'hidden' : 'visible'}}>{msg('CopyProblem.m0383')}</span>
     <span style={{visibility: copied ? 'visible' : 'hidden'}}>✓ {msg('CopyProblem.m0381')}</span>
-  </span>}</button><span className={needsAction ? undefined : 'diagnostic-copy-announcement'} role={status === 'error' ? 'alert' : 'status'}>{status === 'idle' ? '' : msg(copied ? 'CopyProblem.m0381' : status === 'missing' ? 'CopyProblem.m0380' : 'CopyProblem.m0382')}{needsAction && <button type="button" className="feedback-dismiss" aria-label={msg('notice.dismiss')} onClick={() => setStatus('idle')}>×</button>}</span></span>;
+  </span>}</button><span className={needsAction ? 'diagnostic-copy-feedback' : 'diagnostic-copy-announcement'} role={status === 'error' ? 'alert' : 'status'}><span>{status === 'idle' ? '' : msg(copied ? 'CopyProblem.m0381' : status === 'missing' ? 'CopyProblem.m0380' : 'CopyProblem.m0382')}</span>{needsAction && <button type="button" className="feedback-dismiss" aria-label={msg('notice.dismiss')} onClick={() => setStatus('idle')}>×</button>}</span></span>;
 }

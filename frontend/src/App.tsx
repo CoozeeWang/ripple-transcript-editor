@@ -1,3 +1,4 @@
+import { LoadErrorNotice, SaveToastNotice } from './components/EditorFeedback';
 import { visibleAIActivities } from './lib/aiEditOwnership';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
 import { flushSync } from "react-dom";
@@ -12,7 +13,6 @@ import { connectorReferences, connectorVersions } from "./lib/connectorVersions"
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
-import { CopyProblem } from "./components/CopyProblem";
 import { VersionPicker } from "./components/VersionPicker";
 import { useStableCallbacks } from "./hooks/useStableCallbacks";
 import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReviews } from "./lib/comparisonReview";
@@ -1128,7 +1128,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setLoadError('')}>×</button></div>}
+      {loadError && <LoadErrorNotice text={loadError} onDismiss={()=>setLoadError('')}/>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -1259,13 +1259,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           </div>
         )}
 
-        {saveToast && (
-          <div className={`save-toast save-toast--${saveToast.kind}`} role="status">
-            <span className="save-toast__dot" />
-            {uiMessage(saveToast.text)}
-            {saveToast.kind === "error" && <><CopyProblem operation="save"/><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setSaveToast(null)}>×</button></>}
-          </div>
-        )}
+        {saveToast && <SaveToastNotice toast={saveToast} onDismiss={()=>setSaveToast(null)}/>}
 
         {!preparingTranscript && <AnnotationPanel
           transcript={transcript}

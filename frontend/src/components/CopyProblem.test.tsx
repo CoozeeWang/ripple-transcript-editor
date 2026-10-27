@@ -55,7 +55,7 @@ it('retains missing-record feedback until it is dismissed without writing to the
   render(<CopyProblem />);
   await copy();
   act(() => vi.advanceTimersByTime(10000));
-  expect(screen.getByRole('status').className).toBe('');
+  expect(screen.getByRole('status').className).toBe('diagnostic-copy-feedback');
   expect(screen.getByRole('status').textContent).not.toBe('');
   expect(writeText).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', {name: '关闭提示'}));
