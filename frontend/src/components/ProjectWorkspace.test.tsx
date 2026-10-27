@@ -6,8 +6,8 @@ import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
 import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
-vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
-vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
+vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; onAudioDuration?: (seconds:number) => Promise<void>; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={()=>void props.onAudioDuration?.(3924).catch(()=>{})}>Synthetic accepted duration</button><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
+vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), saveRecordingDuration: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
 const project = { directory: { name: '测试.ripple' }, data: { id: 'p', title: '测试项目', description: '', revision: 0, interviews: [{ id: 'i', title: '第一次访谈', recordings: [{ id: 'r', name: '录音.wav', storage: 'copy' }] }] } } as store.OpenProject;
 beforeEach(() => {
@@ -607,4 +607,25 @@ it('refuses to move a recording while an AI task owns its manuscript',async()=>{
  expect(store.moveProjectRecordings).not.toHaveBeenCalled();
  expect(targetLocked).toHaveBeenCalledWith('','r','i','p');
  expect(screen.getByRole('dialog')).toBeTruthy();
+});
+
+it('publishes duration only after a successful recording-level save and reports failure on return',async()=>{
+ const audio={id:'r',name:'Synthetic.m4a',file:'synthetic.m4a',storage:'copy' as const,fingerprint:'16:'+ 'a'.repeat(64)};
+ const opened={...project,data:{...project.data,interviews:[{...project.data.interviews[0],recordings:[audio]}]}};
+ vi.mocked(store.openProject).mockResolvedValue(opened);
+ const saved={...opened,data:{...opened.data,revision:1,interviews:[{...opened.data.interviews[0],recordings:[{...audio,duration:{seconds:3924,fingerprint:audio.fingerprint}}]}]}};
+ vi.mocked(store.saveRecordingDuration).mockResolvedValueOnce(saved).mockRejectedValueOnce(new Error('synthetic write failure'));
+ render(<ProjectWorkspace/>);
+ fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'打开 音频 Synthetic.m4a'}));
+ fireEvent.click(await screen.findByText('Synthetic accepted duration'));
+ await waitFor(()=>expect(store.saveRecordingDuration).toHaveBeenCalledWith(opened,'r',audio.fingerprint,3924));
+ fireEvent.click(screen.getByRole('button',{name:'返回访谈'}));
+ expect(await screen.findByText('01:05:24')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'打开 音频 Synthetic.m4a'}));
+ fireEvent.click(await screen.findByText('Synthetic accepted duration'));
+ await waitFor(()=>expect(store.saveRecordingDuration).toHaveBeenCalledTimes(2));
+ fireEvent.click(screen.getByRole('button',{name:'返回访谈'}));
+ expect(await screen.findByText('音频时长未能保存到项目，重开音频后可重试。')).toBeTruthy();
+ expect(screen.getByText('01:05:24')).toBeTruthy();
 });

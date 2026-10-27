@@ -1,7 +1,7 @@
 import { msg, useInterfaceLanguage } from '../i18n';
 import type { CSSProperties } from "react";
 
-import { formatTime } from "../lib/format";
+import { formatPlaybackTime } from "../lib/format";
 
 /** 播放条：audio 元素 + 播放/暂停 + 快进快退 + 进度条 + 倍速 + 段位置。
  *  播放域状态与操作全部 props 注入。 */
@@ -46,6 +46,9 @@ export function PlayerBar(props: PlayerBarProps) {
     seekTo,
     setPlaybackRate,
   } = props;
+
+  const currentTimeLabel = formatPlaybackTime(currentTime);
+  const durationLabel = Number.isFinite(duration) && duration > 0 ? formatPlaybackTime(duration) : "--:--:--";
 
   return (
     <footer className="player-bar">
@@ -110,8 +113,10 @@ export function PlayerBar(props: PlayerBarProps) {
           }
         />
         <div className="time-labels">
-          <span>{formatTime(currentTime)}</span>
-          <span>{duration > 0 ? formatTime(duration) : "--:--"}</span>
+          {/* Recreate the text box when its digit count changes so the desktop
+              webview cannot retain the shorter label's painted bounds. */}
+          <span key={`current-${currentTimeLabel.length}`}>{currentTimeLabel}</span>
+          <span key={`duration-${durationLabel.length}`}>{durationLabel}</span>
         </div>
       </div>
       <button

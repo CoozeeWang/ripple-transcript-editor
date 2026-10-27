@@ -105,6 +105,7 @@ export interface ProjectEditorProps {
   saveRecordingDraft?: (draft: { metadata: InterviewMetadata; speakers: Speaker[] }) => Promise<void>;
   onPatchInterview?: (patch: Partial<InterviewMetadata>) => Promise<void>;
   recordingLabel?: string;
+  onAudioDuration?: (seconds: number) => Promise<void>;
   onRenameInterview?: (title: string) => Promise<void>;
   onReturnToProjects?: () => void;
   onOpenProject?: (recentId?: string) => Promise<void>;
@@ -292,6 +293,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     effectiveSelectedSegmentId,
     textareaRefs,
     setLoadError,
+    onDurationConfirmed: seconds => {
+      void projectProps.onAudioDuration?.(seconds).catch(() => setLoadError(msg('audioDuration.saveFailed')));
+    },
   });
 
   useOpeningPosition(openingPosition, transcriptPanelRef, hasLoadedTranscript);
@@ -1021,9 +1025,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       : transcribePhase === "saving"
       ? msg('App.m0024')
       : transcribePhase === "uploading"
-        ? msg('App.m0025', { v0: Math.round(transcribeRatio * 100) })
+        ? msg('App.m0025', { v0: Math.round((transcribeRatio ?? 0) * 100) })
         : transcribePhase === "sending"
-          ? msg('App.m0026', { v0: Math.round(transcribeRatio * 100), v1: formatTime(transcribeElapsed) })
+          ? transcribeRatio === null ? msg('ProcessNotice.m0635') : msg('App.m0026', { v0: Math.round((transcribeRatio ?? 0) * 100), v1: formatTime(transcribeElapsed) })
           : msg('App.m0027', { v0: activeProviderName || msg('App.m0028'), v1: formatTime(transcribeElapsed) });
 
   const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0} onDismiss={()=>{setProcessStatus("ready");setProcessMessage("");}}

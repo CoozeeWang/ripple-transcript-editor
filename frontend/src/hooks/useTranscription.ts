@@ -88,7 +88,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
   const [transcriptionDialogOpen, setTranscriptionDialogOpen] = useState(false);
   const [transcribePhase, setTranscribePhase] =
     useState<TranscriptionPhase>("uploading");
-  const [transcribeRatio, setTranscribeRatio] = useState(0);
+  const [transcribeRatio, setTranscribeRatio] = useState<number | null>(0);
   const [transcribeElapsed, setTranscribeElapsed] = useState(0);
   const [transcribeHint, setTranscribeHint] = useState("");
   const [transcribeRaw, setTranscribeRaw] = useState("");
@@ -158,7 +158,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
         onProgress: (phase, ratio) => {
           timing.stage(phase);
           setTranscribePhase(phase);
-          if (ratio !== undefined) setTranscribeRatio(ratio);
+          setTranscribeRatio(ratio ?? null);
         },
       });
       if (controller.signal.aborted) throw new TranscriptionError(msg('useTranscription.m1171'), "aborted");

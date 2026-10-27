@@ -1843,5 +1843,9 @@
     "selected_other": "已選取 {{count}} 筆錄音",
     "actionSelected_one": "將選取的 {{count}} 筆錄音移至其他場次",
     "actionSelected_other": "將選取的 {{count}} 筆錄音移至其他場次"
+  },
+  "audioDuration": {
+    "label": "音訊時長",
+    "saveFailed": "音訊時長未能儲存到專案，重新開啟音訊後可重試。"
   }
 }

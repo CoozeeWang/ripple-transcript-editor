@@ -2044,6 +2044,15 @@ button.brand:disabled { opacity: .5; cursor: default; }
   font-size: 0.61rem;
 }
 
+/* Reserve the hour digits before metadata arrives; resizing the window must
+   not be needed to reveal a longer time label. */
+.time-labels > span {
+  flex: none;
+  min-width: 8ch;
+  white-space: nowrap;
+}
+.time-labels > span:last-child { text-align: right; }
+
 .speed-select {
   flex: none;
   padding: 7px 8px;

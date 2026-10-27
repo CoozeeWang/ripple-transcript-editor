@@ -33,6 +33,7 @@ export interface UsePlaybackDeps {
   effectiveSelectedSegmentId: string;
   textareaRefs: { current: Map<string, ParagraphEditorElement> };
   setLoadError: (m: string) => void;
+  onDurationConfirmed?: (seconds: number) => void;
 }
 
 export function usePlayback(deps: UsePlaybackDeps) {
@@ -212,11 +213,12 @@ export function usePlayback(deps: UsePlaybackDeps) {
       durationTimerRef.current = null;
       if (sourceId !== audioSourceIdRef.current || audio !== audioRef.current || audio.getAttribute("src") !== audioUrl) return;
       // A container can revise duration without another durationchange event.
-      if (Math.abs(audio.duration - duration) > 0.05) {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0 || Math.abs(audio.duration - duration) > 0.05) {
         handleAudioDurationChange();
         return;
       }
       setActualDuration(duration);
+      deps.onDurationConfirmed?.(duration);
       deps.mutateTranscript((current) => ({
         ...current,
         audio: { filename: audioFilename, duration },

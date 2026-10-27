@@ -2,7 +2,7 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { msg } from '../i18n';
+import { msg, setInterfaceLanguage } from '../i18n';
 import { ProjectBoard } from './ProjectBoard';
 import * as local from '../localStore';
 import type { OpenProject } from '../lib/projectStore';
@@ -328,4 +328,22 @@ it('places each move icon immediately before trash and moves an unselected recor
  fireEvent.click(screen.getByRole('radio',{name:'Synthetic destination'}));
  fireEvent.click(screen.getByRole('button',{name:'确认移动'}));
  await waitFor(()=>expect(move).toHaveBeenCalledWith('s','t',['r2']));
+});
+
+it.each(['zh-CN','zh-TW','en'] as const)('shows persistent duration beneath audio names and leaves unknown/stale media unknown (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ vi.mocked(local.readManifest).mockResolvedValue(null);
+ const fingerprint='16:'+ 'a'.repeat(64);
+ const recordings=[
+  {id:'known',name:'Synthetic known.m4a',file:'known.m4a',storage:'copy',fingerprint,duration:{seconds:3924,fingerprint}},
+  {id:'unknown',name:'Synthetic unopened.m4a',file:'unknown.m4a',storage:'copy',fingerprint},
+  {id:'stale',name:'Synthetic changed.m4a',file:'stale.m4a',storage:'copy',fingerprint,duration:{seconds:60,fingerprint:'different'}},
+ ];
+ const project={data:{id:'duration-project',interviews:[{id:'s',title:'Synthetic session',recordings}]}} as OpenProject;
+ try {
+  const ui=render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+  await waitFor(()=>expect(ui.container.querySelectorAll('.setup-audio-duration')).toHaveLength(3));
+  expect([...ui.container.querySelectorAll('.setup-audio-duration')].map(node=>node.textContent?.trim())).toEqual(['01:05:24','--:--:--','--:--:--']);
+  expect(ui.container.querySelector('.setup-audio-name strong + small')).toBeTruthy();
+ } finally {await setInterfaceLanguage('zh-CN');}
 });

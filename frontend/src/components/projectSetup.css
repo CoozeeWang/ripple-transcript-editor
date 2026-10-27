@@ -172,3 +172,5 @@
 .setup-document > svg { margin-top:3px; }
 
 .setup-document-version { margin-left:24px; }
+
+.setup-audio-name .setup-audio-duration { font-variant-numeric: tabular-nums; white-space: nowrap; }

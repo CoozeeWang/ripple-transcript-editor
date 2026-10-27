@@ -14,7 +14,7 @@ const transcript: Transcript = {
   ],
 };
 afterEach(() => {cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers();});
-function setup(editors = new Map<string, ParagraphEditorElement>()) {
+function setup(editors = new Map<string, ParagraphEditorElement>(), confirmed = vi.fn()) {
   let playback!: ReturnType<typeof usePlayback>;
   let selected = "";
   function Harness() {
@@ -23,7 +23,7 @@ function setup(editors = new Map<string, ParagraphEditorElement>()) {
     selected = selection;
     playback = usePlayback({transcript, mutateTranscript: () => {}, activeSegmentId: active,
       setActiveSegmentId: setActive, setSelectedSegmentId: setSelection,
-      effectiveSelectedSegmentId: selection, textareaRefs: {current: editors}, setLoadError: () => {}});
+      effectiveSelectedSegmentId: selection, textareaRefs: {current: editors}, setLoadError: () => {}, onDurationConfirmed: confirmed});
     return <section data-testid="panel" ref={playback.transcriptPanelRef}>
       <audio ref={playback.audioRef} src={playback.audioUrl || undefined}/>
       <button onClick={() => setSelection("a")}>选择甲</button>
@@ -31,7 +31,7 @@ function setup(editors = new Map<string, ParagraphEditorElement>()) {
   }
   const ui = render(<Harness/>);
   act(() => playback.setAudioUrl("test.wav"));
-  return {ui, get playback() {return playback;}, get selected() {return selected;}};
+  return {ui, confirmed, get playback() {return playback;}, get selected() {return selected;}};
 }
 
 it("waits for a stable duration instead of displaying a provisional trailing minute value", () => {
@@ -50,6 +50,7 @@ it("waits for a stable duration instead of displaying a provisional trailing min
   expect(app.playback.actualDuration).toBe(0);
   act(() => vi.advanceTimersByTime(1));
   expect(app.playback.actualDuration).toBe(3967);
+  expect(app.confirmed).toHaveBeenCalledExactlyOnceWith(3967);
 });
 
 it("discards pending duration readings when the audio source changes", () => {
@@ -60,6 +61,7 @@ it("discards pending duration readings when the audio source changes", () => {
   act(() => app.playback.setAudioUrl("another.wav"));
   act(() => vi.advanceTimersByTime(5000));
   expect(app.playback.actualDuration).toBe(0);
+  expect(app.confirmed).not.toHaveBeenCalled();
 });
 
 it("shows an unknown duration and disables seeking until media duration settles", () => {
@@ -70,7 +72,7 @@ it("shows an unknown duration and disables seeking until media duration settles"
     updateCurrentSegment={() => {}} setIsPlaying={() => {}} togglePlayback={() => {}}
     seekTo={() => {}} setPlaybackRate={() => {}}
   />);
-  expect(ui.getByText("--:--")).toBeTruthy();
+  expect(ui.getByText("--:--:--")).toBeTruthy();
   expect((ui.container.querySelector('input[type="range"]') as HTMLInputElement).disabled).toBe(true);
 });
 describe("one current segment for playback and side panels", () => {
@@ -251,4 +253,27 @@ it("starting at an editing caret preserves the viewport across playback and paus
   act(() => app.playback.resumeFollow());
   expect(app.playback.followingPaused).toBe(false);
   expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({behavior: "smooth"}));
+});
+
+it("does not publish invalid metadata and republishes later corrected duration", () => {
+  vi.useFakeTimers();
+  const app = setup();
+  let reported = 3000;
+  Object.defineProperty(app.playback.audioRef.current!, "duration", {configurable:true,get:()=>reported});
+  act(()=>app.playback.handleAudioMetadata());
+  reported = NaN;
+  act(()=>vi.advanceTimersByTime(4000));
+  expect(app.confirmed).not.toHaveBeenCalled();
+  reported = 3924;
+  act(()=>app.playback.handleAudioDurationChange());
+  act(()=>vi.advanceTimersByTime(4000));
+  expect(app.confirmed).toHaveBeenLastCalledWith(3924);
+  reported = 7524;
+  act(()=>app.playback.handleAudioDurationChange());
+  expect(app.playback.actualDuration).toBe(0);
+  act(()=>vi.advanceTimersByTime(4000));
+  expect(app.confirmed.mock.calls.map(call=>call[0])).toEqual([3924,7524]);
+  app.ui.unmount();
+  act(()=>vi.advanceTimersByTime(4000));
+  expect(app.confirmed).toHaveBeenCalledTimes(2);
 });

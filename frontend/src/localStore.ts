@@ -1537,9 +1537,9 @@ async function writeEditedUnlocked(dir: FileSystemDirectoryHandle, name: string,
  */
 export type TranscriptionPhase =
   | "uploading" // 浏览器把音频读给本地后端（有字节进度）
-  | "sending" // 本地后端把音频传到云端存储（大文件慢在这一段，有字节进度）
+  | "sending" // 后端正在发送音频；部分引擎只报告阶段。
   | "saving"
-  | "processing"; // 引擎在识别（没有进度可报，只能报时长）
+  | "processing"; // 识别或同步请求发送完成后等待结果，无识别百分比。
 
 /** 「后端 → 云端」的进度多久问一次。1 秒足够跟上，也不至于把本地服务问烦。 */
 const PROGRESS_POLL_MS = 1000;
@@ -1557,6 +1557,21 @@ interface ServerProgress {
   phase?: string;
   sent_bytes?: number;
   total_bytes?: number;
+}
+
+/** ElevenLabs exposes stages only; unavailable progress cannot confirm upload completion. */
+function reportServerProgress(state: ServerProgress | null, providerId: string | undefined,
+  onProgress?: (phase: TranscriptionPhase, ratio?: number) => void) {
+  if (state?.active && state.phase === "processing") {
+    onProgress?.("processing");
+  } else if (state?.active && state.phase === "sending") {
+    const total = state.total_bytes ?? 0;
+    onProgress?.("sending", total > 0 ? (state.sent_bytes ?? 0) / total : undefined);
+  } else if (providerId === "elevenlabs") {
+    onProgress?.("sending");
+  } else {
+    onProgress?.("processing");
+  }
 }
 
 /**
@@ -1648,7 +1663,7 @@ export async function acknowledgeTranscription(dir: FileSystemDirectoryHandle, n
   if (marker) await fetch(`/api/transcribe/jobs/${encodeURIComponent(marker.jobId)}`, {method:"DELETE"}).catch(() => {});
 }
 
-async function waitForTranscription(jobId: string, hooks?: {signal?: AbortSignal; onProgress?: (phase: TranscriptionPhase, ratio?: number) => void}): Promise<Transcript> {
+async function waitForTranscription(jobId: string, hooks?: {signal?: AbortSignal; providerId?: string; onProgress?: (phase: TranscriptionPhase, ratio?: number) => void}): Promise<Transcript> {
   while (true) {
     if (hooks?.signal?.aborted) throw new TranscriptionError(msg('localStore.m1531'), "aborted");
     let response: Response;
@@ -1660,8 +1675,7 @@ async function waitForTranscription(jobId: string, hooks?: {signal?: AbortSignal
     if (state.state === "completed") return state.transcript as Transcript;
     if (state.state === "failed") throw failureForStatus(state.status, {detail:state.detail});
     const progress = await readTranscribeProgress(jobId);
-    if (progress?.active && progress.phase === "sending") hooks?.onProgress?.("sending", progress.total_bytes ? (progress.sent_bytes ?? 0)/progress.total_bytes : 0);
-    else hooks?.onProgress?.("processing");
+    reportServerProgress(progress, hooks?.providerId, hooks?.onProgress);
     await new Promise<void>(resolve => {
       const done = () => { clearTimeout(timer); hooks?.signal?.removeEventListener("abort", done); resolve(); };
       const timer = window.setTimeout(done, 1000);
@@ -1742,6 +1756,7 @@ export async function transcribeAudio(
       if (event.lengthComputable) hooks?.onProgress?.("uploading", event.loaded / event.total);
     };
     xhr.upload.onload = () => {
+      if (hooks?.providerId === "elevenlabs") hooks.onProgress?.("sending");
       const handedOffAt = Date.now();
       let sawServerProgress = false;
       let busy = false;
@@ -1754,18 +1769,18 @@ export async function transcribeAudio(
           if (state?.active) {
             sawServerProgress = true;
             if (state.phase === "processing") {
-              // 上传完了，引擎开始识别。这一段没有进度可报，界面改成显示已用时间。
+              // 后端确认发送完成，进入等待识别结果阶段；无识别百分比。
               hooks?.onProgress?.("processing");
               stopPolling();
               return;
             }
             const total = state.total_bytes ?? 0;
-            hooks?.onProgress?.("sending", total > 0 ? (state.sent_bytes ?? 0) / total : 0);
+            hooks?.onProgress?.("sending", total > 0 ? (state.sent_bytes ?? 0) / total : undefined);
             return;
           }
           // 后端还没登记这次上传。有些引擎本来就没有「先传到云端」这一步，
           // 过了宽限期就按原来的样子显示「识别中」，别让界面停在「读取音频 100%」。
-          if (!sawServerProgress && Date.now() - handedOffAt > SERVER_PROGRESS_GRACE_MS) {
+          if (hooks?.providerId !== "elevenlabs" && !sawServerProgress && Date.now() - handedOffAt > SERVER_PROGRESS_GRACE_MS) {
             hooks?.onProgress?.("processing");
           }
         } finally {
