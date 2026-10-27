@@ -1,3 +1,4 @@
+import { isProjectOrder } from '../lib/projectDrag';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { IS_MAC } from '../lib/format';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
@@ -65,6 +66,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
     finally { importController.current = null; inFlight.current = false; setBusy(false); setImportStage(null); onBusyChange?.(false); }
   };
   function drop(event: DragEvent, kind: 'audio' | 'manuscript', audioId = '') {
+    if (dragging.current || isProjectOrder(event.dataTransfer)) return;
     event.preventDefault(); event.stopPropagation();
     if (busy || inFlight.current || !session || event.dataTransfer.types.includes(SORT)) return;
     const pending = droppedFiles(event.dataTransfer);
@@ -118,7 +120,7 @@ export function ProjectSetup({ project, interviewId, onDone, onCancel, onBusyCha
   }
   function handle(id: string, group: string, label: string, peers: { id: string }[]) {
     return <button type="button" className="setup-grip" aria-label={msg('ProjectSetup.m0788', { v0: label })} data-tip={msg('extra.reorder', { key: IS_MAC ? '⌥↑ / ⌥↓' : 'Alt+↑ / Alt+↓' })} data-tip-pos="top" disabled={busy} draggable={!busy}
-      onDragStart={e => { e.stopPropagation();dragging.current={id,group};e.dataTransfer.setData(SORT,id);e.dataTransfer.effectAllowed='move'; }}
+      onDragStart={e => { e.stopPropagation();dragging.current={id,group};e.dataTransfer.setData(SORT,id);e.dataTransfer.setData('text/plain',id);e.dataTransfer.effectAllowed='move'; }}
       onDragEnd={() => { dragging.current=null;setDropMarker(null); }}
       onKeyDown={e => { if (!e.altKey || !['ArrowUp','ArrowDown'].includes(e.key)) return;e.preventDefault();const n=peers.findIndex(i=>i.id===id)+(e.key==='ArrowUp'?-1:1);if(peers[n])sort(id,peers[n].id,e.key==='ArrowDown',group); }}><ProjectIcon kind="grip" /></button>;
   }

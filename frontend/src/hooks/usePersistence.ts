@@ -1,7 +1,8 @@
 import { msg } from '../i18n';
+import { SUCCESS_FEEDBACK_MS, useTransientState } from './useTransientState';
 import { recordProblem } from "../lib/diagnostics";
 import { flushEditorDrafts, hasEditorDrafts } from "../lib/editorDrafts";
-import { useLayoutEffect, useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
 import type {
   InterviewMetadata,
   Speaker,
@@ -32,12 +33,26 @@ export interface UsePersistenceDeps {
 }
 
 export function usePersistence(deps: UsePersistenceDeps) {
-  const [saveToast, setSaveToast] = useState<{
+  const [saveToast, setSaveToast] = useTransientState<{
     kind: "error" | "ok";
     text: string;
-  } | null>(null);
+  } | null>(null, null, value => value?.kind === 'ok' ? SUCCESS_FEEDBACK_MS : null);
   const [saveFailure, setSaveFailure] = useState("");
   const [previousSaveStatus, setPreviousSaveStatus] = useState<SaveStatus>("loading");
+
+  const toastDirectory = deps.dirHandleRef.current;
+  const toastEdit = deps.viewingOriginal ? 'original' : deps.models.find(model => model.id === deps.activeModelId)?.activeEditId;
+  const toastDocument = useMemo(() => [toastDirectory, deps.selectedAudio, deps.activeModelId, toastEdit] as const,
+    [toastDirectory, deps.selectedAudio, deps.activeModelId, toastEdit]);
+  const previousToastDocument = useRef(toastDocument);
+  const toastGeneration = useRef(0);
+  useLayoutEffect(() => {
+    if (toastDocument.every((value, index) => value === previousToastDocument.current[index])) return;
+    previousToastDocument.current = toastDocument;
+    toastGeneration.current++;
+    if (saveToast !== null) setSaveToast(null);
+    setSaveFailure('');
+  }, [toastDocument, saveToast, setSaveToast]);
 
   const latest = useRef(deps);
   useLayoutEffect(() => { latest.current = deps; }, [deps]);
@@ -97,6 +112,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
         const message=(error as {name?:string})?.name==="NotAllowedError"
           ? msg('usePersistence.m1131')
           : error instanceof Error ? error.message : msg('usePersistence.m1132');
+        // A failed write remains actionable and blocks navigation; it is not a disposable query receipt.
         setSaveFailure(message);
         setSaveToast({kind:"error",text:msg('usePersistence.m1133', { v0: message })});
         latest.current.setSaveStatus("error");
@@ -171,17 +187,12 @@ export function usePersistence(deps: UsePersistenceDeps) {
     }
   }
 
-  useEffect(() => {
-    if (saveToast?.kind !== "ok") return;
-    const timeout = window.setTimeout(() => setSaveToast(null), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [saveToast]);
-
   const handleSave = async () => {
     if (!snapshot()) { setSaveToast({kind:"error",text:msg('usePersistence.m1138')}); return; }
+    const owner = toastGeneration.current;
     try {
       await flushPendingSave();
-      setSaveToast({kind:"ok",text:msg('usePersistence.m1139')});
+      if (owner === toastGeneration.current) setSaveToast({kind:"ok",text:msg('usePersistence.m1139')});
     } catch {
       latest.current.setSaveStatus("error");
     }

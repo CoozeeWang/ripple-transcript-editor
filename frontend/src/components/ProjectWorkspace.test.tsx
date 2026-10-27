@@ -7,12 +7,15 @@ import * as store from '../lib/projectStore';
 import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
 vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; onAudioDuration?: (seconds:number) => Promise<void>; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={()=>void props.onAudioDuration?.(3924).catch(()=>{})}>Synthetic accepted duration</button><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
-vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), saveRecordingDuration: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
+vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), saveRecordingDuration: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), trashProjectInterview: vi.fn(), restoreProjectTrashItem: vi.fn(), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
 const project = { directory: { name: '测试.ripple' }, data: { id: 'p', title: '测试项目', description: '', revision: 0, interviews: [{ id: 'i', title: '第一次访谈', recordings: [{ id: 'r', name: '录音.wav', storage: 'copy' }] }] } } as store.OpenProject;
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(store.trashProjectInterview).mockReset();
+  vi.mocked(store.restoreProjectTrashItem).mockReset();
   vi.mocked(store.recentProjects).mockReset().mockResolvedValue([]);
+  vi.mocked(store.rememberProject).mockReset().mockResolvedValue(undefined);
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   state.picker.mockReset().mockResolvedValue(project.directory);
@@ -200,14 +203,33 @@ it('does not replace a recent entry with a different project', async () => {
   expect(screen.queryByRole('heading', { name: '测试项目' })).toBeNull();
 });
 
-it('opens the organizer before choosing a save location or writing a project', async () => {
+it('requires saving a named project before exposing session creation or material import', async () => {
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
   expect(screen.queryByText('最近项目')).toBeNull();
-  expect(screen.getByRole('heading', { name: '点击填写场次名称' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '保存项目' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('textbox', { name: '项目名称' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '选择位置并保存项目' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.queryByRole('button', { name: '新增场次' })).toBeNull();
+  expect(screen.queryByText('选择或拖入音频，加入这个场次')).toBeNull();
   expect(store.createProject).not.toHaveBeenCalled();
   expect(state.picker).not.toHaveBeenCalled();
+  const empty = { ...project, data: { ...project.data, interviews: [] } };
+  vi.mocked(store.createProject).mockResolvedValueOnce(empty);
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: empty.data.title } });
+  fireEvent.click(screen.getByRole('button', { name: '选择位置并保存项目' }));
+  expect((await screen.findAllByRole('button', { name: '新增场次' }))[0]).toBeTruthy();
+  expect(store.createProject).toHaveBeenCalledWith(project.directory, empty.data.title);
+  expect(store.importProjectMaterials).not.toHaveBeenCalled();
+  expect(store.rememberProject).toHaveBeenCalledWith(empty);
+  vi.mocked(store.saveProject).mockImplementationOnce(async (p, data) => ({ ...p, data }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
+  fireEvent.click(screen.getByRole('button', { name: '场次名称' }));
+  const sessionName = screen.getByRole('textbox', { name: '场次名称' });
+  fireEvent.change(sessionName, { target: { value: 'Synthetic saved session' } });
+  fireEvent.keyDown(sessionName, { key: 'Enter' });
+  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  expect(await screen.findByRole('button', { name: '选择或拖入音频，加入这个场次' })).toBeTruthy();
+  expect(store.saveProject).toHaveBeenCalledWith(empty, expect.objectContaining({ interviews: [expect.objectContaining({ title: 'Synthetic saved session' })] }));
 });
 
 it('clears a failed open-project error when starting a new project', async () => {
@@ -217,8 +239,56 @@ it('clears a failed open-project error when starting a new project', async () =>
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText(openError);
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
-  await screen.findByRole('heading', { name: '点击填写场次名称' });
+  await screen.findByRole('textbox', { name: '项目名称' });
   expect(screen.queryByText(openError)).toBeNull();
+});
+
+it('keeps an opened project usable when remembering it fails and offers an effective retry', async () => {
+  vi.mocked(store.rememberProject).mockRejectedValueOnce(new Error('Synthetic preference failure'));
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  const warning = await screen.findByRole('alert');
+  expect(warning.textContent).toContain(msg('recentProjects.updateFailed'));
+  expect(screen.getByRole('button', { name: '打开 音频 录音.wav' })).toBeTruthy();
+  expect(store.saveProject).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', { name: msg('recentProjects.retry') }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  expect(store.rememberProject).toHaveBeenCalledTimes(2);
+});
+
+it('clears recent-write feedback on leaving its project and ignores a late failure from a prior project', async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(store.rememberProject).mockReturnValueOnce(new Promise<void>((_, fail) => { reject = fail; }));
+  const empty = { ...project, data: { ...project.data, id: 'synthetic-created', interviews: [] } };
+  vi.mocked(store.createProject).mockResolvedValueOnce(empty);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Synthetic created project' } });
+  fireEvent.click(screen.getByRole('button', { name: msg('ProjectCreate.save') }));
+  await screen.findAllByRole('button', { name: '新增场次' });
+  fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
+  fireEvent.click(await screen.findByRole('button', { name: '打开项目' }));
+  await screen.findByRole('button', { name: '打开 音频 录音.wav' });
+  await act(async () => { reject(new Error('Synthetic late failure')); });
+  expect(screen.queryByText(msg('recentProjects.updateFailed'))).toBeNull();
+});
+
+it('refreshes welcome recents when a newly saved project finishes remembering after returning home', async () => {
+  let finish!: () => void;
+  vi.mocked(store.rememberProject).mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+  const empty = { ...project, data: { ...project.data, id: 'synthetic-created', title: 'Synthetic saved project', interviews: [] } };
+  vi.mocked(store.createProject).mockResolvedValueOnce(empty);
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: empty.data.title } });
+  fireEvent.click(screen.getByRole('button', { name: msg('ProjectCreate.save') }));
+  await screen.findAllByRole('button', { name: '新增场次' });
+  fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
+  vi.mocked(store.recentProjects).mockResolvedValue([{ id: empty.data.id, title: empty.data.title, directory: empty.directory }]);
+  await act(async () => { finish(); });
+  fireEvent.click(screen.getByRole('button', { name: '最近项目' }));
+  expect(await screen.findByRole('button', { name: empty.data.title })).toBeTruthy();
+  expect(screen.queryByText(msg('recentProjects.updateFailed'))).toBeNull();
 });
 
 it('imports documents from the independent drop zone into the selected interview without audio association', async () => {
@@ -266,7 +336,7 @@ it('keeps copy and verification visible, blocks another import, and reports succ
   expect(screen.getByText('正在保存项目…')).toBeTruthy();
   await act(async () => finishSave());
   expect(await screen.findByText('音频已加入项目。')).toBeTruthy();
-  expect(screen.getByText('音频已加入项目。').className).toBe('processing-notice');
+  expect(screen.getByText('音频已加入项目。').closest('.processing-notice--dismissible')).toBeTruthy();
   expect(screen.queryByText('正在保存项目…')).toBeNull();
   await act(() => setInterfaceLanguage('en'));
   expect(screen.getByText('Audio added to the project.')).toBeTruthy();
@@ -343,7 +413,7 @@ it('adds a session in the existing board while preserving earlier sessions and a
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText('测试项目');
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   expect(screen.getAllByRole('heading', { name: '测试项目' })).toHaveLength(1);
   expect(screen.getByRole('button', { name: /第一次访谈.*音频：1 个/ })).toBeTruthy();
   fireEvent.click(screen.getByText('点击填写场次名称'));
@@ -394,7 +464,7 @@ it('clears the active session highlight while adding and restores it on cancel',
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   const previous = await screen.findByRole('button', { name: /第一次访谈.*音频：1 个/ });
   expect(previous.getAttribute('aria-pressed')).toBe('true');
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   expect(previous.getAttribute('aria-pressed')).toBe('false');
   expect(previous.closest('.setup-session')?.classList.contains('is-selected')).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: '取消' }));
@@ -407,7 +477,7 @@ it('returns home through the brand and confirms discarding an unconfirmed sessio
   render(<ProjectWorkspace />);
   fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
   await screen.findByText('测试项目');
-  fireEvent.click(screen.getByRole('button', { name: '新增场次' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
   fireEvent.click(screen.getByRole('button', { name: '返回欢迎页' }));
   expect(confirm).toHaveBeenCalledOnce();
   expect(screen.getByRole('heading', { name: '点击填写场次名称' })).toBeTruthy();
@@ -628,4 +698,102 @@ it('publishes duration only after a successful recording-level save and reports 
  fireEvent.click(screen.getByRole('button',{name:'返回访谈'}));
  expect(await screen.findByText('音频时长未能保存到项目，重开音频后可重试。')).toBeTruthy();
  expect(screen.getByText('01:05:24')).toBeTruthy();
+});
+
+it('dismisses or expires completed import limitations without changing the imported project', async () => {
+  vi.mocked(store.importProjectMaterials).mockResolvedValue(project);
+  const file = { name: 'Synthetic.txt', text: async () => 'Synthetic untimed manuscript' };
+  Object.assign(window, { showOpenFilePicker: vi.fn(async () => [{ name: file.name, getFile: async () => file }]) });
+  render(<ProjectWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+  const zone = await screen.findByRole('button', { name: '向 录音.wav 添加转录稿' });
+  const timer = vi.spyOn(window, 'setTimeout');
+  const warning = msg('materialImport.m1379');
+  fireEvent.click(zone);
+  const text = await screen.findByText(new RegExp(warning));
+  const notice = text.closest('[role="status"]')!;
+  await waitFor(() => expect(timer.mock.calls.some(([, delay]) => delay === 4000)).toBe(true));
+  const first = timer.mock.calls.find(([, delay]) => delay === 4000)![0] as () => void;
+  expect(notice.lastElementChild?.tagName).toBe('BUTTON');
+  fireEvent.click(notice.querySelector('button')!);
+  expect(screen.queryByText(new RegExp(warning))).toBeNull();
+  const scheduled = timer.mock.calls.filter(([, delay]) => delay === 4000).length;
+  fireEvent.click(zone);
+  await screen.findByText(new RegExp(warning));
+  await waitFor(() => expect(timer.mock.calls.filter(([, delay]) => delay === 4000).length).toBeGreaterThan(scheduled));
+  await act(async () => first());
+  expect(screen.getByText(new RegExp(warning))).toBeTruthy();
+  const latest = timer.mock.calls.filter(([, delay]) => delay === 4000).at(-1)![0] as () => void;
+  await act(async () => latest());
+  expect(screen.queryByText(new RegExp(warning))).toBeNull();
+  expect(store.importProjectMaterials).toHaveBeenCalledTimes(2);
+  expect(store.saveProject).not.toHaveBeenCalled();
+  expect(screen.getByText('测试项目')).toBeTruthy();
+  timer.mockRestore();
+});
+
+it.each(['settings','editor','session'] as const)('does not resurrect import feedback after visiting another %s view', async target => {
+  const next={...project,data:{...project.data,interviews:[...project.data.interviews,{id:'second',title:'Synthetic second session',recordings:[]}]}} as store.OpenProject;
+  vi.mocked(store.openProject).mockResolvedValue(next);
+  vi.mocked(store.importProjectMaterials).mockResolvedValue(next);
+  render(<ProjectWorkspace/>);
+  fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+  const zone=await screen.findByRole('button',{name:'选择或拖入独立转录稿，不关联音频'});
+  const file={name:'Synthetic notice.txt',text:async()=>'Synthetic text'} as File;
+  fireEvent.drop(zone,{dataTransfer:{types:['Files'],files:[file],items:[]}});
+  await screen.findByText(`Synthetic notice.txt：${msg('materialImport.m1379')}`);
+  if(target==='settings') fireEvent.click(screen.getByRole('button',{name:'设置'}));
+  else if(target==='editor') fireEvent.click(screen.getByRole('button',{name:'打开 音频 录音.wav'}));
+  else fireEvent.click(screen.getByRole('button',{name:/Synthetic second session.*音频：0 个/}));
+  if(target!=='session') fireEvent.click(await screen.findByRole('button',{name:'返回访谈'}));
+  else fireEvent.click(screen.getByRole('button',{name:/第一次访谈.*音频：1 个/}));
+  expect(screen.queryByText(`Synthetic notice.txt：${msg('materialImport.m1379')}`)).toBeNull();
+  expect(store.importProjectMaterials).toHaveBeenCalledOnce();
+});
+
+it('puts project Trash before settings and confirms, deletes and restores the last session as one unit', async () => {
+  const entry={id:'synthetic-trash',deletedAt:'2026-01-01T00:00:00Z',position:0,interview:project.data.interviews[0],materialTrash:[]};
+  const deleted={...project,data:{...project.data,revision:1,interviews:[],trash:[],sessionTrash:[entry]}} as store.OpenProject;
+  vi.mocked(store.trashProjectInterview).mockResolvedValueOnce(deleted);
+  vi.mocked(store.restoreProjectTrashItem).mockResolvedValueOnce({...project,data:{...project.data,revision:2,sessionTrash:[]}});
+  render(<ProjectWorkspace/>);
+  fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+  const remove=await screen.findByRole('button',{name:'删除场次 第一次访谈'});
+  const trash=screen.getByRole('button',{name:msg('ProjectWorkspace.m0925')});
+  expect(trash.closest('nav')).toBe(screen.getByRole('button',{name:'设置'}).closest('nav'));
+  expect(trash.nextElementSibling).toBe(screen.getByRole('button',{name:'设置'}));
+  expect(remove.closest('.project-session-heading')).toBeTruthy();
+  fireEvent.click(remove);
+  expect(store.trashProjectInterview).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(screen.getByRole('button',{name:'取消'}));
+  fireEvent.click(screen.getByRole('button',{name:'移入回收站'}));
+  await waitFor(()=>expect(store.trashProjectInterview).toHaveBeenCalledWith(project,'i'));
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'打开 音频 录音.wav'})).toBeNull());
+  expect(await screen.findByRole('button',{name:msg('ProjectWorkspace.m0925')})).toBeTruthy();
+  await waitFor(()=>expect(document.activeElement).toBe(document.querySelector('.setup-session-add')));
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectWorkspace.m0925')}));
+  fireEvent.click(await screen.findByRole('button',{name:'恢复场次 第一次访谈'}));
+  await waitFor(()=>expect(store.restoreProjectTrashItem).toHaveBeenCalledWith(deleted,'synthetic-trash'));
+  expect(await screen.findByRole('button',{name:'打开 音频 录音.wav'})).toBeTruthy();
+});
+it('keeps the session confirmation and content when deletion fails, then permits a safe retry', async () => {
+  vi.mocked(store.trashProjectInterview).mockRejectedValueOnce(Error('Synthetic session write failure')).mockResolvedValueOnce({...project,data:{...project.data,revision:1,interviews:[],sessionTrash:[{id:'retry-trash',deletedAt:'2026-01-01',position:0,interview:project.data.interviews[0]}]}});
+  render(<ProjectWorkspace/>);fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+  fireEvent.click(await screen.findByRole('button',{name:'删除场次 第一次访谈'}));
+  fireEvent.click(screen.getByRole('button',{name:'移入回收站'}));
+  await screen.findAllByText('Synthetic session write failure');
+  expect(screen.getByRole('button',{name:'打开 音频 录音.wav',hidden:true})).toBeTruthy();
+  expect(screen.getByRole('dialog',{name:'删除场次？'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'移入回收站'}));
+  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'删除场次？'})).toBeNull());
+});
+it('disables deletion of a session whose recording is owned by an active AI task', async () => {
+  const targetLocked=vi.fn(()=>true);
+  render(<ConnectorContext.Provider value={{state:{activities:[],targetLocked}} as never}><ProjectWorkspace/></ConnectorContext.Provider>);
+  fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+  const remove=await screen.findByRole('button',{name:'删除场次 第一次访谈'});
+  expect((remove as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(remove);
+  expect(screen.queryByRole('dialog',{name:'删除场次？'})).toBeNull();
+  expect(store.trashProjectInterview).not.toHaveBeenCalled();
 });

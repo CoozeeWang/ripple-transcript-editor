@@ -1109,16 +1109,18 @@ async function createModelUnlocked(
     });
   }
 
+  const initialEditLabel = params.editLabel ?? (params.sourceKind === "import"
+    ? params.label?.trim() || params.sourceName || defaultEditLabel(0) : defaultEditLabel(0));
   const model: TranscriptModel = {
     id,
     engine: params.engine,
     sourceKind: params.sourceKind ?? "transcription",
     ...((params.designatedOriginal || (params.sourceKind !== "import" && params.originalOnly && params.original))?{designatedOriginal:true}:{}),
     ...(params.sourceName ? { sourceName: params.sourceName } : {}),
-    label: params.label ?? (params.sourceKind === "import" && params.sourceName ? stemOf(params.sourceName) : `${defaultModelLabel(params.engine)} · ${createdAt.slice(0, 19).replace("T", " ")}`),
+    label: params.label ?? (params.sourceKind === "import" && params.sourceName ? params.sourceName : `${defaultModelLabel(params.engine)} · ${createdAt.slice(0, 19).replace("T", " ")}`),
     createdAt,
     original: originalFile,
-    edits: params.originalOnly ? [] : [{ id: "e1", label: params.editLabel ?? defaultEditLabel(0), file: editFile, updated_at: new Date().toISOString() }],
+    edits: params.originalOnly ? [] : [{ id: "e1", label: initialEditLabel, file: editFile, updated_at: new Date().toISOString() }],
     activeEditId: params.originalOnly ? "" : "e1",
   };
   const newManifest: TranscriptManifest = {
@@ -1372,7 +1374,7 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
     const source = JSON.parse(raw);
     const file = model.original!;
     await writeFileJson(tDir, file, {kind:"te-edited",audio:name,metadata:{...defaultMetadata(stemOf(name)),...manifest.interviewDetails,...source.metadata},transcript:source.transcript});
-    const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
+    const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:model.label||model.sourceName||defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
     await writeFileJson(tDir, MANIFEST_NAME, next);return next;
   }
   const designatedEditId = editId ?? model.activeEditId ?? model.edits[0]?.id;

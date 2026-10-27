@@ -1,3 +1,4 @@
+import { LoadErrorNotice, SaveToastNotice } from './components/EditorFeedback';
 import { visibleAIActivities } from './lib/aiEditOwnership';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
 import { flushSync } from "react-dom";
@@ -12,7 +13,6 @@ import { connectorReferences, connectorVersions } from "./lib/connectorVersions"
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem } from "./lib/diagnostics";
-import { CopyProblem } from "./components/CopyProblem";
 import { VersionPicker } from "./components/VersionPicker";
 import { useStableCallbacks } from "./hooks/useStableCallbacks";
 import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReviews } from "./lib/comparisonReview";
@@ -1111,7 +1111,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
           ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
           : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
-          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction}/>}
+          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction} onDismissError={connector.dismissTaskError}/>}
         </AIEditingNotice>
       {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice
@@ -1128,7 +1128,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <div className="notice" role="alert">{uiMessage(loadError)} <CopyProblem /><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setLoadError('')}>×</button></div>}
+      {loadError && <LoadErrorNotice text={loadError} onDismiss={()=>setLoadError('')}/>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -1259,13 +1259,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           </div>
         )}
 
-        {saveToast && (
-          <div className={`save-toast save-toast--${saveToast.kind}`} role="status">
-            <span className="save-toast__dot" />
-            {uiMessage(saveToast.text)}
-            {saveToast.kind === "error" && <><CopyProblem operation="save"/><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setSaveToast(null)}>×</button></>}
-          </div>
-        )}
+        {saveToast && <SaveToastNotice toast={saveToast} onDismiss={()=>setSaveToast(null)}/>}
 
         {!preparingTranscript && <AnnotationPanel
           transcript={transcript}

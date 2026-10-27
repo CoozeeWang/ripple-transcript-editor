@@ -1847,5 +1847,39 @@
   "audioDuration": {
     "label": "音訊時長",
     "saveFailed": "音訊時長未能儲存到專案，重新開啟音訊後可重試。"
+  },
+  "sessionTrash": {
+    "deleteAction": "刪除場次 {{name}}",
+    "deleteTitle": "刪除場次？",
+    "deleteDescription": "場次及其中的所有音訊、逐字稿、版本和註解將一起移至專案資源回收筒，可整組還原。不會改寫音訊或逐字稿內容，也不會刪除參照的外部原始檔。",
+    "confirm": "移至資源回收筒",
+    "cancel": "取消",
+    "sessionLabel": "場次",
+    "sessionContents": "包含場次中的所有音訊和逐字稿",
+    "restoreAction": "還原場次 {{name}}",
+    "missing": "找不到這個場次或資源回收筒紀錄。請重新開啟專案後再試。",
+    "restoreConflict": "無法還原此場次：專案中已有相同識別碼的素材。現有素材和資源回收筒紀錄均已保留。",
+    "trashHint": "刪除的音訊、逐字稿和整個場次保存在這裡。還原場次會帶回其中的音訊和逐字稿；清空後無法還原，參照的外部原始檔不受影響。",
+    "clearDescription": "將永久清空 {{count}} 項資源回收筒紀錄，包括已刪除場次及其中的音訊和逐字稿。此操作無法復原；參照的外部原始檔不會刪除。",
+    "changed": "專案內容已變更。請取消這次刪除，重新確認場次後再試。"
+  },
+  "ProjectCreate": {
+    "heading": "建立專案",
+    "hint": "先儲存專案，再建立場次、匯入音訊和逐字稿。",
+    "name": "專案名稱",
+    "cancel": "取消",
+    "save": "選擇位置並儲存專案",
+    "saving": "正在儲存專案…",
+    "saveFailed": "無法儲存專案。請檢查儲存位置的寫入權限，或換一個位置重試。"
+  },
+  "recentProjects": {
+    "updateFailed": "專案檔案可以繼續使用，但最近專案清單未能更新。請重試。",
+    "retry": "重試",
+    "unreadable": "無法讀取最近專案記錄。請透過「開啟專案」選擇專案，原專案檔案不受影響。",
+    "notSaved": "最近專案記錄未能儲存，請重試。"
+  },
+  "projectSessions": {
+    "list": "場次清單",
+    "content": "場次內容"
   }
 }

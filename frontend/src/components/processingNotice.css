@@ -16,3 +16,4 @@
   box-shadow: 0 4px 16px #0000000d;
   pointer-events: none;
 }
+.processing-notice--dismissible { pointer-events: auto; }

@@ -26,6 +26,15 @@ describe('external file navigation protection', () => {
     zone.addEventListener('drop', e => { expect(e.defaultPrevented).toBe(true); imported = true; e.stopPropagation(); });
     zone.dispatchEvent(event('drop', ['Files'])); expect(imported).toBe(true);
   });
+  it('advertises no copy outside valid targets and lets imports opt back into copy', () => {
+    cleanup = installFileDropGuard();
+    const outside = event('dragover', ['Files']); document.body.dispatchEvent(outside);
+    expect((outside as DragEvent).dataTransfer?.dropEffect).toBe('none');
+    const zone = document.createElement('button'); document.body.append(zone);
+    zone.addEventListener('dragover', e => { e.dataTransfer!.dropEffect='copy'; });
+    const inside=event('dragover',['Files']);zone.dispatchEvent(inside);
+    expect((inside as DragEvent).dataTransfer?.dropEffect).toBe('copy');
+  });
   it('leaves internal sorting and text drags unchanged, and removes handlers', () => {
     cleanup = installFileDropGuard();
     for (const types of [['application/x-ripple-order'], ['text/plain']]) {

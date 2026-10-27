@@ -11,6 +11,8 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
   const binding = useRef<{ token: object; host: ConnectorHost; project?: ProjectConnectorAccess } | null>(null);
   const retainedProject = useRef<ProjectConnectorAccess | undefined>(undefined);
   const [context, setContext] = useState('');
+  const [visibleProject, setVisibleProject] = useState<string | null>(null);
+  const reportProject = useCallback((id: string) => setVisibleProject(id), []);
   const register = useCallback((token: object, host: ConnectorHost, next: string, project?: ProjectConnectorAccess) => {
     binding.current = { token, host, project };
     if (project) retainedProject.current = project;
@@ -40,9 +42,10 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
     onSaved: target => binding.current?.project?.onSaved?.(target),
   };
   const state = useAIConnectorRuntime(host, context, project);
-  return <ConnectorContext.Provider value={{ state, register, unregister }}>
+  const globalError = state.taskActionError || (visibleProject === null || state.recoveryProjectIds.includes(visibleProject) ? state.recoveryWarning : '');
+  return <ConnectorContext.Provider value={{ state, register, unregister, reportProject }}>
     {!context && <div className="ai-editing-global"><AIEditingNotice activities={state.activities.filter(task => task.state !== 'completed')} isCurrent={() => false} onDismiss={id => state.taskAction('dismiss_editing', id)} onEnd={id => state.taskAction('end_editing', id)}>
-      {state.taskError && <ContinuationProgress embedded tasks={state.tasks} error={state.taskError} onAction={state.taskAction}/>}
+      {globalError && <ContinuationProgress embedded tasks={state.tasks} error={globalError} onAction={(operation,id)=>state.taskAction(operation,id,true)} onDismissError={state.dismissTaskError}/>}
     </AIEditingNotice></div>}
     {children}
   </ConnectorContext.Provider>;

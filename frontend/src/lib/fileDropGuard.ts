@@ -7,6 +7,9 @@ export function installFileDropGuard(target: Window = window): () => void {
       // Capture before an import target can stop propagation. Do not stop the
       // event: valid targets retain their own import and dropEffect handling.
       event.preventDefault();
+      // A valid target overrides this with copy/import or move/order. Outside
+      // targets must not advertise a copy action that cannot be completed.
+      if (event.type === 'dragover') transfer.dropEffect = 'none';
     }
   };
   target.addEventListener('dragover', preventFileNavigation, true);

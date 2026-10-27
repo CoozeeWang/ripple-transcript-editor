@@ -5,6 +5,7 @@ import type { ImportMaterial } from './materialImport';
 import type { InterviewMetadata, Speaker, TranscriptManifest } from '../types';
 import { AUDIO_EXT, defaultMetadata, readEdited, stemOf, createModel } from '../localStore';
 import { decodeNativeHandles, encodeNativeHandles, nativeDesktopAvailable, decorateNativeProject, NativeFileHandle } from './desktopFs';
+import { readNativeRecentProjects, writeNativeRecentProjects, type RecentProject } from './nativeRecentProjects';
 
 export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
@@ -29,9 +30,15 @@ export interface ProjectTrashItem {
   recording: ProjectRecording; position: number;
   originalRecordingId?: string; keptDocumentId?: string;
 }
+export interface ProjectSessionTrashItem {
+  id: string; deletedAt: string; position: number; interview: ProjectInterview;
+  /** Earlier material deletions stay deleted when their parent is restored. */
+  materialTrash?: ProjectTrashItem[];
+}
 export interface RippleProject {
   kind: 'ripple-project'; schemaVersion: 1; id: string; title: string; description: string;
   revision: number; interviews: ProjectInterview[]; trash?: ProjectTrashItem[];
+  sessionTrash?: ProjectSessionTrashItem[];
 }
 export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject; finderIconWarning?: boolean }
 const INDEX = 'ripple-project.json';
@@ -67,19 +74,38 @@ export function parseProject(raw: string): RippleProject {
       if (recording.manuscriptDirectory !== undefined && (!safeName(recording.manuscriptDirectory) || !/^import-[a-zA-Z0-9-]+\.transcript$/.test(recording.manuscriptDirectory))) throw new Error(msg('projectStore.m1388'));
     }
   }
+  const trashIds = new Set<string>();
   if (p.trash !== undefined) {
     if (!Array.isArray(p.trash)) throw new Error(msg('projectStore.m1389'));
-    const trashIds = new Set<string>();
     for (const item of p.trash) {
       if (!item || !id(item.id) || trashIds.has(item.id) || typeof item.name !== 'string' || typeof item.deletedAt !== 'string'
           || !p.interviews.some(i=>i.id===item.interviewId) || !Number.isInteger(item.position) || item.position < 0
           || (item.originalRecordingId !== undefined && !id(item.originalRecordingId)) || (item.keptDocumentId !== undefined && !id(item.keptDocumentId))) throw new Error(msg('projectStore.m1390'));
       trashIds.add(item.id);
-      parseProject(JSON.stringify({ ...p, trash: undefined, interviews: [{ id:item.interviewId, title:'回收站', recordings:[item.recording] }] }));
+      parseProject(JSON.stringify({ ...p, trash: undefined, sessionTrash: undefined, interviews: [{ id:item.interviewId, title:'回收站', recordings:[item.recording] }] }));
+    }
+  }
+  if (p.sessionTrash !== undefined) {
+    if (!Array.isArray(p.sessionTrash)) throw new Error(msg('projectStore.m1389'));
+    for (const item of p.sessionTrash) {
+      if (!item || !id(item.id) || trashIds.has(item.id) || typeof item.deletedAt !== 'string'
+          || !Number.isInteger(item.position) || item.position < 0 || !item.interview) throw new Error(msg('projectStore.m1390'));
+      trashIds.add(item.id);
+      parseProject(JSON.stringify({ ...p, sessionTrash: undefined, interviews: [item.interview], trash: item.materialTrash }));
+      for (const identity of [item.interview.id, ...item.interview.recordings.map(recording => recording.id)]) {
+        if (identifiers.has(identity)) throw new Error(msg('projectStore.m1390'));
+        identifiers.add(identity);
+      }
+      for (const material of item.materialTrash ?? []) {
+        if (trashIds.has(material.id)) throw new Error(msg('projectStore.m1390'));
+        trashIds.add(material.id);
+      }
     }
   }
   return p;
 }
+export const projectTrashCount = (project: OpenProject): number =>
+  (project.data.trash?.length ?? 0) + (project.data.sessionTrash?.length ?? 0);
 async function readText(dir: FileSystemDirectoryHandle, name: string): Promise<string | null> {
   try { return await (await (await dir.getFileHandle(name)).getFile()).text(); }
   catch (error) { if (notFound(error)) return null; throw error; }
@@ -175,19 +201,27 @@ export async function handleValue<T>(key: string, value?: T): Promise<T | undefi
     tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
   }); } finally { db.close(); }
 }
-export async function recentProjects(): Promise<{ title: string; id: string; directory: FileSystemDirectoryHandle }[]> {
+export async function recentProjects(): Promise<RecentProject[]> {
+  if (nativeDesktopAvailable()) {
+    const stored = readNativeRecentProjects();
+    if (stored !== undefined) return stored;
+  }
   return await handleValue('recent') ?? [];
+}
+async function writeRecentProjects(items: RecentProject[]) {
+  if (nativeDesktopAvailable()) writeNativeRecentProjects(items);
+  else await handleValue('recent', items);
 }
 export async function rememberProject(project: OpenProject) {
   await locked('recent-projects', async () => {
     const recent = await recentProjects();
-    await handleValue('recent', [{ title: project.data.title, id: project.data.id, directory: project.directory }, ...recent.filter(p => p.id !== project.data.id)].slice(0, 20));
+    await writeRecentProjects([{ title: project.data.title, id: project.data.id, directory: project.directory }, ...recent.filter(p => p.id !== project.data.id)].slice(0, 20));
   });
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('ripple-recent-projects-changed'));
 }
 export async function forgetRecentProject(projectId: string) {
   await locked('recent-projects', async () => {
-    await handleValue('recent', (await recentProjects()).filter(p => p.id !== projectId));
+    await writeRecentProjects((await recentProjects()).filter(p => p.id !== projectId));
   });
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('ripple-recent-projects-changed'));
 }
@@ -452,7 +486,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
     }
     const finalSource = await openProject(project.directory);
     if (finalSource.data.revision !== source.data.revision) throw new Error(msg('projectStore.m1422'));
-    const data: RippleProject = { ...source.data, id: created.data.id, title: title.trim(), revision: 0, trash: [] };
+    const data: RippleProject = { ...source.data, id: created.data.id, title: title.trim(), revision: 0, trash: [], sessionTrash: [] };
     await writeText(created.directory, INDEX, JSON.stringify(data, null, 2));
     await created.directory.removeEntry('COPY-INCOMPLETE.txt');
     return { directory: created.directory, data, ...(created.finderIconWarning ? {finderIconWarning:true} : {}) };
@@ -894,10 +928,53 @@ export async function restoreProjectMaterial(project:OpenProject, trashId:string
     return saveProject(project,{...project.data,interviews:project.data.interviews.map(i=>i.id===session.id?{...i,recordings}:i),trash:project.data.trash!.filter(t=>t.id!==trashId)});
   });
 }
+/** Reversible session removal is index-only: every media/manuscript byte stays in place. */
+export async function trashProjectInterview(project: OpenProject, interviewId: string): Promise<OpenProject> {
+  return checkedTrashMutation(project, async () => {
+    const activePosition = project.data.interviews.findIndex(session => session.id === interviewId);
+    if (activePosition < 0) throw new Error(msg('sessionTrash.missing'));
+    let position = activePosition;
+    for (const archived of [...(project.data.sessionTrash ?? [])].sort((a,b) => a.position-b.position)) {
+      if (archived.position <= position) position++;
+    }
+    const item: ProjectSessionTrashItem = {
+      id: crypto.randomUUID(), deletedAt: new Date().toISOString(), position,
+      interview: project.data.interviews[activePosition],
+      materialTrash: (project.data.trash ?? []).filter(material => material.interviewId === interviewId),
+    };
+    return saveProject(project, { ...project.data,
+      interviews: project.data.interviews.filter(session => session.id !== interviewId),
+      trash: (project.data.trash ?? []).filter(material => material.interviewId !== interviewId),
+      sessionTrash: [...(project.data.sessionTrash ?? []), item],
+    });
+  });
+}
+export async function restoreProjectInterview(project: OpenProject, trashId: string): Promise<OpenProject> {
+  return checkedTrashMutation(project, async () => {
+    const item = project.data.sessionTrash?.find(entry => entry.id === trashId);
+    if (!item) throw new Error(msg('sessionTrash.missing'));
+    const occupied = new Set(project.data.interviews.flatMap(session => [session.id, ...session.recordings.map(recording => recording.id)]));
+    if ([item.interview.id, ...item.interview.recordings.map(recording => recording.id)].some(identity => occupied.has(identity))) {
+      throw new Error(msg('sessionTrash.restoreConflict'));
+    }
+    const interviews = [...project.data.interviews];
+    const hiddenBefore = project.data.sessionTrash!.filter(entry => entry.id !== item.id && entry.position < item.position).length;
+    interviews.splice(Math.min(Math.max(0, item.position-hiddenBefore), interviews.length), 0, item.interview);
+    return saveProject(project, { ...project.data, interviews,
+      trash: [...(project.data.trash ?? []), ...(item.materialTrash ?? [])],
+      sessionTrash: project.data.sessionTrash!.filter(entry => entry.id !== trashId),
+    });
+  });
+}
+export function restoreProjectTrashItem(project: OpenProject, trashId: string): Promise<OpenProject> {
+  return project.data.sessionTrash?.some(item => item.id === trashId)
+    ? restoreProjectInterview(project, trashId) : restoreProjectMaterial(project, trashId);
+}
 /** Clearing removes recovery entries; external audio is never touched. */
 export async function clearProjectTrash(project:OpenProject):Promise<OpenProject>{
   return checkedTrashMutation(project,async()=>{
-    const next=await saveProject(project,{...project.data,trash:[]});
+    parseProject(JSON.stringify(project.data));
+    const next=await saveProject(project,{...project.data,trash:[],sessionTrash:[]});
     // The index is committed first. Cleanup failure must never resurrect a partly removed item.
     // Recovery snapshots created by earlier operations are deliberately left alone.
     for(const item of project.data.trash??[]){
@@ -910,6 +987,13 @@ export async function clearProjectTrash(project:OpenProject):Promise<OpenProject
       if(item.recording.storage==='copy'&&!active.some(r=>r.storage==='copy'&&r.file===item.recording.file)){
         try{await(await(await interviewDirectory(next,item.interviewId)).getDirectoryHandle('media')).removeEntry(item.recording.file);}catch{/* Never touch external audio. */}
       }
+    }
+    for (const item of project.data.sessionTrash ?? []) {
+      // An archived session owns its own directory; references point outside it and are never followed.
+      if (next.data.interviews.some(session => session.id === item.interview.id)) continue;
+      try {
+        await (await next.directory.getDirectoryHandle('interviews')).removeEntry(item.interview.id, { recursive: true });
+      } catch { /* A failed cleanup leaves unreferenced files, never a partially restorable entry. */ }
     }
     return next;
   });

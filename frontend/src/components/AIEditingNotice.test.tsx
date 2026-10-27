@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AIEditingNotice } from './AIEditingNotice';
 import type { AIEditActivity } from '../lib/aiEditOwnership';
 import { setInterfaceLanguage } from '../i18n';
@@ -80,4 +80,30 @@ it.each(['zh-CN','zh-TW','en'] as const)('explains permanent ending without requ
     render(<AIEditingNotice activities={[task]} onEnd={vi.fn()}/>);
     expect(screen.getByText(language==='en' ? /Ending retains saved changes/ : language==='zh-TW' ? /結束會保留已儲存內容/ : /结束会保留已保存内容/)).toBeTruthy();
   } finally { await setInterfaceLanguage('zh-CN'); }
+});
+
+it('expires completed presentation after four seconds without ending a task or deleting its record', () => {
+  vi.useFakeTimers();
+  try {
+    const completed = { ...task, state: 'completed' as const, saved: 3 };
+    const end = vi.fn(), dismiss = vi.fn();
+    const { rerender, container } = render(<AIEditingNotice activities={[completed]} onEnd={end} onDismiss={dismiss}/>);
+    act(() => vi.advanceTimersByTime(3999)); expect(container.textContent).toContain('AI 编辑已完成');
+    act(() => vi.advanceTimersByTime(1)); expect(container.textContent).toBe('');
+    expect(completed).toMatchObject({ state: 'completed', saved: 3 });
+    expect(end).not.toHaveBeenCalled(); expect(dismiss).not.toHaveBeenCalled();
+    rerender(<AIEditingNotice activities={[{ ...completed, state: 'failed', touched: 1 }]} onEnd={end}/>);
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.getByRole('button', { name: '结束编辑' })).toBeTruthy();
+  } finally { vi.useRealTimers(); }
+});
+
+it('retains the task and restores its action after a failed end request', async () => {
+  await act(() => setInterfaceLanguage('zh-CN'));
+  const end=vi.fn(async()=>{throw Error('synthetic_end_failure');});
+  render(<AIEditingNotice activities={[task]} onEnd={end}/>);
+  await act(async () => fireEvent.click(screen.getByRole('button',{name:'结束编辑'})));
+  expect(end).toHaveBeenCalledWith(task.task_id);
+  expect((screen.getByRole('button',{name:'结束编辑'}) as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByRole('status').textContent).toContain('Synthetic v1');
 });

@@ -134,3 +134,34 @@ it('blocks navigation after save failure, keeps dirty content and retries the sa
   expect(saveActiveEdit).toHaveBeenLastCalledWith(deps.dirHandleRef.current, 'synthetic.wav', 'm1', 'e1', expect.objectContaining({ transcript }));
   expect(deps.setSaveStatus).toHaveBeenLastCalledWith('saved');
 });
+
+it('expires save success after four seconds while retaining a newer save error', () => {
+  vi.useFakeTimers(); const { result } = renderHook(usePersistence, { initialProps: loadedDeps() });
+  act(() => result.current.setSaveToast({ kind: 'ok', text: 'Synthetic saved' }));
+  act(() => vi.advanceTimersByTime(3999)); expect(result.current.saveToast?.kind).toBe('ok');
+  act(() => vi.advanceTimersByTime(1)); expect(result.current.saveToast).toBeNull();
+  act(() => result.current.setSaveToast({ kind: 'ok', text: 'Synthetic saved' }));
+  act(() => vi.advanceTimersByTime(3000));
+  act(() => result.current.setSaveToast({ kind: 'error', text: 'Synthetic write failure' }));
+  act(() => vi.advanceTimersByTime(10000)); expect(result.current.saveToast?.kind).toBe('error');
+});
+
+it('clears save feedback on a document or version change without saving or deleting content', () => {
+  const deps=loadedDeps();
+  const ui=renderHook(usePersistence,{initialProps:deps});
+  act(() => ui.result.current.setSaveToast({kind:'error',text:'Synthetic old document error'}));
+  expect(ui.result.current.saveToast?.kind).toBe('error');
+  ui.rerender({...deps, models:[{...deps.models[0], activeEditId:'e2'}]});
+  expect(ui.result.current.saveToast).toBeNull();
+  expect(saveActiveEdit).not.toHaveBeenCalled();
+});
+it('does not publish manual-save success after its document has changed', async () => {
+  const deps=loadedDeps(); let finish!:()=>void;
+  vi.mocked(saveActiveEdit).mockImplementationOnce(() => new Promise<void>(resolve => {finish=resolve;}));
+  const ui=renderHook(usePersistence,{initialProps:{...deps,transcript:changed(deps)} as UsePersistenceDeps});
+  let saving!:Promise<void>;
+  await act(async () => { saving=ui.result.current.handleSave(); });
+  ui.rerender({...deps, selectedAudio:'synthetic-other.wav'});
+  await act(async () => { finish(); await saving; });
+  expect(ui.result.current.saveToast).toBeNull();
+});

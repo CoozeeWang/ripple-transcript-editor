@@ -95,6 +95,26 @@
 .project-home__header { min-height:76px;padding:12px 28px;border-bottom:0;gap:32px; }
 .project-home__content { max-width:1200px;padding:8px 28px 48px;gap:var(--space-5); }
 .project-home__content:has(> .project-setup) { max-width:none; }
+/* Bound only the saved project board; welcome, creation and batch import keep their layouts. */
+.project-home--board { display:flex; flex-direction:column; min-height:0; height:100vh; height:100dvh; overflow:hidden; }
+.project-home--board > .project-home__header { flex:none; }
+.project-home--board > .project-home__content { display:flex; flex-direction:column; flex:1; min-height:0; width:100%; overflow:hidden; gap:0; padding-bottom:0; }
+.project-home--board > .project-home__content > * { flex-shrink:0; }
+.project-home--board .project-board { flex:1 1 0; min-height:0; grid-template-rows:minmax(0,1fr); }
+.project-home--board .setup-canvas { min-height:0; overflow-x:hidden; overflow-y:scroll; overscroll-behavior:contain; }
+.project-home--board .setup-canvas:focus-visible { outline:1px solid var(--color-focus); outline-offset:-1px; }
+.project-home--board .project-saved-title { max-height:40vh; max-height:40dvh; overflow-x:hidden; overflow-y:scroll; }
+/* Reserve the same native gutter in both rows, including WebKit overlay-scrollbar mode. */
+.project-home--board .project-saved-title, .project-home--board .setup-canvas { scrollbar-gutter:stable; scrollbar-width:thin; }
+/* Keep right-edge hints inside the newly bounded scrolling panes. */
+.project-home--board :is(.project-title-actions,.setup-row-actions) [data-tip]::after,
+.project-home--board :is(.project-session-delete,.setup-grip)[data-tip]::after { left:auto; right:0; transform:translateY(-3px); }
+.project-home--board :is(.project-title-actions,.setup-row-actions) [data-tip][data-tip-pos="top"]::after,
+.project-home--board :is(.project-session-delete,.setup-grip)[data-tip][data-tip-pos="top"]::after { transform:translateY(3px); }
+.project-home--board :is(.project-title-actions,.setup-row-actions) [data-tip]:is(:hover,:focus-visible)::after,
+.project-home--board :is(.project-session-delete,.setup-grip)[data-tip]:is(:hover,:focus-visible)::after { transform:translateY(0); }
+.project-home--board .project-saved-title::-webkit-scrollbar, .project-home--board .setup-canvas::-webkit-scrollbar { width:8px; }
+.project-home--board .project-saved-title::-webkit-scrollbar-thumb, .project-home--board .setup-canvas::-webkit-scrollbar-thumb { background:var(--color-border-strong); border-radius:8px; }
 .project-section { background:var(--color-surface);border-radius:var(--radius-lg);padding:var(--space-5); }
 .project-home input,.project-home textarea,.project-home select { background:var(--color-surface);font-family:var(--font-sans); }
 @media(max-width:640px){.project-home__header{padding:12px 16px;gap:12px}.project-home__content{padding:8px 16px 32px}}
@@ -292,6 +312,8 @@ body:has(.project-home--welcome) { min-width: 0; }
 .project-error-notice { display:flex; align-items:flex-start; gap:8px; margin:0 0 12px; padding:8px 12px; border:1px solid var(--color-danger-border); border-radius:8px; background:var(--color-danger-bg); color:var(--color-text); scroll-margin-block:12px; }
 .project-error-notice > svg { flex:0 0 16px; width:16px; height:16px; color:var(--color-danger); margin-top:2px; }
 .project-error-notice p { min-width:0; margin:0; font:400 13px/1.5 var(--font-sans); overflow-wrap:anywhere; }
+.project-recents-warning > p { flex: 1; }
+.project-recents-warning > .button { flex: none; }
 
 .recent-project-recovery { flex-direction:column; gap:12px; padding:12px 16px; }
 .recent-project-recovery__actions { display:flex; align-self:stretch; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
@@ -323,3 +345,10 @@ body:has(.project-home--welcome) { min-width: 0; }
 .recording-move-dialog .settings-hint { font-size:12px; line-height:1.6; }
 .recording-move-feedback { margin:12px 0 0; font-size:13px; overflow-wrap:anywhere; }
 .recording-move-dialog .audio-project-footer { flex-shrink:0; margin-top:20px; }
+
+.project-session-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
+.project-session-heading h2 { flex:1; min-width:0; overflow-wrap:anywhere; }
+.icon-button.project-session-delete { width:28px; height:28px; min-height:28px; padding:5px; flex:none; }
+.project-session-delete > svg.action-icon { width:16px; height:16px; }
+.project-session-delete:hover:not(:disabled) { color:var(--color-danger); border-color:var(--color-danger); }
+@media(max-width:760px) { .project-saved-title { padding-inline:16px; } }

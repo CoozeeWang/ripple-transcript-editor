@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { msg, setInterfaceLanguage } from '../i18n';
@@ -109,7 +109,7 @@ function renderBoard(project:OpenProject,save=vi.fn(),select=vi.fn(),selected=pr
 it('stores a padded date when adding a scene to an existing project',async()=>{
  const project=boardProject(),createSession=vi.fn();
  render(<ProjectBoard project={project} selected="reference" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={createSession} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
- fireEvent.click(screen.getByRole('button',{name:'新增场次'}));
+ fireEvent.click(screen.getAllByRole('button', { name: '新增场次' })[0]);
  fireEvent.click(screen.getByRole('button',{name:'场次名称'}));fireEvent.change(screen.getByRole('textbox',{name:'场次名称'}),{target:{value:'新场次'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'场次名称'}),{key:'Enter'});
  fireEvent.change(screen.getByRole('textbox',{name:'场次日期：年'}),{target:{value:'2020'}});
  fireEvent.change(screen.getByRole('textbox',{name:'场次日期：月'}),{target:{value:'10'}});
@@ -123,6 +123,37 @@ it('shows the session count beside the session list heading',()=>{
  renderBoard(project);
  const sidebar=screen.getByRole('complementary',{name:'场次'});
  expect(sidebar.querySelector('.panel-heading__count')?.textContent).toBe('3');
+});
+
+it.each([['zh-CN','新增场次','场次列表'],['zh-TW','新增場次','場次清單'],['en','Add session','Session list']] as const)('keeps the %s add control outside the scroll list with localized hover text',async(language,label,listLabel)=>{
+ try{
+  await act(()=>setInterfaceLanguage(language));
+  const project=boardProject();
+  const props={project,selected:'reference',busy:false,select:()=>{},save:()=>{},add:()=>{},importDocuments:async()=>{},createSession:async()=>{},open:()=>{},run:async(work:()=>Promise<void>)=>work(),legacy:()=>{},relink:()=>{},associate:()=>{}};
+  const view=render(<ProjectBoard {...props}/>);
+  const heading=view.container.querySelector('.setup-sidebar-heading')!;
+  const top=within(heading as HTMLElement).getByRole('button',{name:label});
+  const list=screen.getByRole('region',{name:listLabel});
+  expect(top.getAttribute('data-tip')).toBe(label);
+  expect(list.contains(top)).toBe(false);
+  expect(heading.querySelector('.panel-heading__count')?.textContent).toBe('3');
+  expect(list.querySelectorAll('[data-session-id]')).toHaveLength(3);
+  fireEvent.click(top);
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0685')}));
+  const name=screen.getByRole('textbox',{name:msg('ProjectBoard.m0685')});
+  fireEvent.change(name,{target:{value:'Synthetic retained draft'}});
+  fireEvent.keyDown(name,{key:'Enter'});
+  fireEvent.click(top);
+  expect(view.container.querySelector('.setup-session-form h2')?.textContent).toBe('Synthetic retained draft');
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0694')}));
+  fireEvent.click(within(list).getByRole('button',{name:label}));
+  expect(view.container.querySelector('.setup-session-form')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0694')}));
+  view.rerender(<ProjectBoard {...props} busy/>);
+  expect((top as HTMLButtonElement).disabled).toBe(true);
+  expect((within(list).getByRole('button',{name:label}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(top);expect(view.container.querySelector('.setup-session-form')).toBeNull();
+ }finally{await act(()=>setInterfaceLanguage('zh-CN'));}
 });
 
 it('keeps session focus and selection together when clicking, tabbing, and using arrow keys',()=>{
@@ -188,6 +219,48 @@ it('reorders saved-project sessions by dragging the grip onto another session',(
  Object.defineProperty(event,'clientY',{value:0});
  fireEvent(target,event);
  expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
+});
+
+function transferForOrder() {
+ const values=new Map<string,string>();
+ return {types:['Files'],items:[],effectAllowed:'',dropEffect:'none',setData(type:string,value:string){values.set(type,value);if(!this.types.includes(type))this.types.push(type);},getData:(type:string)=>values.get(type)??''};
+}
+function orderEvent(type:'dragEnter'|'dragOver'|'drop',target:Element,transfer:ReturnType<typeof transferForOrder>,clientY:number){
+ const event=(type==='drop'?createEvent.drop:type==='dragEnter'?createEvent.dragEnter:createEvent.dragOver)(target,{dataTransfer:transfer});
+ Object.defineProperty(event,'clientY',{value:clientY});fireEvent(target,event);
+}
+function rowsAt(rows:Element[]){rows.forEach((row,index)=>vi.spyOn(row,'getBoundingClientRect').mockReturnValue({top:100+index*200,bottom:200+index*200,height:100} as DOMRect));}
+
+it('accepts a session drop in the list gap, keeps move semantics and persists the intended order',()=>{
+ const project=boardProject(),save=renderBoard(project),transfer=transferForOrder();
+ const rows=Array.from(document.querySelectorAll('.setup-session'));rowsAt(rows);
+ fireEvent.dragStart(screen.getByRole('button',{name:'调整Reference顺序'}),{dataTransfer:transfer});
+ expect(transfer.effectAllowed).toBe('move');expect(transfer.getData('text/plain')).toBe('reference');
+ const sidebar=screen.getByRole('region',{name:'场次列表'});
+ orderEvent('dragEnter',sidebar,transfer,450);
+ expect(transfer.dropEffect).toBe('move');expect(rows[2].getAttribute('data-sort-edge')).toBe('before');
+ orderEvent('dragOver',sidebar,transfer,450);
+ expect(transfer.dropEffect).toBe('move');expect(rows[2].getAttribute('data-sort-edge')).toBe('before');
+ orderEvent('drop',sidebar,transfer,450);
+ expect(save).toHaveBeenCalledWith([project.data.interviews[1],project.data.interviews[0],project.data.interviews[2]]);
+});
+
+it.each(['manuscript zone','audio list end','audio list gap'])('sorts audio through the %s without importing a Files-advertising internal drag',async targetKind=>{
+ vi.mocked(local.readManifest).mockResolvedValue(null);
+ vi.mocked((await import('../lib/projectStore')).recordingDirectory).mockResolvedValue({} as FileSystemDirectoryHandle);
+ const recordings=['a','b','c'].map(id=>({id,file:`${id}.wav`,name:`Synthetic ${id}.wav`,storage:'copy' as const}));
+ const session={id:'s',title:'Synthetic session',recordings};
+ const project={data:{id:'p',interviews:[session]}} as OpenProject;
+ const save=vi.fn(),importDocuments=vi.fn(),transfer=transferForOrder();
+ render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={save} add={()=>{}} importDocuments={importDocuments} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+ const rows=Array.from(document.querySelectorAll('.setup-audio'));rowsAt(rows);
+ fireEvent.dragStart(screen.getByRole('button',{name:'调整Synthetic a.wav顺序'}),{dataTransfer:transfer});
+ const target=targetKind==='manuscript zone'?screen.getByRole('button',{name:'向 Synthetic b.wav 添加转录稿'}):targetKind==='audio list end'?screen.getByRole('button',{name:'选择或拖入音频，加入这个场次'}):document.querySelector('.setup-canvas')!;
+ const y=targetKind==='manuscript zone'?390:targetKind==='audio list end'?900:450;
+ orderEvent('dragOver',target,transfer,y);expect(transfer.dropEffect).toBe('move');
+ orderEvent('drop',target,transfer,y);
+ expect(save).toHaveBeenCalledWith([{...session,recordings:targetKind==='audio list end'?[recordings[1],recordings[2],recordings[0]]:[recordings[1],recordings[0],recordings[2]]}]);
+ expect(importDocuments).not.toHaveBeenCalled();expect(document.querySelector('.is-over')).toBeNull();
 });
 
 it('updates the reference permission notice when switching interface language', async () => {
@@ -346,4 +419,19 @@ it.each(['zh-CN','zh-TW','en'] as const)('shows persistent duration beneath audi
   expect([...ui.container.querySelectorAll('.setup-audio-duration')].map(node=>node.textContent?.trim())).toEqual(['01:05:24','--:--:--','--:--:--']);
   expect(ui.container.querySelector('.setup-audio-name strong + small')).toBeTruthy();
  } finally {await setInterfaceLanguage('zh-CN');}
+});
+
+it('keeps an original-designation failure attached to its own session', async () => {
+  const model={id:'m',label:'Synthetic manuscript',engine:'synthetic',sourceKind:'import',designatedOriginal:true,edits:[],activeEditId:''} as TranscriptModel;
+  vi.mocked(local.readManifest).mockResolvedValue({models:[model]} as never);
+  vi.mocked(local.setModelOriginal).mockRejectedValueOnce(Error('Synthetic designation failure'));
+  const project={data:{id:'synthetic-project',interviews:[{id:'a',title:'Synthetic A',recordings:[{id:'r',file:'synthetic.wav',name:'Synthetic audio',storage:'copy'}]},{id:'b',title:'Synthetic B',recordings:[]}]}} as OpenProject;
+  const props={project,busy:false,select:vi.fn(),save:vi.fn(),add:vi.fn(),importDocuments:async()=>{},createSession:async()=>{},open:vi.fn(),run:async(work:()=>Promise<void>)=>{await work();},legacy:vi.fn(),relink:vi.fn(),associate:vi.fn()};
+  const ui=render(<ProjectBoard {...props} selected="a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'取消“原始转录稿”标记 Synthetic manuscript'}));
+  await screen.findByRole('alert');
+  ui.rerender(<ProjectBoard {...props} selected="b"/>);
+  expect(screen.queryByText('Synthetic designation failure')).toBeNull();
+  ui.rerender(<ProjectBoard {...props} selected="a"/>);
+  expect(screen.getByText('Synthetic designation failure')).toBeTruthy();
 });

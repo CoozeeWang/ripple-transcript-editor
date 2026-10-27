@@ -161,3 +161,34 @@ it.each(['zh-CN', 'zh-TW', 'en'] as const)('reports unreadable journals while re
   expect(screen.getByRole('alert').textContent).toContain(language === 'en' ? 'other tasks remain available' : language === 'zh-TW' ? '其他工作仍可使用' : '其他任务仍可使用');
   expect(screen.getAllByRole('button').some(button => !(button as HTMLButtonElement).disabled)).toBe(true);
 });
+
+it('expires only completed history, keeping pending proposals and task records intact', () => {
+  vi.useFakeTimers();
+  try {
+    const completed = { ...task, state: 'completed' as const, staged: 0, held_batches: 0 };
+    const action = vi.fn();
+    const { container, rerender } = render(<ContinuationProgress tasks={[completed]} error="" onAction={action}/>);
+    act(() => vi.advanceTimersByTime(4000)); expect(container.textContent).toBe('');
+    expect(action).not.toHaveBeenCalled(); expect(completed.state).toBe('completed');
+    rerender(<ContinuationProgress tasks={[{ ...completed, staged: 1 }]} error="" onAction={action}/>);
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.getByRole('button', { name: '查看待提交修改' })).toBeTruthy();
+  } finally { vi.useRealTimers(); }
+});
+
+it('keeps error text, refresh and presentation-only close in one row', () => {
+  const action=vi.fn(), dismiss=vi.fn();
+  const ui=render(<ContinuationProgress embedded tasks={[]} error="synthetic_failure" onAction={action} onDismissError={dismiss}/>);
+  const row=screen.getByRole('alert');
+  expect(row.classList.contains('notice-row')).toBe(true);
+  expect(row.querySelector('.notice-row__message')?.textContent).toContain('无法更新编辑进度');
+  expect(row.contains(screen.getByRole('button',{name:'刷新进度'}))).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'关闭提示'}));
+  expect(dismiss).toHaveBeenCalledOnce(); expect(action).not.toHaveBeenCalled();
+  expect(ui.container.querySelector('.continuation-progress-row')).toBeNull();
+});
+it('keeps journal recovery actionable rather than silently dismissing it', () => {
+  render(<ContinuationProgress embedded tasks={[]} error="continuation_journal_unreadable" onAction={vi.fn()} onDismissError={vi.fn()}/>);
+  expect(screen.getByRole('button',{name:'刷新进度'})).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'关闭提示'})).toBeNull();
+});

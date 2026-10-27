@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { blocksHumanEditing, ownsEditing, visibleAIActivities, type AIEditActivity } from '../lib/aiEditOwnership';
+import { useExpiredFeedback } from '../hooks/useExpiredFeedback';
+
+const receipt = (task: AIEditActivity) => JSON.stringify([task.task_id, task.touched, task.saved, task.total]);
 
 export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurrent = () => true }: {
   activities: AIEditActivity[]; onEnd: (id: string) => Promise<unknown>; onDismiss?: (id: string) => Promise<unknown>; children?: ReactNode;
@@ -8,10 +11,13 @@ export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurr
 }) {
   useInterfaceLanguage();
   const [busy, setBusy] = useState<string | null>(null);
-  const visible = visibleAIActivities(activities);
+  const candidates = visibleAIActivities(activities);
+  const expired = useExpiredFeedback(candidates.filter(task => task.state === 'completed' && !blocksHumanEditing(task)).map(receipt));
+  const visible = candidates.filter(task => task.state !== 'completed' || blocksHumanEditing(task) || !expired.has(receipt(task)));
   const run = async (task: AIEditActivity) => {
     setBusy(task.task_id);
     try { await (blocksHumanEditing(task) ? onEnd(task.task_id) : onDismiss?.(task.task_id)); }
+    catch { /* The window runtime retains the actionable failure. */ }
     finally { setBusy(null); }
   };
   // Recovery errors must remain visible even when no task could be recovered.

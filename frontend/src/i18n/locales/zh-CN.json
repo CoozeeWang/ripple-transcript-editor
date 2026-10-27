@@ -1847,5 +1847,39 @@
   "audioDuration": {
     "label": "音频时长",
     "saveFailed": "音频时长未能保存到项目，重开音频后可重试。"
+  },
+  "sessionTrash": {
+    "deleteAction": "删除场次 {{name}}",
+    "deleteTitle": "删除场次？",
+    "deleteDescription": "场次及其中的全部音频、转录稿、版本和批注将一起移入项目回收站，可整体恢复。不会改写音频或转录内容，也不会删除引用的外部原文件。",
+    "confirm": "移入回收站",
+    "cancel": "取消",
+    "sessionLabel": "场次",
+    "sessionContents": "含场次中的全部音频和稿件",
+    "restoreAction": "恢复场次 {{name}}",
+    "missing": "找不到这个场次或回收站记录。请重新打开项目后重试。",
+    "restoreConflict": "无法恢复此场次：项目中已有相同标识的材料。现有材料和回收站记录均已保留。",
+    "trashHint": "删除的音频、稿件和整个场次保存在这里。恢复场次会带回其中的音频和稿件；清空后无法恢复，引用的外部原文件不受影响。",
+    "clearDescription": "将永久清空 {{count}} 项回收站记录，包括已删除场次及其中的音频和稿件。此操作无法撤销；引用的外部原文件不会删除。",
+    "changed": "项目内容已变化。请取消本次删除，重新确认场次后再试。"
+  },
+  "ProjectCreate": {
+    "heading": "新建项目",
+    "hint": "先保存项目，再创建场次、导入音频和转录稿。",
+    "name": "项目名称",
+    "cancel": "取消",
+    "save": "选择位置并保存项目",
+    "saving": "正在保存项目…",
+    "saveFailed": "无法保存项目。请检查保存位置的写入权限，或换一个位置重试。"
+  },
+  "recentProjects": {
+    "updateFailed": "项目文件可以继续使用，但最近项目列表未能更新。请重试。",
+    "retry": "重试",
+    "unreadable": "无法读取最近项目记录。请通过“打开项目”选择项目，原项目文件不受影响。",
+    "notSaved": "最近项目记录未能保存，请重试。"
+  },
+  "projectSessions": {
+    "list": "场次列表",
+    "content": "场次内容"
   }
 }
