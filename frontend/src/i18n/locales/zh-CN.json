@@ -1903,5 +1903,10 @@
   },
   "segmentMerge": {
     "changed": "稿件或片段已变化，当前无法合并。请关闭弹窗后重新选择。"
+  },
+  "segmentJump": {
+    "label": "跳转至：",
+    "inputLabel": "跳转至片段（1–{{count}}）",
+    "invalid": "请输入 1–{{count}} 的片段编号。"
   }
 }

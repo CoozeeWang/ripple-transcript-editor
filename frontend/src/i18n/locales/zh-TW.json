@@ -1903,5 +1903,10 @@
   },
   "segmentMerge": {
     "changed": "稿件或片段已變更，目前無法合併。請關閉對話框後重新選擇。"
+  },
+  "segmentJump": {
+    "label": "跳至：",
+    "inputLabel": "跳至片段（1–{{count}}）",
+    "invalid": "請輸入 1–{{count}} 的片段編號。"
   }
 }

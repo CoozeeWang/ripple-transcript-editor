@@ -1903,5 +1903,10 @@
   },
   "segmentMerge": {
     "changed": "The manuscript or segments have changed. Close this dialog and select the segments again."
+  },
+  "segmentJump": {
+    "label": "Go to:",
+    "inputLabel": "Go to segment (1–{{count}})",
+    "invalid": "Enter a segment number from 1 to {{count}}."
   }
 }

@@ -13,6 +13,7 @@ export interface TranscriptHeaderProps {
   editingLocked?: boolean;
   metadata: InterviewMetadata | null;
   segmentCount: number;
+  segmentNavigation?: ReactNode;
   viewingOriginal: boolean;
   activeModelId: string | null;
   versionControls: ReactNode;
@@ -80,7 +81,10 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
           </div>
           <div className="transcript-heading-status">
           <p className="seek-hint">{msg('review.seekHint', { shortcut: '__shortcut__' }).split('__shortcut__').map((part,index)=><span key={index}>{index>0&&<span className="seek-shortcut">{keys("0")}</span>}{part}</span>)}</p>
-          <p className="segment-count">{msg('TranscriptHeader.m1078', { count: segmentCount })}</p>
+          <div className="segment-navigation">
+            <p className="segment-count">{msg('TranscriptHeader.m1078', { count: segmentCount })}</p>
+            {props.segmentNavigation}
+          </div>
           </div>
         </div>}
       </div>
