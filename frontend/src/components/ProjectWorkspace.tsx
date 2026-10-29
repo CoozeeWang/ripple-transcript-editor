@@ -1,3 +1,8 @@
+import { createSegmentLinkDelivery, type SegmentLinkReceiver } from '../lib/segmentLinkDelivery';
+import { resolveLinkProject } from '../lib/segmentLinkProject';
+import { parseSegmentLink, type SegmentTarget } from '../lib/segmentTransfer';
+import { nextSegmentLink } from '../lib/segmentLinkBridge';
+import { resolveSegmentTarget } from '../lib/segmentTarget';
 import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
 import { recordProblem } from '../lib/diagnostics';
@@ -17,7 +22,7 @@ import { MaterialImportNotice, type MaterialImportNote } from './MaterialImportN
 import { SUCCESS_FEEDBACK_MS, useTransientState } from '../hooks/useTransientState';
 import { ProjectImportStatus } from './ProjectImportStatus';
 import { manuscriptImportNoticeKeys } from '../lib/materialImport';
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ConnectorContext } from '../hooks/connectorContext';
 import App from '../App';
 import { prepareMaterials } from '../lib/materialImport';
@@ -59,6 +64,11 @@ export function ProjectWorkspace() {
   const [recent, setRecent] = useState<Awaited<ReturnType<typeof recentProjects>>>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ directory: FileSystemDirectoryHandle; recording: ProjectRecording; title: string; originalModelId?: string } | null>(null);
+  const [linkOpenSequence, setLinkOpenSequence] = useState(0);
+  const [linkTarget, setLinkTarget] = useState<SegmentTarget | null>(null);
+  const linkReceiver = useRef<SegmentLinkReceiver | null>(null);
+  const registerLinkReceiver = useCallback((receiver: SegmentLinkReceiver | null) => { linkReceiver.current = receiver; }, []);
+  const deliverLink = useRef(createSegmentLinkDelivery(nextSegmentLink));
   const [association, setAssociation] = useState<{ source: string; modelId: string; name: string; anchor:DOMRect } | null>(null);
   const [recentOpen, setRecentOpen] = useState(false);
   const [recentWriteFailure, setRecentWriteFailure] = useState<string | null>(null);
@@ -255,7 +265,54 @@ export function ProjectWorkspace() {
     editorLease.current = release; opened = true;
     } finally { if (!opened) release(); }
   };
-  const openRecording = (recording: ProjectRecording, targetId = interviewId, modelId?: string, editId?: string) => run(async () => { if (project && targetId) await enterRecording(project, recording, targetId, modelId, editId); });
+  const openRecording = (recording: ProjectRecording, targetId = interviewId, modelId?: string, editId?: string) => run(async () => { if (project && targetId) { await enterRecording(project, recording, targetId, modelId, editId); setLinkTarget(null); } });
+  const openSegmentLink = async (raw: string) => {
+    const target = parseSegmentLink(raw);
+    if (busyRef.current || projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectBusy'));
+    const next = await resolveLinkProject(target.project,current.current,await recentProjects(),{
+      access:nativeAccessStatus, open:openProject, permit:directory => permit(directory,'readwrite'),
+      choose:async () => window.confirm(msg('segmentTransfer.reselect')) ? chooseDirectory('open-project') : null,
+    });
+    if (!next) return;
+    const {session,recording,model,version} = await resolveSegmentTarget(next,target);
+    const resolvedTarget = {...target,recording:recording.id,model,version};
+    // Retain the existing editor lease until the target is ready. Failure must leave the source protected.
+    const previousLease = editorLease.current;
+    const reuseLease = current.current?.data.id === next.data.id && previousLease;
+    const release = reuseLease || await acquireProjectEditor(next.data.id);
+    let opened = false;
+    try {
+      const directory = await recordingDirectory(next,session.id,recording);
+      await persistActiveModel(directory,recording.file,model,version === 'original' ? undefined : version);
+      await publish(next);
+      setInterviewId(session.id);
+      setEditor({directory,recording,title:session.title,originalModelId:version === 'original' ? model : undefined});
+      editorLease.current = release;
+      if (previousLease && previousLease !== release) previousLease();
+      opened = true;
+    } finally { if (!opened && release !== previousLease) release(); }
+    setLinkTarget(resolvedTarget);
+    setLinkOpenSequence(previous => previous + 1);
+  };
+  const linkPoll = useRef<() => Promise<void>>(async () => {});
+  useLayoutEffect(() => {
+    linkPoll.current = async () => {
+      const ready = () => !busyRef.current && !settings && !document.querySelector('dialog[open], [role="dialog"]') && (!editor || !!linkReceiver.current?.ready());
+      try {
+        await deliverLink.current({ready, open:async raw => {
+          if (editor) { await linkReceiver.current?.open(raw); return; }
+          if (creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description)) {
+            setError(msg('ProjectWorkspace.openProjectUnsaved')); return;
+          }
+          await openSegmentLink(raw);
+        }});
+      } catch (error) { setError(error instanceof Error ? error.message : msg('segmentTransfer.openFailed')); }
+    };
+  });
+  useEffect(() => {
+    const timer = window.setInterval(() => void linkPoll.current(),750);
+    return () => window.clearInterval(timer);
+  }, []);
   const checkManuscripts = async (targetId: string, recordings: ProjectRecording[], folder?: FileSystemDirectoryHandle) => {
     const parent = folder ?? await chooseDirectory('open-audio-folder', 'read');
     const items = await findExistingManuscripts(parent, recordings);
@@ -271,7 +328,7 @@ export function ProjectWorkspace() {
     setTrashOpen(false);setSessionDelete(null);setDeleteTarget(null);setUndoTrash(null);setProject(null); current.current = null; setCreating(false); setMaterialTarget(undefined); setInterviewId(null); setRecentOpen(false); setImportNotice(NO_IMPORT_NOTES); setError(''); setAssociation(null); setArchiving(false); setDescriptionDrafts({});
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
-  if (editor && project) return <App initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}`} projectDirectory={editor.directory}
+  if (editor && project) return <App registerSegmentLinkReceiver={registerLinkReceiver} onOpenSegmentLink={openSegmentLink} initialSegmentTarget={linkTarget ?? undefined} initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}:${linkOpenSequence}`} projectDirectory={editor.directory}
     connectorProject={() => current.current} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onAudioDuration={async seconds => {

@@ -1,4 +1,5 @@
-﻿; Run only our shipped preflight. Never invoke shell text derived from a process.
+﻿!include "${__FILEDIR__}\segment-link.nsh"
+; Run only our shipped preflight. Never invoke shell text derived from a process.
 !define RIPPLE_UPGRADE_SCRIPT "${__FILEDIR__}\prepare-upgrade.ps1"
 !macro RipplePreflight PREFIX
 Function ${PREFIX}RipplePrepareUpgrade

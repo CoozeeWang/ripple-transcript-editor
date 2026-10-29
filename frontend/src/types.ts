@@ -197,6 +197,8 @@ export interface TranscriptionOptions {
 // 与修改稿迭代 edits[]（可 v1/v2/v3 并存）。schemaVersion: 2。
 
 export interface TranscriptEdit {
+  /** Opaque persistent external-link identity; never derived from reusable display IDs. */
+  linkId?: string;
   /** Source version for the default comparison; same model, stable edit id. */
   comparisonBaseId?: string;
   id: string; // 模型内稳定序号，如 "e1","e2"…
@@ -206,6 +208,7 @@ export interface TranscriptEdit {
 }
 
 export interface TranscriptModel {
+  originalLinkId?: string;
   /** Stable provenance shared by an original and all its related editing versions. */
   originalGroupId?: string;
   designatedOriginal?: boolean;

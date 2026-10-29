@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SegmentItem, type SegmentItemProps } from "./SegmentItem";
@@ -136,4 +136,46 @@ it("keeps readonly playback visible across find markup and clears it on pause or
   ui.rerender(<SegmentItem {...props} findQuery="丙" currentTime={3}/>);
   expect(highlights.get("transcript-playback")?.ranges.map(r=>r.toString()).join("")).toContain("丙丁");
   ui.unmount();expect(highlights.has("transcript-playback")).toBe(false);
+});
+
+it('exports body on modifier drag while preserving ordinary selection drags and protecting buttons', () => {
+  const noop=()=>{}; const drag=vi.fn(); const remove=vi.fn();
+  const ui=render(<SegmentItem segment={{id:'synthetic',text:'Synthetic body',speaker_id:'s',start:0,end:1}}
+    index={0} totalSegments={1} speakers={[{id:'s',name:'Synthetic'}]} effectiveSelectedSegmentId="synthetic"
+    isPlaying={false} currentTime={0} findQuery="" audioUrl="" viewingOriginal={false}
+    audioRef={{current:null}} textareaRefs={{current:new Map()}} editingRef={{current:false}}
+    setSelectedSegmentId={noop} seekTo={noop} recordEditorCursor={noop} addSpeaker={noop}
+    updateSegment={noop} removeSegment={remove} splitSegment={noop} mergeWithNext={noop}
+    handleEditorKeydown={noop} dragSegment={drag} copySegment={noop}/>);
+  const article=ui.container.querySelector('article')!;
+  const body=ui.getByLabelText('00:00–00:01 的文字');
+  const transfer={setData:vi.fn()};
+  expect(article.draggable).toBe(false);
+  fireEvent.dragStart(body,{dataTransfer:transfer});expect(drag).not.toHaveBeenCalled();
+  fireEvent.pointerMove(article);fireEvent.keyDown(window,{key:'Control',ctrlKey:true});expect(article.draggable).toBe(true);
+  expect(ui.container.querySelector('.segment-transfer-surface')?.getAttribute('draggable')).toBe('true');
+  fireEvent.dragStart(body,{dataTransfer:transfer});expect(drag).toHaveBeenCalledExactlyOnceWith('synthetic',transfer);
+  const deletion=ui.getByRole('button',{name:'删除'});
+  fireEvent.click(deletion,{ctrlKey:true});expect(remove).not.toHaveBeenCalled();
+  fireEvent.dragStart(deletion,{dataTransfer:transfer});expect(drag).toHaveBeenCalledTimes(1);
+  fireEvent.keyUp(window,{key:'Control'});expect(article.draggable).toBe(true);
+  fireEvent.dragEnd(article);expect(article.draggable).toBe(false);
+  fireEvent.click(deletion);expect(remove).toHaveBeenCalledOnce();
+});
+
+it('cancels the DOM provider and keeps the native session selected until it completes',async()=>{
+ const noop=()=>{};let finish!:()=>void;
+ const native=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));const dom=vi.fn();
+ const ui=render(<SegmentItem segment={{id:'synthetic',text:'Synthetic body',speaker_id:'s',start:0,end:1}}
+    index={0} totalSegments={1} speakers={[{id:'s',name:'Synthetic'}]} effectiveSelectedSegmentId="synthetic"
+    isPlaying={false} currentTime={0} findQuery="" audioUrl="" viewingOriginal={false}
+    audioRef={{current:null}} textareaRefs={{current:new Map()}} editingRef={{current:false}}
+    setSelectedSegmentId={noop} seekTo={noop} recordEditorCursor={noop} addSpeaker={noop}
+    updateSegment={noop} removeSegment={noop} splitSegment={noop} mergeWithNext={noop}
+    handleEditorKeydown={noop} dragSegment={dom} nativeDragSegment={native}/>);
+ const number=ui.container.querySelector('.segment-number')!;const article=ui.container.querySelector('article')!;
+ expect(fireEvent.dragStart(number,{dataTransfer:{}})).toBe(false);
+ expect(native).toHaveBeenCalledExactlyOnceWith('synthetic');expect(dom).not.toHaveBeenCalled();
+ fireEvent.keyUp(window,{key:'Meta'});fireEvent.blur(window);expect(article.draggable).toBe(true);
+ await act(async()=>{finish();});expect(article.draggable).toBe(false);
 });

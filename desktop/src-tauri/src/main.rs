@@ -3,6 +3,9 @@
 #[cfg(all(not(debug_assertions), not(feature = "custom-protocol")))]
 compile_error!("Daily builds require --features custom-protocol; otherwise Tauri overrides the macOS Dock icon.");
 
+mod segment_clipboard;
+mod segment_drag;
+mod segment_protocol;
 mod file_transfer;
 mod project_icon;
 mod backend_runtime;
@@ -31,12 +34,59 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 #[cfg(debug_assertions)]
-const PORT: u16 = 18702;
-#[cfg(not(debug_assertions))]
+const PORT: u16 = 18712;
+#[cfg(all(not(debug_assertions), not(feature = "segment-transfer-test")))]
 const PORT: u16 = 18701;
+#[cfg(all(not(debug_assertions), feature = "segment-transfer-test"))]
+const PORT: u16 = 18713;
 static WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static TUNNEL_LOG_LOCK: Mutex<()> = Mutex::new(());
 
+#[derive(Default)]
+struct SegmentLinks(Mutex<Vec<String>>);
+#[tauri::command]
+fn segment_link_next(app: tauri::AppHandle) -> Option<String> {
+    segment_protocol::app_channel(&app)?;
+    let state = app.state::<SegmentLinks>();
+    let mut pending = state.0.lock().ok()?;
+    if pending.is_empty() { None } else { Some(pending.remove(0)) }
+}
+fn enqueue_segment_links(app:&tauri::AppHandle, urls:impl IntoIterator<Item=String>) -> bool {
+    let Some(channel)=segment_protocol::app_channel(app) else {return false;};
+    let state=app.state::<SegmentLinks>();
+    let Ok(mut pending)=state.0.lock() else {return false;};
+    let mut accepted=false;
+    for raw in urls {if pending.len()<16 && segment_protocol::accepts(&channel.scheme,&raw) {pending.push(raw);accepted=true;}}
+    accepted
+}
+fn focus_segment_window(app:&tauri::AppHandle) {if let Some(window)=app.get_webview_window("main") {let _=window.show();let _=window.set_focus();}}
+struct DevServices(Mutex<Option<Child>>);
+fn start_dev_services(app: &tauri::AppHandle) -> Result<Option<Child>, String> {
+    if std::env::var("RIPPLE_DESKTOP_DEV").as_deref() == Ok("1") { return Ok(None); }
+    let resource = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let config: serde_json::Value = serde_json::from_str(&fs::read_to_string(resource.join("dev-runtime.json")).map_err(|_| "Dev runtime unavailable")?).map_err(|_| "Invalid Dev runtime")?;
+    let node = config["node"].as_str().ok_or("Invalid Dev runtime")?;
+    let root = PathBuf::from(config["root"].as_str().ok_or("Invalid Dev runtime")?);
+    let work = PathBuf::from(config["work"].as_str().ok_or("Invalid Dev runtime")?);
+    if !root.is_absolute() || !work.is_absolute() || !PathBuf::from(node).is_absolute() { return Err("Invalid Dev runtime paths".into()); }
+    let ready = work.join("services-ready");
+    let _ = fs::remove_file(&ready);
+    let mut child = Command::new(node).arg(root.join("scripts/desktop-dev.mjs")).arg("--services-only").current_dir(&root).spawn().map_err(|e| e.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        if child.try_wait().map_err(|e| e.to_string())?.is_some() { return Err("Dev services could not start; check isolated Dev ports".into()); }
+        if fs::read_to_string(&ready).ok().as_deref() == Some(child.id().to_string().as_str()) { break; }
+        if Instant::now() > deadline {
+            let _ = Command::new("/bin/kill").args(["-TERM", &child.id().to_string()]).status();
+            let _ = child.wait();
+            return Err("Dev services startup timed out".into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::env::set_var("RIPPLE_DESKTOP_DEV", "1");
+    std::env::set_var("RIPPLE_DATA_DIR", work.join("data"));
+    Ok(Some(child))
+}
 struct Backend(Mutex<Option<Child>>);
 struct ConnectorTunnel(Mutex<TunnelState>);
 #[derive(Default)]
@@ -279,7 +329,7 @@ fn fs_remove(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>, 
 
 // Only debug builds under the managed dev identity may use source-backed services.
 fn development(app: &tauri::AppHandle) -> bool {
-    cfg!(debug_assertions) && app.config().identifier == "studio.ripple.app.dev"
+    cfg!(debug_assertions) && app.config().identifier == "studio.ripple.app.segmentdev"
 }
 
 fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -668,6 +718,15 @@ fn start_backend(app: &tauri::AppHandle) -> Result<Child, String> {
 }
 
 fn stop_backend(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<DevServices>() {
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = Command::new("/bin/kill").args(["-TERM", &child.id().to_string()]).status();
+                let _ = child.wait();
+            }
+        }
+    }
+
     if let Some(state) = app.try_state::<ConnectorTunnel>() { connector_tunnel_stop(state); }
     if let Some(state) = app.try_state::<Backend>() {
         if let Ok(mut guard) = state.0.lock() {
@@ -677,10 +736,13 @@ fn stop_backend(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    let mut context = tauri::generate_context!();
     if std::env::args().any(|arg| arg == "--ripple-build-info") {
         let info = serde_json::json!({
             "custom_protocol": cfg!(feature = "custom-protocol"),
             "debug": cfg!(debug_assertions),
+            "bundle_id": context.config().identifier,
+            "segment_scheme": segment_protocol::channel_for(&context.config().identifier,cfg!(debug_assertions)).map(|c|c.scheme),
         });
         #[cfg(windows)]
         let info = {
@@ -693,31 +755,47 @@ fn main() {
         println!("{}", info);
         return;
     }
-    let mut context = tauri::generate_context!();
     #[cfg(target_os = "macos")]
-    if cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.dev" {
+    if (cfg!(debug_assertions) && context.config().identifier == "studio.ripple.app.segmentdev") || cfg!(feature = "segment-transfer-test") {
         for window in &mut context.config_mut().app.windows { window.create = false; }
     }
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init())
+    let builder=tauri::Builder::default();
+    #[cfg(windows)]
+    let builder=builder.plugin(tauri_plugin_single_instance::init(|app,args,_| {
+        if enqueue_segment_links(app,args.into_iter().skip(1)) {focus_segment_window(app);}
+    }));
+    builder.plugin(tauri_plugin_dialog::init())
         .manage(Writes::default())
+        .manage(SegmentLinks::default())
         .manage(ConnectorTunnel(Mutex::new(TunnelState::default())))
         .setup(|app| {
+            enqueue_segment_links(app.handle(),std::env::args().skip(1));
             app.manage(updates::Updates::new(app.handle()));
             app.manage(update_window::UpdateWindow::default());
-            app.manage(Grants::load(app_data(app.handle())?.join("file-permissions-v1.json")).map_err(std::io::Error::other)?);
             if development(app.handle()) {
-                if std::env::var("RIPPLE_DESKTOP_DEV").as_deref() != Ok("1") { return Err("Use start-dev.command".into()); }
+                let services = start_dev_services(app.handle()).map_err(std::io::Error::other)?;
+                app.manage(DevServices(Mutex::new(services)));
                 app.manage(Backend(Mutex::new(None)));
                 #[cfg(target_os = "macos")]
                 {
                     let config = &app.config().app.windows[0];
                     tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
-                        .data_store_identifier(*b"ripple-dev-00001").build()?;
+                        .data_store_identifier(*b"ripple-seg-00001").build()?;
                 }
             } else {
+                #[cfg(all(target_os = "macos", feature = "segment-transfer-test"))]
+                {
+                    if app.config().identifier != "studio.ripple.app.segmentcheck" { return Err("Test build requires isolated identity".into()); }
+                    let config = &app.config().app.windows[0];
+                    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+                        .data_store_identifier(*b"ripple-seg-00002").build()?;
+                }
                 let child = start_backend(app.handle()).map_err(std::io::Error::other)?;
                 app.manage(Backend(Mutex::new(Some(child))));
             }
+            #[cfg(target_os = "macos")]
+            segment_drag::install_capture(app.handle()).map_err(std::io::Error::other)?;
+            app.manage(Grants::load(app_data(app.handle())?.join("file-permissions-v1.json")).map_err(std::io::Error::other)?);
             let supervisor_app = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(5));
@@ -726,7 +804,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![update_window::update_close, updates::update_status, updates::update_check, updates::update_open_releases, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+        .invoke_handler(tauri::generate_handler![segment_drag::start_segment_drag, segment_clipboard::copy_segment, segment_link_next, update_window::update_close, updates::update_status, updates::update_check, updates::update_open_releases, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_status, connector_local_ready, connector_tunnel_stop])
@@ -751,6 +829,10 @@ fn main() {
         })
         .build(context).expect("Ripple failed to start")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { ref urls } = event {
+                if enqueue_segment_links(app,urls.iter().map(ToString::to_string)) {focus_segment_window(app);}
+            }
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) { stop_backend(app); }
         });
 }

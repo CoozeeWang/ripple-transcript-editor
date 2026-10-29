@@ -23,3 +23,16 @@ it('makes completed project feedback dismissible without adding a cancel action 
   rerender(<ProcessingNotice onDismiss={close}>Saved</ProcessingNotice>);
   fireEvent.click(screen.getByRole('button', { name: '关闭提示' })); expect(close).toHaveBeenCalledOnce();
 });
+
+it('copies the problem attached to this notice rather than a later unrelated problem',async()=>{
+ const {recordProblem}=await import('../lib/diagnostics');
+ const {waitFor}=await import('@testing-library/react');
+ const current=recordProblem('export','Invalid drag event');recordProblem('runtime');
+ const writeText=vi.fn().mockResolvedValue(undefined);
+ Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+ render(<LoadErrorNotice text="Synthetic drag failure" problem={current} onDismiss={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'复制错误详情'}));
+ await waitFor(()=>expect(writeText).toHaveBeenCalled());
+ expect(writeText.mock.calls[0][0]).toContain(current.id);
+ expect(writeText.mock.calls[0][0]).toContain('drag_event');
+});

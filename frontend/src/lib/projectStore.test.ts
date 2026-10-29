@@ -1,3 +1,5 @@
+import { ensureVersionLinkIdentity, removeEdit } from '../localStore';
+import { resolveSegmentTarget } from './segmentTarget';
 import { setInterfaceLanguage } from '../i18n';
 import { prepareMaterials } from './materialImport';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -1256,4 +1258,42 @@ it('keeps duplicate external filenames intact while storing each imported manusc
  expect(new Set(models.map(model=>model.edits[0].file)).size).toBe(2);
  expect((await readModelEdit(view,recording.file,models[0].id,models[0].activeEditId))?.transcript.segments[0].text).toBe('Synthetic first document');
  expect((await readModelEdit(view,recording.file,models[1].id,models[1].activeEditId))?.transcript.segments[0].text).toBe('Synthetic second document');
+});
+
+it('preserves external version identity through recording reassignment', async () => {
+ const {p,interview,recording}=await fixture();
+ const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:1},speakers:[{id:'speaker',name:'Synthetic'}],segments:[{id:'segment',speaker_id:'speaker',start:0,end:1,text:'Synthetic link target'}]};
+ await createModel(dir,recording.file,{engine:'synthetic',transcript,original:transcript});
+ const identity=await ensureVersionLinkIdentity(dir,recording.file,'m1','e1');
+ const target={project:p.data.id,recording:recording.id,model:'m1',version:'e1',segment:'segment',identity};
+ const moved=await reassignManuscript(p,interview.id,recording.id,'','m1');
+ const result=await resolveSegmentTarget(moved,target);
+ expect(result.recording.id).not.toBe(recording.id);expect(result.model).toBe('m1');expect(result.version).toBe('e1');
+});
+
+it('does not resolve a deleted version after its local edit ID is reused',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:1},speakers:[{id:'speaker',name:'Synthetic'}],segments:[{id:'segment',speaker_id:'speaker',start:0,end:1,text:'Synthetic old target'}]};
+ await createModel(dir,recording.file,{engine:'synthetic',transcript,original:transcript});
+ await createEdit(dir,recording.file,'m1',{srcEditId:'e1',label:'Synthetic second version'});
+ const identity=await ensureVersionLinkIdentity(dir,recording.file,'m1','e2');
+ await removeEdit(dir,recording.file,'m1','e2');
+ await createEdit(dir,recording.file,'m1',{srcEditId:'e1',label:'Synthetic replacement'});
+ const replacement=await ensureVersionLinkIdentity(dir,recording.file,'m1','e2');expect(replacement).not.toBe(identity);
+ await expect(resolveSegmentTarget(p,{project:p.data.id,recording:recording.id,model:'m1',version:'e2',segment:'segment',identity})).rejects.toThrow();
+});
+it('follows the persisted UUID when audio reassociation also renumbers the model',async()=>{
+ const fixtureData=await fixture();let p=fixtureData.p;const {interview,recording}=fixtureData;
+ const source=directory('synthetic-other-audio');source.files.set('other.wav',new File(['synthetic other audio'],'other.wav'));
+ p=await addRecordings(p,interview.id,[await source.handle.getFileHandle('other.wav')],'copy');
+ const targetRecording=p.data.interviews[0].recordings.find(item=>item.id !== recording.id)!;
+ const transcript={audio:{filename:'synthetic.wav',duration:1},speakers:[{id:'speaker',name:'Synthetic'}],segments:[{id:'segment',speaker_id:'speaker',start:0,end:1,text:'Synthetic link'}]};
+ const sourceDir=await recordingDirectory(p,interview.id,recording),targetDir=await recordingDirectory(p,interview.id,targetRecording);
+ await createModel(sourceDir,recording.file,{engine:'synthetic',transcript,original:transcript});
+ await createModel(targetDir,targetRecording.file,{engine:'synthetic',transcript,original:transcript});
+ const identity=await ensureVersionLinkIdentity(sourceDir,recording.file,'m1','e1');
+ const moved=await reassignManuscript(p,interview.id,recording.id,targetRecording.id,'m1');
+ const result=await resolveSegmentTarget(moved,{project:p.data.id,recording:recording.id,model:'m1',version:'e1',segment:'segment',identity});
+ expect(result.recording.id).toBe(targetRecording.id);expect(result.model).toBe('m2');
 });

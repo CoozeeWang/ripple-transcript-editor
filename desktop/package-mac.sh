@@ -5,7 +5,7 @@ DESKTOP=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$DESKTOP/.." && pwd)
 STAGED_BACKEND=${1:?Pass the directory printed by desktop/stage-backend.py}
 APP=${2:-"$DESKTOP/dist/Ripple.app"}
-BINARY="$DESKTOP/src-tauri/target/release/ripple-desktop"
+BINARY="${CARGO_TARGET_DIR:-$DESKTOP/src-tauri/target}/release/ripple-desktop"
 BUILD_NUMBER=${RIPPLE_BUILD_NUMBER:?Set RIPPLE_BUILD_NUMBER to the next unused positive integer (for example, 9)}
 
 # Validate metadata before changing an existing app bundle.
@@ -37,12 +37,18 @@ COMMIT=$(git -C "$REPO" rev-parse --verify HEAD)
 test -f "$STAGED_BACKEND/python/bin/python3.12"
 test -f "$REPO/frontend/dist/index.html"
 test -f "$BINARY"
-python3 - "$BINARY" <<'PY'
+python3 - "$BINARY" "$DESKTOP/segment-link-config.json" "$REPO/frontend/dist/segment-link-channel.json" <<'PY'
 import json
 import subprocess
 import sys
 info = json.loads(subprocess.check_output([sys.argv[1], "--ripple-build-info"], text=True, timeout=10))
-if info != {"custom_protocol": True, "debug": False}:
+channel = json.load(open(sys.argv[2], encoding="utf-8"))["production"]
+frontend = json.load(open(sys.argv[3], encoding="utf-8"))
+if frontend != {"channel": "production", **channel}:
+    raise SystemExit("Refusing to package a frontend with a different segment URL channel")
+if info.get("bundle_id") != channel["bundleId"] or info.get("segment_scheme") != channel["scheme"]:
+    raise SystemExit("Native and frontend segment URL channels do not match")
+if info.get("custom_protocol") is not True or info.get("debug") is not False:
     raise SystemExit("Refusing to package a development binary; build --release --features custom-protocol")
 PY
 test -f "$DESKTOP/src-tauri/icons/icon.icns"
@@ -62,16 +68,28 @@ rm -rf "$APP/Contents/Resources/backend"
 cp -R "$STAGED_BACKEND" "$APP/Contents/Resources/backend"
 rm -rf "$APP/Contents/Resources/backend/data"
 rm -f "$APP/Contents/Resources/backend/verify.py"
-python3 - "$APP/Contents/Info.plist" "$VERSION" "$BUILD_NUMBER" "$COMMIT" "$ICON_NAME" <<'PY'
+python3 - "$APP/Contents/Info.plist" "$VERSION" "$BUILD_NUMBER" "$COMMIT" "$ICON_NAME" "$DESKTOP/segment-link-config.json" "$REPO" <<'PY'
 import plistlib
+import json
+import hashlib
+import subprocess
 import sys
 from pathlib import Path
 
-path, version, build, commit, icon_name = sys.argv[1:]
+path, version, build, commit, icon_name, channel_path, repo = sys.argv[1:]
+channel = json.loads(Path(channel_path).read_text(encoding="utf-8"))["production"]
+dirty = bool(subprocess.check_output(["git", "-C", repo, "status", "--porcelain"]))
+names = subprocess.check_output(["git", "-C", repo, "ls-files", "-co", "--exclude-standard", "-z"]).split(b"\0")
+fingerprint = hashlib.sha256()
+for name in sorted(set(n for n in names if n)):
+    source = Path(repo) / name.decode()
+    if source.is_file():
+        fingerprint.update(name + b"\0" + source.read_bytes())
 metadata = {
     "CFBundleName": "Ripple",
     "CFBundleDisplayName": "Ripple",
-    "CFBundleIdentifier": "studio.ripple.app",
+    "CFBundleIdentifier": channel["bundleId"],
+    "CFBundleURLTypes": [{"CFBundleURLName": channel["bundleId"] + ".segment", "CFBundleURLSchemes": [channel["scheme"]]}],
     "CFBundleExecutable": "ripple-desktop",
     "CFBundleIconFile": icon_name,
     "CFBundlePackageType": "APPL",
@@ -79,13 +97,15 @@ metadata = {
     "CFBundleShortVersionString": version.split("-", 1)[0],
     "RippleVersion": version,
     "RippleGitCommit": commit,
+    "RippleSourceDirty": dirty,
+    "RippleSourceFingerprint": fingerprint.hexdigest(),
     "NSHighResolutionCapable": True,
 }
 with Path(path).open("wb") as stream:
     plistlib.dump(metadata, stream)
 with Path(path).open("rb") as stream:
     actual = plistlib.load(stream)
-for key in ("CFBundleVersion", "CFBundleShortVersionString", "RippleVersion", "RippleGitCommit"):
+for key in ("CFBundleVersion", "CFBundleShortVersionString", "RippleVersion", "RippleGitCommit", "CFBundleURLTypes", "RippleSourceFingerprint"):
     if actual[key] != metadata[key]:
         raise SystemExit(f"Packaged {key} does not match the requested build")
 PY

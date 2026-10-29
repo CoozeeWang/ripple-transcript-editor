@@ -1,3 +1,5 @@
+import { useSegmentDrag } from "../hooks/useSegmentDrag";
+import { isEditorComposing } from "../lib/editorDrafts";
 import { msg, useInterfaceLanguage } from '../i18n';
 import type { TextEdit } from "../lib/transcriptOps";
 import type { ComparisonDecision } from "../lib/comparisonReview";
@@ -19,6 +21,9 @@ import { SegmentTextArea } from "./SegmentTextArea";
 /** 单段渲染：说话人下拉 + 文字编辑（草稿/播放高亮/只读三态）+ 时间戳 + 操作图标。
  *  所有跨领域状态与操作通过 props 注入。 */
 export interface SegmentItemProps {
+  nativeDragSegment?: (id: string) => Promise<void>;
+  copySegment?: (id: string) => void;
+  dragSegment?: (id: string, transfer: DataTransfer) => void;
   timeAligned?: boolean;
   comparisonBefore?: string;
   comparisonBase?: string;
@@ -78,6 +83,8 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
     handleEditorKeydown,
   } = props;
 
+  const transferElement = useRef<HTMLElement>(null);
+  const {ready: transferReady, start: startTransfer, end: endTransfer} = useSegmentDrag(!!(props.dragSegment || props.nativeDragSegment), transferElement);
   const isSelected = segment.id === effectiveSelectedSegmentId;
   // 用低频的 prop currentTime（onTimeUpdate）判断「是否正在播放的段」；
   // 高亮位置则用段内 rAF 高频跟踪 audio.currentTime，词级跟随才连贯。
@@ -118,6 +125,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
   const pointerTextRef = useRef<{ index: number; text: string; x: number; y: number } | null>(null);
   const captureTextPointer = (event: React.PointerEvent<HTMLDivElement>) => {
     pointerTextRef.current = null;
+    if (transferReady) return;
     if (event.button !== 0) return;
     const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
     if (!range || !event.currentTarget.contains(range.startContainer)) return;
@@ -151,8 +159,32 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
     seekTo(timeForCharacter({ ...segment, text, words: reanchorCharacters(segment.words, segment.text, text) }, index), true);
   };
 
+  const exportDrag = (event: React.DragEvent) => {
+    event.stopPropagation();
+    setSelectedSegmentId(segment.id);
+    if (props.nativeDragSegment) {
+      // Cancel the DOM provider; AppKit owns the standard item and session.
+      event.preventDefault();
+      startTransfer(true);
+      void props.nativeDragSegment(segment.id).finally(endTransfer);
+    } else {
+      startTransfer();
+      props.dragSegment?.(segment.id, event.dataTransfer);
+    }
+  };
+
   return (
     <article
+      ref={transferElement}
+      draggable={transferReady}
+      data-transfer-ready={transferReady || undefined}
+      title={transferReady ? msg('segmentTransfer.drag', {key: IS_MAC ? '⌘' : 'Ctrl'}) : undefined}
+      onDragStartCapture={event => {
+        if (!transferReady) return;
+        if (isEditorComposing() || document.querySelector('[role="dialog"], dialog[open]') || (event.target as Element).closest('button, select, a, input')) { event.preventDefault(); return; }
+        exportDrag(event);
+      }}
+      onClickCapture={event => { if (transferReady) { event.preventDefault(); event.stopPropagation(); } }}
       className={`segment segment--speaker-${speakerColorIndex} ${isSelected && isPlayingSegment ? "segment--active" : ""} ${isSelected ? "segment--selected" : ""}`}
       style={speakerColorStyle(speakerEntry, false, Math.max(0, speakers.findIndex(s => s.id === segment.speaker_id)))}
       id={`segment-${segment.id}`}
@@ -209,6 +241,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
           {timeRange}
         </button>
         <div className="segment-text-hit-area" onPointerDownCapture={captureTextPointer} onClickCapture={seekFromText}>
+        {transferReady && <div className="segment-transfer-surface" draggable aria-hidden="true" />}
         {viewingOriginal ? (
           <div ref={readonlyRef} tabIndex={-1} className="segment-text-readonly comparison-text" aria-label={msg('SegmentItem.m0949', { v0: timeRange })}>
             {props.comparisonBefore !== undefined ? revisionFor(props.comparisonBefore,{id:segment.id,text:segment.text,reason:""}).parts.map((part,i)=><span key={i}>{part.changed && part.before && <del data-comparison-deletion="true">{part.before}</del>}{part.changed?<ins>{part.after}</ins>:part.after}</span>) : segment.text.split("\n").map((line, index) => (
@@ -259,7 +292,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
               {segment.annotations!.length}
             </span>
           )}
-          <span className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
+          <span draggable={!!(props.dragSegment || props.nativeDragSegment)} onDragStart={exportDrag} title={msg("segmentTransfer.drag", {key: IS_MAC ? '⌘' : 'Ctrl'})} className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
         </div>
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
@@ -322,6 +355,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
                   <path d="M4 5C6.5 7.5 9.5 9.5 12 12M20 5C17.5 7.5 14.5 9.5 12 12M12 12v7" />
                 </svg>
               </button>
+              {props.copySegment && <button type="button" aria-label={msg('segmentTransfer.copy', {key: keys('C', true)})} data-tip={msg('segmentTransfer.copy', {key: keys('C', true)})} onClick={event => { event.stopPropagation(); props.copySegment?.(segment.id); }}><svg className="segment-action-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button>}
               <button
                 type="button"
                 aria-label={msg('SegmentItem.m0956')}
@@ -351,7 +385,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
                 </svg>
               </button>
             </>
-          ) : null}
+          ) : props.copySegment ? <button type="button" aria-label={msg('segmentTransfer.copy', {key: keys('C', true)})} data-tip={msg('segmentTransfer.copy', {key: keys('C', true)})} onClick={event => { event.stopPropagation(); props.copySegment?.(segment.id); }}><svg className="segment-action-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button> : null}
         </div>
       </div>
       {isSelected && (

@@ -3,7 +3,7 @@ import { msg } from '../i18n';
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
 
 // Development uses Vite's same-origin API proxy; release uses the bundled service.
-const API_ROOT = import.meta.env.DEV ? '' : 'http://127.0.0.1:18701';
+const API_ROOT = import.meta.env.DEV ? '' : (import.meta.env.VITE_RIPPLE_RELEASE_TEST === '1' ? 'http://127.0.0.1:18713' : 'http://127.0.0.1:18701');
 
 let removeMenuLanguage: (() => void) | undefined;
 let removeOpenProjectMenu: (() => void) | undefined;

@@ -27,6 +27,9 @@ class PackageMacTest(unittest.TestCase):
         (self.root / "stage/python/bin").mkdir(parents=True)
         (self.root / "fake-bin").mkdir()
         shutil.copy2(SCRIPT, desktop / "package-mac.sh")
+        shutil.copy2(SCRIPT.parent / "segment-link-config.json", desktop / "segment-link-config.json")
+        channel = json.loads((desktop / "segment-link-config.json").read_text())["production"]
+        (self.root / "frontend/dist/segment-link-channel.json").write_text(json.dumps({"channel": "production", **channel}))
         (desktop / "src-tauri/tauri.conf.json").write_text(json.dumps({"version": "0.2.3"}))
         for path in (
             desktop / "src-tauri/icons/icon.icns",
@@ -36,7 +39,7 @@ class PackageMacTest(unittest.TestCase):
         ):
             path.write_bytes(b"synthetic test fixture")
         self.binary = desktop / "src-tauri/target/release/ripple-desktop"
-        self.binary.write_text('#!/bin/sh\nprintf \'%s\\n\' \'{"custom_protocol":true,"debug":false}\'\n')
+        self.binary.write_text('#!/bin/sh\nprintf \'%s\\n\' \'{"custom_protocol":true,"debug":false,"bundle_id":"studio.ripple.app","segment_scheme":"ripple-transcript"}\'\n')
         self.binary.chmod(0o755)
         (self.root / "fake-bin/codesign").write_text("#!/bin/sh\nexit 0\n")
         (self.root / "fake-bin/codesign").chmod(0o755)
@@ -50,6 +53,7 @@ class PackageMacTest(unittest.TestCase):
 
     def package(self, build):
         env = os.environ.copy()
+        env.pop("CARGO_TARGET_DIR", None)
         env["PATH"] = f"{self.root / 'fake-bin'}:{env['PATH']}"
         if build is None:
             env.pop("RIPPLE_BUILD_NUMBER", None)
@@ -71,6 +75,9 @@ class PackageMacTest(unittest.TestCase):
         self.assertEqual(metadata["CFBundleVersion"], "10")
         self.assertEqual(metadata["CFBundleShortVersionString"], "0.2.3")
         self.assertEqual(metadata["RippleGitCommit"], expected_commit)
+        self.assertEqual(metadata["CFBundleURLTypes"][0]["CFBundleURLSchemes"], ["ripple-transcript"])
+        self.assertIsInstance(metadata["RippleSourceDirty"], bool)
+        self.assertEqual(len(metadata["RippleSourceFingerprint"]), 64)
         subprocess.run(["plutil", "-lint", str(self.app / "Contents/Info.plist")], check=True, capture_output=True)
 
     def test_beta_version_keeps_full_label_and_numeric_macos_version(self):
@@ -106,6 +113,19 @@ class PackageMacTest(unittest.TestCase):
         after = plistlib.loads((self.app / "Contents/Info.plist").read_bytes())
         self.assertNotEqual(before["CFBundleIconFile"], after["CFBundleIconFile"])
         self.assertEqual((self.app / "Contents/Resources" / after["CFBundleIconFile"]).read_bytes(), icon.read_bytes())
+
+    def test_mismatched_segment_channels_do_not_overwrite_existing_app(self):
+        self.assertEqual(self.package("9").returncode, 0)
+        original = (self.app / "Contents/Info.plist").read_bytes()
+        manifest = self.root / "frontend/dist/segment-link-channel.json"
+        good = manifest.read_text()
+        manifest.write_text(json.dumps({"channel": "development", "bundleId": "studio.ripple.app.segmentdev", "scheme": "ripple-segment-dev"}))
+        self.assertNotEqual(self.package("10").returncode, 0)
+        self.assertEqual((self.app / "Contents/Info.plist").read_bytes(), original)
+        manifest.write_text(good)
+        self.binary.write_text(self.binary.read_text().replace("ripple-transcript", "ripple-segment-dev"))
+        self.assertNotEqual(self.package("10").returncode, 0)
+        self.assertEqual((self.app / "Contents/Info.plist").read_bytes(), original)
 
     def test_development_binary_is_rejected_before_overwriting_bundle(self):
         self.assertEqual(self.package("9").returncode, 0)

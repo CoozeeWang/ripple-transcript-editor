@@ -73,6 +73,9 @@ jobs:
           . ./desktop/src-tauri/windows/prepare-upgrade.ps1 -LibraryOnly
           Initialize-LockOwners
           Initialize-ProcessInspection
+      - name: Defender readiness regression tests
+        shell: pwsh
+        run: desktop/tests/test-defender-readiness.ps1
       - name: Backend tests on Windows NTFS
         working-directory: backend
         run: uv run --locked pytest -q

@@ -1,5 +1,5 @@
 import { msg, useInterfaceLanguage } from '../i18n';
-import { registerEditorDraft } from "../lib/editorDrafts";
+import { registerEditorDraft, registerPendingInput } from "../lib/editorDrafts";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Annotation } from "../types";
 import { formatRelativeTime, keys } from "../lib/format";
@@ -89,6 +89,7 @@ export function AnnotationCard({ annotation, onCommit, onDelete, onJump, meta, i
 export function AnnotationAddBox({ onSubmit, disabled = false, draftKey = "default", children }: { onSubmit: (text: string) => void; disabled?: boolean; draftKey?: string; children?: ReactNode }) {
   useInterfaceLanguage();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  useEffect(() => registerPendingInput(() => Object.values(drafts).some(text => text.trim().length > 0)), [drafts]);
   const draft = drafts[draftKey] ?? "";
   const setDraft = (text: string) => setDrafts((previous) => ({ ...previous, [draftKey]: text }));
   const submit = () => {
