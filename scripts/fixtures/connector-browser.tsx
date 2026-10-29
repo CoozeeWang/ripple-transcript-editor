@@ -48,6 +48,11 @@ if (new URLSearchParams(location.search).has('delete-between')) {
   raw.speakers.push({id:'filler-speaker',name:'Synthetic filler speaker'});
   raw.segments[1]={...raw.segments[1],speaker_id:'filler-speaker',text:'嗯',words:[{text:'嗯',start:10,end:20}]};
 }
+if (new URLSearchParams(location.search).has('merge-filter')) {
+  raw.speakers = [{id:'a',name:'Synthetic A'}, {id:'b',name:'Synthetic B'}];
+  raw.segments = Array.from({length:300},(_,index)=>({id:`s${index+1}`,speaker_id:index%2?'b':'a',
+    start:index/10,end:(index+1)/10,text:`Synthetic interview segment ${index+1}. 合成稿阅读位置检查。`}));
+}
 if(new URLSearchParams(location.search).has('incremental')) {
   for(let i=3;i<60;i++)raw.segments.push({id:`s${i+1}`,speaker_id:'speaker',start:i,end:i+1,text:`Synthetic continuation segment ${i+1}`} as typeof raw.segments[number]);
 }

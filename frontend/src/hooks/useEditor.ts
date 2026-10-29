@@ -44,6 +44,8 @@ export interface MergePrompt {
   trigger: "rename" | "merge";
 }
 
+interface SegmentMergePrompt { audio: Transcript['audio']; current: Segment; next: Segment }
+
 export function useEditor(deps: UseEditorDeps) {
   const {
     transcript,
@@ -56,6 +58,34 @@ export function useEditor(deps: UseEditorDeps) {
     textareaRefs,
     editingRef,
   } = deps;
+
+  const [segmentMergePrompt, setSegmentMergePrompt] = useState<SegmentMergePrompt | null>(null);
+  const canMergeSegments = (value: Transcript, prompt: SegmentMergePrompt) => {
+    const index = value.segments.indexOf(prompt.current);
+    return value.audio === prompt.audio && index >= 0 && value.segments[index + 1] === prompt.next;
+  };
+  const segmentMergeChanged = !!segmentMergePrompt && (!transcript || !canMergeSegments(transcript, segmentMergePrompt));
+  const applySegmentMerge = (prompt: SegmentMergePrompt, confirmed = true) => {
+    mutateTranscript(value => {
+      if (confirmed) {
+        if (!canMergeSegments(value, prompt)) return value;
+      } else {
+        // A blur may have just committed newer text. Same-speaker merges use
+        // that text, but never bypass confirmation for a newly changed speaker.
+        const index = value.segments.findIndex(s => s.id === prompt.current.id);
+        const current = value.segments[index], next = value.segments[index + 1];
+        if (value.audio !== prompt.audio || !current || next?.id !== prompt.next.id || current.speaker_id !== next.speaker_id) return value;
+      }
+      const segments = mergeSegmentWithNext(value.segments, prompt.current.id);
+      return segments ? { ...value, segments } : value;
+    });
+    setSelectedSegmentId(prompt.current.id);
+  };
+  const confirmSegmentMerge = () => {
+    if (!segmentMergePrompt || !transcript || !canMergeSegments(transcript, segmentMergePrompt)) return;
+    applySegmentMerge(segmentMergePrompt);
+    setSegmentMergePrompt(null);
+  };
 
   // 合并说话人的确认对话框状态。
   const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
@@ -383,21 +413,12 @@ export function useEditor(deps: UseEditorDeps) {
     const current = transcript.segments[index];
     const next = transcript.segments[index + 1];
     if (!current || !next) return;
-    if (
-      current.speaker_id !== next.speaker_id &&
-      !window.confirm(msg('useEditor.m1114'))
-    ) {
+    const prompt = { audio: transcript.audio, current, next };
+    if (current.speaker_id !== next.speaker_id) {
+      setSegmentMergePrompt(prompt);
       return;
     }
-
-    // 基于最新 value.segments 计算（updater 内）：current/next 不再取渲染闭包，
-    // 避免「闭包旧数据 + 最新状态」不同步时把用户刚提交的改动覆盖成旧拼接结果。
-    mutateTranscript((value) => {
-      const segments = mergeSegmentWithNext(value.segments, segmentId);
-      if (!segments) return value;
-      return { ...value, segments };
-    });
-    setSelectedSegmentId(current.id);
+    applySegmentMerge(prompt, false);
   };
 
   const patchMetadata = useCallback(
@@ -466,6 +487,7 @@ export function useEditor(deps: UseEditorDeps) {
   };
 
   return {
+    segmentMergePrompt, setSegmentMergePrompt, segmentMergeChanged, confirmSegmentMerge,
     updateSegment,
     toggleHideSpeaker,
     mergeSpeaker,

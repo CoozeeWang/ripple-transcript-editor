@@ -19,6 +19,8 @@ import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReview
 import { useVersionComparison } from "./hooks/useVersionComparison";
 import { comparisonRows } from "./lib/comparisonSegments";
 import { useOpeningPosition } from "./hooks/useOpeningPosition";
+import { useSpeakerFilterReadingPosition } from './hooks/useSpeakerFilterReadingPosition';
+import { SegmentMergeDialog } from './components/SegmentMergeDialog';
 import { openingSegmentId } from "./lib/editPosition";
 import type { ParagraphEditorElement } from "./lib/paragraphEditor";
 import { flushEditorDrafts, hasEditorDrafts } from "./lib/editorDrafts";
@@ -738,7 +740,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     textareaRefs,
   });
 
+  const speakerFilterContext = useMemo(() => ({ directory: dirHandle, version: aiContext }), [dirHandle, aiContext]);
+  const captureSpeakerFilterPosition = useSpeakerFilterReadingPosition(transcriptPanelRef, hiddenSpeakerIds, speakerFilterContext);
   const {
+    segmentMergePrompt, setSegmentMergePrompt, segmentMergeChanged, confirmSegmentMerge,
     updateSegment,
     toggleHideSpeaker,
     confirmMerge,
@@ -780,6 +785,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   useLayoutEffect(() => {
     resetDocumentViewRef.current = () => {
+      setSegmentMergePrompt(null);
       setHiddenSpeakerIds(new Set());
       setActiveSegmentId("");
       setSelectedSegmentId("");
@@ -797,7 +803,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       editingRef.current = false;
     };
   }, [setFindOpen, setFindQuery, setReplaceValue, setShowReplace, setCurrentMatchIndex,
-    setMergePrompt, setMergeMenuFor]);
+    setMergePrompt, setMergeMenuFor, setSegmentMergePrompt]);
 
   const performUndo = useCallback(() => {
     if (editLockedRef.current()) return;
@@ -1147,7 +1153,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           collapsed={speakerPanelCollapsed}
           setCollapsed={setSpeakerPanelCollapsed}
           mutateTranscript={mutateTranscript}
-          toggleHideSpeaker={toggleHideSpeaker}
+          toggleHideSpeaker={id => {
+            const nextHidden = new Set(hiddenSpeakerIds);
+            if (nextHidden.has(id)) nextHidden.delete(id); else nextHidden.add(id);
+            captureSpeakerFilterPosition(transcript.segments, nextHidden);
+            toggleHideSpeaker(id);
+          }}
           setMergePrompt={setMergePrompt}
           deleteSpeaker={deleteSpeaker}
           addSpeaker={addSpeaker}
@@ -1332,6 +1343,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           onStart={startTranscription}
         />
       )}
+
+      {segmentMergePrompt && <SegmentMergeDialog changed={segmentMergeChanged} readOnly={protectedReadOnly}
+        onCancel={() => setSegmentMergePrompt(null)} onConfirm={() => { if (!protectedReadOnly) confirmSegmentMerge(); }} />}
 
       {mergePrompt && (
         <MergeDialog
