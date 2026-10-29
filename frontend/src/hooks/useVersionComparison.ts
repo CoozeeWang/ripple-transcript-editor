@@ -5,7 +5,7 @@ import type { Transcript, TranscriptModel } from "../types";
 import { defaultEditLabel, readModelEdit, readModelOriginal } from "../localStore";
 import { originalVersionLabel } from '../lib/transcriptLabels';
 import { originalGroups } from '../lib/originalGroups';
-import { flushEditorDrafts } from "../lib/editorDrafts";
+import { flushEditorDrafts, isEditorComposing } from "../lib/editorDrafts";
 import { useComparisonReadingPosition } from "./useComparisonReadingPosition";
 
 export function useVersionComparison(dir: FileSystemDirectoryHandle | null, audio: string,
@@ -30,8 +30,8 @@ export function useVersionComparison(dir: FileSystemDirectoryHandle | null, audi
     : options.find(o=>o.value===`${modelId}:${preferred}`)?.value
       ?? options.find(o=>o.model===sourceOriginal?.id && o.edit==='original')?.value ?? fallback;
   const shown = !original && same && state.shown;
-  const toggle = () => { if (original) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:!shown,base}); };
-  const choose = (base:string) => { if (original) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:true,base}); };
+  const toggle = () => { if (original || isEditorComposing()) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:!shown,base}); };
+  const choose = (base:string) => { if (original || isEditorComposing()) return; captureReadingPosition(); flushEditorDrafts(); setState({dir,context,shown:true,base}); };
   const activate = (model:string,edit:string,base:string) => setState({dir,context:`${audio}:${model}:${edit}`,shown:true,base});
   useEffect(()=>{
     if(!shown || !dir || !base) return;

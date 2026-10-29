@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {act,cleanup,renderHook,waitFor} from "@testing-library/react";
 import {afterEach,expect,it,vi} from "vitest";
+import {installEditorCompositionTracking} from "../lib/editorDrafts";
 import {useVersionComparison} from "./useVersionComparison";
 import type {TranscriptModel,Transcript} from "../types";
 import {readModelEdit} from "../localStore";
@@ -92,4 +93,18 @@ it('does not replace a missing linked original with an unrelated original',()=>{
  const {result}=renderHook(()=>useVersionComparison(null,'synthetic.wav',[other,child],'child','e1',false));
  expect(result.current.base).toBe('');
  act(()=>result.current.choose('m1:original'));expect(result.current.base).toBe('m1:original');
+});
+
+
+it('does not toggle or choose a comparison during Chinese composition and permits it afterwards',async()=>{
+ const stop=installEditorCompositionTracking();
+ const editor=document.createElement('div');editor.contentEditable='true';editor.textContent='中文';document.body.append(editor);
+ try {
+  const {result}=renderHook(()=>useVersionComparison(dir,'A',models,'m1','e2',false));
+  act(()=>editor.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:'中'})));
+  act(()=>result.current.toggle());act(()=>result.current.choose('m1:original'));
+  expect(result.current.shown).toBe(false);expect(readModelEdit).not.toHaveBeenCalled();expect(editor.textContent).toBe('中文');
+  act(()=>editor.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'中文'})));
+  act(()=>result.current.toggle());await waitFor(()=>expect(result.current.loading).toBe(false));expect(result.current.shown).toBe(true);
+ } finally{stop();editor.remove();}
 });
