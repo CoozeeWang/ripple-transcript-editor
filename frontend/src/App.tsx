@@ -1,3 +1,8 @@
+import { hasNativeSegmentDrag, startNativeSegmentDrag } from './lib/segmentDragBridge';
+import { populateSegmentDrag } from './lib/segmentDragPayload';
+import { ensureVersionLinkIdentity } from './localStore';
+import type { SegmentLinkReceiver } from './lib/segmentLinkDelivery';
+import { segmentTransfer, type SegmentTarget } from './lib/segmentTransfer';
 import { LoadErrorNotice, SaveToastNotice } from './components/EditorFeedback';
 import { visibleAIActivities } from './lib/aiEditOwnership';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from './hooks/useTransientState';
@@ -12,7 +17,7 @@ import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
-import { recordProblem } from "./lib/diagnostics";
+import { recordProblem, type Problem } from "./lib/diagnostics";
 import { VersionPicker } from "./components/VersionPicker";
 import { useStableCallbacks } from "./hooks/useStableCallbacks";
 import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReviews } from "./lib/comparisonReview";
@@ -24,7 +29,7 @@ import { SegmentMergeDialog } from './components/SegmentMergeDialog';
 import { SegmentJump } from './components/SegmentJump';
 import { openingSegmentId } from "./lib/editPosition";
 import type { ParagraphEditorElement } from "./lib/paragraphEditor";
-import { flushEditorDrafts, hasEditorDrafts } from "./lib/editorDrafts";
+import { flushEditorDrafts, hasEditorDrafts, hasPendingInputs, isEditorComposing } from "./lib/editorDrafts";
 import {
   useLayoutEffect,
   useCallback,
@@ -97,6 +102,9 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 // 快退/快进步长默认值（秒），可被偏好设置覆盖；键盘左右键与右侧 ± 按钮共用。
 
 export interface ProjectEditorProps {
+  initialSegmentTarget?: SegmentTarget;
+  onOpenSegmentLink?: (raw:string) => Promise<void>;
+  registerSegmentLinkReceiver?: (receiver:SegmentLinkReceiver | null) => void;
   connectorProject?: () => OpenProject | null;
   projectInterviewId?: string;
   projectRecordingId?: string;
@@ -825,7 +833,58 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   }, [canRedo, redo]);
 
 
+  const transferVersion = viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId;
+  const transferContext = `${projectProps.projectRecordingId}:${activeModel?.id}:${transferVersion}`;
+  const [transferIdentity,setTransferIdentity] = useState<{context:string;identity:string} | null>(null);
+  useEffect(() => {
+    const directory=dirHandleRef.current;
+    if (!directory || !selectedAudio || !activeModel || !transferVersion || saveStatus === 'loading' || !projectProps.projectRecordingId) return;
+    let cancelled=false;
+    void ensureVersionLinkIdentity(directory,selectedAudio,activeModel.id,transferVersion,!aiLocked).then(identity=>{
+      if (!cancelled) setTransferIdentity({context:transferContext,identity});
+    }).catch(()=>{if(!cancelled)setLoadError(msg('segmentTransfer.identityFailed'));});
+    return ()=>{cancelled=true;};
+  },[aiLocked,dirHandleRef,selectedAudio,activeModel,transferVersion,transferContext,saveStatus,projectProps.projectRecordingId]);
+
+  const transferSnapshot = (id: string) => {
+    if (isEditorComposing()) throw Error(msg('segmentTransfer.failed'));
+    flushEditorDrafts();
+    const snapshot = latestExport.current;
+    const segment = snapshot.transcript?.segments.find(item => item.id === id);
+    if (!snapshot.transcript || !segment) throw Error(msg('segmentTransfer.missing'));
+    const project = projectProps.connectorProject?.();
+    if (project && transferIdentity?.context !== transferContext) throw Error(msg('segmentTransfer.identityFailed'));
+    const target = project && projectProps.projectRecordingId && activeModel && transferIdentity ? {identity:transferIdentity.identity,project:project.data.id,recording:projectProps.projectRecordingId,model:activeModel.id,version:viewingOriginal || activeModel.designatedOriginal ? 'original' : activeModel.activeEditId,segment:id} : undefined;
+    return segmentTransfer(snapshot.transcript, segment, snapshot.metadata?.title ?? '', target);
+  };
+  const [transferFailure, setTransferFailure] = useState<{text:string;problem:Problem}|null>(null);
+  const failTransfer = (text:string, error:unknown) => { setTransferFailure({text,problem:recordProblem("export",error)}); setLoadError(text); };
+  const copyGeneration = useRef(0);
+  useLayoutEffect(() => { copyGeneration.current++; }, [selectedAudio,activeEditKey,viewingOriginal]);
+  const copySegment = async (id: string) => {
+    const generation=++copyGeneration.current;
+    try {
+      const payload = transferSnapshot(id);
+      const native = (window as unknown as {__TAURI__?:{core?:{invoke:<T>(name:string,args:unknown)=>Promise<T>}}}).__TAURI__?.core;
+      if (native && /Mac/.test(navigator.platform)) await native.invoke('copy_segment', {payload});
+      else if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([payload.plain], {type:'text/plain'}), 'text/html': new Blob([payload.html], {type:'text/html'}) })]);
+      } else await navigator.clipboard.writeText(payload.plain);
+      if (generation === copyGeneration.current) setSaveToast({kind:'ok',text:msg('segmentTransfer.copied')});
+    } catch (error) { if (generation === copyGeneration.current) failTransfer(msg('segmentTransfer.failed'),error); }
+  };
+  const nativeDragSegment = async (id: string) => {
+    const generation = copyGeneration.current;
+    try { await startNativeSegmentDrag(transferSnapshot(id)); }
+    catch (error) { if (generation === copyGeneration.current) failTransfer(msg('segmentTransfer.dragFailed'),error); }
+  };
+  const dragSegment = (id: string, transfer: DataTransfer) => {
+    try { const payload = transferSnapshot(id); populateSegmentDrag(transfer, payload); }
+    catch (error) { transfer.effectAllowed='none'; failTransfer(msg('segmentTransfer.dragFailed'),error); }
+  };
+
   useShortcuts({
+    copySegment,
     disabled: renaming || versionBusy || saveStatus === "loading",
     transcript,
     viewingOriginal,
@@ -893,6 +952,35 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     const offset = rect.height > panel.clientHeight ? 16 : (panel.clientHeight - rect.height) / 2;
     panel.scrollTo({ top: Math.max(0, panel.scrollTop + rect.top - bounds.top - offset), behavior: 'instant' });
   }, [pendingSegmentJump, speakerFilterContext, transcript, protectedReadOnly, transcriptPanelRef]);
+
+  const appliedLinkTarget = useRef<SegmentTarget | undefined>(undefined);
+  useEffect(() => {
+    const target = projectProps.initialSegmentTarget;
+    if (!target || appliedLinkTarget.current === target || saveStatus === 'loading' || !transcript || !activeModel) return;
+    const actualVersion = viewingOriginal || activeModel.designatedOriginal ? 'original' : activeModel.activeEditId;
+    if (target.project !== projectProps.connectorProject?.()?.data.id || target.recording !== projectProps.projectRecordingId || target.model !== activeModel.id || target.version !== actualVersion) return;
+    const frame = window.requestAnimationFrame(() => {
+      appliedLinkTarget.current = target;
+      const index = transcript.segments.findIndex(segment => segment.id === target.segment);
+      if (index < 0) setLoadError(msg('segmentTransfer.missing'));
+      else jumpToSegment(index + 1);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  });
+  useLayoutEffect(() => {
+    projectProps.registerSegmentLinkReceiver?.({
+      ready: () => !openingProjectRef.current && !renaming && !versionBusy && !transcribing && saveStatus !== 'loading' && !hasPendingInputs() && !isEditorComposing(),
+      open: async raw => {
+        if (!projectProps.onOpenSegmentLink || openingProjectRef.current) return;
+        if (!canChangeDocumentRef.current()) { setLoadError(msg('ProjectWorkspace.openProjectBusy')); return; }
+        openingProjectRef.current = true;
+        try { await flushPendingSave(); await projectProps.onOpenSegmentLink(raw); }
+        catch (error) { setLoadError(error instanceof Error ? error.message : msg('segmentTransfer.openFailed')); }
+        finally { openingProjectRef.current = false; }
+      },
+    });
+    return () => projectProps.registerSegmentLinkReceiver?.(null);
+  });
 
   // 跳到某一处高亮：seek 到该处的时间（而不是片段开头），并把光标落在高亮
   // 最后一个字后面，方便接着改字或听原音。
@@ -1167,7 +1255,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <LoadErrorNotice text={loadError} onDismiss={()=>setLoadError('')}/>}
+      {loadError && <LoadErrorNotice text={loadError} problem={transferFailure?.text === loadError ? transferFailure.problem : undefined} onDismiss={()=>setLoadError('')}/>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -1275,6 +1363,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
               </article>
             ) : (
               <SegmentItem
+                copySegment={copySegment}
+                dragSegment={dragSegment}
+                nativeDragSegment={hasNativeSegmentDrag() ? nativeDragSegment : undefined}
                 timeAligned={transcript.timeAligned}
                 key={`${selectedAudio}:${activeEditKey}:${viewingOriginal}:${segment.id}`}
                 segment={segment}

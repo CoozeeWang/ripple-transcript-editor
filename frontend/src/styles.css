@@ -3378,3 +3378,11 @@ button > svg.action-icon[aria-hidden="true"] {
 .desktop-update-settings > .form-error { margin:10px 0 0; font-size:.78rem; }
 .desktop-update-result { display:flex; flex-direction:column; align-items:stretch; gap:12px; }
 .desktop-update-result-copy { flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+
+/* Modifier-only whole-segment drag: ordinary editing/selection is unchanged. */
+.segment[data-transfer-ready] { cursor: grab; user-select: none; }
+.segment-text-hit-area { position: relative; }
+/* A real non-editable WebKit drag source above the contenteditable text. */
+.segment-transfer-surface { position: absolute; inset: 0; z-index: 2; cursor: grab; -webkit-user-drag: element; }
+.segment[data-transfer-ready] { -webkit-user-drag: element; }
+.segment-number[draggable="true"] { cursor: grab; }

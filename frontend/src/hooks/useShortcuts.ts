@@ -9,6 +9,7 @@ import { flushEditorDrafts } from "../lib/editorDrafts";
  *  所有动作通过回调注入，本 hook 只负责监听 window keydown 与分发。 */
 export interface UseShortcutsDeps {
   disabled?: boolean;
+  copySegment?: (id: string) => void;
   transcript: Transcript | null;
   viewingOriginal: boolean;
   removeSegment: (segmentId: string) => void;
@@ -61,6 +62,16 @@ export function useShortcuts(deps: UseShortcutsDeps) {
       const target = event.target instanceof HTMLElement ? event.target : null;
       // 弹窗拥有键盘操作，避免撤销、查找和播放作用到背后的文稿。
       if (target?.closest("[role='dialog'], dialog") || document.querySelector("dialog[open]")) return;
+      if (event.code === 'KeyC' && event.shiftKey && !event.altKey &&
+        (IS_MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && deps.copySegment) {
+        const editor = target?.closest<HTMLElement>('[data-transcript-editor]');
+        if (!editor && target?.closest('input, textarea, select, [contenteditable]')) return;
+        const id = editor?.dataset.segmentId ?? effectiveSelectedSegmentId;
+        if (!transcript?.segments.some(segment => segment.id === id)) return;
+        event.preventDefault();
+        if (!event.repeat) deps.copySegment(id);
+        return;
+      }
       const modifier = event.metaKey || event.ctrlKey;
 
       if (event.key === "Backspace" && event.shiftKey && !event.altKey &&
@@ -157,6 +168,7 @@ export function useShortcuts(deps: UseShortcutsDeps) {
     return () => window.removeEventListener("keydown", handleKeydown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    deps.copySegment,
     disabled,
     transcript,
     viewingOriginal,

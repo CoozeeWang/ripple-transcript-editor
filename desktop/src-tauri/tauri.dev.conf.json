@@ -1,8 +1,8 @@
 {
   "productName": "Ripple Dev",
-  "identifier": "studio.ripple.app.dev",
+  "identifier": "studio.ripple.app.segmentdev",
   "build": {
-    "devUrl": "http://127.0.0.1:5174"
+    "devUrl": "http://127.0.0.1:5184"
   },
   "app": {
     "windows": [
@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:18702 ws://127.0.0.1:5174 https:; img-src 'self' asset: blob: data:; media-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:18712 ws://127.0.0.1:5184 https:; img-src 'self' asset: blob: data:; media-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'",
       "assetProtocol": {
         "enable": true,
         "scope": []

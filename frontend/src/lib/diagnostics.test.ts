@@ -33,3 +33,10 @@ it("reports the product version in copied details and exported environment", () 
 it.each(['too_long','file_too_large'])('classifies %s as an input limit rather than a format failure',code=>{
  expect(recordProblem('transcription',Object.assign(new Error('Synthetic input'),{code})).reason).toBe('input_limit');
 });
+
+it('records safe drag failure categories without storing native text',()=>{
+ expect(recordProblem('export','Invalid drag event').reason).toBe('drag_event');
+ expect(recordProblem('export','Mouse released before drag started').reason).toBe('drag_released');
+ expect(recordProblem('export','Drag already active').reason).toBe('drag_busy');
+ expect(JSON.stringify(readProblems())).not.toContain('Mouse released before drag started');
+});

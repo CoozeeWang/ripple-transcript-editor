@@ -1,0 +1,4 @@
+{
+  "production": { "bundleId": "studio.ripple.app", "scheme": "ripple-transcript" },
+  "development": { "bundleId": "studio.ripple.app.segmentdev", "scheme": "ripple-segment-dev" }
+}

@@ -1908,5 +1908,20 @@
     "label": "Go to:",
     "inputLabel": "Go to segment (1–{{count}})",
     "invalid": "Enter a segment number from 1 to {{count}}."
+  },
+  "segmentTransfer": {
+    "eventUnavailable": "No mouse event is available for this drag. Press and hold the mouse to drag again.",
+    "mouseReleased": "The mouse was released before dragging started. Hold it while moving, then release.",
+    "dragBusy": "Another segment drag is still active. Finish or cancel it before trying again.",
+    "dragFailed": "Could not drag the whole segment. Please try again.",
+    "copy": "Copy entire segment ({{key}})",
+    "drag": "Hold {{key}} and drag the entire segment",
+    "missing": "Segment no longer exists.",
+    "copied": "Copied",
+    "failed": "Could not copy this segment. Try again.",
+    "reselect": "The linked project needs to be located again. Choose its project folder? The project identity will be verified before opening.",
+    "openFailed": "Unable to open the segment link. Check the project, version and segment.",
+    "identityFailed": "The return link could not be prepared. Check project access and reopen the version before copying.",
+    "oldLink": "This early test link has no permanent version identity. Copy the segment again in Ripple Dev to create a new link."
   }
 }

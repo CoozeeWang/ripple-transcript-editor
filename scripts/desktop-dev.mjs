@@ -26,9 +26,10 @@ export async function waitFor(url, alive, timeout = 30000) {
 async function main() {
   if (process.platform !== 'darwin' || typeof process.execve !== 'function') throw new Error('Ripple Dev requires macOS 14+ and Node.js 22.15+.');
   if (Number(execFileSync('/usr/bin/sw_vers', ['-productVersion'], { encoding: 'utf8' }).split('.')[0]) < 14) throw new Error('Ripple Dev requires macOS 14+ for isolated WebKit settings.');
-  if (process.argv.length > 2) throw new Error('Use start-dev.command or npm --prefix desktop run dev without extra arguments.');
+  const servicesOnly = process.argv[2] === '--services-only' && process.argv.length === 3;
+  if (process.argv.length > 2 && !servicesOnly) throw new Error('Use start-dev.command or npm --prefix desktop run dev without extra arguments.');
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const work = join(root, '..', 'ripple-work', 'dev');
+  const work = join(root, '..', 'ripple-segment-dev-data');
   mkdirSync(work, { recursive: true });
   const lock = join(work, 'launcher.lock');
   try { mkdirSync(lock); } catch (error) {
@@ -59,7 +60,7 @@ async function main() {
   process.on('SIGTERM', stop);
   process.on('exit', stop);
   const env = { ...process.env, RIPPLE_DESKTOP_DEV: '1', RIPPLE_DATA_DIR: join(work, 'data'), RIPPLE_DEV_WORK: work,
-    PYTHONDONTWRITEBYTECODE: '1', RIPPLE_API_TARGET: 'http://127.0.0.1:18702', RIPPLE_CONNECTOR_URL: 'http://127.0.0.1:18702' };
+    PYTHONDONTWRITEBYTECODE: '1', RIPPLE_API_TARGET: 'http://127.0.0.1:18712', RIPPLE_CONNECTOR_URL: 'http://127.0.0.1:18712' };
   env.PATH = [dirname(process.execPath), join(homedir(), '.cargo', 'bin'), env.PATH || ''].join(delimiter);
   env.CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER = 'node ../../scripts/desktop-dev-macos.mjs';
   env.CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER = 'node ../../scripts/desktop-dev-macos.mjs';
@@ -71,13 +72,14 @@ async function main() {
     return child;
   };
   try {
-    await assertPortFree(18702);
-    await assertPortFree(5174);
+    await assertPortFree(18712);
+    await assertPortFree(5184);
     mkdirSync(env.RIPPLE_DATA_DIR, { recursive: true });
-    const backend = run(join(root, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18702', '--reload', '--reload-dir', 'app'], join(root, 'backend'));
-    await waitFor('http://127.0.0.1:18702/api/health', () => backend.exitCode === null && !stopping);
-    const vite = run(process.execPath, [join(root, 'frontend/node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5174', '--strictPort'], join(root, 'frontend'));
-    await waitFor('http://127.0.0.1:5174', () => vite.exitCode === null && !stopping);
+    const backend = run(join(root, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18712', '--reload', '--reload-dir', 'app'], join(root, 'backend'));
+    await waitFor('http://127.0.0.1:18712/api/health', () => backend.exitCode === null && !stopping);
+    const vite = run(process.execPath, [join(root, 'frontend/node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5184', '--strictPort'], join(root, 'frontend'));
+    await waitFor('http://127.0.0.1:5184', () => vite.exitCode === null && !stopping);
+    if (servicesOnly) { writeFileSync(join(work, 'services-ready'), String(process.pid)); return; }
     console.log('Ripple Dev: frontend refreshes; Python reloads; Rust rebuilds. Close the window or press Ctrl+C to stop.');
     run(process.execPath, [join(root, 'desktop/node_modules/@tauri-apps/cli/tauri.js'), 'dev', '--config', 'src-tauri/tauri.dev.conf.json'], join(root, 'desktop'));
   } catch (error) { stop(); throw error; }

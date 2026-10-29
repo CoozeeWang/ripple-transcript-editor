@@ -85,3 +85,19 @@ it("isolates editor shortcuts while a dialog is open and restores them after clo
   fireEvent.keyDown(window, {key: "z", metaKey: true});
   expect(deps.performUndo).toHaveBeenCalledOnce();
 });
+
+describe('whole segment copy shortcut', () => {
+ it.each([true,false])('copies only the intended editor or selected segment (mac=%s)', mac => {
+  const {deps} = setup(mac);
+  const copy = vi.fn(); deps.copySegment = copy;
+  const combo = {code:'KeyC',key:'C',shiftKey:true,metaKey:mac,ctrlKey:!mac};
+  fireEvent.keyDown(window,combo);
+  expect(copy).toHaveBeenLastCalledWith('a');
+  const editor=document.createElement('div'); editor.dataset.transcriptEditor='true'; editor.dataset.segmentId='b'; editor.contentEditable='true'; document.body.append(editor);
+  fireEvent.keyDown(editor,combo); expect(copy).toHaveBeenLastCalledWith('b');
+  const input=document.createElement('input');document.body.append(input);
+  for(const options of [{...combo,shiftKey:false},{...combo,isComposing:true},{...combo,repeat:true}]) fireEvent.keyDown(window,options);
+  fireEvent.keyDown(input,combo);
+  expect(copy).toHaveBeenCalledTimes(2);
+ });
+});

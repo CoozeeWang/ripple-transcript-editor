@@ -643,6 +643,8 @@ Section Install
     File /a "/oname={{this}}" "{{no-escape @key}}"
   {{/each}}
 
+  !insertmacro RippleRegisterSegmentLink
+
   ; Create file associations
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
@@ -773,6 +775,8 @@ Section Uninstall
       !insertmacro APP_UNASSOCIATE "{{ext}}" "{{or association.name ext}}"
     {{/each}}
   {{/each}}
+  !insertmacro RippleUnregisterSegmentLink
+
   ; Delete deep links
   {{#each deep_link_protocols as |protocol| ~}}
     ReadRegStr $R7 SHCTX "Software\Classes\\{{protocol}}\shell\open\command" ""

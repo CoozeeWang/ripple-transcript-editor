@@ -8,6 +8,9 @@ export function installEditorCompositionTracking() {
   document.addEventListener('compositionend', end, true);
   return () => { document.removeEventListener('compositionstart', start, true); document.removeEventListener('compositionend', end, true); composing.clear(); };
 }
+export function isEditorComposing() {
+  return [...composing].some(target => target instanceof Node && target.isConnected);
+}
 export function assertEditorReadyForAI() {
   for (const target of composing) if (target instanceof Node && target.isConnected) throw Error('finish_composition_before_ai_editing');
   flushEditorDrafts();
@@ -28,3 +31,11 @@ export function registerEditorDraft(isDirty: () => boolean) {
 export function hasEditorDrafts() {
   return [...editors].some(isDirty => isDirty());
 }
+
+// Inputs requiring explicit submission must not be auto-saved as transcript edits.
+const pendingInputs = new Set<() => boolean>();
+export function registerPendingInput(isPending: () => boolean) {
+  pendingInputs.add(isPending);
+  return () => { pendingInputs.delete(isPending); };
+}
+export function hasPendingInputs() { return [...pendingInputs].some(isPending => isPending()); }

@@ -1384,12 +1384,13 @@ async function setModelOriginalUnlocked(dir: FileSystemDirectoryHandle, name: st
     const source = JSON.parse(raw);
     const file = model.original!;
     await writeFileJson(tDir, file, {kind:"te-edited",audio:name,metadata:{...defaultMetadata(stemOf(name)),...manifest.interviewDetails,...source.metadata},transcript:source.transcript});
-    const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:model.label||model.sourceName||defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
+    const next = {...manifest,models:manifest.models.map(m=>m.id===modelId?{...m,original:undefined,originalLinkId:undefined,designatedOriginal:false,designatedOriginalEditId:undefined,activeEditId:"e1",edits:[{id:"e1",file,label:model.label||model.sourceName||defaultEditLabel(0),updated_at:new Date().toISOString()}]}:m)};
     await writeFileJson(tDir, MANIFEST_NAME, next);return next;
   }
   const designatedEditId = editId ?? model.activeEditId ?? model.edits[0]?.id;
   if (designatedOriginal && editId && !model.edits.some(edit => edit.id === editId)) throw new Error(msg('localStore.m1504'));
   const next = { ...manifest, models: manifest.models.map(m => m.id === modelId ? { ...m, designatedOriginal,
+    ...((m.designatedOriginal !== designatedOriginal || m.designatedOriginalEditId !== (designatedOriginal ? designatedEditId : undefined)) ? {originalLinkId:undefined} : {}),
     ...(designatedOriginal && !hasVisibleOriginal(m) ? { originalGroupId:crypto.randomUUID() } : {}),
     ...(designatedOriginal && editId ? { activeEditId: editId } : {}),
     designatedOriginalEditId: designatedOriginal ? designatedEditId : undefined } : m) };
@@ -1482,7 +1483,7 @@ async function removeEditUnlocked(
 
   newModel = {
     ...model,
-    ...(model.designatedOriginal && editId === (model.designatedOriginalEditId ?? model.activeEditId) ? { designatedOriginal: false, designatedOriginalEditId: undefined } : {}),
+    ...(model.designatedOriginal && editId === (model.designatedOriginalEditId ?? model.activeEditId) ? { designatedOriginal: false, designatedOriginalEditId: undefined, originalLinkId: undefined } : {}),
     edits: remainingEdits,
     activeEditId: model.activeEditId === editId ? remainingEdits[0].id : model.activeEditId,
   };
@@ -1518,7 +1519,7 @@ async function removeModelOriginalUnlocked(
     return newManifest;
   }
 
-  const newModel: TranscriptModel = { ...model, original: undefined };
+  const newModel: TranscriptModel = { ...model, original: undefined, originalLinkId: undefined };
   const newModels = manifest.models.map((m) => (m.id === modelId ? newModel : m));
   const newManifest: TranscriptManifest = { ...manifest, models: newModels };
   await commitVersionRemoval(tDir, manifest, newManifest, model.original);
@@ -2160,4 +2161,29 @@ export async function writeContinuationTask(dir: FileSystemDirectoryHandle, audi
     try{await folder.getFileHandle(name);}catch(error){if((error as {name?:string}).name==='NotFoundError')exists=false;else throw error;}
     try{await writeFileJson(folder,name,task);}catch(error){if(!exists)await folder.removeEntry(name).catch(()=>{});throw error;}
   });
+}
+
+/** Allocate only metadata for the selected version, under the normal manifest write queue. */
+export async function ensureVersionLinkIdentity(dir: FileSystemDirectoryHandle, audio: string, modelId: string, version: string, allowCreate = true): Promise<string> {
+ return inDirectory(dir, async () => {
+  const manifest = await readManifestUnlocked(dir,audio);
+  const model = manifest?.models.find(item => item.id === modelId);
+  const edit = model?.edits.find(item => item.id === version);
+  if (!manifest || !model || (version !== 'original' && !edit)) throw Error('segment_link_version_missing');
+  if (version === 'original' && !model.original && !model.designatedOriginal) throw Error('segment_link_version_missing');
+  const existing = version === 'original' ? model.originalLinkId : edit?.linkId;
+  if (existing) {
+   if (!/^[a-f0-9-]{36}$/.test(existing)) throw Error('segment_link_identity_invalid');
+   return existing;
+  }
+  if (!allowCreate) throw Error('segment_link_identity_pending_locked');
+  const identity=crypto.randomUUID();
+  const models=manifest.models.map(item => item.id !== modelId ? item : version === 'original'
+   ? {...item,originalLinkId:identity}
+   : {...item,edits:item.edits.map(value=>value.id === version ? {...value,linkId:identity} : value)});
+  const container = await resolveTranscriptDir(dir,audio,false);
+  if (!container) throw Error('segment_link_version_missing');
+  await writeFileJson(container,MANIFEST_NAME,{...manifest,models});
+  return identity;
+ });
 }

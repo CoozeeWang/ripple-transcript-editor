@@ -18,6 +18,9 @@ export const reasons = {
   get input_limit() { return msg('transcriptionErrors.inputLimit'); },
   get storage() { return msg('diagnostics.m1274'); }, get format() { return msg('diagnostics.m1275'); },
   get missing() { return msg('diagnostics.m1276'); }, get rate_limit() { return msg('diagnostics.m1277'); },
+  get drag_event() { return msg('segmentTransfer.eventUnavailable'); },
+  get drag_released() { return msg('segmentTransfer.mouseReleased'); },
+  get drag_busy() { return msg('segmentTransfer.dragBusy'); },
   get unknown() { return msg('diagnostics.m1278'); },
 } as const;
 type Reason = keyof typeof reasons;
@@ -28,6 +31,10 @@ let memory: Problem[] = [];
 let persistent = true;
 
 function reasonOf(error: unknown): Reason {
+  const native = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+  if (['No mouse event for drag', 'No captured mouse event for drag', 'Invalid drag event', 'Mouse event belongs to another window'].includes(native)) return 'drag_event';
+  if (native === 'Mouse released before drag started') return 'drag_released';
+  if (native === 'Drag already active') return 'drag_busy';
   const value = error as { name?: unknown; code?: unknown; message?: unknown } | null;
   // Inspect only to classify. Never retain exception messages, stacks or upstream bodies.
   const text = [value?.name, value?.code, value?.message].filter(v => typeof v === "string").join(" ");
