@@ -739,6 +739,9 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .notice-row__message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .notice-row__actions { display: flex; flex: none; align-items: flex-start; gap: 8px; }
 .notice-row__actions > .diagnostic-copy { min-width: 0; max-width: min(220px, 36vw); }
+.notice.notice-row, .notice.notice-row .notice-row__actions { align-items: center; }
+.notice.notice-row .diagnostic-copy .cred-btn { max-width: 100%; }
+.notice.notice-row .diagnostic-copy-labels > span { white-space: normal; overflow-wrap: anywhere; }
 .feedback-notice { display: flex; align-items: flex-start; gap: 8px; }
 .feedback-notice > span { min-width: 0; overflow-wrap: anywhere; }
 .feedback-notice.feedback-notice--error { color: var(--color-danger); }
