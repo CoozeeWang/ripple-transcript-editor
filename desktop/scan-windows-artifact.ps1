@@ -29,11 +29,23 @@ try {
     $report.defender = @{antivirusEnabled=$status.AntivirusEnabled;engineVersion=$status.AMEngineVersion;
         signatureVersion=$status.AntivirusSignatureVersion;signatureUpdated=$status.AntivirusSignatureLastUpdated}
     if (-not $status.AntivirusEnabled) { throw 'Defender antivirus is not available on this runner' }
-    try { Update-MpSignature; $report.signatureUpdate='success' }
-    catch { $report.signatureUpdate='failed; existing signature retained' }
+    $report.defenderBeforeUpdate = $status | Select-Object AMRunningMode, AMProductVersion, AMEngineVersion, AMServiceEnabled, AntivirusEnabled, AntivirusSignatureVersion, AntivirusSignatureLastUpdated, AntivirusSignatureAge, DefenderSignaturesOutOfDate, InitializationProgress
+    $report.runner = @{os=[Environment]::OSVersion.VersionString; powershell=$PSVersionTable.PSVersion.ToString(); image=$env:ImageVersion}
+    try { Update-MpSignature -ErrorAction Stop; $report.signatureUpdate='success' }
+    catch {
+        $report.signatureUpdate='failed; existing signature retained'
+        # Preserve the real update error on the disposable runner, without changing
+        # protection settings or treating failed updates as successful scans.
+        $report.signatureUpdateError = @{message=$_.Exception.Message; type=$_.Exception.GetType().FullName;
+            hresult=$_.Exception.HResult; errorId=$_.FullyQualifiedErrorId; category=[string]$_.CategoryInfo.Category;
+            details=$_.ErrorDetails.Message}
+        Write-Warning ("Defender signature update failed: " + $_.Exception.Message)
+    }
     $status = Get-DefenderStatus
+    $report.defenderAfterUpdate = $status | Select-Object AMRunningMode, AMProductVersion, AMEngineVersion, AMServiceEnabled, AntivirusEnabled, AntivirusSignatureVersion, AntivirusSignatureLastUpdated, AntivirusSignatureAge, DefenderSignaturesOutOfDate, InitializationProgress
     $report.defender.signatureVersion=$status.AntivirusSignatureVersion
     $report.defender.signatureUpdated=$status.AntivirusSignatureLastUpdated
+    if (-not $status.AntivirusSignatureVersion -or -not $status.AntivirusSignatureLastUpdated) { throw 'Defender signature metadata is unavailable' }
     if ($status.AntivirusSignatureLastUpdated -lt (Get-Date).AddDays(-3)) { throw 'Defender signatures are stale' }
     $tools = @(Get-ChildItem "$env:ProgramData/Microsoft/Windows Defender/Platform/*/MpCmdRun.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)
     $tool = if ($tools.Count) { $tools[0].FullName } else { "$env:ProgramFiles/Windows Defender/MpCmdRun.exe" }
