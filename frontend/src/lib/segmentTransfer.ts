@@ -36,7 +36,7 @@ export function segmentTransfer(transcript: Transcript, segment: Segment, title:
   const index = transcript.segments.findIndex(item => item.id === segment.id);
   if (index < 0) throw new Error('Segment no longer exists');
   const speaker = transcript.speakers.find(item => item.id === segment.speaker_id)?.name ?? segment.speaker_id;
-  const time = transcript.timeAligned === false ? '' : `${formatTime(segment.start)}, `;
+  const time = transcript.timeAligned === false ? '' : `${formatTime(segment.start)}–${formatTime(segment.end)}, `;
   const source = `${title}, ${time}(${index + 1})`;
   const body = segment.text.replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '');
   const content = `${speaker}：${body}`;

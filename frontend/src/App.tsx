@@ -2,6 +2,7 @@ import { hasNativeSegmentDrag, startNativeSegmentDrag } from './lib/segmentDragB
 import { populateSegmentDrag } from './lib/segmentDragPayload';
 import { ensureVersionLinkIdentity } from './localStore';
 import type { SegmentLinkReceiver } from './lib/segmentLinkDelivery';
+import { segmentSourceTitle } from './lib/segmentSourceTitle';
 import { segmentTransfer, type SegmentTarget } from './lib/segmentTransfer';
 import { LoadErrorNotice, SaveToastNotice } from './components/EditorFeedback';
 import { visibleAIActivities } from './lib/aiEditOwnership';
@@ -855,7 +856,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     const project = projectProps.connectorProject?.();
     if (project && transferIdentity?.context !== transferContext) throw Error(msg('segmentTransfer.identityFailed'));
     const target = project && projectProps.projectRecordingId && activeModel && transferIdentity ? {identity:transferIdentity.identity,project:project.data.id,recording:projectProps.projectRecordingId,model:activeModel.id,version:viewingOriginal || activeModel.designatedOriginal ? 'original' : activeModel.activeEditId,segment:id} : undefined;
-    return segmentTransfer(snapshot.transcript, segment, snapshot.metadata?.title ?? '', target);
+    return segmentTransfer(snapshot.transcript, segment, segmentSourceTitle(snapshot.metadata?.title ?? '', activeModel ?? undefined, transferVersion), target);
   };
   const [transferFailure, setTransferFailure] = useState<{text:string;problem:Problem}|null>(null);
   const failTransfer = (text:string, error:unknown) => { setTransferFailure({text,problem:recordProblem("export",error)}); setLoadError(text); };
