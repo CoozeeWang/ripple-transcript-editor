@@ -49,7 +49,8 @@ it.each(['chatgpt','claude','workbuddy'])('deletes only the confirmed %s configu
  expect(onSaved).not.toHaveBeenCalled();
  expect(ui.getByText(/本机连接配置已删除/)).toBeTruthy();
  expect(ui.queryByRole('button',{name:/删除 .* 连接配置/})).toBeNull();
- expect(document.activeElement).toBe(ui.getByRole('combobox'));
+ // Focus restoration runs in the dialog's effect cleanup after removal.
+ await waitFor(()=>expect(document.activeElement).toBe(ui.getByRole('combobox')));
  expect(within(ui.getByRole('combobox')).getByRole('option',{name:new RegExp((client === 'claude' ? 'Claude' : client === 'chatgpt' ? 'ChatGPT' : 'WorkBuddy')+'.*未配置')})).toBeTruthy();
 });
 
