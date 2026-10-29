@@ -36,13 +36,14 @@ export function segmentTransfer(transcript: Transcript, segment: Segment, title:
   const index = transcript.segments.findIndex(item => item.id === segment.id);
   if (index < 0) throw new Error('Segment no longer exists');
   const speaker = transcript.speakers.find(item => item.id === segment.speaker_id)?.name ?? segment.speaker_id;
-  const time = transcript.timeAligned === false ? '' : ` [${formatTime(segment.start)}–${formatTime(segment.end)}]`;
-  const heading = `${speaker}${time} (${index + 1})`;
+  const time = transcript.timeAligned === false ? '' : `[${formatTime(segment.start)}–${formatTime(segment.end)}] `;
+  const suffix = `，${time}(${index + 1})`;
   const body = segment.text.replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '');
+  const content = `${speaker}：${body}`;
   const url = target ? segmentLink(target) : undefined;
   return {
-    plain: `${heading}\n${body}\n${title}${url ? `\n${url}` : ''}`,
-    rtf: `{\\rtf1\\ansi\\uc1{\\colortbl ;\\red112\\green74\\blue161;} ${escapeRtf(heading)}\\par ${escapeRtf(body)}\\par ${url ? `{\\field{\\*\\fldinst HYPERLINK "${escapeRtf(url)}"}{\\fldrslt \\cf1\\ul ${escapeRtf(title)}\\ulnone\\cf0 }}` : escapeRtf(title)}}`,
-    html: `<div><div>${escapeHtml(heading)}</div><div>${escapeHtml(body).replace(/\n/g, '<br>')}</div><div>${url ? `<a href="${escapeHtml(url)}" style="color:#704aa1;text-decoration:underline">${escapeHtml(title)}</a>` : escapeHtml(title)}</div></div>`,
+    plain: `${content}\n\n${title}${suffix}${url ? `\n${url}` : ''}`,
+    rtf: `{\\rtf1\\ansi\\uc1{\\colortbl ;\\red112\\green74\\blue161;}${escapeRtf(content)}\\par\\par ${url ? `{\\field{\\*\\fldinst HYPERLINK "${escapeRtf(url)}"}{\\fldrslt \\cf1\\ul ${escapeRtf(title)}\\ulnone\\cf0 }}` : escapeRtf(title)}${escapeRtf(suffix)}}`,
+    html: `<div><div>${escapeHtml(content).replace(/\n/g, '<br>')}</div><div><br></div><div>${url ? `<a href="${escapeHtml(url)}" style="color:#704aa1;text-decoration:underline">${escapeHtml(title)}</a>` : escapeHtml(title)}${escapeHtml(suffix)}</div></div>`,
   };
 }

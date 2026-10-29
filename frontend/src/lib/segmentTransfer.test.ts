@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSegmentLink, segmentLink, segmentTransfer } from './segmentTransfer';
+import { escapeRtf, parseSegmentLink, segmentLink, segmentTransfer } from './segmentTransfer';
 const target = { project:'project-1', recording:'recording-1', model:'m1', version:'e1', segment:'seg_split_123',identity:'12345678-1234-4234-8234-123456789abc' };
 describe('segment transfer', () => {
  it('round trips stable identities without titles, numbers or paths', () => { expect(parseSegmentLink(segmentLink(target))).toEqual(target); });
@@ -9,22 +9,46 @@ describe('segment transfer', () => {
   const segment = {id:target.segment, speaker_id:'speaker',start:1,end:3,text:'<script>\n第二段 &'};
   const transcript={audio:{filename:'synthetic.wav',duration:3},speakers:[{id:'speaker',name:'说话人'}],segments:[segment]};
   const result=segmentTransfer(transcript,segment,'访谈 <一>',target);
-  expect(result.plain).toContain('<script>\n第二段 &\n访谈 <一>\nripple-segment-dev:');
+  expect(result.plain).toContain('说话人：<script>\n第二段 &\n\n访谈 <一>，[00:01–00:03] (1)\nripple-segment-dev:');
   expect(result.html).toContain('&lt;script&gt;<br>第二段 &amp;');
   expect(result.html).toContain('>访谈 &lt;一&gt;</a>');
-  expect(result.plain).toMatch(/^说话人 \[00:01–00:03\] \(1\)\n/);
+  expect(result.plain).toMatch(/^说话人：<script>/);
   expect(result.rtf).toContain('HYPERLINK "ripple-segment-dev://open/v2?');
   expect(result.rtf).toContain('\\fldrslt \\cf1\\ul');
-  expect(result.rtf).not.toContain('\\par\\par');
+  expect(result.rtf).toContain('\\par\\par');
   expect(result.html).toContain('style="color:#704aa1;text-decoration:underline"');
-  expect(result.html).not.toContain('<div><br></div>');
+  expect(result.html).toContain('<div><br></div>');
   expect([...result.rtf].every(char => char.charCodeAt(0) < 128)).toBe(true);
-  expect(segmentTransfer({...transcript,timeAligned:false},segment,'标题').plain).toMatch(/^说话人 \(1\)\n/);
+  expect(segmentTransfer({...transcript,timeAligned:false},segment,'标题').plain).toContain('标题，(1)');
  });
 });
 
-it('uses compact boundaries while preserving internal paragraphs', () => {
+it.each(['', '\n\n', 'First\r\n\r\nSecond\n'])('keeps empty and multi-paragraph bodies well formed: %j', text => {
+ const segment={id:target.segment,speaker_id:'s',start:1,end:3,text};
+ const transcript={audio:{filename:'synthetic.wav',duration:3},speakers:[{id:'s',name:'Speaker'}],segments:[segment]};
+ const result=segmentTransfer(transcript,segment,'Synthetic_20261029_A',target);
+ const body=text.replace(/\r\n?/g,'\n').replace(/^\n+|\n+$/g,'');
+ expect(result.plain).toBe(`Speaker：${body}\n\nSynthetic_20261029_A，[00:01–00:03] (1)\n${segmentLink(target)}`);
+ expect(result.html).toContain('>Synthetic_20261029_A</a>，[00:01–00:03] (1)</div>');
+ expect(result.html.match(/<div><br><\/div>/g)).toHaveLength(1);
+ expect(result.rtf).toContain(`\\ulnone\\cf0 }}${escapeRtf('，[00:01–00:03] (1)')}`);
+});
+
+it('escapes markup without interpreting underscore titles or linking the suffix', () => {
+ const segment={id:target.segment,speaker_id:'s',start:0,end:1,text:'<body> & {text} \\ literal'};
+ const transcript={audio:{filename:'synthetic.wav',duration:1},speakers:[{id:'s',name:'A<&"'}],segments:[segment]};
+ const title='合成_20261029_A <&" {source} \\';
+ const result=segmentTransfer(transcript,segment,title,target);
+ expect(result.html).toContain('A&lt;&amp;&quot;：&lt;body&gt; &amp; {text} \\ literal');
+ expect(result.html).toContain('>合成_20261029_A &lt;&amp;&quot; {source} \\</a>，[00:00–00:01] (1)');
+ expect(result.rtf).toContain(escapeRtf(title));
+ expect(result.rtf.match(/HYPERLINK/g)).toHaveLength(1);
+ expect(result.plain).toContain(title+'，[00:00–00:01] (1)');
+ expect(segmentTransfer(transcript,segment,title).plain.endsWith(title+'，[00:00–00:01] (1)')).toBe(true);
+});
+
+it('separates the source by one blank line while preserving internal paragraphs', () => {
  const segment={id:'synthetic',speaker_id:'s',start:0,end:1,text:'\n\nFirst\n\nSecond\n'};
  const transcript={audio:{filename:'synthetic.wav',duration:1},speakers:[{id:'s',name:'Speaker'}],segments:[segment],timeAligned:false};
- expect(segmentTransfer(transcript,segment,'Source').plain).toBe('Speaker (1)\nFirst\n\nSecond\nSource');
+ expect(segmentTransfer(transcript,segment,'Source').plain).toBe('Speaker：First\n\nSecond\n\nSource，(1)');
 });
