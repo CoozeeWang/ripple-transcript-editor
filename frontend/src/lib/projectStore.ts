@@ -1,4 +1,5 @@
 import { msg } from '../i18n';
+import { isTagLibrary, type TagLibrary } from './tags';
 import { validOriginalGroupId, withOriginalGroups } from './originalGroups';
 import { readRecoverableManifest } from './manifestRecovery';
 import { isContinuationTask } from './continuationJournal';
@@ -37,6 +38,8 @@ export interface ProjectSessionTrashItem {
   materialTrash?: ProjectTrashItem[];
 }
 export interface RippleProject {
+  /** Optional backwards-compatible project-wide definitions. */
+  tagLibrary?: TagLibrary;
   kind: 'ripple-project'; schemaVersion: 1; id: string; title: string; description: string;
   revision: number; interviews: ProjectInterview[]; trash?: ProjectTrashItem[];
   sessionTrash?: ProjectSessionTrashItem[];
@@ -52,6 +55,7 @@ export function parseProject(raw: string): RippleProject {
   try { p = JSON.parse(raw) as RippleProject; } catch { throw new Error(msg('projectStore.m1382')); }
   if (p?.kind !== 'ripple-project' || p.schemaVersion !== 1 || !id(p.id) || typeof p.title !== 'string' || !p.title.trim()
       || typeof p.description !== 'string' || !Number.isSafeInteger(p.revision) || p.revision < 0 || !Array.isArray(p.interviews)) throw new Error(msg('projectStore.m1383'));
+  if (p.tagLibrary !== undefined && !isTagLibrary(p.tagLibrary)) throw new Error(msg('projectStore.m1383'));
   const identifiers = new Set<string>();
   for (const interview of p.interviews) {
     if (!interview || !id(interview.id) || identifiers.has(interview.id) || typeof interview.title !== 'string' || !interview.title.trim() || !Array.isArray(interview.recordings)) throw new Error(msg('projectStore.m1384'));

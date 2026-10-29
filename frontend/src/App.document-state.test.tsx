@@ -237,3 +237,25 @@ it('sends accepted media duration to the project without using transcript durati
   expect(ui.getByText('01:05:24')).toBeTruthy();
   expect(onAudioDuration).toHaveBeenCalledExactlyOnceWith(3924);
 });
+
+it('connects the topbar to project-library undo and redo when manuscript history is empty',async()=>{
+ const {useState}=await import('react');
+ const oldShow=HTMLDialogElement.prototype.showModal,oldClose=HTMLDialogElement.prototype.close;
+ HTMLDialogElement.prototype.showModal=function(){this.open=true};HTMLDialogElement.prototype.close=function(){this.open=false};
+ vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
+ function Harness(){const[library,setLibrary]=useState<import('./lib/tags').TagLibrary>({schemaVersion:1,tags:[{id:'synthetic-tag',name:'Synthetic topic',groupIds:[]}],groups:[]});return <App tagLibrary={library} saveTagLibrary={async next=>{setLibrary(next)}}/>}
+ try{
+  render(<Harness/>);load('Synthetic tags.wav');
+  expect((screen.getByRole('button',{name:'撤销'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.keyDown(screen.getByRole('button',{name:'标签: Synthetic topic'}),{key:'F2'});
+  fireEvent.change(screen.getByRole('textbox',{name:'标签'}),{target:{value:'Synthetic renamed'}});
+  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'保存'})));
+  expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
+  expect((screen.getByRole('button',{name:'撤销'}) as HTMLButtonElement).disabled).toBe(false);
+  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'撤销'})));
+  expect(screen.getByRole('button',{name:'标签: Synthetic topic'})).toBeTruthy();
+  expect((screen.getByRole('button',{name:'重做'}) as HTMLButtonElement).disabled).toBe(false);
+  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重做'})));
+  expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
+ }finally{HTMLDialogElement.prototype.showModal=oldShow;HTMLDialogElement.prototype.close=oldClose;vi.unstubAllGlobals()}
+});

@@ -48,6 +48,8 @@ export interface Highlight {
 }
 
 export interface Segment {
+  /** Project tag IDs; this version owns its independent associations. */
+  tagIds?: string[];
   id: string;
   speaker_id: string;
   start: number;

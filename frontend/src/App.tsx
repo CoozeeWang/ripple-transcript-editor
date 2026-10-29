@@ -16,6 +16,9 @@ import { AIEditingNotice } from './components/AIEditingNotice';
 import { assertEditorReadyForAI } from './lib/editorDrafts';
 import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
+import {useProjectTags} from './hooks/useProjectTags';
+import {TagsPanel} from './components/TagsPanel';
+import {filteredTagSegments,countTaggedSegments,tagsForSegment,tagHistoryAnchor,type TagLibrary} from './lib/tags';
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem, type Problem } from "./lib/diagnostics";
@@ -75,7 +78,7 @@ import {
   stemOf,
   saveSelectedProviderId,
 } from "./localStore";
-import { canExportSubtitles, type ExportFormat, exportTranscript } from "./lib/export";
+import { canExportSubtitles, selectExportScope, type ExportFormat, exportTranscript } from "./lib/export";
 import {
   ANNOTATION_PANEL_COLLAPSED_KEY,
   SPEAKER_PANEL_COLLAPSED_KEY,
@@ -103,6 +106,8 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 // 快退/快进步长默认值（秒），可被偏好设置覆盖；键盘左右键与右侧 ± 按钮共用。
 
 export interface ProjectEditorProps {
+  tagLibrary?:TagLibrary;
+  saveTagLibrary?:(library:TagLibrary)=>Promise<void>;
   initialSegmentTarget?: SegmentTarget;
   onOpenSegmentLink?: (raw:string) => Promise<void>;
   registerSegmentLinkReceiver?: (receiver:SegmentLinkReceiver | null) => void;
@@ -176,6 +181,7 @@ function App(projectProps: ProjectEditorProps = {}) {
     saveBooleanPreference(ANNOTATION_PANEL_COLLAPSED_KEY, annotationPanelCollapsed);
   }, [annotationPanelCollapsed]);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportScope,setExportScope]=useState<'full'|'visible'>('full');
   const [recentMenuOpen, setRecentMenuOpen] = useState(false);
   const recentMenuRef = useRef<HTMLDivElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(Boolean(projectProps.openSettingsInitially));
@@ -230,10 +236,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     ? selectedSegmentId
     : (transcript?.segments[0]?.id ?? "");
   // 仅视图筛选：隐藏说话人的片段不渲染、不计入、批注也不显示（不动存档）。
+  const [selectedTagFilter,setTagFilter]=useState<string|null>(null);
+  const tagFilter=selectedTagFilter&&projectProps.tagLibrary?.tags.some(tag=>tag.id===selectedTagFilter)?selectedTagFilter:null;
   const visibleSegments = useMemo(
-    () => (transcript ? transcript.segments.filter((s) => !hiddenSpeakerIds.has(s.speaker_id)) : []),
-    [transcript, hiddenSpeakerIds],
+    () => (transcript ? filteredTagSegments(transcript,hiddenSpeakerIds,tagFilter) : []),
+    [transcript, hiddenSpeakerIds,tagFilter],
   );
+  const visibleSegmentIds=useMemo(()=>new Set(visibleSegments.map(segment=>segment.id)),[visibleSegments]);
   // 高亮清单：按文档顺序分组；隐藏说话人的片段不计入，与批注「全部」视图保持一致。
   const highlightGroups = useMemo(
     () => collectHighlightGroups(transcript, hiddenSpeakerIds),
@@ -257,11 +266,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 编辑的提交入口：undo/redo 历史分组 + 标记未保存。usePlayback 依赖它，
   // 故放在 useFolder 之前定义。
+  const tagContentEditPending=useRef(false);
   const editLockedRef = useRef<() => boolean>(() => false);
   const mutateTranscript = useCallback(
     (updater: (current: Transcript) => Transcript, groupKey?: string) => {
       const aiWrite = groupKey?.startsWith('ai-marks:') || groupKey?.startsWith('ai-continuation:');
       if (viewingOriginal || !aiWrite && editLockedRef.current()) return;
+      tagContentEditPending.current=true;
       commit(current => !aiWrite && editLockedRef.current() ? current : reconcileComparisonReviews(updater(current)), groupKey);
       setSaveStatus("unsaved");
     },
@@ -701,6 +712,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     editLockedRef.current = () => connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
   });
   const protectedReadOnly = viewingOriginal || aiLocked;
+  const tags=useProjectTags({library:projectProps.tagLibrary,save:projectProps.saveTagLibrary,project:projectProps.connectorProject??(()=>null),recordingId:projectProps.projectRecordingId,modelId:activeModelId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,mutate:mutateTranscript,readOnly:protectedReadOnly,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+  const priorTagContentAnchor=useRef<string|null>(null);
+  useLayoutEffect(()=>{const next=tagHistoryAnchor(transcript);if(tagContentEditPending.current&&priorTagContentAnchor.current!==next)queueMicrotask(tags.discardRedo);tagContentEditPending.current=false;priorTagContentAnchor.current=next},[transcript,tags.discardRedo]);
   const guardedRenameVersion: typeof renameVersion = (...args) => {
     if (editLockedRef.current()) return Promise.reject(Error('manuscript_locked_by_other_ai_end_editing_first'));
     return renameVersion(...args);
@@ -747,7 +761,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     transcript,
     viewingOriginal: protectedReadOnly,
     mutateTranscript,
-    setSelectedSegmentId,
+    setSelectedSegmentId:id=>{const target=transcript?.segments.find(segment=>segment.id===id);if(tagFilter&&!target?.tagIds?.includes(tagFilter))setTagFilter(null);setSelectedSegmentId(id)},
     textareaRefs,
   });
 
@@ -778,6 +792,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setMergeMenuFor,
     mergeMenuRef,
   } = useEditor({
+    visibleSegmentIds,
     transcript,
     mutateTranscript,
     metadata,
@@ -798,6 +813,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     resetDocumentViewRef.current = () => {
       setSegmentMergePrompt(null);
       setHiddenSpeakerIds(new Set());
+      setTagFilter(null);
       setActiveSegmentId("");
       setSelectedSegmentId("");
       setOpeningPosition(null);
@@ -820,18 +836,22 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     if (editLockedRef.current()) return;
     const hadDraft = hasEditorDrafts();
     flushEditorDrafts();
+    if(tags.busy)return;
+    if(!hadDraft&&tags.canUndo){void tags.undo();return}
     if (!canUndo && !hadDraft) return;
     undo();
     setSaveStatus("unsaved");
-  }, [canUndo, undo]);
+  }, [canUndo, undo,tags]);
 
   const performRedo = useCallback(() => {
     if (editLockedRef.current()) return;
     flushEditorDrafts();
+    if(tags.busy)return;
+    if(tags.canRedo){void tags.redo();return}
     if (!canRedo) return;
     redo();
     setSaveStatus("unsaved");
-  }, [canRedo, redo]);
+  }, [canRedo, redo,tags]);
 
 
   const transferVersion = viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId;
@@ -885,6 +905,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
 
   useShortcuts({
+    visibleSegmentIds,
     copySegment,
     disabled: renaming || versionBusy || saveStatus === "loading",
     transcript,
@@ -921,14 +942,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       mutateTranscript(current => applyComparisonDecision(current, decision, comparison.baseline?.segments)),
   });
   const renderedRows = useMemo(() => comparisonRows(transcript?.segments ?? [], comparison.baseline?.segments)
-    .filter(row => !hiddenSpeakerIds.has(row.segment.speaker_id)),
-    [transcript?.segments, comparison.baseline?.segments, hiddenSpeakerIds]);
+    .filter(row => !hiddenSpeakerIds.has(row.segment.speaker_id)&&(!tagFilter||row.segment.tagIds?.includes(tagFilter))),
+    [transcript?.segments, comparison.baseline?.segments, hiddenSpeakerIds,tagFilter]);
   const segmentIndices = useMemo(() => new Map(transcript?.segments.map((segment, index) => [segment.id, index])), [transcript?.segments]);
   const [pendingSegmentJump, setPendingSegmentJump] = useState<{ segment: Segment; context: typeof speakerFilterContext } | null>(null);
   const handledSegmentJump = useRef<typeof pendingSegmentJump>(null);
   const jumpToSegment = (number: number) => {
     const segment = transcript?.segments[number - 1];
     if (!segment) return;
+    if(tagFilter&&!segment.tagIds?.includes(tagFilter))setTagFilter(null);
     setHiddenSpeakerIds(previous => {
       if (!previous.has(segment.speaker_id)) return previous;
       const next = new Set(previous); next.delete(segment.speaker_id); return next;
@@ -989,6 +1011,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // focus 会触发 textarea 的 onFocus → seekTo(segment.start)，所以顺序必须是
   // 先聚焦、后 seek，否则刚定位到的时间会被覆盖回片段开头。
   const jumpToHighlight = (segment: Segment, highlight: Highlight) => {
+    if(tagFilter&&!segment.tagIds?.includes(tagFilter))setTagFilter(null);
     setSelectedSegmentId(segment.id);
     window.requestAnimationFrame(() => {
       const textarea = textareaRefs.current.get(segment.id);
@@ -1021,7 +1044,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     flushEditorDrafts();
     const current = latestExport.current;
     if (!current.transcript) return;
-    void exportTranscript(format, current.transcript, current.metadata, activeModel?.engine, viewingOriginal ? (activeModel?.sourceKind === "import" && !activeModel?.designatedOriginal ? msg('App.m0012') : msg('App.m0013')) : (activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))))
+    let selection:Transcript;try{selection=selectExportScope(current.transcript,exportScope,hiddenSpeakerIds,tagFilter)}catch(error){setLoadError(error instanceof Error?error.message:msg('tags.empty'));return}
+    void exportTranscript(format, selection, current.metadata, activeModel?.engine, viewingOriginal ? (activeModel?.sourceKind === "import" && !activeModel?.designatedOriginal ? msg('App.m0012') : msg('App.m0013')) : (activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))))
       .catch(error => { recordProblem("export", error); setLoadError(error instanceof Error ? error.message : msg('App.m0014')); });
   };
 
@@ -1204,13 +1228,14 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         viewingOriginal={viewingOriginal}
         performUndo={performUndo}
         performRedo={performRedo}
-        canUndo={canUndo && !aiLocked}
-        canRedo={canRedo && !aiLocked}
+        canUndo={(canUndo||tags.canUndo)&&!aiLocked&&!tags.busy}
+        canRedo={(canRedo||tags.canRedo)&&!aiLocked&&!tags.busy}
         setFindOpen={setFindOpen}
         exportMenuOpen={exportMenuOpen}
         setExportMenuOpen={setExportMenuOpen}
         exportMenuRef={exportMenuRef}
         exportAs={exportAs}
+        exportScope={exportScope} setExportScope={setExportScope} fullCount={transcript?.segments.length??0} visibleCount={visibleSegments.length}
         subtitlesAvailable={Boolean(transcript && canExportSubtitles(transcript))}
         exportProjectFiles={projectProps.onExportProjectFiles ? () => void returnToProjects(true) : undefined}
         handleSave={handleSave}
@@ -1336,6 +1361,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
           {preparingTranscript && transcriptionNotice}
 
+          {tagFilter&&visibleSegments.length===0&&<p className="annotation-empty">{msg('tags.empty')}</p>}
           {transcript.segments.length === 0 && !comparison.baseline?.segments.length ? (transcribing || activeStatus === "error" ? null : (
             <section className="empty-transcript">
               <p className="section-label">READY</p>
@@ -1364,6 +1390,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
               </article>
             ) : (
               <SegmentItem
+                tags={tagsForSegment(segment,tags.library)}
+                tagWriteDisabled={tags.busy}
+                onAddTag={projectProps.saveTagLibrary?tags.add:undefined}
+                onRemoveTag={tags.remove}
                 copySegment={copySegment}
                 dragSegment={dragSegment}
                 nativeDragSegment={hasNativeSegmentDrag() ? nativeDragSegment : undefined}
@@ -1405,13 +1435,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         {saveToast && <SaveToastNotice toast={saveToast} onDismiss={()=>setSaveToast(null)}/>}
 
         {!preparingTranscript && <AnnotationPanel
+          tagCount={tags.library.tags.length}
+          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} onChange={tags.change} readOnly={protectedReadOnly||tags.busy} filter={tagFilter} onFilter={id=>{setTagFilter(id);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
           annotationView={annotationView}
           setAnnotationView={setAnnotationView}
           panelTab={panelTab}
-          setPanelTab={setPanelTab}
+          setPanelTab={tab=>{setPanelTab(tab);if(tab==='tags')tags.retryCounts()}}
           currentSegment={currentSegment}
           currentSegmentId={currentSegmentId}
           hiddenSpeakerIds={hiddenSpeakerIds}
@@ -1420,7 +1452,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           setCollapsed={setAnnotationPanelCollapsed}
           highlightGroups={highlightGroups}
           highlightCount={highlightCount}
-          setSelectedSegmentId={setSelectedSegmentId}
+          setSelectedSegmentId={id=>{const target=transcript?.segments.find(segment=>segment.id===id);if(tagFilter&&!target?.tagIds?.includes(tagFilter))setTagFilter(null);setSelectedSegmentId(id)}}
           seekTo={seekTo}
           updateAnnotation={updateAnnotation}
           deleteAnnotation={deleteAnnotation}

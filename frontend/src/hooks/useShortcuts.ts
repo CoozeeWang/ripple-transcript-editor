@@ -8,6 +8,7 @@ import { flushEditorDrafts } from "../lib/editorDrafts";
 /** 全局键盘快捷键（编辑器操作在输入控件内由各组件自行处理）。
  *  所有动作通过回调注入，本 hook 只负责监听 window keydown 与分发。 */
 export interface UseShortcutsDeps {
+  visibleSegmentIds?:ReadonlySet<string>;
   disabled?: boolean;
   copySegment?: (id: string) => void;
   transcript: Transcript | null;
@@ -156,7 +157,8 @@ export function useShortcuts(deps: UseShortcutsDeps) {
           transcript.segments.findIndex((segment) => segment.id === effectiveSelectedSegmentId),
         );
         const delta = event.key === "ArrowUp" ? -1 : 1;
-        const nextIndex = Math.max(0, Math.min(transcript.segments.length - 1, currentIndex + delta));
+        let nextIndex=currentIndex+delta;
+        while(transcript.segments[nextIndex]&&deps.visibleSegmentIds&&!deps.visibleSegmentIds.has(transcript.segments[nextIndex].id))nextIndex+=delta;
         const nextSegment = transcript.segments[nextIndex];
         if (nextSegment) {
           setSelectedSegmentId(nextSegment.id);
@@ -169,6 +171,7 @@ export function useShortcuts(deps: UseShortcutsDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     deps.copySegment,
+    deps.visibleSegmentIds,
     disabled,
     transcript,
     viewingOriginal,

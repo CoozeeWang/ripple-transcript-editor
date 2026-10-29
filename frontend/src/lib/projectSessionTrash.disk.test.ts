@@ -2,8 +2,8 @@ import {mkdtemp,mkdir,readFile,readdir,rm,stat,writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
-import {addInterview,addRecordings,createProject,openProject,recordingDirectory,trashProjectInterview,restoreProjectInterview} from './projectStore';
-import {createEdit,createModel} from '../localStore';
+import {addInterview,addRecordings,createProject,openProject,recordingDirectory,saveProject,trashProjectInterview,restoreProjectInterview} from './projectStore';
+import {createEdit,createModel,readModelEdit,saveActiveEdit,readModelOriginal} from '../localStore';
 
 const fileError=(error:unknown)=>{throw (error as NodeJS.ErrnoException).code==='ENOENT'?new DOMException('Synthetic missing file','NotFoundError'):error;};
 
@@ -45,15 +45,23 @@ it('deletes, closes, reopens and restores real synthetic files with byte-identic
   const session=project.data.interviews[0];
   project=await addRecordings(project,session.id,[await input.getFileHandle('Synthetic.wav')],'copy');
   const recording=project.data.interviews[0].recordings[0],view=await recordingDirectory(project,session.id,recording);
-  const transcript={audio:{filename:recording.file,duration:2},speakers:[],segments:[{id:'s1',speaker_id:'sp',start:0,end:2,text:'Synthetic original',annotations:[{id:'a1',text:'Synthetic annotation',createdAt:'2026-01-01T00:00:00Z'}]}]};
+  const transcript={audio:{filename:recording.file,duration:2},speakers:[],segments:[{id:'s1',speaker_id:'sp',start:0,end:2,text:'Synthetic original',tagIds:['tag-a'],annotations:[{id:'a1',text:'Synthetic annotation',createdAt:'2026-01-01T00:00:00Z'}]}]};
   const made=await createModel(view,recording.file,{engine:'synthetic',transcript,original:transcript});
-  await createEdit(view,recording.file,made.model.id,{fromOriginal:true,label:'Synthetic copy'});
+ const copy=await createEdit(view,recording.file,made.model.id,{fromOriginal:true,label:'Synthetic copy'});
+ const copied=await readModelEdit(view,recording.file,made.model.id,copy.edit.id);
+ expect(copied!.transcript.segments[0].tagIds).toEqual(['tag-a']);
+ await saveActiveEdit(view,recording.file,made.model.id,copy.edit.id,{...copied!,transcript:{...copied!.transcript,segments:copied!.transcript.segments.map(segment=>({...segment,tagIds:['tag-b']}))}});
+ project=await saveProject(project,{...project.data,tagLibrary:{schemaVersion:1,tags:[{id:'tag-a',name:'Synthetic original topic',groupIds:[]},{id:'tag-b',name:'Synthetic copied topic',groupIds:[]}],groups:[]}});
+ expect((await readModelOriginal(view,recording.file,made.model.id))!.transcript.segments[0].tagIds).toEqual(['tag-a']);
+ expect((await readModelEdit(view,recording.file,made.model.id,made.model.edits[0].id))!.transcript.segments[0].tagIds).toEqual(['tag-a']);
+
   const before=await bytes(temporary);
   const deleted=await trashProjectInterview(project,session.id);
   expect(await bytes(temporary)).toEqual(before);
   const reopened=await openProject(diskDirectory(join(temporary,'Synthetic project.ripple')));
   const restored=await restoreProjectInterview(reopened,deleted.data.sessionTrash![0].id);
   expect(restored.data.interviews).toEqual(project.data.interviews);
+  expect(restored.data.tagLibrary).toEqual(project.data.tagLibrary);
   expect(await bytes(temporary)).toEqual(before);
   expect(new Uint8Array(await readFile(join(temporary,'inputs','Synthetic.wav')))).toEqual(original);
  }finally{await rm(temporary,{recursive:true,force:true});}

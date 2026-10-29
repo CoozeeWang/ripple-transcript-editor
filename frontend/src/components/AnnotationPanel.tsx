@@ -1,5 +1,5 @@
 import { msg, useInterfaceLanguage } from '../i18n';
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, RefObject, SetStateAction, ReactNode } from "react";
 
 import type { Highlight, Segment, Transcript } from "../types";
 import { formatTime, keys } from "../lib/format";
@@ -7,11 +7,13 @@ import type { HighlightGroup } from "../lib/highlights";
 import { AnnotationAddBox, AnnotationCard } from "./AnnotationCard";
 
 /** 面板顶部的两个页签。高亮页是全文清单，没有「当前片段 / 全部」这层切换。 */
-export type PanelTab = "annotation" | "highlight";
+export type PanelTab = "annotation" | "highlight" | "tags";
 
 /** 批注栏：批注 / 高亮 两个页签 + 各自的列表。
  *  跨领域状态（transcript/选中与焦点片段/隐藏说话人）与操作全部 props 注入。 */
 export interface AnnotationPanelProps {
+  tagsPanel?: ReactNode;
+  tagCount?: number;
   transcript: Transcript | null;
   readOnly?: boolean;
   readOnlyMessage?: string;
@@ -130,7 +132,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
   }
 
   return (
-    <aside className="annotation-panel">
+    <aside className={"annotation-panel"+(props.tagsPanel?" annotation-panel--tags-enabled":"")}>
       {/* 顶栏顺序（左→右）：双箭头收起按钮 → 页签（批注 / 高亮，各带条数）。
           页签取代了原来的「批注」标题 + 条数徽章——否则标题与页签会把同一条
           信息显示两遍。justify-content 覆盖成 flex-start（见
@@ -173,9 +175,11 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
           >
             {msg('AnnotationPanel.m0327')}<span className="panel-tabs__count">{highlightCount}</span>
           </button>
+          {props.tagsPanel&&<button type="button" className={panelTab==='tags'?'is-active':''} onClick={()=>setPanelTab('tags')}>{msg('tags.title')}<span className="panel-tabs__count">{props.tagCount??0}</span></button>}
         </div>
       </div>
 
+      {panelTab==='tags'?props.tagsPanel:<>
       {readOnly && <p className="annotation-empty" role="note">{props.readOnlyMessage ?? msg('AnnotationPanel.readOnly')}</p>}
       {panelTab === "annotation" ? (
         <>
@@ -351,6 +355,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
           )}
         </div>
       )}
+      </>}
     </aside>
   );
 }

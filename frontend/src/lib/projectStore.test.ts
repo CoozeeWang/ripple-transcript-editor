@@ -1,3 +1,4 @@
+import {projectTagCounts} from './projectTags';
 import { ensureVersionLinkIdentity, removeEdit } from '../localStore';
 import { resolveSegmentTarget } from './segmentTarget';
 import { setInterfaceLanguage } from '../i18n';
@@ -1296,4 +1297,42 @@ it('follows the persisted UUID when audio reassociation also renumbers the model
  const moved=await reassignManuscript(p,interview.id,recording.id,targetRecording.id,'m1');
  const result=await resolveSegmentTarget(moved,{project:p.data.id,recording:recording.id,model:'m1',version:'e1',segment:'segment',identity});
  expect(result.recording.id).toBe(targetRecording.id);expect(result.model).toBe('m2');
+});
+
+it('persists project tag definitions through save/reopen and refuses stale writers', async () => {
+  const { p } = await fixture();
+  const library = { schemaVersion: 1 as const, tags: [{ id: 'synthetic-tag', name: 'Synthetic topic', groupIds: ['synthetic-group'] }], groups: [{ id: 'synthetic-group', name: 'Synthetic group', parentId: null }] };
+  const saved = await saveProject(p, { ...p.data, tagLibrary: library });
+  expect((await openProject(p.directory)).data.tagLibrary).toEqual(library);
+  expect(saved.data.revision).toBe(p.data.revision + 1);
+  await expect(saveProject(p, { ...p.data, tagLibrary: { ...library, tags: [] } })).rejects.toThrow();
+  expect((await openProject(p.directory)).data.tagLibrary).toEqual(library);
+});
+
+it('rejects malformed tag updates before writing the index or its verified backup', async () => {
+  const { p } = await fixture();
+  const before = await (await (await p.directory.getFileHandle('ripple-project.json')).getFile()).text();
+  await expect(saveProject(p, { ...p.data, tagLibrary: { schemaVersion: 1, tags: [{ id: 'synthetic-tag', name: 'Topic', groupIds: ['missing'] }], groups: [] } })).rejects.toThrow();
+  expect(await (await (await p.directory.getFileHandle('ripple-project.json')).getFile()).text()).toBe(before);
+});
+
+it('counts one active version per manuscript and substitutes the viewed historical version',async()=>{
+ const {p,interview,recording}=await fixture(),view=await recordingDirectory(p,interview.id,recording);
+ const value={audio:{filename:recording.file,duration:2},speakers:[],segments:[{id:'s1',speaker_id:'a',text:'Synthetic representative',start:0,end:2,tagIds:['tag-a']}]};
+ const first=await createModel(view,recording.file,{engine:'synthetic-a',transcript:value,original:value});
+ await createEdit(view,recording.file,first.model.id,{fromOriginal:true,label:'Synthetic second version'});
+ const second=await createModel(view,recording.file,{engine:'synthetic-b',transcript:value,original:value});
+ const counts=await projectTagCounts(p,{recordingId:recording.id,modelId:first.model.id,transcript:{...value,segments:[]}});
+ expect(counts.get('tag-a')).toBe(1);
+ const full=await projectTagCounts(p,{recordingId:recording.id,modelId:second.model.id,transcript:value});expect(full.get('tag-a')).toBe(2);
+});
+
+it('counts forks of a read-only original once using confirmed provenance',async()=>{
+ const {p,interview,recording}=await fixture(),view=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:2},speakers:[],segments:[{id:'s1',speaker_id:'a',text:'Synthetic source',start:0,end:2,tagIds:['tag-a']}]};
+ const original=await createModel(view,recording.file,{engine:'synthetic',transcript,original:transcript,originalOnly:true});
+ const copy=await createEdit(view,recording.file,original.model.id,{fromOriginal:true,label:'Synthetic editable fork'});
+ expect(copy.model.id).not.toBe(original.model.id);
+ const counts=await projectTagCounts(p,{recordingId:recording.id,modelId:copy.model.id,transcript});expect(counts.get('tag-a')).toBe(1);
+ const originalView=await projectTagCounts(p,{recordingId:recording.id,modelId:original.model.id,transcript:{...transcript,segments:[]}});expect(originalView.get('tag-a')).toBeUndefined();
 });

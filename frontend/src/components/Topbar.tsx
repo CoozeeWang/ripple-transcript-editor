@@ -45,6 +45,10 @@ export interface TopbarProps {
   setExportMenuOpen: Dispatch<SetStateAction<boolean>>;
   exportMenuRef: RefObject<HTMLDivElement | null>;
   exportAs: (format: ExportFormat) => void;
+  exportScope?:'full'|'visible';
+  setExportScope?:(scope:'full'|'visible')=>void;
+  fullCount?:number;
+  visibleCount?:number;
   subtitlesAvailable?: boolean;
   exportProjectFiles?: () => void;
   handleSave: () => void;
@@ -85,7 +89,7 @@ export function Topbar(props: TopbarProps) {
     if (!exportMenuOpen) return;
     const previous = document.activeElement;
     const menu = exportMenuRef.current?.querySelector<HTMLElement>('[role="menu"]');
-    menu?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    menu?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')?.focus();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected &&
           (document.activeElement === document.body || menu?.contains(document.activeElement))) previous.focus();
@@ -375,19 +379,20 @@ export function Topbar(props: TopbarProps) {
               if (event.key === 'Tab') { setExportMenuOpen(false); return; }
               if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
               event.preventDefault(); event.stopPropagation();
-              const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+              const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)'));
               if (!items.length) return;
               const index = items.indexOf(document.activeElement as HTMLButtonElement);
               const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
               items[next].focus();
             }}>
+              {props.setExportScope&&(['full','visible'] as const).map(scope=><li key={scope}><button type="button" role="menuitemradio" aria-checked={props.exportScope===scope} disabled={scope==='visible'&&!props.visibleCount} tabIndex={-1} onClick={()=>props.setExportScope?.(scope)}>{props.exportScope===scope?'✓ ':''}{msg(scope==='full'?'tags.full':'tags.visible')} · {scope==='full'?props.fullCount:props.visibleCount}</button></li>)}
               {exportFormats().map(([label, format]) => (
                 <li key={format}>
                   <button
                     type="button"
                     role="menuitem"
                     tabIndex={-1}
-                    disabled={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable}
+                    disabled={(props.exportScope==='visible'&&!props.visibleCount)||((format === 'srt' || format === 'vtt') && !props.subtitlesAvailable)}
                     title={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable ? msg('Topbar.m1060') : undefined}
                     onClick={() => {
                       setExportMenuOpen(false);

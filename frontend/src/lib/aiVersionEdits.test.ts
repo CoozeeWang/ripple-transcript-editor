@@ -71,3 +71,9 @@ it('skips consecutive deleted fillers while continuing an earlier merge chain', 
   expect(next.segments[0]).toMatchObject({text:'我我觉得\n可能吧\n继续。',mergedFrom:['a','b','c'],end:9});
   expect(source.segments).toHaveLength(5);
 });
+
+it('preserves project tag IDs through AI edits, marks and actual merge operations',()=>{
+ const source={...baseline,segments:baseline.segments.map((segment,i)=>({...segment,tagIds:i?['tag-b']:['tag-a']}))};
+ const next=applyAISuggestions(source,source,[{id:'a',text:'我觉得',reason:'synthetic edit'},{id:'b',action:'merge_previous',text:'可能吧',reason:'synthetic merge'}]);
+ expect(next.segments[0].tagIds).toEqual(['tag-a','tag-b']);expect(source.segments.map(segment=>segment.tagIds)).toEqual([['tag-a'],['tag-b']]);
+});

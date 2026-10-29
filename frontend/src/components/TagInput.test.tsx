@@ -1,0 +1,7 @@
+// @vitest-environment jsdom
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {TagInput} from './TagInput';
+afterEach(cleanup);
+it('leaves IME candidates alone, then commits plain names on Enter/Space',()=>{const commit=vi.fn(),cancel=vi.fn();render(<TagInput onCommit={commit} onCancel={cancel}/>);const input=screen.getByRole('textbox');expect(input.getAttribute('placeholder')).toBeNull();expect(screen.queryByRole('button')).toBeNull();fireEvent.change(input,{target:{value:'待整理'}});fireEvent.compositionStart(input);fireEvent.keyDown(input,{key:'Enter'});fireEvent.keyDown(input,{key:' '});expect(commit).not.toHaveBeenCalled();fireEvent.compositionEnd(input);fireEvent.keyDown(input,{key:'Enter',keyCode:229});expect(commit).not.toHaveBeenCalled();fireEvent.keyDown(input,{key:'Enter'});expect(commit).toHaveBeenCalledWith('待整理');fireEvent.keyDown(input,{key:' '});expect(commit).toHaveBeenLastCalledWith('待整理')});
+it('cancels unsubmitted names on blur or Escape, including composition blur',()=>{const commit=vi.fn(),cancel=vi.fn();render(<TagInput onCommit={commit} onCancel={cancel}/>);const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'未提交'}});fireEvent.keyDown(input,{key:'Escape'});expect(cancel).toHaveBeenCalledTimes(1);fireEvent.compositionStart(input);fireEvent.blur(input);expect(cancel).toHaveBeenCalledTimes(2);expect(commit).not.toHaveBeenCalled()});

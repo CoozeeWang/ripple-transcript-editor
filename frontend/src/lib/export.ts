@@ -1,9 +1,19 @@
+import {filteredTagSegments} from './tags';
 import { msg, interfaceLanguage } from '../i18n';
 import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
 import { sanitizeForFilename } from "../localStore";
 import { showPdfPrintPreview } from './pdfPrint';
 import { nativeDesktopAvailable, saveNativeBlob } from './desktopFs';
+
+
+/** Export-only ordinal map, never saved back to a manuscript. */
+export type ExportSelection = Transcript & { exportSegmentNumbers?: Record<string,number> };
+export function selectExportScope(source:Transcript,scope:'full'|'visible',hidden:ReadonlySet<string>,tagId:string|null):ExportSelection {
+ const segments=scope==='full'?source.segments:filteredTagSegments(source,hidden,tagId);
+ if(!segments.length)throw new Error(msg('tags.empty'));
+ return {...source,segments,exportSegmentNumbers:Object.fromEntries(source.segments.map((segment,index)=>[segment.id,index+1]))};
+}
 
 // 导出（Markdown / TXT / Word / PDF / JSON）的格式化逻辑。
 // 除 downloadBlob 外全部是无副作用的纯函数，独立成模块以便单元测试。
@@ -88,7 +98,7 @@ export function buildExportModel(
     segments: transcript.segments.map((seg) => {
       const sp = transcript.speakers.find((s) => s.id === seg.speaker_id);
       return {
-        speakerName: sp?.name || msg('export.m1308'),
+        speakerName: ((transcript as ExportSelection).exportSegmentNumbers?.[seg.id] ? `${(transcript as ExportSelection).exportSegmentNumbers![seg.id]} · ` : '') + (sp?.name || msg('export.m1308')),
         speakerColor: speakerColorFor(seg.speaker_id, transcript.speakers),
         timestamp: transcript.timeAligned === false ? "" : formatClock(seg.start),
         text: seg.text || "",
@@ -326,12 +336,16 @@ export function buildJsonPayload(
   const segments = transcript.segments.map((segment) => {
     const copy = { ...segment };
     delete copy.highlights;
+    delete copy.tagIds;
+    const number=(transcript as ExportSelection).exportSegmentNumbers?.[segment.id];
+    if(number)Object.assign(copy,{sourceSegmentNumber:number});
     if(copy.words)copy.words=copy.words.map(word=>{
       const clean={...word};delete clean.origins;delete clean.timing;return clean;
     });
     return copy;
   });
   const base = { ...transcript, segments } as Record<string, unknown>;
+  delete base.exportSegmentNumbers;
   delete base.comparisonReviews;
   delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {
@@ -376,7 +390,7 @@ export function canExportSubtitles(t: Transcript) {
 export function renderSubtitles(t: Transcript, format: 'srt' | 'vtt') {
   if (!canExportSubtitles(t)) throw new Error(msg('export.m1335'));
   const time = (seconds: number) => { const ms = Math.round(seconds * 1000); return `${formatClock(Math.floor(ms / 1000))}${format === 'srt' ? ',' : '.'}${String(ms % 1000).padStart(3, '0')}`; };
-  return (format === 'vtt' ? 'WEBVTT\n\n' : '') + t.segments.map((s, i) => `${i + 1}\n${time(s.start)} --> ${time(s.end)}\n${s.text.replace(/\r?\n\s*\r?\n/g, '\n')}`).join('\n\n') + '\n';
+  return (format === 'vtt' ? 'WEBVTT\n\n' : '') + t.segments.map((s, i) => `${(t as ExportSelection).exportSegmentNumbers?.[s.id]??i+1}\n${time(s.start)} --> ${time(s.end)}\n${s.text.replace(/\r?\n\s*\r?\n/g, '\n')}`).join('\n\n') + '\n';
 }
 export async function transcriptBlob(format: Exclude<ExportFormat, 'pdf'>, t: Transcript, metadata: InterviewMetadata | null, engine?: string): Promise<Blob> {
   const model = buildExportModel(t, metadata);

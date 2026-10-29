@@ -1,3 +1,5 @@
+import {TagInput} from './TagInput';
+import type {ProjectTag} from '../lib/tags';
 import { useSegmentDrag } from "../hooks/useSegmentDrag";
 import { isEditorComposing } from "../lib/editorDrafts";
 import { msg, useInterfaceLanguage } from '../i18n';
@@ -21,6 +23,10 @@ import { SegmentTextArea } from "./SegmentTextArea";
 /** 单段渲染：说话人下拉 + 文字编辑（草稿/播放高亮/只读三态）+ 时间戳 + 操作图标。
  *  所有跨领域状态与操作通过 props 注入。 */
 export interface SegmentItemProps {
+  tags?: ProjectTag[];
+  tagWriteDisabled?:boolean;
+  onAddTag?: (segmentId:string,name:string)=>Promise<void>;
+  onRemoveTag?: (segmentId:string,id:string)=>void;
   nativeDragSegment?: (id: string) => Promise<void>;
   copySegment?: (id: string) => void;
   dragSegment?: (id: string, transfer: DataTransfer) => void;
@@ -58,6 +64,7 @@ export interface SegmentItemProps {
 
 export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
   useInterfaceLanguage();
+  const [tagInput,setTagInput]=useState(false);
   const {
     segment,
     index,
@@ -294,9 +301,12 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
           )}
           <span draggable={!!(props.dragSegment || props.nativeDragSegment)} onDragStart={exportDrag} title={msg("segmentTransfer.drag", {key: IS_MAC ? '⌘' : 'Ctrl'})} className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
         </div>
+        </div>
+        <div className="segment-tag-footer"><div className="segment-tag-items">{props.tags?.map(tag=><span className="tag-pill" key={tag.id} onClick={e=>e.stopPropagation()}><span>{tag.name}</span>{!viewingOriginal&&<button type="button" disabled={props.tagWriteDisabled} aria-label={`${msg('tags.remove')}: ${tag.name}`} onClick={e=>{e.stopPropagation();props.onRemoveTag?.(segment.id,tag.id)}}>×</button>}</span>)}{tagInput&&!viewingOriginal&&<TagInput onCancel={()=>setTagInput(false)} onCommit={name=>{setTagInput(false);void props.onAddTag?.(segment.id,name)}}/>}</div>
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
             <>
+              {props.onAddTag&&<button type="button" disabled={props.tagWriteDisabled} data-tip={msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();setTagInput(true)}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m10 3-4 18M18 3l-4 18M3 9h18M1 15h18"/></svg></button>}
               <button
                 type="button"
                 aria-label={msg('SegmentItem.m0952', { v0: keys("↵") })}
