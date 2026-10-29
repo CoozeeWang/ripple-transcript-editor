@@ -6,7 +6,7 @@ import type { Segment } from "../types";
 import { activeWordRange, type TextEdit } from "../lib/transcriptOps";
 import { setPlaybackHighlight } from "../lib/playbackHighlight";
 import { setManuscriptHighlights } from "../lib/manuscriptHighlight";
-import { attachEditor } from "../lib/paragraphEditor";
+import { attachEditor, editorSnapshot } from "../lib/paragraphEditor";
 import type { ParagraphEditorElement } from "../lib/paragraphEditor";
 import { flushEditorDrafts, registerEditorDraft } from "../lib/editorDrafts";
 import {
@@ -70,10 +70,22 @@ export function SegmentTextArea({
   useLayoutEffect(() => { comparisonRef.current = comparisonBefore; }, [comparisonBefore]);
   const paint = () => {
     const editor=ref.current;if(!editor || composingRef.current)return;
-    const focused=document.activeElement===editor, start=focused?editor.selectionStart:0,end=focused?editor.selectionEnd:0;
+    const active=document.activeElement;
+    const selection=window.getSelection();
+    const ownsSelection=Boolean(selection?.anchorNode && selection.focusNode && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode));
+    const snapshot=ownsSelection?editorSnapshot(editor):null;
+    const anchor=selection?.anchorNode?snapshot?.offsets.get(selection.anchorNode)?.[selection.anchorOffset]:undefined;
+    const focus=selection?.focusNode?snapshot?.offsets.get(selection.focusNode)?.[selection.focusOffset]:undefined;
     writeComparisonText(editor,draftRef.current,comparisonRef.current,reviewRef.current.accepted,reviewRef.current.interactive);
     paintedComparison.current={before:comparisonRef.current,...reviewRef.current};
-    if(focused)editor.setSelectionRange(start,end);
+    if(selection && anchor!==undefined && focus!==undefined){
+      const {points,text}=editorSnapshot(editor);
+      const a=points[Math.min(anchor,text.length)],b=points[Math.min(focus,text.length)];
+      if(a && b)selection.setBaseAndExtent(a.node,a.offset,b.node,b.offset);
+      // WebKit/Chromium may focus contenteditable while restoring its DOM selection.
+      // Keep the user's toolbar focus; never explicitly focus the editor.
+      if(active instanceof HTMLElement && active!==editor && active.isConnected && document.activeElement!==active)active.focus({preventScroll:true});
+    }
   };
   const commitTimerRef = useRef<number | null>(null);
   const composingRef = useRef(false);

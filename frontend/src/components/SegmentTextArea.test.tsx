@@ -180,3 +180,22 @@ it('replaces selected body text with a paragraph without relying on execCommand'
  const {editor}=setup();editor.focus();editor.setSelectionRange(0,1);
  fireEvent.keyDown(editor,{key:'Enter'});expect(editor.value).toBe('\n\n乙');
 });
+
+ it("preserves backward selection through comparison repaint without taking toolbar focus",()=>{
+  const {props,ui,editor}=setup();
+  editor.focus();
+  const text=editor.lastChild!.firstChild!;
+  window.getSelection()!.setBaseAndExtent(text,1,text,0);
+  const button=document.createElement("button");button.className="comparison-toggle";document.body.append(button);button.focus();
+  window.getSelection()!.setBaseAndExtent(text,1,text,0);
+  expect(window.getSelection()!.toString()).toBe("乙");
+  const focus=vi.spyOn(editor,"focus");
+  for(const comparisonBefore of ["甲旧\n乙",undefined,"甲更旧\n乙"]){
+    ui.rerender(<SegmentTextArea {...props} comparisonBefore={comparisonBefore}/>);
+    expect(window.getSelection()!.toString()).toBe("乙");
+    expect(window.getSelection()!.anchorOffset).toBe(1);
+    expect(window.getSelection()!.focusOffset).toBe(0);
+    expect(document.activeElement).toBe(button);
+  }
+  expect(focus).not.toHaveBeenCalled();focus.mockRestore();button.remove();
+ });
