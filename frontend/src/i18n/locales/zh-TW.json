@@ -1900,5 +1900,13 @@
     "durationLimit": "音訊長度為 {{duration}}，超過「{{engine}}」的 {{limit}} 上限，尚未送出轉錄。",
     "decodeFailed": "轉錄引擎無法解碼或不支援這段音訊。",
     "inputLimit": "音訊超過所選引擎的限制"
+  },
+  "segmentMerge": {
+    "changed": "稿件或片段已變更，目前無法合併。請關閉對話框後重新選擇。"
+  },
+  "segmentJump": {
+    "label": "跳至：",
+    "inputLabel": "跳至片段（1–{{count}}）",
+    "invalid": "請輸入 1–{{count}} 的片段編號。"
   }
 }

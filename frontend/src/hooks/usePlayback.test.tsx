@@ -277,3 +277,14 @@ it("does not publish invalid metadata and republishes later corrected duration",
   act(()=>vi.advanceTimersByTime(4000));
   expect(app.confirmed).toHaveBeenCalledTimes(2);
 });
+
+it('keeps the explicitly navigated segment while audio continues without seeking, then resumes following',()=>{
+  const app=setup();act(()=>{app.playback.seekTo(12);app.playback.setIsPlaying(true);});
+  act(()=>app.playback.selectSegmentForNavigation('a'));
+  expect(app.selected).toBe('a');expect(app.playback.audioRef.current!.currentTime).toBe(12);expect(app.playback.isPlaying).toBe(true);expect(app.playback.followingPaused).toBe(true);
+  act(()=>{app.playback.audioRef.current!.currentTime=13;app.playback.updateCurrentSegment();});expect(app.selected).toBe('a');
+  act(()=>app.playback.resumeFollow());expect(app.selected).toBe('b');expect(app.playback.followingPaused).toBe(false);
+});
+it('an explicit audio seek supersedes the segment-number navigation',()=>{
+  const app=setup();act(()=>app.playback.selectSegmentForNavigation('a'));act(()=>app.playback.seekTo(12));expect(app.selected).toBe('b');
+});

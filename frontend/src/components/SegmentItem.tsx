@@ -210,7 +210,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         </button>
         <div className="segment-text-hit-area" onPointerDownCapture={captureTextPointer} onClickCapture={seekFromText}>
         {viewingOriginal ? (
-          <div ref={readonlyRef} className="segment-text-readonly comparison-text" aria-label={msg('SegmentItem.m0949', { v0: timeRange })}>
+          <div ref={readonlyRef} tabIndex={-1} className="segment-text-readonly comparison-text" aria-label={msg('SegmentItem.m0949', { v0: timeRange })}>
             {props.comparisonBefore !== undefined ? revisionFor(props.comparisonBefore,{id:segment.id,text:segment.text,reason:""}).parts.map((part,i)=><span key={i}>{part.changed && part.before && <del data-comparison-deletion="true">{part.before}</del>}{part.changed?<ins>{part.after}</ins>:part.after}</span>) : segment.text.split("\n").map((line, index) => (
               <p className="rt-para" key={index}>{highlightFindOccurrences(line, findQuery) || <br />}</p>
             ))}

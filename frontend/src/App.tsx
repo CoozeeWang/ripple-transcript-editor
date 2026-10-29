@@ -19,6 +19,9 @@ import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReview
 import { useVersionComparison } from "./hooks/useVersionComparison";
 import { comparisonRows } from "./lib/comparisonSegments";
 import { useOpeningPosition } from "./hooks/useOpeningPosition";
+import { useSpeakerFilterReadingPosition } from './hooks/useSpeakerFilterReadingPosition';
+import { SegmentMergeDialog } from './components/SegmentMergeDialog';
+import { SegmentJump } from './components/SegmentJump';
 import { openingSegmentId } from "./lib/editPosition";
 import type { ParagraphEditorElement } from "./lib/paragraphEditor";
 import { flushEditorDrafts, hasEditorDrafts } from "./lib/editorDrafts";
@@ -280,6 +283,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     togglePlayback,
     togglePlayFromCursor,
     recordEditorCursor,
+    selectSegmentForNavigation,
     updateCurrentSegment,
     resumeFollow,
     handleAudioMetadata,
@@ -738,7 +742,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     textareaRefs,
   });
 
+  const speakerFilterContext = useMemo(() => ({ directory: dirHandle, version: aiContext }), [dirHandle, aiContext]);
+  const captureSpeakerFilterPosition = useSpeakerFilterReadingPosition(transcriptPanelRef, hiddenSpeakerIds, speakerFilterContext);
   const {
+    segmentMergePrompt, setSegmentMergePrompt, segmentMergeChanged, confirmSegmentMerge,
     updateSegment,
     toggleHideSpeaker,
     confirmMerge,
@@ -780,6 +787,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   useLayoutEffect(() => {
     resetDocumentViewRef.current = () => {
+      setSegmentMergePrompt(null);
       setHiddenSpeakerIds(new Set());
       setActiveSegmentId("");
       setSelectedSegmentId("");
@@ -797,7 +805,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       editingRef.current = false;
     };
   }, [setFindOpen, setFindQuery, setReplaceValue, setShowReplace, setCurrentMatchIndex,
-    setMergePrompt, setMergeMenuFor]);
+    setMergePrompt, setMergeMenuFor, setSegmentMergePrompt]);
 
   const performUndo = useCallback(() => {
     if (editLockedRef.current()) return;
@@ -856,6 +864,35 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     .filter(row => !hiddenSpeakerIds.has(row.segment.speaker_id)),
     [transcript?.segments, comparison.baseline?.segments, hiddenSpeakerIds]);
   const segmentIndices = useMemo(() => new Map(transcript?.segments.map((segment, index) => [segment.id, index])), [transcript?.segments]);
+  const [pendingSegmentJump, setPendingSegmentJump] = useState<{ segment: Segment; context: typeof speakerFilterContext } | null>(null);
+  const handledSegmentJump = useRef<typeof pendingSegmentJump>(null);
+  const jumpToSegment = (number: number) => {
+    const segment = transcript?.segments[number - 1];
+    if (!segment) return;
+    setHiddenSpeakerIds(previous => {
+      if (!previous.has(segment.speaker_id)) return previous;
+      const next = new Set(previous); next.delete(segment.speaker_id); return next;
+    });
+    selectSegmentForNavigation(segment.id);
+    setPendingSegmentJump({ segment, context: speakerFilterContext });
+  };
+  useLayoutEffect(() => {
+    if (!pendingSegmentJump || handledSegmentJump.current === pendingSegmentJump) return;
+    handledSegmentJump.current = pendingSegmentJump;
+    const { segment, context } = pendingSegmentJump;
+    if (context !== speakerFilterContext || !transcript?.segments.includes(segment)) return;
+    const panel = transcriptPanelRef.current;
+    const target = document.getElementById(`segment-${segment.id}`);
+    if (!panel || !target || !panel.contains(target)) return;
+    const editor = textareaRefs.current.get(segment.id);
+    if (!protectedReadOnly && editor) {
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(0, 0);
+    } else target.querySelector<HTMLElement>('.segment-text-readonly')?.focus({ preventScroll: true });
+    const bounds = panel.getBoundingClientRect(), rect = target.getBoundingClientRect();
+    const offset = rect.height > panel.clientHeight ? 16 : (panel.clientHeight - rect.height) / 2;
+    panel.scrollTo({ top: Math.max(0, panel.scrollTop + rect.top - bounds.top - offset), behavior: 'instant' });
+  }, [pendingSegmentJump, speakerFilterContext, transcript, protectedReadOnly, transcriptPanelRef]);
 
   // 跳到某一处高亮：seek 到该处的时间（而不是片段开头），并把光标落在高亮
   // 最后一个字后面，方便接着改字或听原音。
@@ -1147,7 +1184,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           collapsed={speakerPanelCollapsed}
           setCollapsed={setSpeakerPanelCollapsed}
           mutateTranscript={mutateTranscript}
-          toggleHideSpeaker={toggleHideSpeaker}
+          toggleHideSpeaker={id => {
+            const nextHidden = new Set(hiddenSpeakerIds);
+            if (nextHidden.has(id)) nextHidden.delete(id); else nextHidden.add(id);
+            captureSpeakerFilterPosition(transcript.segments, nextHidden);
+            toggleHideSpeaker(id);
+          }}
           setMergePrompt={setMergePrompt}
           deleteSpeaker={deleteSpeaker}
           addSpeaker={addSpeaker}
@@ -1177,6 +1219,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           </>}
           metadata={metadata}
           segmentCount={visibleSegments.length}
+          segmentNavigation={<SegmentJump key={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} count={transcript.segments.length} onJump={jumpToSegment} />}
           viewingOriginal={viewingOriginal}
           activeModelId={activeModelId}
           versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy} mutationDisabled={aiLocked}
@@ -1332,6 +1375,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           onStart={startTranscription}
         />
       )}
+
+      {segmentMergePrompt && <SegmentMergeDialog changed={segmentMergeChanged} readOnly={protectedReadOnly}
+        onCancel={() => setSegmentMergePrompt(null)} onConfirm={() => { if (!protectedReadOnly) confirmSegmentMerge(); }} />}
 
       {mergePrompt && (
         <MergeDialog

@@ -39,6 +39,7 @@ export interface UsePlaybackDeps {
 export function usePlayback(deps: UsePlaybackDeps) {
   const { transcript, setActiveSegmentId, setSelectedSegmentId, setLoadError, textareaRefs } = deps;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const navigationSelectionRef = useRef(false);
   const [audioUrl, updateAudioUrl] = useState("");
   const [audioFilename, setAudioFilename] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
@@ -46,6 +47,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
   const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioSourceIdRef = useRef(0);
   const setAudioUrl = useCallback((url: string) => {
+    navigationSelectionRef.current = false;
     audioSourceIdRef.current++;
     if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
     durationTimerRef.current = null;
@@ -78,6 +80,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
 
 
   const setIsPlaying = useCallback((playing: boolean) => {
+    navigationSelectionRef.current = false;
     updateIsPlaying(playing);
     if (!playing) {
       setFollowingPaused(false);
@@ -131,6 +134,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
   }, [setLoadError]);
 
   const seekTo = useCallback((seconds: number, shouldPlay = false) => {
+    navigationSelectionRef.current = false;
     const audio = audioRef.current;
     if (!audioUrl || !audio) return;
     // 明确跳转后，旧光标不能在下一次恢复播放时再次覆盖进度。
@@ -152,6 +156,14 @@ export function usePlayback(deps: UsePlaybackDeps) {
     }
     lastEditorCursorRef.current = { segmentId, charIndex };
   }, []);
+
+  const selectSegmentForNavigation = (segmentId: string) => {
+    navigationSelectionRef.current = true;
+    setFollowingPaused(isPlayingRef.current);
+    programScrollRef.current = false;
+    deps.setSelectedSegmentId(segmentId);
+    recordEditorCursor(segmentId, 0, true);
+  };
 
   // 主动暂停后重新播放，从编辑光标开始；播放中输入本身不触发定位。
   const togglePlayback = useCallback(() => {
@@ -295,11 +307,13 @@ export function usePlayback(deps: UsePlaybackDeps) {
     );
     deps.setActiveSegmentId(active?.id ?? "");
     // 播放时焦点片段跟随播放位置，批注栏随之滚动到当前片段。
-    if (active?.id) deps.setSelectedSegmentId(active.id);
+    if (active?.id && !navigationSelectionRef.current) deps.setSelectedSegmentId(active.id);
   };
 
   // 回到播放位置：清除暂停态并立即把当前片段滚到转录区中央。
   const resumeFollow = useCallback(() => {
+    navigationSelectionRef.current = false;
+    if (deps.activeSegmentId) setSelectedSegmentId(deps.activeSegmentId);
     setFollowingPaused(false);
     const panel = transcriptPanelRef.current;
     const el = panel?.querySelector(`#segment-${deps.activeSegmentId}`);
@@ -313,7 +327,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
         programScrollRef.current = false;
       }, 700);
     }
-  }, [deps.activeSegmentId]);
+  }, [deps.activeSegmentId, setSelectedSegmentId]);
 
   // 播放时把当前片段滚到转录区中央（仅滚面板，不动整页）。手动滚动会置 followingPaused 暂停跟随。
   useEffect(() => {
@@ -361,6 +375,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
     togglePlayback,
     togglePlayFromCursor,
     recordEditorCursor,
+    selectSegmentForNavigation,
     updateCurrentSegment,
     resumeFollow,
     handleAudioMetadata,

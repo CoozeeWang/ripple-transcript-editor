@@ -1900,5 +1900,13 @@
     "durationLimit": "This audio is {{duration}} long, exceeding the {{limit}} limit for “{{engine}}”. It has not been submitted for transcription.",
     "decodeFailed": "The transcription engine cannot decode this audio or does not support it.",
     "inputLimit": "Audio exceeds the selected engine’s limits"
+  },
+  "segmentMerge": {
+    "changed": "The manuscript or segments have changed. Close this dialog and select the segments again."
+  },
+  "segmentJump": {
+    "label": "Go to:",
+    "inputLabel": "Go to segment (1–{{count}})",
+    "invalid": "Enter a segment number from 1 to {{count}}."
   }
 }

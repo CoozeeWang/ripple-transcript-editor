@@ -1504,6 +1504,12 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .transcript-heading-status { display: flex; align-items: center; gap: 16px; margin-left: auto; flex-wrap: wrap; }
 .transcript-heading-status p { white-space: nowrap; margin: 0; }
 .transcript-heading-status .segment-count { color: var(--color-text-muted); font-size: 0.74rem; }
+.segment-navigation { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.segment-jump { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--color-text-muted); font: 400 .74rem var(--font-sans); white-space: nowrap; }
+.segment-jump input { box-sizing: border-box; width: 7ch; min-width: 52px; padding: 3px 6px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface-warm); color: var(--color-text); font: inherit; font-variant-numeric: tabular-nums; }
+.segment-jump input:hover:not(:disabled) { border-color: var(--color-border-active); }
+.segment-jump input:user-invalid { border-color: var(--color-danger); }
+.segment-jump input:disabled { opacity: .45; }
 /* 「转录稿」标签与左「说话人」右「批注」对齐。
 
    选择器必须用后代（空格）而不是子代（>）：section-label 在
@@ -3164,6 +3170,7 @@ input.ripple-checkbox[type="checkbox"]:disabled { cursor: default; opacity: .45;
 
 /* Short windows reduce chrome while preserving the playback reading scroll. */
 @media (max-height: 600px) {
+  .transcript-heading-status .seek-hint { display: none; }
   .app-shell .topbar { min-height: 48px; padding: 6px 12px; gap: 10px; flex-wrap: nowrap; }
   .app-shell .topbar .topbar-identity { flex: 1; gap: 10px; }
   .app-shell .brand { min-width: 0; gap: 6px; }
@@ -3178,8 +3185,8 @@ input.ripple-checkbox[type="checkbox"]:disabled { cursor: default; opacity: .45;
   .transcript-heading h1 { margin-top: 0; font-size: 1.3rem; }
   .transcript-heading { margin-bottom: 12px; }
   .transcript-heading p.section-label { display: none; }
-  /* The total is also in the status bar/player; keep auxiliary text from clipping. */
-  .transcript-heading-status { display: none; }
+  /* Keep segment navigation available; hide only the auxiliary playback hint. */
+  .transcript-heading-status .seek-hint { display: none; }
 }
 
 /* English tab names need more space than the original Chinese labels. */
