@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { IS_MAC } from '../lib/format';
-import { type ProjectTag, type TagLibrary, type TagGroup, moveTagGroup, removeTagGroup, transferTagGroup, tagTreeRows, tagAncestors, tagPath, descendantTagIds, removeTagNode, removeTagBranch, suggestTags } from '../lib/tags';
+import { type ProjectTag, type TagLibrary, type TagGroup, moveTagGroup, removeTagGroup, transferTagGroup, tagTreeRows, tagAncestors, tagPath, descendantTagIds, removeTagBranch, suggestTags } from '../lib/tags';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { TagLibraryInput } from './TagLibraryInput';
 import { TagMembershipTree } from './TagMembershipTree';
@@ -12,11 +12,13 @@ import { TagModal } from './TagModal';
 import { InlineTagName } from './InlineTagName';
 import { ActionIcon } from './ActionIcon';
 import { TagTreeGuides } from './TagTreeGuides';
+import { tagTreeGuides, type TagGuide } from '../lib/tagTreeGuides';
+import { showActionHint } from '../lib/actionHint';
 import { TagPill } from './TagPill';
 import './tags.css';
 
-export function TagChevron({ open }: { open: boolean }) {
-    return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={open ? 'M3 10 8 5 13 10' : 'M3 6 8 11 13 6'}/></svg>;
+export function TagChevron() {
+    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4 9 5 9-5M3 12h18m-18 8 9-5 9 5"/></svg>;
 }
 interface Props {
     loadError?: string; library: TagLibrary; currentTagIds: readonly string[];
@@ -32,7 +34,7 @@ interface Props {
     onDropTagToSegment?: (tagId: string, segmentId: string) => Promise<void>;
     onTagDropTarget?: (segmentId: string | null) => void;
 }
-type Modal = { type: 'group'; id: string } | { type: 'dissolve'; id: string } | { type: 'delete'; id: string; branch: boolean; scope: 'current' | 'project' };
+type Modal = { type: 'group'; id: string } | { type: 'dissolve'; id: string } | { type: 'delete'; id: string; scope: 'current' | 'project' };
 type Target = { kind: 'group'; id: string } | { kind: 'tree'; parentId: string | null; anchorId: string | null; depth: number } | { kind: 'segment'; id: string } | { kind: 'order'; id: string | null; after: boolean };
 interface Gesture { kind: 'tag' | 'group'; id: string; source: string | null; copy: boolean; level: boolean; pointer: number; x: number; y: number; lastX: number; lastY: number; active: boolean; target: Target | null }
 
@@ -44,11 +46,13 @@ export function TagsPanel(p: Props) {
     const [modal, setModal] = useState<Modal | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
     const [drag, setDrag] = useState<Gesture | null>(null), [modifier, setModifier] = useState(false);
     const list = useRef<HTMLDivElement>(null), gesture = useRef<Gesture | null>(null), frame = useRef<number | null>(null), suppress = useRef(0);
+    const confirming = useRef(false);
     const clicks = useRef(new Map<string, ReturnType<typeof setTimeout>>()), description = useId();
     const latest = useRef(p); useLayoutEffect(() => { latest.current = p; });
     const locked = p.readOnly || busy || !!p.loadError, dragEnabled = !locked && !p.filterEnabled;
     const admitted = new Set(p.currentTagIds), allRows = tagTreeRows(p.library, undefined, 'name', direction);
     const levelMembers = scope === 'project' ? undefined : admitted;
+    const showCount = view === 'level' && scope === 'current';
     const scopeIds = allRows.filter(row => !levelMembers || levelMembers.has(row.tag.id)).map(row => row.tag.id);
     const tagKey = (id: string, group = 'level') => group + ':' + id;
     const cancelClick = (key: string) => { clearTimeout(clicks.current.get(key)); clicks.current.delete(key); };
@@ -68,6 +72,10 @@ export function TagsPanel(p: Props) {
         const pendingClicks=clicks.current;
         const key = (event: KeyboardEvent) => {
             setModifier(IS_MAC ? event.metaKey : event.ctrlKey);
+            if (latest.current.filterEnabled && event.key === (IS_MAC ? 'Meta' : 'Control')) {
+                const target = document.querySelector<HTMLElement>('.tag-library .library-filter:hover, .tag-library .group-toggle:hover');
+                if (target) showActionHint(target, msg(target.classList.contains('group-toggle') ? 'tags.filterGroupEditNotice' : 'tags.filterEditNotice'));
+            }
             if (event.key === 'Escape') { suppress.current = event.timeStamp + 500; cancelGesture(); }
         };
         const blur = () => { setModifier(false); cancelGesture(); };
@@ -156,23 +164,23 @@ export function TagsPanel(p: Props) {
             : save(moveTagGroup(p.library, g.id, target.id, target.after ? 'after' : 'before'));
         void operation?.catch(error => setError(tagErrorMessage(error)));
     }
-    function row(tag: ProjectTag, members?: ReadonlySet<string>, group?: string) {
+    function row(tag: ProjectTag, members?: ReadonlySet<string>, group?: string, guide?: TagGuide) {
         const depth = tagAncestors(p.library, tag.id).length, descendants = descendantTagIds(p.library, tag.id), key = tagKey(tag.id, group);
         const parent = descendants.some(id => id !== tag.id && (!members || members.has(id)));
         const selected = p.filterEnabled && p.filter.includes(tag.id), inherited = p.filterEnabled && p.filter.some(id => id !== tag.id && descendantTagIds(p.library, id).includes(tag.id));
         const canBegin = (time: number) => time >= suppress.current && !gesture.current;
         const hint = msg(group ? 'tags.dragGroupTag' : 'tags.dragLevelTag', { key: IS_MAC ? '⌘' : 'Ctrl', copyKey:IS_MAC?'⌘⇧':'Ctrl+Shift' });
         return <div key={tag.id} className={'tag-tree-entry' + (selected || inherited ? ' is-inherited-region' : '')}>
-            <div className={'library-tag-row' + (group ? ' library-tag-row--group' : '')} data-tag-id={tag.id} data-tag-depth={depth} style={{ paddingLeft: depth * 16 }}>
-                <TagTreeGuides library={p.library} id={tag.id} members={members}/>
+            <div className={'library-tag-row' + (!showCount ? ' library-tag-row--no-count' : '')} data-tag-id={tag.id} data-tag-depth={depth} style={{ paddingLeft: depth * 16 }}>
+                <TagTreeGuides guide={guide}/>
                 <InlineTagName row name={tag.name} enabled={!p.filterEnabled && !locked} onRename={p.onRenameTag ? name => p.onRenameTag!(tag.id, name) : undefined} canBegin={canBegin} onEditingChange={() => cancelClick(key)}>
                     <span className="tag-row-main"><TagLibraryPill name={tag.name} selected={selected} inherited={inherited} filterEnabled={p.filterEnabled} locked={locked} parent={parent}
                         onToggle={() => toggleTag(tag.id, group)} onSelect={() => p.onFilter(tag.id)} canBegin={canBegin} hint={hint} dragEnabled={dragEnabled} modifier={modifier}
                         buttonProps={{ onPointerDown: event => start(event, 'tag', tag.id, group ?? null), onPointerMove: move, onPointerUp: event => finish(event), onPointerCancel: event => finish(event, false) }}
                         onRemove={group && group !== 'ungrouped' ? () => void save({ ...p.library, tags: p.library.tags.map(item => item.id === tag.id ? { ...item, groupIds: item.groupIds.filter(id => id !== group) } : item) }).catch(() => {}) : undefined}/></span>
-                    {!group && <span className="tag-count" aria-label={msg('tags.currentCount', { count: p.currentCount(tag.id) })}>{p.currentCount(tag.id)}</span>}
+                    {showCount && <span className="tag-count" aria-label={msg('tags.currentCount', { count: p.currentCount(tag.id) })}>{p.currentCount(tag.id)}</span>}
                     {!group ? <TagDeleteControl name={tag.name} scope={scope} count={scope === 'project' ? descendants.length : descendants.filter(id=>admitted.has(id)).length} disabled={locked || scope === 'current' && !p.onRemoveCurrent}
-                        onDelete={async branch => { setModal({ type: 'delete', id: tag.id, branch, scope }); }}/>
+                        onDelete={() => setModal({ type: 'delete', id: tag.id, scope })}/>
                         : <span className="library-action-slot"/>}
                 </InlineTagName>
             </div>
@@ -183,7 +191,8 @@ export function TagsPanel(p: Props) {
         let rows = allRows.filter(({ tag }) => !members || members.has(tag.id));
         const matches = query.trim() ? new Set(suggestTags(p.library.tags, query).flatMap(tag => [tag.id, ...tagAncestors(p.library, tag.id).map(tag => tag.id)])) : null;
         rows = rows.filter(({ tag }) => matches ? matches.has(tag.id) : p.filterEnabled || !tagAncestors(p.library, tag.id).some(ancestor => (!members || members.has(ancestor.id)) && foldedTags.has(tagKey(ancestor.id, group))));
-        return rows.map(({ tag }) => row(tag, members, group));
+        const guides = tagTreeGuides(p.library, rows.map(row => row.tag.id), members);
+        return rows.map(({ tag }) => row(tag, members, group, guides.get(tag.id)));
     }
     function groupNode(group: TagGroup) {
         const members = new Set(p.library.tags.filter(tag => admitted.has(tag.id) && tag.groupIds.includes(group.id)).map(tag => tag.id)), rows = rowsFor(members, group.id);
@@ -212,35 +221,45 @@ export function TagsPanel(p: Props) {
     const levelRows=rowsFor(levelMembers);
     const ungrouped = new Set(p.library.tags.filter(tag => admitted.has(tag.id) && !tag.groupIds.length).map(tag => tag.id));
     const maxDepth=Math.max(0,...allRows.filter(({tag})=>view==='level'?(!levelMembers||levelMembers.has(tag.id)):admitted.has(tag.id)).map(row=>row.depth));
-    return <div className="tag-library" aria-busy={busy} data-tag-drag={drag ? drag.copy ? 'copy' : 'move' : undefined} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
-        <div className="tag-view-toolbar"><div className="annotation-view-toggle"><button className={view === 'level' ? 'is-active' : ''} onClick={() => setView('level')}>{msg('tags.all')}</button><button className={view === 'groups' ? 'is-active' : ''} onClick={() => setView('groups')}>{msg('tags.groups')}</button></div></div>
-        <TagLibraryInput library={p.library} query={query} onQuery={value => { setQuery(value); setError(''); }} readOnly={locked} onCreate={p.onCreateTag} onCreateGroup={createGroup}/>
+    function blocked(target: EventTarget | null) {
+        const trigger = target instanceof Element ? target.closest<HTMLElement>('.library-filter,.group-toggle') : null;
+        if (!p.filterEnabled || !trigger) return false;
+        showActionHint(trigger, msg(trigger.classList.contains('group-toggle') ? 'tags.filterGroupEditNotice' : 'tags.filterEditNotice')); return true;
+    }
+    return <div className="tag-library" onDoubleClickCapture={event => { if (blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }}
+        onPointerDownCapture={event => { if ((IS_MAC ? event.metaKey : event.ctrlKey) && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }}
+        onClickCapture={event => { if ((IS_MAC ? event.metaKey : event.ctrlKey) && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }}
+        onKeyDownCapture={event => { if (event.key === 'F2' && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }} aria-busy={busy} data-tag-drag={drag ? drag.copy ? 'copy' : 'move' : undefined} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
+        <div className="tag-view-toolbar"><div className="annotation-view-toggle"><button data-tag-view="level" className={view === 'level' ? 'is-active' : ''} onClick={() => setView('level')}>{msg('tags.all')}</button><button data-tag-view="groups" className={view === 'groups' ? 'is-active' : ''} onClick={() => setView('groups')}>{msg('tags.groups')}</button></div></div>
+        <TagLibraryInput allowGroup={view === 'groups'} library={p.library} query={query} onQuery={value => { setQuery(value); setError(''); }} readOnly={locked} onCreate={p.onCreateTag} onCreateGroup={createGroup}/>
         {(p.loadError || error && !modal) && <p role="alert" className="tag-error">{p.loadError || error}</p>}
         <div className="group-tools tag-filter-tools">
-            <button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron open={p.filterEnabled || fullyExpanded}/></button>
-            {view === 'level' && <TagScope value={scope} onChange={setScope}/>}
-            <div className="tag-filter-controls">{p.filterEnabled && <div className="tag-filter-mode" role="group" aria-label={msg('tags.filterMode')}>{(['and', 'or'] as const).map(mode => <button key={mode} aria-label={msg('tags.' + mode)} aria-pressed={p.filterMode === mode} onClick={() => p.onFilterModeChange(mode)}>{msg('tags.' + mode)}</button>)}</div>}
+            <button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron/></button>
+            <div className="tag-filter-controls">
                 <button className="tag-filter-toggle" aria-label={msg('tags.filterToggle')} aria-pressed={p.filterEnabled} data-tip={msg(p.filterEnabled ? 'tags.filterEnabled' : 'tags.filterDisabled')} onClick={() => p.onFilterEnabledChange(!p.filterEnabled)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v9l-4-2v-7Z"/></svg></button>
+                {p.filterEnabled && <div className="tag-filter-mode" role="group" aria-label={msg('tags.filterMode')}>{(['and', 'or'] as const).map(mode => <button key={mode} aria-label={msg('tags.' + mode)} aria-pressed={p.filterMode === mode} onClick={() => p.onFilterModeChange(mode)}>{msg('tags.' + mode)}</button>)}</div>}
             </div>
+            {view === 'level' && <TagScope value={scope} onChange={setScope}/>}
         </div>
-        {view === 'level' && <div className="tag-list-head"><button aria-label={msg('tags.sortName')} aria-sort={direction === 1 ? 'ascending' : 'descending'} onClick={() => setDirection(old => old === 1 ? -1 : 1)}>{msg('tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d={direction === 1 ? 'M8 13V3M4 7l4-4 4 4' : 'M8 3v10m-4-4 4 4 4-4'}/></svg></button><span className="tag-count-heading">{msg('tags.count')}</span><span/></div>}
+        {view === 'level' && <div className={'tag-list-head'+(!showCount?' tag-list-head--no-count':'')}><button aria-label={msg('tags.sortName')} aria-sort={direction === 1 ? 'ascending' : 'descending'} onClick={() => setDirection(old => old === 1 ? -1 : 1)}>{msg('tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d={direction === 1 ? 'M8 13V3M4 7l4-4 4 4' : 'M8 3v10m-4-4 4 4 4-4'}/></svg></button>{showCount&&<span className="tag-count-heading">{msg('tags.count')}</span>}<span/></div>}
         <div ref={list} className={'library-list' + (view === 'level' ? ' library-list-all' : '')} style={{'--tag-row-min-width':`${maxDepth*16+180}px`} as React.CSSProperties}>
             {view === 'level' ? <>{levelRows.length?levelRows:<p className="annotation-empty tag-library-empty">{msg(query.trim()?'tags.noSearchResults':scope==='current'?'tags.noAdmitted':'tags.noTags')}</p>}{drag?.level && <div className={'tag-tree-root-drop' + (drag.target?.kind === 'tree' && drag.target.anchorId === null ? ' is-drop-target' : '')}/>}</>
                 : <>{groups.map(groupNode)}{ungrouped.size > 0 && <section className="tag-ungrouped"><div className="ungrouped-divider"><span>{msg('tags.ungrouped')}</span></div>{(p.filterEnabled || !!query.trim() || !foldedGroups.has('ungrouped')) && <div className="group-tags">{rowsFor(ungrouped, 'ungrouped')}</div>}</section>}{drag?.kind === 'group' && <div className={'root-drop' + (drag.target?.kind === 'order' && drag.target.id === null ? ' is-drop-target' : '')}/>}</>}
         </div>
-        {modal && <TagModal title={msg(modal.type === 'group' ? 'tags.manage' : modal.type === 'dissolve' ? 'tags.dissolve' : modal.scope === 'current' ? (modal.branch?'tags.removeCurrentBranch':'tags.removeCurrent') : modal.branch ? 'tags.deleteBranch' : 'tags.deleteNode')} descriptionId={modal.type === 'group' ? undefined : description} onClose={() => { if (!busy) { setModal(null); setError(''); } }}>
+        {modal && <TagModal compact={modal.type !== 'group'} title={msg(modal.type === 'group' ? 'tags.manage' : modal.type === 'dissolve' ? 'tags.dissolve' : modal.scope === 'current' ? 'tags.removeCurrentBranch' : 'tags.deleteBranch')} descriptionId={modal.type === 'group' ? undefined : description} onClose={() => { if (!busy) { setModal(null); setError(''); } }}>
             {modal.type === 'group' && modalGroup ? <TagLibraryForm group={modalGroup} library={p.library} currentTagIds={p.currentTagIds} busy={busy} error={error} onCancel={() => { setModal(null); setError(''); }} onSave={async (name, ids) => {
                 if (groups.some(group => group.id !== modalGroup.id && group.name.toLowerCase() === name.toLowerCase())) { setError(msg('tags.duplicate')); return; }
                 await save({ ...p.library, groups: groups.map(group => group.id === modalGroup.id ? { ...group, name } : group), tags: p.library.tags.map(tag => ({ ...tag, groupIds: ids.has(tag.id) ? [...new Set([...tag.groupIds, modalGroup.id])] : tag.groupIds.filter(id => id !== modalGroup.id) })) });
             }}/> : <>
                 <p className="trash-material-name">{modalGroup?.name ?? (modalTag&&<TagPill name={tagPath(p.library,modalTag.id)}/>)}</p>
-                <p id={description} className="settings-hint">{msg(modal.type === 'dissolve' ? 'tags.dissolveNotice' : modal.type === 'delete' && modal.scope === 'current' ? (modal.branch?'tags.removeCurrentBranchNotice':'tags.removeCurrentNotice') : modal.type === 'delete' && modal.branch ? 'tags.deleteProjectBranchNotice' : 'tags.deleteProjectNodeNotice')}</p>
+                <p id={description} className="settings-hint">{msg(modal.type === 'dissolve' ? 'tags.dissolveNotice' : modal.type === 'delete' && modal.scope === 'current' ? 'tags.removeCurrentBranchNotice' : 'tags.deleteProjectBranchNotice')}</p>
                 {error && <p role="alert" className="tag-error">{error}</p>}
                 <div className="project-actions audio-project-footer"><button type="button" data-cancel className="button button--secondary" disabled={busy} onClick={() => { setModal(null); setError(''); }}>{msg('tags.cancel')}</button><button type="button" className="button button--danger" disabled={busy} onClick={() => {
+                    if (confirming.current) return; confirming.current = true; setBusy(true);
                     const operation = Promise.resolve().then(()=>modal.type === 'dissolve' ? save(removeTagGroup(p.library, modal.id))
-                        : modal.type === 'delete' && modal.scope === 'project' ? save(modal.branch ? removeTagBranch(p.library, modal.id) : removeTagNode(p.library, modal.id))
+                        : modal.type === 'delete' && modal.scope === 'project' ? save(removeTagBranch(p.library, modal.id))
                         : modal.type === 'delete' ? p.onRemoveCurrent?.(modal.id) : undefined);
-                    void operation?.then(() => setModal(null), error => setError(tagErrorMessage(error)));
+                    void operation.then(() => setModal(null), error => setError(tagErrorMessage(error))).finally(() => { confirming.current = false; setBusy(false); });
                 }}>{msg(modal.type === 'dissolve' ? 'tags.dissolve' : modal.type==='delete'&&modal.scope==='current'?'tags.removeCurrent':'tags.delete')}</button></div>
             </>}
         </TagModal>}
@@ -256,8 +275,8 @@ function TagLibraryForm({ group, library, currentTagIds, busy, error, onSave, on
     useLayoutEffect(() => { if (error && !busy) failure.current?.focus(); }, [error, busy]);
     return <form onSubmit={event => { event.preventDefault(); if (name.trim()) void onSave(name.trim(), checked).catch(() => {}); }}>
         <label className="field"><span>{msg('tags.groupName')}</span><input data-dialog-initial-focus maxLength={120} value={name} onChange={event => setName(event.target.value)} disabled={busy}/></label>
-        <TagScope value={scope} onChange={setScope}/>
         <label className="field"><input aria-label={msg('tags.search')} placeholder={msg('tags.search')} value={query} onChange={event => setQuery(event.target.value)}/></label>
+        <div className="tag-form-scope"><TagScope value={scope} onChange={setScope}/></div>
         <TagMembershipTree library={library} memberIds={scope === 'current' ? new Set(currentTagIds) : undefined} query={query} checked={checked} disabled={busy} onToggle={(id, enabled) => setChecked(old => { const next = new Set(old); if (enabled) next.add(id); else next.delete(id); return next; })}/>
         {error && <p ref={failure} tabIndex={-1} role="alert" className="tag-error">{error}</p>}
         <div className="project-actions audio-project-footer"><button type="button" data-cancel disabled={busy} className="button button--secondary" onClick={onCancel}>{msg('tags.cancel')}</button><button className="button button--primary" disabled={busy || !name.trim()}>{msg('tags.save')}</button></div>

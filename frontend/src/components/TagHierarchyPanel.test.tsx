@@ -17,8 +17,8 @@ const editing=()=>fireEvent.click(screen.getByRole('button',{name:'标签筛选'
 it('keeps absolute depths and uses real-member tracks or missing-ancestor dots without paths or counts in Group',()=>{
  const h=mount();fireEvent.click(screen.getByRole('button',{name:'分组'}));const one=h.container.querySelector('[data-tag-group="g1"]')!,two=h.container.querySelector('[data-tag-group="g2"]')!;
  expect([...one.querySelectorAll('[data-tag-depth]')].map(row=>row.getAttribute('data-tag-depth'))).toEqual(['0','2']);
- const leaf=two.querySelector(`[data-tag-id="${h.initial.tags.find(t=>t.name==='Leaf')!.id}"]`)!;expect(leaf.getAttribute('data-tag-depth')).toBe('2');expect(leaf.querySelectorAll('.tag-tree-dot')).toHaveLength(2);expect(leaf.querySelector('.tag-tree-track')).toBeNull();
- expect(one.querySelectorAll('.tag-tree-track')).toHaveLength(2);expect(two.querySelector('.tag-parent-path,.tag-count')).toBeNull();expect(h.container.querySelector('.group-collapse,.tag-node-collapse')).toBeNull();
+ const leaf=two.querySelector(`[data-tag-id="${h.initial.tags.find(t=>t.name==='Leaf')!.id}"]`)!;expect(leaf.getAttribute('data-tag-depth')).toBe('2');expect(leaf.querySelectorAll('.tag-tree-missing')).toHaveLength(2);expect(leaf.querySelector('.tag-tree-continuation')).toBeNull();
+ expect(one.querySelectorAll('.tag-tree-elbow')).toHaveLength(1);expect(one.querySelectorAll('.tag-tree-missing')).toHaveLength(1);expect(two.querySelector('.tag-parent-path,.tag-count')).toBeNull();expect(h.container.querySelector('.group-collapse,.tag-node-collapse')).toBeNull();
 });
 it('marks only the explicit pill active and never creates implicit AND operands',()=>{
  const h=mount();fireEvent.click(label('Root'));expect(label('Root').getAttribute('aria-pressed')).toBe('true');expect(label('Leaf').getAttribute('aria-pressed')).toBe('false');expect(label('Leaf').closest('.is-inherited-region')).toBeTruthy();expect(label('Other').closest('.is-inherited-region')).toBeNull();fireEvent.click(label('Leaf'));expect(h.filter).toHaveBeenCalledTimes(1);expect((screen.getByRole('button',{name:'全部收起'}) as HTMLButtonElement).disabled).toBe(true);

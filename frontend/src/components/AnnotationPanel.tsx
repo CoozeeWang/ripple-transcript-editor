@@ -5,7 +5,7 @@ import type { Highlight, Segment, Transcript } from "../types";
 import { formatTime, keys } from "../lib/format";
 import type { HighlightGroup } from "../lib/highlights";
 import { AnnotationAddBox, AnnotationCard } from "./AnnotationCard";
-import { ActionIcon } from './ActionIcon';
+import { PanelTabIcon } from './PanelTabIcon';
 
 /** 面板顶部的两个页签。高亮页是全文清单，没有「当前片段 / 全部」这层切换。 */
 export type PanelTab = "annotation" | "highlight" | "tags";
@@ -84,7 +84,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
     0,
   );
 
-  // 收起态：32px 窄条（贴右边缘），展开箭头在批注图标上方。
+  // 收起态：32px 窄条（贴右边缘），只放展开箭头。
   // 刻意不放数量徽章：收起态只承担「展开入口」职责，条数在展开后头部可见。
   if (collapsed) {
     return (
@@ -111,30 +111,14 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
           <path d="m11 17-5-5 5-5" />
           <path d="m18 17-5-5 5-5" />
         </svg>
-        <svg
-          className="annotation-rail__icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          {/* 批注气泡 + 两行文字线，明确指向「批注」语义。
-              外框刻意不填满 viewBox：圆角矩形 y 4-17、尾巴到 y 20.5，
-              ink 高 16.5，与 speaker-rail 的 people icon（ink 16.5）一致。 */}
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 3.5V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          <path d="M8 9h8" />
-          <path d="M8 13h6" />
-        </svg>
+
       </button>
     );
   }
 
   return (
     <aside className={"annotation-panel"+(props.tagsPanel?" annotation-panel--tags-enabled":"")}>
-      {/* 顶栏顺序（左→右）：双箭头收起按钮 → 页签（批注 / 高亮，各带条数）。
+      {/* 顶栏顺序（左→右）：双箭头收起按钮 → 页签（批注 / 标签 / 高亮，仅当前页签显示名称与条数）。
           页签取代了原来的「批注」标题 + 条数徽章——否则标题与页签会把同一条
           信息显示两遍。justify-content 覆盖成 flex-start（见
           .annotation-panel .panel-heading），不用 space-between 分散。 */}
@@ -167,7 +151,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
             ...(props.tagsPanel?[{tab:'tags' as const,name:msg('tags.title'),count:props.tagCount??0}]:[]),
             {tab:'highlight' as const,name:msg('AnnotationPanel.m0327'),count:highlightCount},
           ]).map(item=><button key={item.tab} type="button" className={panelTab===item.tab?'is-active':''} aria-label={`${item.name} ${item.count}`} data-tip={item.name} onClick={()=>setPanelTab(item.tab)}>
-            {item.tab==='tags'?<ActionIcon kind="tag"/>:<svg className="panel-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">{item.tab==='annotation'?<path d="M4 4h16v12H9l-5 4Z"/>:<><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9 8v8m6-8v8m-6-4h6"/></>}</svg>}
+            <PanelTabIcon kind={item.tab}/>
             {panelTab===item.tab&&<>{item.name}<span className="panel-tabs__count">{item.count}</span></>}
           </button>)}
         </div>

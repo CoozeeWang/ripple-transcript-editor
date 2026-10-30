@@ -374,7 +374,7 @@ export function Topbar(props: TopbarProps) {
             <ActionIcon kind="export"/>
           </button>
           {exportMenuOpen && (
-            <ul className="menu-list" role="menu" aria-label={msg('Topbar.m1059')} onKeyDown={event => {
+            <ul className="menu-list transcript-export-menu" role="menu" aria-label={msg('Topbar.m1059')} onKeyDown={event => {
               if (event.nativeEvent.isComposing || event.keyCode === 229) return;
               if (event.key === 'Tab') { setExportMenuOpen(false); return; }
               if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -440,8 +440,8 @@ function ExportChoices({ scope, onScope, visibleCount, subtitlesAvailable, onExp
     <li><button type="button" role="menuitem" tabIndex={-1} disabled={!visibleCount} onClick={()=>{if(visibleCount){onScope?.('visible');setStep('formats')}}}>{msg('tags.exportVisible',{count:visibleCount})}</button></li>
   </>;
   return <>
-    {onScope&&<li><button ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>setStep('scope')}>{msg('tags.exportBack')}</button></li>}
+    {onScope&&<li className="export-step-heading"><button className="export-step-back" ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>setStep('scope')}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m10 3-5 5 5 5"/></svg>{msg('tags.exportBack')}</button><span className="export-step-scope">{msg(scope==='visible'?'tags.exportVisibleScope':'tags.full',{count:visibleCount})}</span></li>}
     {exportFormats().map(([label,format])=><li key={format}><button type="button" role="menuitem" tabIndex={-1} disabled={scope==='visible'&&!visibleCount||(format==='srt'||format==='vtt')&&!subtitlesAvailable} data-action-tip={(format==='srt'||format==='vtt')&&!subtitlesAvailable?msg('Topbar.m1060'):undefined} onClick={()=>onExport(format)}>{label}</button></li>)}
-    {onProject&&<><li className="menu-divider" role="separator" aria-hidden="true"/><li><button type="button" role="menuitem" tabIndex={-1} onClick={onProject}>{msg('tags.exportOther')}</button></li></>}
+    {onProject&&<><li className="menu-divider export-other-divider" role="separator" aria-hidden="true"/><li><button type="button" role="menuitem" tabIndex={-1} onClick={onProject}>{msg('tags.exportOther')}</button></li></>}
   </>;
 }

@@ -6,7 +6,7 @@ import { TagModal } from './TagModal';
 /** A shared identity collision is never resolved implicitly by a text editor or a drag. */
 export function TagMergeDialog({ request, onChoose }: { request: TagMergeRequired; onChoose: (accepted: boolean) => void }) {
     const description = useId();
-    return <TagModal title={msg('tags.mergeTitle')} descriptionId={description} onClose={() => onChoose(false)}>
+    return <TagModal compact title={msg('tags.mergeTitle')} descriptionId={description} onClose={() => onChoose(false)}>
         <p className="trash-material-name">{request.path}</p>
         <p id={description} className="settings-hint">{msg('tags.mergeNotice', { count: request.affected })}</p>
         <div className="project-actions audio-project-footer">

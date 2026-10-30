@@ -483,6 +483,13 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .button--danger:hover { background: #fbe9e9; }
 
 .export-menu { position: relative; }
+.transcript-export-menu{box-sizing:border-box;width:300px;max-width:calc(100vw - 24px)}
+.menu-list .export-step-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 8px}
+.menu-list .export-step-back{flex:none;width:auto;gap:4px;padding:6px 4px;color:var(--color-text-3);font:400 .74rem/1.5 var(--font-sans)}
+.export-step-back svg{width:14px;height:14px;flex:none;padding:0}
+.export-step-scope{min-width:0;color:var(--color-text-3);font:400 .69rem/1.5 var(--font-sans);text-align:right;overflow-wrap:anywhere}
+.menu-list .export-other-divider{margin:12px 10px}
+
 .open-menu { position: relative; }
 .menu-list {
   position: absolute;

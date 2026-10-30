@@ -2026,6 +2026,12 @@
     "leafOnly": "Edit the true name here. Edit the full path from a segment tag.",
     "noAdmitted": "No tags admitted to this version",
     "noTags": "No tags yet",
-    "noSearchResults": "No matching tags"
+    "noSearchResults": "No matching tags",
+    "removeCurrentHint": "Remove this tag and its admitted descendants ({{count}} tags) from this version only; leave the project and other versions unchanged",
+    "deleteProjectHint": "Delete this project tag and all descendants ({{count}} tags), affecting every version that uses them",
+    "filterEditNotice": "Turn off filtering to edit or move tags",
+    "filterGroupEditNotice": "Turn off filtering to edit or move groups",
+    "groupModeUnavailable": "Switch to Group view to create a group",
+    "exportVisibleScope": "Displayed segments ({{count}})"
   }
 }

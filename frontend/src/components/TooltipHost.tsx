@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ACTION_HINT_EVENT, type ActionHintRequest } from '../lib/actionHint';
 import { IS_MAC } from '../lib/format';
 import './tooltips.css';
 
@@ -9,16 +10,16 @@ const selector = '[data-action-tip],[data-tip]';
 /** One window-wide lifecycle for explicit hints, including dialogs and portals. */
 export function TooltipHost() {
     const [hint, setHint] = useState<Hint | null>(null), popup = useRef<HTMLDivElement>(null), id = useId();
-    const session = useRef({ target: null as HTMLElement | null, overTrigger: false, overTip: false, focus: false, suppressed: false, modifier: false });
+    const session = useRef({ target: null as HTMLElement | null, overTrigger: false, overTip: false, focus: false, suppressed: false, modifier: false, requested: false });
     useEffect(() => {
         let timer: ReturnType<typeof setTimeout> | undefined, leaveTimer: ReturnType<typeof setTimeout> | undefined;
         const clear = () => { clearTimeout(timer); clearTimeout(leaveTimer); };
         const hide = (suppress = false) => { clear(); if (suppress) session.current.suppressed = true; setHint(null); };
-        const reset = () => { hide(); session.current.target = null; session.current.suppressed = false; session.current.overTrigger = false; session.current.overTip = false; session.current.focus = false; };
+        const reset = () => { hide(); session.current.target = null; session.current.suppressed = false; session.current.overTrigger = false; session.current.overTip = false; session.current.focus = false; session.current.requested = false; };
         const targetFor = (node: EventTarget | null) => node instanceof Element ? node.closest<HTMLElement>(selector) : null;
         const allowed = (target: HTMLElement) => target.dataset.tooltipDisabled !== 'true' && !!(target.dataset.actionTip || target.dataset.tip);
         const choose = (target: HTMLElement) => {
-            if (session.current.target !== target) { clear(); session.current.target = target; session.current.suppressed = false; session.current.overTip = false; session.current.focus = false; setHint(null); }
+            if (session.current.target !== target) { clear(); session.current.target = target; session.current.suppressed = false; session.current.overTip = false; session.current.focus = false; session.current.requested = false; setHint(null); }
         };
         const show = () => {
             const s = session.current, target = s.target;
@@ -55,7 +56,7 @@ export function TooltipHost() {
         };
         const pointerMove = (event: PointerEvent) => {
             const s = session.current;
-            if (s.target && !allowed(s.target)) { hide(true); return; }
+            if (s.target && !s.requested && !allowed(s.target)) { hide(true); return; }
             if (s.overTrigger && !popup.current && targetFor(event.target) === s.target) arm();
         };
         const focusIn = (event: FocusEvent) => {
@@ -71,6 +72,13 @@ export function TooltipHost() {
             if (event.key === 'Escape' || event.key === key) hide(true);
         };
         const keyUp = (event: KeyboardEvent) => { if (event.key === 'Meta' || event.key === 'Control') session.current.modifier = false; };
+        const requestedHint = (event: Event) => {
+            const request = (event as CustomEvent<ActionHintRequest>).detail;
+            if (!request?.target?.isConnected || !request.text) return;
+            choose(request.target); clear(); session.current.requested = true; session.current.overTrigger = true; session.current.suppressed = true;
+            setHint({ target: request.target, described: request.target, text: request.text, kind: 'action' });
+        };
+        document.addEventListener(ACTION_HINT_EVENT, requestedHint);
         const dismiss = () => hide(true);
         const scroll = (event: Event) => { if (event.target instanceof Node && popup.current?.contains(event.target)) return; dismiss(); };
         const blur = () => { session.current.modifier = false; session.current.focus = false; hide(true); };
@@ -80,7 +88,7 @@ export function TooltipHost() {
         window.addEventListener('keydown', keyDown, true); window.addEventListener('keyup', keyUp, true); window.addEventListener('blur', blur);
         window.addEventListener('scroll', scroll, true); window.addEventListener('resize', dismiss);
         return () => {
-            clear(); document.removeEventListener('pointerover', pointerOver); document.removeEventListener('pointerout', pointerOut); document.removeEventListener('pointermove', pointerMove);
+            clear(); document.removeEventListener(ACTION_HINT_EVENT, requestedHint); document.removeEventListener('pointerover', pointerOver); document.removeEventListener('pointerout', pointerOut); document.removeEventListener('pointermove', pointerMove);
             document.removeEventListener('focusin', focusIn); document.removeEventListener('focusout', focusOut);
             document.removeEventListener('pointerdown', dismiss, true); document.removeEventListener('click', dismiss, true); document.removeEventListener('dragstart', dismiss, true);
             window.removeEventListener('keydown', keyDown, true); window.removeEventListener('keyup', keyUp, true); window.removeEventListener('blur', blur);

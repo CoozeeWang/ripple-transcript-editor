@@ -1,8 +1,12 @@
-import { tagAncestors, type TagLibrary } from '../lib/tags';
-/** Each track belongs to this node's real ancestry; unrelated preceding rows cannot connect it. */
-export function TagTreeGuides({ library, id, members }: { library: TagLibrary; id: string; members?: ReadonlySet<string> }) {
-    const ancestors = tagAncestors(library, id).reverse();
-    const connected = members ? ancestors.findIndex(tag => members.has(tag.id)) : 0;
-    return <span className="tag-tree-guides" aria-hidden="true">{ancestors.map((tag, index) =>
-        <span key={tag.id} className={connected >= 0 && index >= connected ? 'tag-tree-track' : 'tag-tree-dot'} style={{ left: index * 16 }}/>)}</span>;
+import type { TagGuide } from '../lib/tagTreeGuides';
+/** One rounded elbow per edge; dots denote only absent ancestor levels. */
+export function TagTreeGuides({ guide, step = 16, origin = 4 }: { guide?: TagGuide; step?: number; origin?: number }) {
+    if (!guide?.depth) return null;
+    const left = (guide.parentDepth ?? 0) * step + origin, end = guide.depth * step - 4;
+    const horizontalStart = Math.min(left + 4, end);
+    return <span className="tag-tree-guides" aria-hidden="true">
+        {guide.continuingDepths.map(depth => <span key={depth} className="tag-tree-continuation" style={{ left: depth * step + origin }}/>) }
+        <span className={'tag-tree-elbow' + (guide.parentDepth === null ? ' is-independent' : '')} style={{ left, width: Math.max(0, end - left) }}/>
+        {Array.from({ length: guide.missing }, (_, index) => <span key={index} className="tag-tree-missing" style={{ left: horizontalStart + (end - horizontalStart) * (index + .5) / guide.missing }}/>) }
+    </span>;
 }

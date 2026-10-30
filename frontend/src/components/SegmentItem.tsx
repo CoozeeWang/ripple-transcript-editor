@@ -339,12 +339,12 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         </div>
         </div>
         <div ref={tagFooter} className={'segment-tag-footer' + (tagInput ? ' has-tag-input' : '')}>
-          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} fullPath={props.tagPaths?.[tag.id]} stopPropagation renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
+          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} fullPath={props.tagPaths?.[tag.id]} stopPropagation editingBlockedByFilter={!viewingOriginal&&!props.tagRenameEnabled} renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
           {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={reason=>closeTagEntry(reason==='escape')} onCommit={async(name,id)=>{await(id&&props.onAddTagId?props.onAddTagId(segment.id,id):props.onAddTag?.(segment.id,name));closeTagEntry(true)}}/>}
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
             <>
-              {props.onAddTag&&<button type="button" data-add-tag disabled={props.tagWriteDisabled} data-tip={nativeDesktopAvailable()?msg('tags.addShortcut',{key:keys('T')}):msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();openTagEntry()}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M3 3h8l10 10-8 8L3 11Z"/><circle cx="7.5" cy="7.5" r="1"/></svg></button>}
+              {props.onAddTag&&<button type="button" data-add-tag disabled={props.tagWriteDisabled} data-tip={nativeDesktopAvailable()?msg('tags.addShortcut',{key:keys('T')}):msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();openTagEntry()}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg></button>}
               <button
                 type="button"
                 aria-label={msg('SegmentItem.m0952', { v0: keys("↵") })}

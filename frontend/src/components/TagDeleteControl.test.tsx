@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {afterEach,expect,it,vi} from 'vitest';
 import {TagDeleteControl} from './TagDeleteControl';
-beforeEach(()=>vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}}));afterEach(()=>{cleanup();vi.unstubAllGlobals()});
-function mount(count=3,onDelete=vi.fn(async(branch:boolean)=>{void branch})){const h=render(<><TagDeleteControl name="Synthetic parent" count={count} disabled={false} onDelete={onDelete}/><button>Outside</button></>);return {...h,onDelete,trigger:screen.getByRole('button',{name:'删除项目标签: Synthetic parent'})}}
-it('only reveals horizontal choices; Escape/outside/trigger cancellation cannot write or open a modal',()=>{const h=mount();fireEvent.click(h.trigger);expect(screen.getByRole('button',{name:'删除标签'})).toBeTruthy();expect(screen.getByRole('button',{name:/删除分支/})).toBeTruthy();expect(screen.queryByRole('dialog')).toBeNull();expect(h.onDelete).not.toHaveBeenCalled();fireEvent.keyDown(h.trigger,{key:'Escape'});expect(screen.queryByRole('group')).toBeNull();expect(document.activeElement).toBe(h.trigger);fireEvent.click(h.trigger);fireEvent.pointerDown(screen.getByText('Outside'));expect(screen.queryByRole('group')).toBeNull();fireEvent.click(h.trigger);fireEvent.click(h.trigger);expect(screen.queryByRole('group')).toBeNull();expect(h.onDelete).not.toHaveBeenCalled()});
-it.each([false,true])('executes exactly one explicit operation branch=%s',async branch=>{const h=mount();fireEvent.click(h.trigger);fireEvent.click(screen.getByRole('button',{name:branch?/删除分支/:'删除标签'}));await waitFor(()=>expect(h.onDelete).toHaveBeenCalledExactlyOnceWith(branch));expect(screen.queryByRole('group')).toBeNull()});
-it('shows only the nonredundant operation for a leaf and does not execute on a double trash click',()=>{const h=mount(1);fireEvent.click(h.trigger,{detail:1});fireEvent.click(h.trigger,{detail:2});fireEvent.doubleClick(h.trigger);expect(screen.getByRole('button',{name:'删除标签'})).toBeTruthy();expect(screen.queryByRole('button',{name:/删除分支/})).toBeNull();expect(h.onDelete).not.toHaveBeenCalled()});
-it('guards duplicate/repeat operations and retains a failed choice for correction',async()=>{let reject!:(e:Error)=>void;const deleted=vi.fn(()=>new Promise<void>((_,no)=>{reject=no}));const h=mount(3,deleted);fireEvent.click(h.trigger);const button=screen.getByRole('button',{name:/删除分支/});fireEvent.click(button);fireEvent.click(button);fireEvent.keyDown(button,{key:'Enter',repeat:true});expect(deleted).toHaveBeenCalledOnce();expect((button as HTMLButtonElement).disabled).toBe(true);await act(async()=>reject(new Error('Synthetic disk failure')));expect(screen.getByRole('alert')).toBeTruthy();expect(screen.getByRole('group')).toBeTruthy();expect((button as HTMLButtonElement).disabled).toBe(false);fireEvent.keyDown(button,{key:'Escape'});expect(screen.queryByRole('group')).toBeNull()});
+afterEach(cleanup);
+it.each(['current','project'] as const)('requests a scope-aware branch confirmation directly: %s',scope=>{
+ const onDelete=vi.fn();render(<TagDeleteControl name="Synthetic parent" count={3} disabled={false} scope={scope} onDelete={onDelete}/>);
+ const trigger=screen.getByRole('button');expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');expect(trigger.getAttribute('data-action-tip')).toContain('3');expect(trigger.hasAttribute('title')).toBe(false);
+ fireEvent.click(trigger,{detail:1});expect(onDelete).toHaveBeenCalledExactlyOnceWith();expect(screen.queryByRole('group')).toBeNull();
+ fireEvent.click(trigger,{detail:2});fireEvent.doubleClick(trigger);expect(onDelete).toHaveBeenCalledOnce();
+});
+it('cannot request deletion while disabled',()=>{const onDelete=vi.fn();render(<TagDeleteControl name="Synthetic" count={1} disabled onDelete={onDelete}/>);fireEvent.click(screen.getByRole('button'));expect(onDelete).not.toHaveBeenCalled()});

@@ -2026,6 +2026,12 @@
     "leafOnly": "此處只修改真名，完整路徑可在片段標籤中編輯。",
     "noAdmitted": "目前稿件尚未納入標籤",
     "noTags": "尚無標籤",
-    "noSearchResults": "沒有符合的標籤"
+    "noSearchResults": "沒有符合的標籤",
+    "removeCurrentHint": "移除目前稿件中的此標籤及已納入的後代（共 {{count}} 個標籤），專案及其他稿件不變",
+    "deleteProjectHint": "刪除專案中的此標籤及全部後代（共 {{count}} 個標籤），影響所有使用稿件",
+    "filterEditNotice": "關閉篩選後可編輯或移動標籤",
+    "filterGroupEditNotice": "關閉篩選後可編輯或移動群組",
+    "groupModeUnavailable": "請在分組檢視中新增群組",
+    "exportVisibleScope": "目前顯示片段（{{count}} 個）"
   }
 }

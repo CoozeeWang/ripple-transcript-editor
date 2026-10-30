@@ -1931,7 +1931,7 @@
     "search": "搜索标签",
     "name": "标签",
     "count": "片段数",
-    "newGroup": "新建组",
+    "newGroup": "新建分组",
     "groupName": "分组名称",
     "manage": "管理分组",
     "cancel": "取消",
@@ -2026,6 +2026,12 @@
     "leafOnly": "此处只修改真名，完整路径可在片段标签中编辑。",
     "noAdmitted": "当前稿尚未纳入标签",
     "noTags": "暂无标签",
-    "noSearchResults": "没有匹配的标签"
+    "noSearchResults": "没有匹配的标签",
+    "removeCurrentHint": "移除当前稿中的此标签及已纳入的后代（共 {{count}} 个标签），项目及其他稿不变",
+    "deleteProjectHint": "删除项目中的此标签及全部后代（共 {{count}} 个标签），影响所有使用稿",
+    "filterEditNotice": "关闭筛选后可编辑或移动标签",
+    "filterGroupEditNotice": "关闭筛选后可编辑或移动分组",
+    "groupModeUnavailable": "请在分组视图中新建分组",
+    "exportVisibleScope": "当前显示片段（{{count}} 个）"
   }
 }
