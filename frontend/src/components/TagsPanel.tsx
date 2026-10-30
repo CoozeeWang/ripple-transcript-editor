@@ -1,17 +1,16 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { IS_MAC } from '../lib/format';
-import { type ProjectTag, type TagLibrary, type TagGroup, moveTagGroup, removeTagGroup, transferTagGroup, sortTags, tagTreeRows, tagAncestors, descendantTagIds, reparentTag, removeTagNode, suggestTags } from '../lib/tags';
+import { type ProjectTag, type TagLibrary, type TagGroup, moveTagGroup, removeTagGroup, transferTagGroup, sortTags, tagTreeRows, tagAncestors, descendantTagIds, reparentTag, removeTagNode, removeTagBranch, suggestTags } from '../lib/tags';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { TagLibraryInput } from './TagLibraryInput';
 import { TagMembershipTree } from './TagMembershipTree';
 import { TagLibraryPill } from './TagLibraryPill';
-import { ActionIcon } from './ActionIcon';
+import { TagDeleteControl } from './TagDeleteControl';
 import { GroupNameButton } from './GroupNameButton';
 import { TagModal } from './TagModal';
 import { GroupDeleteMenu } from './GroupDeleteMenu';
 import { NewGroupInput } from './NewGroupInput';
-import { TagPill } from './TagPill';
 import { InlineTagName } from './InlineTagName';
 import './tags.css';
 export function TagChevron({ open }: {
@@ -48,7 +47,7 @@ type Modal = {
     id: string;
     scope: 'tree' | 'level';
 } | {
-    type: 'delete-tag'|'reset-tags';
+    type: 'reset-tags';
     id: string;
 };
 type TagTarget = {kind:'group';id:string}|{kind:'tree';parentId:string|null;anchorId:string|null;depth:number}|{kind:'segment';id:string};
@@ -236,7 +235,7 @@ export function TagsPanel(p: Props) {
             {parentPath&&<small className="tag-parent-path" data-action-tip={msg('tags.parentPath',{path:parentPath})}>{parentPath}</small>}
            </span>
            <span className="tag-count" aria-label={p.projectCounts?msg('tags.countDescription',{current,project}):msg(p.countError?'tags.countFailed':'tags.countLoading')} data-action-tip={p.projectCounts?msg('tags.countDescription',{current,project}):undefined}>{current}/{p.projectCounts?project:'–'}</span>
-           <span className="library-action-slot">{!gid&&<button className="library-delete" disabled={locked} aria-label={`${msg('tags.deleteTag')}: ${tag.name}`} data-tip={msg('tags.deleteTag')} onClick={()=>setModal({type:'delete-tag',id:tag.id})}><ActionIcon kind="trash"/></button>}</span>
+           {!gid?<TagDeleteControl name={tag.name} count={descendantTagIds(p.library,tag.id).length} disabled={locked} onDelete={async branch=>{if(locked)throw Error(msg('tags.saveFailed'));setBusy(true);try{await p.onChange(branch?removeTagBranch(p.library,tag.id):removeTagNode(p.library,tag.id))}finally{setBusy(false)}}}/>:<span className="library-action-slot"/>}
           </div>
           {tagDrop?.kind==='tree'&&tagDrop.anchorId===tag.id&&<div className="tag-drop-placeholder" style={{marginLeft:tagDrop.depth*24}}/>}
         </div>;
@@ -271,7 +270,7 @@ export function TagsPanel(p: Props) {
             }
         } }} onClick={e => { if(p.filterEnabled||e.timeStamp<suppressClick.current||e.metaKey||e.ctrlKey)return;const key='group:'+group.id;clearTimeout(labelClicks.current.get(key));if(e.detail<2)labelClicks.current.set(key,setTimeout(()=>toggle(group.id),500)); }}><span className="group-name" data-tip-anchor>{group.name}</span></GroupNameButton></InlineTagName><span className="group-actions"><button className="group-manage" aria-label={`${msg('tags.manage')}: ${group.name}`} disabled={locked} onClick={() => setModal({ type: 'group', id: group.id })}><span aria-hidden="true">⋯</span></button><GroupDeleteMenu name={group.name} disabled={locked} onChoose={scope => setModal({ type: 'delete-group', id: group.id, scope })}/></span></div>{!shut && <div className="tag-group-content">{!hiddenTags.has(group.id) && <div className="group-tags">{tags}</div>}{children}</div>}</section>;
     }
-    const modalGroup=modal&&(modal.type==='group'||modal.type==='delete-group')?p.library.groups.find(group=>group.id===modal.id):undefined,modalTag=modal?.type==='delete-tag'?p.library.tags.find(tag=>tag.id===modal.id):undefined;
+    const modalGroup=modal&&(modal.type==='group'||modal.type==='delete-group')?p.library.groups.find(group=>group.id===modal.id):undefined;
     const ungrouped = sortTags(p.library.tags.filter(tag => !tag.groupIds.length && tag.name.toLowerCase().includes(query.toLowerCase())), 'name', 1, p.currentCount);
     return <div className="tag-library" aria-busy={busy} data-tag-drag={draggedTag ?? undefined} data-tag-target-kind={tagDrop?.kind} onKeyDown={e => { if (e.key === ' ') e.stopPropagation(); }}>
   <div className="tag-view-toolbar"><div className="annotation-view-toggle"><button className={view === 'all' ? 'is-active' : ''} onClick={() => setView('all')}>{msg('tags.all')}</button><button className={view === 'groups' ? 'is-active' : ''} onClick={() => setView('groups')}>{msg('tags.groups')}</button></div></div>
@@ -294,8 +293,7 @@ export function TagsPanel(p: Props) {
                         }
                         const id = modalGroup?.id ?? crypto.randomUUID();
                         void save({ ...p.library, groups: modalGroup ? p.library.groups.map(g => g.id === id ? { ...g, name } : g) : [...p.library.groups, { id, name, parentId: null }], tags: modalGroup ? p.library.tags.map(t => ({ ...t, groupIds: ids.has(t.id) ? [...new Set([...t.groupIds, id])] : t.groupIds.filter(g => g !== id) })) : p.library.tags });
-                }}/> : <><p className="trash-material-name">{modal.type==='reset-tags'?msg('tags.title'):modalTag ? <TagPill name={modalTag.name}/> : modalGroup?.name}</p><p id={confirmationDescription} className="settings-hint">{msg(modal.type === 'reset-tags' ? 'tags.resetTagsNotice' : modal.type === 'delete-tag' ? 'tags.deleteTagNotice' : modal.type==='delete-group'&&modal.scope === 'tree' ? 'tags.deleteGroupTreeNotice' : 'tags.deleteGroupLevelNotice')}</p>{error && <p role="alert" className="tag-error">{error}</p>}<div className="project-actions audio-project-footer"><button data-cancel className="button button--secondary" disabled={busy} onClick={() => setModal(null)}>{msg('tags.cancel')}</button><button className="button button--danger" disabled={busy} onClick={() => { if(modal.type==='reset-tags')void save({...p.library,schemaVersion:2,tags:[]},true);else if (modal.type === 'delete-tag')
-                void save(removeTagNode(p.library,modal.id));
+                }}/> : <><p className="trash-material-name">{modal.type==='reset-tags'?msg('tags.title'):modalGroup?.name}</p><p id={confirmationDescription} className="settings-hint">{msg(modal.type === 'reset-tags' ? 'tags.resetTagsNotice' : modal.type==='delete-group'&&modal.scope === 'tree' ? 'tags.deleteGroupTreeNotice' : 'tags.deleteGroupLevelNotice')}</p>{error && <p role="alert" className="tag-error">{error}</p>}<div className="project-actions audio-project-footer"><button data-cancel className="button button--secondary" disabled={busy} onClick={() => setModal(null)}>{msg('tags.cancel')}</button><button className="button button--danger" disabled={busy} onClick={() => { if(modal.type==='reset-tags')void save({...p.library,schemaVersion:2,tags:[]},true);
             else if (modal.type === 'delete-group')
                 void save(removeTagGroup(p.library, modal.id, modal.scope)); }}>{msg('tags.delete')}</button></div></>}
   </TagModal>}

@@ -64,3 +64,5 @@
 @media (min-width:680px) and (max-width:919px){.workspace:not(.workspace--annotation-collapsed):has(.annotation-panel--tags-enabled){--annotation-col:300px}}
 @media (max-width:679px){.workspace:not(.workspace--annotation-collapsed):has(.annotation-panel--tags-enabled){--annotation-col:260px}}
 .library-label-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+
+.tag-delete-control{display:contents}.tag-delete-control>.library-delete{justify-self:end}.tag-delete-options{grid-column:1/-1;justify-self:end;min-width:0;max-width:100%;padding:2px 0 4px}.tag-delete-actions{display:flex;gap:4px}.tag-delete-actions>button{width:auto;white-space:nowrap;padding:4px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-warm);font:400 .74rem/1.5 var(--font-sans);color:var(--color-danger)}.tag-delete-actions>button:hover:not(:disabled){background:var(--color-danger-bg)}.tag-delete-options .tag-error{margin:4px 0 0;max-width:220px}

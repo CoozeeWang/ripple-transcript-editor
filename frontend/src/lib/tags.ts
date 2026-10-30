@@ -271,3 +271,9 @@ export function removeTagNode(source:TagLibrary,id:string):TagLibrary {
     const library=hierarchyLibrary(source),tag=library.tags.find(tag=>tag.id===id);if(!tag)return source;
     return {...library,tags:library.tags.filter(tag=>tag.id!==id).map(child=>tagParentId(child)===id?{...child,parentId:tagParentId(tag)}:child)};
 }
+/** Removing a definition invalidates all of its project-scoped associations. */
+export function removeTagBranch(source:TagLibrary,id:string):TagLibrary {
+    if(!source.tags.some(tag=>tag.id===id))return source;
+    const library=hierarchyLibrary(source),removed=new Set(descendantTagIds(library,id));
+    return {...library,tags:library.tags.filter(tag=>!removed.has(tag.id))};
+}

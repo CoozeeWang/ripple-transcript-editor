@@ -1991,6 +1991,12 @@
     "foldTag": "展開或收合 {{name}}",
     "resetTags": "重設專案標籤",
     "resetTagsNotice": "清空專案標籤及其片段、群組關聯。群組結構、逐字稿及音訊保留，可在本次工作階段復原。",
-    "newTag": "新增標籤"
+    "newTag": "新增標籤",
+    "deleteNode": "刪除標籤",
+    "deleteBranch": "刪除分支",
+    "deleteOptions": "{{name}}的刪除操作",
+    "deleteNodeHint": "只刪除此標籤，子標籤提升一級。保留片段正文與錄音。",
+    "deleteBranchHint": "刪除此標籤及全部後代（共{{count}}個標籤）與其片段、分組關聯，保留正文與錄音。",
+    "deleteBranchDescription": "刪除分支：{{name}}（共{{count}}個標籤）"
   }
 }

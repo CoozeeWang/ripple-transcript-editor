@@ -1991,6 +1991,12 @@
     "foldTag": "展开或收起 {{name}}",
     "resetTags": "重置项目标签",
     "resetTagsNotice": "清空项目标签及其片段、分组关联。分组结构、转录稿和音频保留，可在本会话撤销。",
-    "newTag": "新建标签"
+    "newTag": "新建标签",
+    "deleteNode": "删除标签",
+    "deleteBranch": "删除分支",
+    "deleteOptions": "{{name}}的删除操作",
+    "deleteNodeHint": "只删除此标签，子标签提升一级。保留片段正文和录音。",
+    "deleteBranchHint": "删除此标签及全部后代（共{{count}}个标签）和其片段、分组关联，保留正文和录音。",
+    "deleteBranchDescription": "删除分支：{{name}}（共{{count}}个标签）"
   }
 }

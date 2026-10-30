@@ -1991,6 +1991,12 @@
     "foldTag": "Expand or collapse {{name}}",
     "resetTags": "Reset project tags",
     "resetTagsNotice": "Clear project tags and their segment/group associations. Keep group structure, transcripts and audio. This can be undone in this session.",
-    "newTag": "Create tag"
+    "newTag": "Create tag",
+    "deleteNode": "Delete tag",
+    "deleteBranch": "Delete branch",
+    "deleteOptions": "Delete options for {{name}}",
+    "deleteNodeHint": "Delete this tag only; move its children up one level. Segment text and recordings are kept.",
+    "deleteBranchHint": "Delete this tag and its descendants ({{count}} tags), including their segment and group associations. Segment text and recordings are kept.",
+    "deleteBranchDescription": "Delete branch: {{name}} ({{count}} tags)"
   }
 }
