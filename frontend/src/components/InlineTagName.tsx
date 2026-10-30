@@ -3,7 +3,8 @@ import { msg } from '../i18n';
 import { normalizeTagName } from '../lib/tags';
 
 /** Edits an existing project entity; cancellation never creates or merges a tag. */
-export function InlineTagName({ name, enabled, onRename, children, canBegin, onEditingChange, focusable = false, maxLength = 120, label }: {
+export function InlineTagName({ name, enabled, onRename, children, canBegin, onEditingChange, focusable = false, maxLength = 120, label, row = false }: {
+    row?: boolean;
     label?:string;
     maxLength?: number;
     name: string;
@@ -16,6 +17,7 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
 }) {
     const [editing, setEditing] = useState(false), [draft, setDraft] = useState(name), [error, setError] = useState(''), [busy, setBusy] = useState(false);
     const root = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), composing = useRef(false), pending = useRef(false), restore = useRef(false), dragUntil = useRef(0);
+    const returnContainer=useRef<HTMLElement|null>(null);
     useLayoutEffect(() => {
         if (editing) { input.current?.focus(); input.current?.select(); }
         else if (restore.current) {
@@ -30,9 +32,17 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
         queueMicrotask(() => { if (!cancelled && !pending.current) { setEditing(false); setError(''); onEditingChange?.(false); } });
         return () => { cancelled = true; };
     }, [enabled, editing, onEditingChange]);
-    const finish = (focus: boolean) => { restore.current = focus; setEditing(false); setError(''); onEditingChange?.(false); };
-    const begin = () => { setDraft(name); setError(''); setEditing(true); onEditingChange?.(true); };
-    return <span ref={root} role={focusable && enabled && onRename && !editing ? 'button' : undefined} tabIndex={focusable && enabled && onRename && !editing ? 0 : undefined} className={'tag-name-edit' + (editing ? ' is-editing' : focusable && enabled ? ' is-trigger' : '')}
+    const finish = (focus: boolean) => { restore.current = focus; setEditing(false); setError(''); onEditingChange?.(false);
+        // A confirmed merge can replace the edited stable ID and unmount this editor.
+        // Restore within its original segment/list only if normal focus restoration had no target.
+        if(focus&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{
+            if(document.querySelector('dialog[open]')||document.activeElement!==document.body)return;
+            const container=returnContainer.current;
+            if(container?.isConnected)container.querySelector<HTMLElement>('.tag-name-edit[tabindex="0"], .library-filter, button:not(:disabled)')?.focus({preventScroll:true});
+        });
+    };
+    const begin = () => { returnContainer.current=root.current?.closest<HTMLElement>('.segment,.library-list')??null;setDraft(name); setError(''); setEditing(true); onEditingChange?.(true); };
+    return <span ref={root} role={focusable && enabled && onRename && !editing ? 'button' : undefined} tabIndex={focusable && enabled && onRename && !editing ? 0 : undefined} className={'tag-name-edit' + (row ? ' tag-name-edit--row' : '') + (editing ? ' is-editing' : focusable && enabled ? ' is-trigger' : '')}
         onKeyDown={event => { if (!editing && event.key === 'F2' && enabled && onRename && canBegin?.(event.timeStamp) !== false) { event.preventDefault(); event.stopPropagation(); begin(); } }}
         onDragStart={() => { dragUntil.current = performance.now() + 500; }} onDragEnd={() => { dragUntil.current = performance.now() + 500; }}
         onDoubleClick={event => {

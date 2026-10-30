@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Segment, Transcript } from '../types';
-import { emptyTagLibrary, isTagLibrary, sortTags, suggestTags, countProjectTags, filteredTagSegments, removeTagGroup, transferTagGroup, moveTagGroup, setSegmentTag, tagsForSegment, type TagLibrary } from './tags';
+import { emptyTagLibrary, isTagLibrary, sortTags, suggestTags, countTaggedSegments, filteredTagSegments, removeTagGroup, transferTagGroup, moveTagGroup, setSegmentTag, tagsForSegment, type TagLibrary } from './tags';
 import { mergeSegmentWithNext, splitSegmentAt } from './segmentOps';
 import { parseProject } from './projectStore';
 const segment = (id: string, tagIds?: string[]): Segment => ({ id, text: 'Synthetic paragraph', speaker_id: 'speaker-a', start: 0, end: 10, ...(tagIds ? { tagIds } : {}) });
@@ -61,9 +61,10 @@ describe('project tags', () => {
         expect(merged[0].id).toBe('s1');
         expect(merged[0].annotations).toEqual(a.annotations);
     });
-    it('counts each segment once and rejects duplicated historical representatives', () => {
-        expect(countProjectTags([{ manuscriptId: 'doc-a', transcript: transcript([segment('s1', ['tag-a', 'tag-a'])]) }, { manuscriptId: 'doc-b', transcript: transcript([segment('s1', ['tag-a'])]) }]).get('tag-a')).toBe(2);
-        expect(() => countProjectTags([{ manuscriptId: 'doc-a', transcript: transcript([]) }, { manuscriptId: 'doc-a', transcript: transcript([]) }])).toThrow();
+    it('counts only the current version and deduplicates repeated associations',()=>{
+        const current=transcript([segment('s1',['tag-a','tag-a']),segment('s2',['tag-a'])]);
+        expect(countTaggedSegments(current,'tag-a')).toBe(2);
+        expect(countTaggedSegments(transcript([]),'tag-a')).toBe(0);
     });
     it('applies empty, single and multi-tag AND/OR selections with independent speaker intersection',()=>{
         const rows=transcript([segment('a',['A']),segment('both',['A','B','B']),segment('b',['B']),{...segment('hidden',['A','B']),speaker_id:'hidden'},segment('none')]);

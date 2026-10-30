@@ -5,6 +5,7 @@ import { nextSegmentLink } from '../lib/segmentLinkBridge';
 import { resolveSegmentTarget } from '../lib/segmentTarget';
 import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
+import { restoreProjectTagTransaction, transactProjectTags } from '../lib/projectTagRepository';
 import { recordProblem } from '../lib/diagnostics';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
@@ -329,7 +330,18 @@ export function ProjectWorkspace() {
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App registerSegmentLinkReceiver={registerLinkReceiver} onOpenSegmentLink={openSegmentLink} initialSegmentTarget={linkTarget ?? undefined} initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}:${linkOpenSequence}`} projectDirectory={editor.directory}
-    tagLibrary={project.data.tagLibrary} saveTagLibrary={async tagLibrary=>{const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw new Error('project_changed');await publish(await saveProject(snapshot,{...snapshot.data,tagLibrary}))}}
+    tagLibrary={project.data.tagLibrary} tagStorage={{
+      transact:async(version,operation)=>{
+        if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
+        const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
+        const result=await transactProjectTags(snapshot,version,operation);await publish(result.project);return result;
+      },
+      restore:async(receipt,redo)=>{
+        if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
+        const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
+        const next=await restoreProjectTagTransaction(snapshot,receipt,redo);await publish(next);return next;
+      },
+    }}
     connectorProject={() => current.current} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onAudioDuration={async seconds => {

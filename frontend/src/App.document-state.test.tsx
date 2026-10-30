@@ -238,80 +238,45 @@ it('sends accepted media duration to the project without using transcript durati
   expect(onAudioDuration).toHaveBeenCalledExactlyOnceWith(3924);
 });
 
-it('connects the topbar to project-library undo and redo when manuscript history is empty',async()=>{
- const {useState}=await import('react');
- const oldShow=HTMLDialogElement.prototype.showModal,oldClose=HTMLDialogElement.prototype.close;
- HTMLDialogElement.prototype.showModal=function(){this.open=true};HTMLDialogElement.prototype.close=function(){this.open=false};
- vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
- function Harness(){const[library,setLibrary]=useState<import('./lib/tags').TagLibrary>({schemaVersion:1,tags:[{id:'synthetic-tag',name:'Synthetic topic',groupIds:[]}],groups:[]});return <App tagLibrary={library} saveTagLibrary={async next=>{setLibrary(next)}}/>}
- try{
-  render(<Harness/>);load('Synthetic tags.wav');
-  expect((screen.getByRole('button',{name:'撤销'}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));
-  fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Synthetic renamed'}});
-  await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'}));
-  expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
-  expect((screen.getByRole('button',{name:'撤销'}) as HTMLButtonElement).disabled).toBe(false);
-  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'撤销'})));
-  expect(screen.getByRole('button',{name:'标签: Synthetic topic'})).toBeTruthy();
-  expect((screen.getByRole('button',{name:'重做'}) as HTMLButtonElement).disabled).toBe(false);
-  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重做'})));
-  expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
- }finally{HTMLDialogElement.prototype.showModal=oldShow;HTMLDialogElement.prototype.close=oldClose;vi.unstubAllGlobals()}
+function tagManifest(name:string):import('./types').TranscriptManifest{return {schemaVersion:2,audio:name,activeModelId:'m1',models:[{id:'m1',engine:'imported',sourceKind:'import',activeEditId:'e1',edits:[{id:'e1',file:'synthetic-e1.json',updated_at:'2026-01-01'}]}]}}
+function loadTagDocument(transcript:import('./types').Transcript,library:import('./lib/tags').TagLibrary){
+ const ids=new Set(library.tags.map(tag=>tag.id));
+ const collection={schemaVersion:1 as const,tagIds:[...ids],groups:library.groups.map(group=>({id:group.id,name:group.name,tagIds:library.tags.filter(tag=>tag.groupIds.includes(group.id)).map(tag=>tag.id)}))};
+ act(()=>{fixture.folder!.onLoaded({url:'',manifest:tagManifest(transcript.audio.filename),edited:{kind:'te-edited',audio:transcript.audio.filename,transcript:{...transcript,tagCollection:collection},metadata:local.defaultMetadata('Synthetic tags')}},transcript.audio.filename)});
+}
+function memoryTagStorage(library:import('./lib/tags').TagLibrary,setLibrary:(library:import('./lib/tags').TagLibrary)=>void,beforeWrite=async()=>{}):import('./hooks/useProjectTags').TagStorage{
+ return {transact:async(current,operation)=>{
+  const {projectTagCatalog}=await import('./lib/tagCollections');
+  const result=operation(projectTagCatalog(library),[{id:'current',label:'Synthetic version',transcript:current.transcript}],'current');
+  await beforeWrite();setLibrary(result.library);return {project:{} as import('./lib/projectStore').OpenProject,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[]}};
+ },restore:async(receipt,redo)=>{setLibrary(redo?receipt.afterLibrary:receipt.beforeLibrary);return {} as import('./lib/projectStore').OpenProject}};
+}
+const syntheticTagLibrary=():import('./lib/tags').TagLibrary=>({schemaVersion:3,tags:[{id:'synthetic-tag',name:'Synthetic topic',parentId:null,groupIds:[]}],groups:[]});
+function setupTagUi(){vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});HTMLDialogElement.prototype.showModal=function(){this.open=true};HTMLDialogElement.prototype.close=function(){this.open=false};HTMLElement.prototype.scrollTo=vi.fn()}
+it('connects project tag transactions to one undo and redo step',async()=>{
+ const {useState}=await import('react');setupTagUi();
+ function Harness(){const[library,setLibrary]=useState(syntheticTagLibrary);return <App projectRecordingId="synthetic-r" tagLibrary={library} tagStorage={memoryTagStorage(library,setLibrary)}/>}
+ render(<Harness/>);loadTagDocument({audio:{filename:'Synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'v',text:'Synthetic text',start:0,end:1}]},syntheticTagLibrary());
+ fireEvent.click(screen.getByRole('button',{name:'标签 1'}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));
+ fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Synthetic renamed'}});await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'}));
+ expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'撤销'})));expect(screen.getByRole('button',{name:'标签: Synthetic topic'})).toBeTruthy();
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重做'})));expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
 });
-
-it('turns off only tag filtering, preserves hidden speakers and keeps its switch across sidebar tabs',async()=>{
- const library:import('./lib/tags').TagLibrary={schemaVersion:1,tags:[{id:'tag-a',name:'Synthetic topic',groupIds:[]}],groups:[]};
- vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
- const oldScroll=HTMLElement.prototype.scrollTo;HTMLElement.prototype.scrollTo=vi.fn();
- try{
-  render(<App tagLibrary={library} saveTagLibrary={async()=>{}}/>);load('Synthetic filtering.wav');
-  const transcript={audio:{filename:'Synthetic filtering.wav',duration:3},speakers:[{id:'a',name:'Hidden speaker'},{id:'b',name:'Visible speaker'}],segments:[
-   {id:'s1',speaker_id:'a',start:0,end:1,text:'Synthetic hidden',tagIds:['tag-a']},
-   {id:'s2',speaker_id:'b',start:1,end:2,text:'Synthetic tagged',tagIds:['tag-a']},
-   {id:'s3',speaker_id:'b',start:2,end:3,text:'Synthetic untagged'},
-  ]};
-  await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:'Synthetic filtering.wav',models:[],activeModelId:''},edited:{kind:'te-edited',audio:'Synthetic filtering.wav',transcript,metadata:local.defaultMetadata('Synthetic filtering')}},'Synthetic filtering.wav')});
-  fireEvent.click(screen.getByRole('button',{name:'隐藏 Hidden speaker'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic topic'}));expect(document.querySelectorAll('.segment')).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);expect(screen.queryByText('Synthetic hidden')).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic topic'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button',{name:/^批注\s*0$/}));fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));expect(screen.getByRole('button',{name:'标签筛选'}).getAttribute('aria-pressed')).toBe('false');
-  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
- }finally{HTMLElement.prototype.scrollTo=oldScroll;vi.unstubAllGlobals()}
+it('tag filtering preserves speaker hiding, switches views and clears only its own conditions',async()=>{
+ const {useState}=await import('react');setupTagUi();
+ const seed:import('./lib/tags').TagLibrary={schemaVersion:3,tags:[{id:'A',name:'Synthetic A',parentId:null,groupIds:[]},{id:'B',name:'Synthetic B',parentId:null,groupIds:[]}],groups:[]};
+ function Harness(){const[library,setLibrary]=useState(seed);return <App projectRecordingId="synthetic-r" tagLibrary={library} tagStorage={memoryTagStorage(library,setLibrary)}/>}
+ render(<Harness/>);loadTagDocument({audio:{filename:'Synthetic.wav',duration:4},speakers:[{id:'h',name:'Hidden'},{id:'v',name:'Visible'}],segments:[{id:'hidden',speaker_id:'h',start:0,end:1,text:'Synthetic hidden',tagIds:['A','B']},{id:'a',speaker_id:'v',start:1,end:2,text:'Synthetic A',tagIds:['A']},{id:'both',speaker_id:'v',start:2,end:3,text:'Synthetic both',tagIds:['A','B']},{id:'none',speaker_id:'v',start:3,end:4,text:'Synthetic none'}]},seed);
+ fireEvent.click(screen.getByRole('button',{name:'隐藏 Hidden'}));fireEvent.click(screen.getByRole('button',{name:'标签 2'}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic A'}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(document.querySelectorAll('.segment')).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'或'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);expect(document.querySelector('[data-tag-id="A"] .tag-count')?.textContent).toBe('3');
+ fireEvent.click(screen.getByRole('button',{name:'分组'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(3);expect(screen.queryByText('Synthetic hidden')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic A'}));expect(document.querySelectorAll('.segment')).toHaveLength(3);fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(3);
 });
-
-it('combines multiple tag IDs with AND/OR, preserves counts and prunes a deleted selection',async()=>{
- const {useState}=await import('react'),oldShow=HTMLDialogElement.prototype.showModal,oldClose=HTMLDialogElement.prototype.close,oldScroll=HTMLElement.prototype.scrollTo;
- HTMLDialogElement.prototype.showModal=function(){this.open=true};HTMLDialogElement.prototype.close=function(){this.open=false};HTMLElement.prototype.scrollTo=vi.fn();vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
- const seed:import('./lib/tags').TagLibrary={schemaVersion:1,tags:[{id:'A',name:'Synthetic A',groupIds:['g1','g2']},{id:'B',name:'Synthetic B',groupIds:['g2']}],groups:[{id:'g1',name:'Group 1',parentId:null},{id:'g2',name:'Group 2',parentId:null}]};
- function Harness(){const[library,setLibrary]=useState(seed);return <App tagLibrary={library} saveTagLibrary={async next=>setLibrary(next)}/>}
- try{
-  render(<Harness/>);
-  const transcript={audio:{filename:'Synthetic multi.wav',duration:5},speakers:[{id:'h',name:'Hidden'},{id:'v',name:'Visible'}],segments:[
-   {id:'hidden',speaker_id:'h',start:0,end:1,text:'Synthetic hidden both',tagIds:['A','B']},
-   {id:'only-a',speaker_id:'v',start:1,end:2,text:'Synthetic A only',tagIds:['A']},
-   {id:'both',speaker_id:'v',start:2,end:3,text:'Synthetic both',tagIds:['A','B']},
-   {id:'only-b',speaker_id:'v',start:3,end:4,text:'Synthetic B only',tagIds:['B']},
-   {id:'neither',speaker_id:'v',start:4,end:5,text:'Synthetic neither'},
-  ]};
-  await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:'Synthetic multi.wav',models:[],activeModelId:''},edited:{kind:'te-edited',audio:'Synthetic multi.wav',transcript,metadata:local.defaultMetadata('Synthetic multi')}},'Synthetic multi.wav')});
-  fireEvent.click(screen.getByRole('button',{name:/^标签\s*2$/}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic A'}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button',{name:'或'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);fireEvent.click(screen.getByRole('button',{name:'隐藏 Hidden'}));expect(document.querySelectorAll('.segment')).toHaveLength(3);
-  fireEvent.click(screen.getByRole('button',{name:'与'}));expect(document.querySelectorAll('.segment')).toHaveLength(1);expect(document.querySelector('.library-tag-row[data-tag-id="A"] .tag-count')?.textContent).toMatch(/^3\//);
-  fireEvent.click(screen.getByRole('button',{name:'分组'}));expect(document.querySelectorAll('.library-filter[aria-pressed="true"]')).toHaveLength(3);expect(document.querySelectorAll('.segment')).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(screen.getByRole('button',{name:'与'}).getAttribute('aria-pressed')).toBe('true');expect(document.querySelectorAll('.segment')).toHaveLength(4);
-  fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
-  fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(screen.queryByRole('textbox',{name:'重命名标签'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic B'}));fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Synthetic renamed B'}});await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);
-  fireEvent.click(screen.getByRole('button',{name:'分级'}));fireEvent.click(screen.getByRole('button',{name:'删除项目标签: Synthetic renamed B'}));await act(async()=>fireEvent.click(screen.getByRole('button',{name:'删除标签'})));expect(document.querySelectorAll('.segment')).toHaveLength(4);expect(screen.queryByRole('button',{name:'标签: Synthetic renamed B'})).toBeNull();
- }finally{cleanup();HTMLDialogElement.prototype.showModal=oldShow;HTMLDialogElement.prototype.close=oldClose;HTMLElement.prototype.scrollTo=oldScroll;vi.unstubAllGlobals()}
-});
-
-it('blocks project navigation while an inline project tag rename is saving',async()=>{
- const {useState}=await import('react');let finish!:()=>void;const leave=vi.fn(),open=vi.fn();
- vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
- function Harness(){const[library,setLibrary]=useState<import('./lib/tags').TagLibrary>({schemaVersion:1,tags:[{id:'synthetic-tag',name:'Synthetic topic',groupIds:[]}],groups:[]});return <App onReturnToProjects={leave} onOpenProject={open} tagLibrary={library} saveTagLibrary={async next=>{await new Promise<void>(resolve=>{finish=resolve});setLibrary(next)}}/>}
- render(<Harness/>);load('Synthetic saving.wav');fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Renamed'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'});
- expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(true);fireEvent(window,new Event('ripple-open-project'));expect(open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();await act(async()=>finish());expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(false);expect(screen.getByRole('button',{name:'标签: Renamed'})).toBeTruthy();
- vi.unstubAllGlobals();
+it('blocks project navigation while a shared inline rename is saving',async()=>{
+ const {useState}=await import('react');setupTagUi();let finish!:()=>void;const leave=vi.fn(),open=vi.fn();
+ function Harness(){const[library,setLibrary]=useState(syntheticTagLibrary);return <App projectRecordingId="synthetic-r" onReturnToProjects={leave} onOpenProject={open} tagLibrary={library} tagStorage={memoryTagStorage(library,setLibrary,()=>new Promise<void>(resolve=>{finish=resolve}))}/>}
+ render(<Harness/>);loadTagDocument({audio:{filename:'Synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'v',text:'Synthetic text',start:0,end:1}]},syntheticTagLibrary());
+ fireEvent.click(screen.getByRole('button',{name:'标签 1'}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Renamed'}});
+ await act(async()=>{fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'});await Promise.resolve()});
+ expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(true);fireEvent(window,new Event('ripple-open-project'));expect(open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();await act(async()=>finish());expect(screen.getByRole('button',{name:'标签: Renamed'})).toBeTruthy();
 });

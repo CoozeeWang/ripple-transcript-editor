@@ -2010,14 +2010,28 @@ async function renameAudioUnlocked(
 
 // One queue per directory handle prevents stale manifest writes inside this app session.
 const directoryWrites = new WeakMap<FileSystemDirectoryHandle, Promise<unknown>>();
+const namedDirectoryWrites = new Map<string, Promise<unknown>>();
 function inDirectory<T>(dir: FileSystemDirectoryHandle, operation: () => Promise<T>): Promise<T> {
-  const previous = directoryWrites.get(dir) ?? Promise.resolve();
+  const identity = (dir as FileSystemDirectoryHandle & { storeIdentity?: string }).storeIdentity;
+  const previous = (identity ? namedDirectoryWrites.get(identity) : directoryWrites.get(dir)) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(operation);
-  directoryWrites.set(dir, next);
+  if (identity) namedDirectoryWrites.set(identity, next); else directoryWrites.set(dir, next);
   void next.finally(() => {
-    if (directoryWrites.get(dir) === next) directoryWrites.delete(dir);
+    if (identity) { if (namedDirectoryWrites.get(identity) === next) namedDirectoryWrites.delete(identity); }
+    else if (directoryWrites.get(dir) === next) directoryWrites.delete(dir);
   }).catch(() => {});
   return next;
+}
+/** Holds the same queue as autosave/MCP while a project tag transaction inspects version files. */
+export function withTagVersionStorage<T>(dir: FileSystemDirectoryHandle, audio: string,
+  work: (container: FileSystemDirectoryHandle | null, manifest: TranscriptManifest | null) => Promise<T>): Promise<T> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    const raw = container ? await readManifestText(container) : null;
+    const manifest = raw ? JSON.parse(raw) as TranscriptManifest : null;
+    if (manifest && !Array.isArray(manifest.models)) throw Error('open_legacy_manuscript_in_ripple_first');
+    return work(container, manifest);
+  });
 }
 export const readManifest: typeof readManifestUnlocked = (...args) => inDirectory(args[0], () => readManifestUnlocked(...args));
 /** Project discovery must not migrate unopened manuscripts as a side effect. */

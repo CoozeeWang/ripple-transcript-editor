@@ -59,6 +59,7 @@ interface ExportSegment {
   speakerName: string;
   speakerColor: string;
   timestamp: string;
+  sourceNumber?: number;
   text: string;
   annotations: ExportAnnotation[];
 }
@@ -95,10 +96,11 @@ export function buildExportModel(
     topics: (metadata?.topics ?? []).join("、") || "—",
     notes: metadata?.notes?.trim() || "",
     audioFile: transcript.audio?.filename || "—",
-    segments: transcript.segments.map((seg) => {
+    segments: transcript.segments.map((seg,index) => {
       const sp = transcript.speakers.find((s) => s.id === seg.speaker_id);
       return {
-        speakerName: ((transcript as ExportSelection).exportSegmentNumbers?.[seg.id] ? `${(transcript as ExportSelection).exportSegmentNumbers![seg.id]} · ` : '') + (sp?.name || msg('export.m1308')),
+        speakerName: sp?.name || msg('export.m1308'),
+        sourceNumber: (transcript as ExportSelection).exportSegmentNumbers?.[seg.id] ?? index+1,
         speakerColor: speakerColorFor(seg.speaker_id, transcript.speakers),
         timestamp: transcript.timeAligned === false ? "" : formatClock(seg.start),
         text: seg.text || "",
@@ -131,7 +133,7 @@ export function renderMarkdown(m: ExportModel): string {
   lines.push("", "---", "");
   for (const seg of m.segments) {
     const body = markdownText(seg.text.replace(/<br\s*\/?>/gi, "\n")).replace(/\n+/g, "\n\n");
-    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${body}`);
+    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}：${body}`);
     for (const a of seg.annotations) {
       // Separate the quote from the body, and keep every note line inside it.
       lines.push("", msg('export.m1315', { v0: markdownText(a.date), v1: markdownText(a.text).replace(/\n/g, "\n> ") }));
@@ -151,7 +153,7 @@ export function renderTxt(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1321', { v0: m.notes }));
   lines.push("", "========", "");
   for (const seg of m.segments) {
-    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}`, seg.text);
+    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}`, seg.text);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1322', { v0: a.date, v1: a.text }));
     }
@@ -195,7 +197,7 @@ export function renderPdfHtml(m: ExportModel): string {
         .join("");
       return `<div class="seg"><span class="sp" style="color:${seg.speakerColor}">${escapeHtml(
         seg.speakerName,
-      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><div class="body">${escapeHtml(
+      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : ""}</span><div class="body">${escapeHtml(
         seg.text,
       )}</div></div>${anns}`;
     })
@@ -274,7 +276,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
 
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
-    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]` : "", color: "999999" });
+    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : "", color: "999999" });
     const bodyRuns = seg.text.split(/\r?\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined }));
 
     paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
@@ -346,6 +348,7 @@ export function buildJsonPayload(
   });
   const base = { ...transcript, segments } as Record<string, unknown>;
   delete base.exportSegmentNumbers;
+  delete base.tagCollection;
   delete base.comparisonReviews;
   delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {

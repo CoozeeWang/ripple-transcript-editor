@@ -1,112 +1,161 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Transcript } from '../types';
+import {msg} from '../i18n';
 import { tagErrorMessage } from '../lib/tagErrors';
-import { emptyTagLibrary, normalizeTagName, setTagPath, renameTagLeaf, setSegmentTag, tagHistoryAnchor, type TagLibrary } from '../lib/tags';
-import { projectTagCounts } from '../lib/projectTags';
+import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
+import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
+import type { CurrentTagVersion, ProjectTagChange, TagTransactionReceipt } from '../lib/projectTagRepository';
 import type { OpenProject } from '../lib/projectStore';
+
+export interface TagStorage {
+    transact: (current: CurrentTagVersion, operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange) => Promise<{
+        project: OpenProject; transcript: Transcript; receipt: TagTransactionReceipt; changed?: boolean;
+    }>;
+    restore: (receipt: TagTransactionReceipt, redo: boolean) => Promise<OpenProject>;
+}
 interface Options {
     library?: TagLibrary;
-    save?: (library: TagLibrary) => Promise<void>;
-    project: () => OpenProject | null;
+    storage?: TagStorage;
     recordingId?: string;
     modelId?: string | null;
+    editId?: string;
     context: string;
     transcript: Transcript | null;
-    mutate: (updater: (current: Transcript) => Transcript, groupKey?: string) => void;
+    flush: () => Promise<void>;
+    publish: (transcript: Transcript, action: 'commit' | 'undo' | 'redo', historyKey?: string) => void;
+    undoActionKey: string | null;
+    redoActionKey: string | null;
+    lock: (busy: boolean) => void;
     readOnly: boolean;
     onError: (message: string) => void;
     errorMessage: string;
 }
-interface Entry {
-    before: TagLibrary;
-    after: TagLibrary;
-    anchor:string;
-}
+interface Entry { receipt: TagTransactionReceipt; beforeAnchor: string; afterAnchor: string; key: string }
+interface MergePrompt { request: TagMergeRequired; finish: (accepted: boolean) => void }
 const EMPTY = emptyTagLibrary();
+
 export function useProjectTags(o: Options) {
-    const library = o.library ?? EMPTY;
-    const anchor=tagHistoryAnchor(o.transcript);
-    // Text edits do not affect tag counts or warrant rereading other manuscripts.
-    const countKey=JSON.stringify([o.context,o.recordingId,library.tags.map(tag=>[tag.id,tag.parentId]),o.transcript?.segments.map(segment=>[segment.id,segment.tagIds])]);
-    const [busy, setBusy] = useState(false), [past, setPast] = useState<Entry[]>([]), [future, setFuture] = useState<Entry[]>([]), [countResult, setCountResult] = useState<{
-        key:string;
-        counts: Map<string, number> | null;
-        error: boolean;
-    } | null>(null), [retry, setRetry] = useState(0);
-    const latest = useRef(o), libraryRef = useRef(library), pending = useRef(false);
-    useLayoutEffect(() => { latest.current = o; libraryRef.current = library; });
-    useEffect(()=>{const context=o.context;queueMicrotask(()=>{if(latest.current.context===context){setPast([]);setFuture([])}})},[o.context]);
-    const discardRedo=useCallback(()=>setFuture([]),[]);
-    const persist = useCallback(async (next: TagLibrary) => { const current = latest.current; if (!current.save || current.readOnly || pending.current)
-        throw new Error('tag_write_unavailable'); pending.current = true; setBusy(true); try {
-        await current.save(next);
-        if (latest.current.context === current.context) libraryRef.current = next;
-    }
-    finally {
-        pending.current = false;
-        setBusy(false);
-    } }, []);
-    const change = useCallback(async (next: TagLibrary) => { const before = libraryRef.current, context = latest.current.context, anchor=tagHistoryAnchor(latest.current.transcript); await persist(next); if (latest.current.context !== context) return; setPast(old => [...old, { before, after: next, anchor }].slice(-100)); setFuture([]); }, [persist]);
-    const create = useCallback(async(raw:string,existingId?:string)=>{
-        const current=latest.current;
-        if(current.readOnly||pending.current)throw new Error(current.errorMessage);
-        if(existingId){const existing=libraryRef.current.tags.find(tag=>tag.id===existingId);if(!existing)throw new Error(current.errorMessage);return existing.id;}
-        const {library:next,tag}=setTagPath(libraryRef.current,raw);
-        if(JSON.stringify(next)!==JSON.stringify(libraryRef.current))await change(next);
-        return tag.id;
-    },[change]);
-    const add = useCallback(async (segmentId: string, rawName: string) => { const current = latest.current, context = current.context; if (current.readOnly || pending.current)
-        return; if (!normalizeTagName(rawName)) return;
+    const source = o.library ?? EMPTY;
+    const projection = useMemo(() => {
         try {
-        const {library:next,tag}=setTagPath(libraryRef.current,rawName);
-        if(JSON.stringify(next)!==JSON.stringify(libraryRef.current)) await change(next);
-        if (latest.current.context !== context || latest.current.readOnly)
-            return;
-        const id = tag.id;
-        latest.current.mutate(t => setSegmentTag(t, segmentId, id, true), 'tag:' + segmentId + ':' + id);
-    }
-    catch (error) {
-        latest.current.onError(tagErrorMessage(error));
-        throw error;
-    } }, [change]);
-    const remove = useCallback((segmentId: string, id: string) => { if (latest.current.readOnly || pending.current)
-        return; latest.current.mutate(t => setSegmentTag(t, segmentId, id, false), 'tag:' + segmentId + ':' + id); }, []);
-    const rename = useCallback(async (id: string, raw: string) => {
-        try { const next=renameTagLeaf(libraryRef.current,id,raw); if(JSON.stringify(next)!==JSON.stringify(libraryRef.current))await change(next); }
-        catch(error) { throw new Error(tagErrorMessage(error),{cause:error}); }
-    }, [change]);
-    const renamePath = useCallback(async(id:string,path:string)=>{
-        try { const next=setTagPath(libraryRef.current,path,id).library; if(JSON.stringify(next)!==JSON.stringify(libraryRef.current))await change(next); }
-        catch(error) { throw new Error(tagErrorMessage(error),{cause:error}); }
-    },[change]);
-    const attach = useCallback(async(segmentId:string,id:string)=>{
-        const current=latest.current;
-        if(current.readOnly||pending.current||!libraryRef.current.tags.some(tag=>tag.id===id))return;
-        current.mutate(t=>setSegmentTag(t,segmentId,id,true),'tag:'+segmentId+':'+id);
-    },[]);
-    const canUndo = past.length > 0 && past.at(-1)?.anchor === anchor, canRedo = future.length > 0 && future.at(-1)?.anchor === anchor;
-    const undo = async () => { const entry = past.at(-1); if (!entry || !canUndo || busy)
-        return; try {
-        await persist(entry.before);
-        setPast(old => old.slice(0, -1));
-        setFuture(old => [...old, entry]);
-    }
-    catch {
-        o.onError(o.errorMessage);
-    } };
-    const redo = async () => { const entry = future.at(-1); if (!entry || !canRedo || busy)
-        return; try {
-        await persist(entry.after);
-        setFuture(old => old.slice(0, -1));
-        setPast(old => [...old, entry]);
-    }
-    catch {
-        o.onError(o.errorMessage);
-    } };
-    useEffect(() => { const current = latest.current, project = current.project(); if (!project || !current.transcript || !current.recordingId || !current.modelId)
-        return; let cancelled = false; const timer = setTimeout(() => { void projectTagCounts(project, { recordingId: current.recordingId!, modelId: current.modelId!, transcript: current.transcript! },libraryRef.current).then(counts => { if (!cancelled)
-        setCountResult({ key:countKey, counts, error: false }); }, () => { if (!cancelled)
-        setCountResult({ key:countKey, counts: null, error: true }); }); }, 120); return () => { cancelled = true; clearTimeout(timer); }; }, [countKey, retry]);
-    const countCurrent = countResult?.key === countKey, counts = countCurrent ? countResult?.counts ?? null : null, countError = countCurrent && !!countResult?.error;
-    return { library, busy, change, create, add, remove, rename, renamePath, attach, canUndo, canRedo, undo, redo, counts, countError, discardRedo, retryCounts: () => setRetry(n => n + 1) };
+            const catalog = projectTagCatalog(source);
+            const collection = o.transcript ? versionTagCollection(o.transcript, source) : { schemaVersion: 1 as const, tagIds: [], groups: [] };
+            return { library: collectionLibrary(catalog, collection), collection, error: '' };
+        } catch (error) { return { library: source, collection: { schemaVersion: 1 as const, tagIds: [], groups: [] }, error: tagErrorMessage(error) }; }
+    }, [source, o.transcript]);
+    const [busy, setBusy] = useState(false), [past, setPast] = useState<Entry[]>([]), [future, setFuture] = useState<Entry[]>([]);
+    const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
+    const latest = useRef(o), pending = useRef(false), mounted = useRef(true), mergeRef = useRef<MergePrompt | null>(null);
+    useLayoutEffect(() => { latest.current = o; });
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; mergeRef.current?.finish(false); }; }, []);
+    useEffect(() => { const context = o.context; queueMicrotask(() => { if (latest.current.context === context) { setPast([]); setFuture([]); } }); }, [o.context]);
+    const discardRedo = useCallback(() => setFuture([]), []);
+    const confirmMerge = (request: TagMergeRequired) => new Promise<boolean>(resolve => {
+        const prompt: MergePrompt = { request, finish: accepted => { mergeRef.current = null; setMergePrompt(null); resolve(accepted); } };
+        mergeRef.current = prompt; setMergePrompt(prompt);
+    });
+    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange) => {
+        let current = latest.current;
+        if (current.readOnly || pending.current || !current.storage) throw Error('tag_write_unavailable');
+        const context = current.context;
+        pending.current = true;
+        try {
+            // Flush the text draft before acquiring the tag editing guard.
+            await current.flush();
+            current = latest.current;
+            if (current.context !== context || current.readOnly || !current.transcript || !current.recordingId || !current.modelId || !current.editId || !current.storage)
+                throw Error('tag_write_unavailable');
+            current.lock(true); setBusy(true);
+            const version = { recordingId: current.recordingId, modelId: current.modelId, editId: current.editId, transcript: current.transcript };
+            const beforeAnchor = tagHistoryAnchor(current.transcript);
+            let result;
+            try { result = await current.storage.transact(version, (library, consumers, id) => operation(false, library, consumers, id)); }
+            catch (error) {
+                if (!(error instanceof TagMergeRequired)) throw error;
+                if (!await confirmMerge(error)) throw Error('tag_operation_cancelled',{cause:error});
+                result = await current.storage.transact(version, (library, consumers, id) => operation(true, library, consumers, id));
+            }
+            if (!mounted.current || latest.current.context !== context) throw Error('tag_context_changed_after_save');
+            if(result.changed===false)return result;
+            const key='tag-transaction:'+crypto.randomUUID();
+            latest.current.publish(result.transcript, 'commit',key);
+            setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));
+            setFuture([]);
+            return result;
+        } catch (error) {
+            if (!(error instanceof TagMergeRequired) && (error as Error)?.message !== 'tag_operation_cancelled') latest.current.onError(tagErrorMessage(error));
+            throw error;
+        } finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
+    }, []);
+    const change = useCallback(async (next: TagLibrary) => {
+        await run((_merge, _library, consumers, currentId) => {
+            const library = projectTagCatalog(next), valid = new Set(library.tags.map(tag => tag.id));
+            return { library, consumers: consumers.map(consumer => {
+                const before = consumer.transcript.tagCollection!;
+                const retained = { ...before, tagIds: before.tagIds.filter(id => valid.has(id)),
+                    groups: before.groups.map(group => ({ ...group, tagIds: group.tagIds.filter(id => valid.has(id)) })) };
+                const collection = admitTags(library, retained, [] , consumer.label);
+                return { ...consumer, transcript: { ...consumer.transcript,
+                    tagCollection: consumer.id === currentId ? collectionFromLibrary(next, collection, consumer.label) : collection,
+                    segments: consumer.transcript.segments.map(segment => ({ ...segment, tagIds: segment.tagIds?.filter(id => valid.has(id)) })) } };
+            }) };
+        });
+    }, [run]);
+    const create = useCallback(async (raw: string, existingId?: string, segmentId?: string) => {
+        let created = '';
+        await run((_merge, library, consumers, currentId) => {
+            if(segmentId&&!consumers.find(consumer=>consumer.id===currentId)?.transcript.segments.some(segment=>segment.id===segmentId))throw Error('tag_segment_not_found');
+            const found = existingId ? library.tags.find(tag => tag.id === existingId) : undefined;
+            if (existingId && !found) throw Error('tag_entity_not_found');
+            const result = found ? { library, tag: found } : setTagPath(library, raw);
+            created = result.tag.id;
+            return { library: result.library, consumers: consumers.map(consumer => consumer.id !== currentId ? consumer : {
+                ...consumer, transcript: { ...(segmentId ? setSegmentTag(consumer.transcript, segmentId, created, true) : consumer.transcript),
+                    tagCollection: admitTags(result.library, consumer.transcript.tagCollection!, [created], consumer.label) },
+            }) };
+        });
+        return created;
+    }, [run]);
+    const add = useCallback(async (segmentId: string, raw: string) => { if (normalizeTagName(raw)) await create(raw, undefined, segmentId); }, [create]);
+    const attach = useCallback(async (segmentId: string, id: string) => { await create('', id, segmentId); }, [create]);
+    const remove = useCallback((segmentId: string, id: string) => {
+        return run((_merge, library, consumers, currentId) => ({ library, consumers: consumers.map(consumer => consumer.id !== currentId ? consumer
+            : { ...consumer, transcript: setSegmentTag(consumer.transcript, segmentId, id, false) }) })).catch(() => {});
+    }, [run]);
+    const renamePath = useCallback(async (id: string, path: string) => {
+        try { await run((merge, library, consumers) => changeSharedTag(library, id, path, consumers, merge)); }
+        catch(error) { throw Error(tagErrorMessage(error), {cause:error}); }
+    }, [run]);
+    const rename = useCallback(async (id: string, name: string) => {
+        if (name.includes('/')) throw Error(msg('tags.leafOnly'));
+        try { await run((merge, library, consumers) => {
+            const prefix = tagAncestors(library, id).reverse().map(tag => tag.name);
+            return changeSharedTag(library, id, [...prefix, name].join('/'), consumers, merge);
+        }); } catch(error) { throw Error(tagErrorMessage(error), {cause:error}); }
+    }, [run]);
+    const reparent = useCallback(async (id: string, parentId: string | null) => {
+        await run((merge, library, consumers) => changeSharedTag(library, id,
+            [parentId ? tagPath(library, parentId) : '', library.tags.find(tag => tag.id === id)!.name].filter(Boolean).join('/'), consumers, merge));
+    }, [run]);
+    const removeCurrent = useCallback(async(id:string)=>{
+        await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id!==currentId?consumer:
+            {...consumer,transcript:removeVersionTagBranch(library,consumer.transcript,id)})}));
+    },[run]);
+    const anchor = tagHistoryAnchor(o.transcript), canUndo = !!past.length && past.at(-1)!.afterAnchor === anchor && o.undoActionKey===past.at(-1)!.key,
+        canRedo = !!future.length && future.at(-1)!.beforeAnchor === anchor && o.redoActionKey===future.at(-1)!.key;
+    const history = async (redo: boolean) => {
+        const current = latest.current, entry = (redo ? future : past).at(-1);
+        if (!entry || !(redo ? canRedo : canUndo) || current.readOnly || pending.current || !current.storage) return;
+        pending.current = true;
+        try {
+            await current.flush(); current.lock(true); setBusy(true);
+            await current.storage.restore(entry.receipt, redo);
+            current.publish(current.transcript!, redo ? 'redo' : 'undo');
+            if (redo) { setFuture(old => old.slice(0, -1)); setPast(old => [...old, entry]); }
+            else { setPast(old => old.slice(0, -1)); setFuture(old => [...old, entry]); }
+        } catch (error) { current.onError(tagErrorMessage(error)); }
+        finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
+    };
+    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent, attach, canUndo, canRedo,
+        undo: () => history(false), redo: () => history(true), discardRedo, mergePrompt };
 }

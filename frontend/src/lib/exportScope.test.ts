@@ -15,7 +15,7 @@ describe('export current version scope', () => {
         const selected = selectExportScope(source, 'visible', new Set(['a']), 'tag'), model = buildExportModel(selected, null);
         expect(selected.segments).toEqual([source.segments[2]]);
         for (const text of [renderTxt(model), renderMarkdown(model), renderPdfHtml(model)]) {
-            expect(text).toContain('3 · Synthetic B');
+            expect(text).toContain('Synthetic B');expect(text).toContain('(3)');expect(text).not.toContain('3 · Synthetic B');
             expect(text).toContain('Synthetic visible');
             expect(text).not.toContain('Synthetic hidden');
         }
@@ -26,10 +26,16 @@ describe('export current version scope', () => {
         expect(payload.segments).toEqual([expect.objectContaining({ id: 's3', sourceSegmentNumber: 3, start: 2, end: 3 })]);
         expect((payload.segments as Record<string, unknown>[])[0]).not.toHaveProperty('tagIds');
         const blob = await transcriptBlob('docx', selected, null), zip = await JSZip.loadAsync(await blob.arrayBuffer()), xml = await zip.file('word/document.xml')!.async('text');
-        expect(xml).toContain('3 · Synthetic B');
+        expect(xml).toContain('Synthetic B');expect(xml).toContain('[00:00:02] (3)');
         expect(xml).toContain('Synthetic visible');
         expect(xml).not.toContain('Synthetic hidden');
     });
     it('never falls back to full text when the displayed intersection is empty', () => { expect(() => selectExportScope(source, 'visible', new Set(['a', 'b']), null)).toThrow(); expect(() => selectExportScope(source, 'visible', new Set(), 'missing')).toThrow(); });
 });
-it('exports descendants of a selected parent with speaker intersection while keeping full export independent',async()=>{const {emptyTagLibrary,setTagPath,hierarchyTagFilter}=await import('./tags');const library=setTagPath(emptyTagLibrary(),'Topic/Detail').library,[parent,child]=library.tags;const transcript={...source,segments:source.segments.map((segment,index)=>({...segment,tagIds:index===1?[parent.id]:[child.id]}))};const filter=hierarchyTagFilter(library,[parent.id,child.id],'and');const visible=selectExportScope(transcript,'visible',new Set(['a']),filter);expect(visible.segments.map(s=>s.id)).toEqual(['s3']);expect(visible.exportSegmentNumbers?.s3).toBe(3);expect(selectExportScope(transcript,'full',new Set(['a']),filter).segments).toHaveLength(3);const model=buildExportModel(visible,null);expect(renderTxt(model)).toContain('3 · Synthetic B');expect(renderSubtitles(visible,'srt')).toContain('3\n00:00:02');const json=buildJsonPayload(visible,'synthetic');expect(json.segments).toHaveLength(1)});
+it('exports descendants of a selected parent with speaker intersection while keeping full export independent',async()=>{const {emptyTagLibrary,setTagPath,hierarchyTagFilter}=await import('./tags');const library=setTagPath(emptyTagLibrary(),'Topic/Detail').library,[parent,child]=library.tags;const transcript={...source,segments:source.segments.map((segment,index)=>({...segment,tagIds:index===1?[parent.id]:[child.id]}))};const filter=hierarchyTagFilter(library,[parent.id,child.id],'and');const visible=selectExportScope(transcript,'visible',new Set(['a']),filter);expect(visible.segments.map(s=>s.id)).toEqual(['s3']);expect(visible.exportSegmentNumbers?.s3).toBe(3);expect(selectExportScope(transcript,'full',new Set(['a']),filter).segments).toHaveLength(3);const model=buildExportModel(visible,null);expect(renderTxt(model)).toContain('Synthetic B [00:00:02] (3)');expect(renderSubtitles(visible,'srt')).toContain('3\n00:00:02');const json=buildJsonPayload(visible,'synthetic');expect(json.segments).toHaveLength(1)});
+
+it('numbers unfiltered human exports after timestamps and excludes internal collection metadata from JSON',()=>{
+ const value={...source,tagCollection:{schemaVersion:1 as const,tagIds:['tag'],groups:[{id:'g',name:'Synthetic group',tagIds:['tag']}]}};
+ const model=buildExportModel(value,null);expect(renderTxt(model)).toContain('Synthetic B [00:00:02] (3)');expect(renderTxt(model)).not.toContain('3 · Synthetic B');
+ expect(buildJsonPayload(value,'synthetic')).not.toHaveProperty('tagCollection');
+});

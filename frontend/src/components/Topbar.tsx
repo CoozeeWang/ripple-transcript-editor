@@ -3,7 +3,7 @@ import { LanguageControl } from './LanguageControl';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { ProjectIcon } from './ProjectIcon';
 import { exportFormats, type ExportFormat } from '../lib/export';
-import { useEffect, type ChangeEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { AudioFileEntry } from "../localStore";
 import { IS_MAC, keys } from "../lib/format";
@@ -385,25 +385,7 @@ export function Topbar(props: TopbarProps) {
               const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
               items[next].focus();
             }}>
-              {props.setExportScope&&(['full','visible'] as const).map(scope=><li key={scope}><button type="button" role="menuitemradio" aria-checked={props.exportScope===scope} disabled={scope==='visible'&&!props.visibleCount} tabIndex={-1} onClick={()=>props.setExportScope?.(scope)}>{props.exportScope===scope?'✓ ':''}{msg(scope==='full'?'tags.full':'tags.visible')} · {scope==='full'?props.fullCount:props.visibleCount}</button></li>)}
-              {exportFormats().map(([label, format]) => (
-                <li key={format}>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    tabIndex={-1}
-                    disabled={(props.exportScope==='visible'&&!props.visibleCount)||((format === 'srt' || format === 'vtt') && !props.subtitlesAvailable)}
-                    data-action-tip={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable ? msg('Topbar.m1060') : undefined}
-                    onClick={() => {
-                      setExportMenuOpen(false);
-                      void exportAs(format);
-                    }}
-                  >
-                    {label}
-                  </button>
-                </li>
-              ))}
-              {props.exportProjectFiles && <li><button type="button" role="menuitem" tabIndex={-1} onClick={() => { setExportMenuOpen(false); props.exportProjectFiles?.(); }}>{msg('Topbar.m1061')}</button></li>}
+              <ExportChoices scope={props.exportScope} onScope={props.setExportScope} visibleCount={props.visibleCount??0} subtitlesAvailable={!!props.subtitlesAvailable} onExport={format=>{setExportMenuOpen(false);void exportAs(format)}} onProject={props.exportProjectFiles?()=>{setExportMenuOpen(false);props.exportProjectFiles?.()}:undefined}/>
             </ul>
           )}
         </div>
@@ -444,4 +426,22 @@ export function Topbar(props: TopbarProps) {
       </div>
     </header>
   );
+}
+
+/** The second step replaces the scope menu rather than appending formats below it. */
+function ExportChoices({ scope, onScope, visibleCount, subtitlesAvailable, onExport, onProject }: {
+  scope?: 'full'|'visible'; onScope?: (scope:'full'|'visible')=>void; visibleCount:number;
+  subtitlesAvailable:boolean; onExport:(format:ExportFormat)=>void; onProject?:()=>void;
+}) {
+  const [step,setStep]=useState<'scope'|'formats'>(onScope?'scope':'formats'), first=useRef<HTMLButtonElement>(null), previousStep=useRef(step);
+  useLayoutEffect(()=>{if(previousStep.current!==step)first.current?.focus();previousStep.current=step},[step]);
+  if(step==='scope')return <>
+    <li><button ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>{onScope?.('full');setStep('formats')}}>{msg('tags.exportFull')}</button></li>
+    <li><button type="button" role="menuitem" tabIndex={-1} disabled={!visibleCount} onClick={()=>{if(visibleCount){onScope?.('visible');setStep('formats')}}}>{msg('tags.exportVisible',{count:visibleCount})}</button></li>
+  </>;
+  return <>
+    {onScope&&<li><button ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>setStep('scope')}>{msg('tags.exportBack')}</button></li>}
+    {exportFormats().map(([label,format])=><li key={format}><button type="button" role="menuitem" tabIndex={-1} disabled={scope==='visible'&&!visibleCount||(format==='srt'||format==='vtt')&&!subtitlesAvailable} data-action-tip={(format==='srt'||format==='vtt')&&!subtitlesAvailable?msg('Topbar.m1060'):undefined} onClick={()=>onExport(format)}>{label}</button></li>)}
+    {onProject&&<><li className="menu-divider" role="separator" aria-hidden="true"/><li><button type="button" role="menuitem" tabIndex={-1} onClick={onProject}>{msg('tags.exportOther')}</button></li></>}
+  </>;
 }

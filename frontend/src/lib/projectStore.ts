@@ -1,5 +1,6 @@
 import { msg } from '../i18n';
 import { isTagLibrary, type TagLibrary } from './tags';
+import { recoverTagFileTransaction } from './tagFileTransaction';
 import { validOriginalGroupId, withOriginalGroups } from './originalGroups';
 import { readRecoverableManifest } from './manifestRecovery';
 import { isContinuationTask } from './continuationJournal';
@@ -140,7 +141,18 @@ export async function openProject(directory: FileSystemDirectoryHandle): Promise
   const raw = await readText(directory, INDEX);
   if (raw === null) throw new Error(msg('projectStore.m1393'));
   // Do not silently open an older backup: it could hide newly created interviews.
-  const data = parseProject(raw);
+  const initial = parseProject(raw);
+  return withProjectLock(initial.id, async()=>{
+    // Opening another window must never recover a transaction still in progress.
+    await recoverTagFileTransaction(directory);
+    const next=await readOpenProjectUnlocked(directory);if(next.data.id!==initial.id)throw Error(msg('projectStore.m1396'));return next;
+  });
+}
+/** Call only while holding this project's lock. */
+async function readOpenProjectUnlocked(directory: FileSystemDirectoryHandle): Promise<OpenProject> {
+  const raw=await readText(directory,INDEX);
+  if(raw===null)throw Error(msg('projectStore.m1393'));
+  const data=parseProject(raw);
   const finderIconWarning = !await decorateNativeProject(directory);
   return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
 }
@@ -153,12 +165,14 @@ export async function acquireProjectEditor(projectId: string): Promise<() => voi
     }).catch(reject);
   });
 }
-async function locked<T>(projectId: string, work: () => Promise<T>): Promise<T> {
-  if (typeof navigator !== 'undefined' && navigator.locks) return navigator.locks.request(`ripple-project:${projectId}`, work);
+export async function withProjectLock<T>(projectId: string, work: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.locks) return navigator.locks.request(`ripple-project:${projectId}`, {}, work);
   return work();
 }
+const locked = withProjectLock;
 export async function saveProject(project: OpenProject, next: RippleProject): Promise<OpenProject> {
   return locked(project.data.id, async () => {
+    await recoverTagFileTransaction(project.directory);
     const original = await readText(project.directory, INDEX);
     if (original === null) throw new Error(msg('projectStore.m1395'));
     const current = parseProject(original);
@@ -357,6 +371,7 @@ export async function recordingDirectory(project: OpenProject, interviewId: stri
   };
   return {
     kind: 'directory', name: `${project.data.id}-${recording.id}`,
+    storeIdentity: `ripple:${project.data.id}:${interviewId}:${recording.id}`,
     getFileHandle: (name: string, options?: FileSystemGetFileOptions) => {
       if (name === recording.file) {
         if (options?.create) throw new Error(msg('projectStore.m1409'));
@@ -441,7 +456,8 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
   // Prevent an active editor in another window from changing manuscripts during the copy.
   const release = await acquireProjectEditor(project.data.id);
   try { return await locked(project.data.id, async () => {
-    const source = await openProject(project.directory);
+    await recoverTagFileTransaction(project.directory);
+    const source = await readOpenProjectUnlocked(project.directory);
     if (source.data.revision !== project.data.revision) throw new Error(msg('projectStore.m1413'));
     if (project.directory.resolve && await project.directory.resolve(parent) !== null) throw new Error(msg('projectStore.m1414'));
     const created = await createProject(parent, title);
@@ -489,7 +505,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
         if (await mediaFingerprint(await (await media.getFileHandle(recording.file)).getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1421'));
       }
     }
-    const finalSource = await openProject(project.directory);
+    const finalSource = await readOpenProjectUnlocked(project.directory);
     if (finalSource.data.revision !== source.data.revision) throw new Error(msg('projectStore.m1422'));
     const data: RippleProject = { ...source.data, id: created.data.id, title: title.trim(), revision: 0, trash: [], sessionTrash: [] };
     await writeText(created.directory, INDEX, JSON.stringify(data, null, 2));

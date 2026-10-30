@@ -5,6 +5,7 @@ import type { Highlight, Segment, Transcript } from "../types";
 import { formatTime, keys } from "../lib/format";
 import type { HighlightGroup } from "../lib/highlights";
 import { AnnotationAddBox, AnnotationCard } from "./AnnotationCard";
+import { ActionIcon } from './ActionIcon';
 
 /** 面板顶部的两个页签。高亮页是全文清单，没有「当前片段 / 全部」这层切换。 */
 export type PanelTab = "annotation" | "highlight" | "tags";
@@ -161,21 +162,14 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
           </svg>
         </button>
         <div className="panel-tabs">
-          <button
-            type="button"
-            className={panelTab === "annotation" ? "is-active" : ""}
-            onClick={() => setPanelTab("annotation")}
-          >
-            {msg('AnnotationPanel.m0326')}<span className="panel-tabs__count">{annotationCount}</span>
-          </button>
-          <button
-            type="button"
-            className={panelTab === "highlight" ? "is-active" : ""}
-            onClick={() => setPanelTab("highlight")}
-          >
-            {msg('AnnotationPanel.m0327')}<span className="panel-tabs__count">{highlightCount}</span>
-          </button>
-          {props.tagsPanel&&<button type="button" className={panelTab==='tags'?'is-active':''} onClick={()=>setPanelTab('tags')}>{msg('tags.title')}<span className="panel-tabs__count">{props.tagCount??0}</span></button>}
+          {([
+            {tab:'annotation' as const,name:msg('AnnotationPanel.m0326'),count:annotationCount},
+            ...(props.tagsPanel?[{tab:'tags' as const,name:msg('tags.title'),count:props.tagCount??0}]:[]),
+            {tab:'highlight' as const,name:msg('AnnotationPanel.m0327'),count:highlightCount},
+          ]).map(item=><button key={item.tab} type="button" className={panelTab===item.tab?'is-active':''} aria-label={`${item.name} ${item.count}`} data-tip={item.name} onClick={()=>setPanelTab(item.tab)}>
+            {item.tab==='tags'?<ActionIcon kind="tag"/>:<svg className="panel-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">{item.tab==='annotation'?<path d="M4 4h16v12H9l-5 4Z"/>:<><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9 8v8m6-8v8m-6-4h6"/></>}</svg>}
+            {panelTab===item.tab&&<>{item.name}<span className="panel-tabs__count">{item.count}</span></>}
+          </button>)}
         </div>
       </div>
 

@@ -1,57 +1,65 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor, cleanup } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { useProjectTags } from './useProjectTags';
-import { isTagLibrary, emptyTagLibrary, removeTagNode, removeTagBranch, tagsForSegment, removeTagGroup, transferTagGroup, type TagLibrary } from '../lib/tags';
+import { useProjectTags, type TagStorage } from './useProjectTags';
+import { useTranscriptHistory } from '../useTranscriptHistory';
 import type { Transcript } from '../types';
-vi.mock('../lib/projectTags', () => ({ projectTagCounts: vi.fn(async () => new Map()) }));
+import type { OpenProject } from '../lib/projectStore';
+import { versionTagCollection } from '../lib/tagCollections';
+import { tagPath, type TagLibrary } from '../lib/tags';
+const source = (): Transcript => ({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [], segments: [{ id: 's', speaker_id: 'v', text: 'Synthetic text', start: 0, end: 2 }] });
 afterEach(cleanup);
-const source = (): Transcript => ({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [], segments: [{ id: 's1', speaker_id: 'a', text: 'Synthetic', start: 0, end: 2 }] });
-function setup(fail = false) { const writes = vi.fn(async (library: TagLibrary) => {
-        expect(isTagLibrary(library)).toBe(true); if (fail)
-    throw new Error('synthetic failure'); }), error = vi.fn(); const hook = renderHook(({ readOnly = false, context = 'v1' }: {
-    readOnly?: boolean;
-    context?: string;
-}) => { const [library, setLibrary] = useState(emptyTagLibrary), [transcript, setTranscript] = useState(source); return { ...useProjectTags({ library, save: async (next) => { await writes(next); setLibrary(next); }, project: () => null, recordingId: 'r1', modelId: 'm1', context, transcript, mutate: update => setTranscript(update), readOnly, onError: error, errorMessage: 'Synthetic save failed' }), transcript, rewrap:()=>setTranscript(current=>({...current,lastEditedSegmentId:'s1',segments:current.segments.map(segment=>({...segment,words:[]}))})) }; }, { initialProps: { readOnly: false, context: 'v1' } }); return { ...hook, writes, error }; }
-describe('project tag integration', () => {
-    it.each([false,true])('undoes and redoes tag group transfer copy=%s without changing segment references',async copy=>{
-        const h=setup();await act(()=>h.result.current.add('s1','Topic'));const tag=h.result.current.library.tags[0],transcript=h.result.current.transcript;
-        const source={...h.result.current.library,tags:[{...tag,groupIds:['source']}],groups:[{id:'source',name:'Source',parentId:null},{id:'target',name:'Target',parentId:null}]};
-        await act(()=>h.result.current.change(source));const next=transferTagGroup(source,tag.id,'source','target',copy);await act(()=>h.result.current.change(next));expect(h.result.current.library).toEqual(next);expect(h.result.current.transcript).toBe(transcript);
-        await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(source);await act(()=>h.result.current.redo());expect(h.result.current.library).toEqual(next);expect(h.result.current.transcript).toBe(transcript);
-    });
-    it.each(['tree','level'] as const)('undoes and redoes %s group deletion without changing segment references',async scope=>{
-        const h=setup();await act(()=>h.result.current.add('s1','Topic'));const tag=h.result.current.library.tags[0],transcript=h.result.current.transcript;
-        const source={...h.result.current.library,tags:[{...tag,groupIds:['parent','child']}],groups:[{id:'parent',name:'Parent',parentId:null},{id:'child',name:'Child',parentId:'parent'}]};
-        await act(()=>h.result.current.change(source));await act(()=>h.result.current.change(removeTagGroup(source,'parent',scope)));
-        expect(h.result.current.library.tags[0].id).toBe(tag.id);expect(h.result.current.transcript).toBe(transcript);
-        await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(source);expect(h.result.current.transcript).toBe(transcript);
-        await act(()=>h.result.current.redo());expect(h.result.current.library).toEqual(removeTagGroup(source,'parent',scope));
-    });
-    it('persists definitions before assignment, reuses names and protects version state', async () => { const h = setup(); await act(() => h.result.current.add('s1', 'Topic')); expect(h.writes).toHaveBeenCalledTimes(1); expect(h.result.current.transcript.segments[0].tagIds).toEqual([h.result.current.library.tags[0].id]); await act(() => h.result.current.add('s1', 'topic')); expect(h.writes).toHaveBeenCalledTimes(1); expect(h.result.current.transcript.segments[0].tagIds).toHaveLength(1); h.rerender({ readOnly: true, context: 'v1' }); await act(() => h.result.current.add('s1', 'Locked')); expect(h.result.current.library.tags).toHaveLength(1); act(() => h.result.current.remove('s1', h.result.current.library.tags[0].id)); expect(h.result.current.transcript.segments[0].tagIds).toHaveLength(1); });
-    it('does not create a dangling assignment on project write failure', async () => { const h = setup(true); await act(async() => {await expect(h.result.current.add('s1', 'Failed')).rejects.toThrow()}); expect(h.result.current.library.tags).toEqual([]); expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined(); expect(h.error).toHaveBeenCalled(); expect(h.result.current.busy).toBe(false); });
-    it('atomically deletes and undoes a project definition without rewriting manuscript content', async () => { const h = setup(); const next = { ...emptyTagLibrary(), tags: [{ id: 'tag-a', name: 'Topic', groupIds: [] }] }; await act(() => h.result.current.change(next)); const before = h.result.current.transcript; await act(() => h.result.current.change(emptyTagLibrary())); expect(h.result.current.library.tags).toEqual([]); expect(h.result.current.canUndo).toBe(true); await act(() => h.result.current.undo()); expect(h.result.current.library).toEqual(next); expect(h.result.current.transcript).toBe(before); await act(() => h.result.current.redo()); expect(h.result.current.library.tags).toEqual([]); });
-    it('rejects read-only library mutations and leaves canonical definitions unchanged', async () => { const h = setup(); h.rerender({ readOnly: true, context: 'original' }); await act(async () => { await expect(h.result.current.change({ ...emptyTagLibrary(), groups: [{ id: 'g1', name: 'Group', parentId: null }] })).rejects.toThrow('tag_write_unavailable'); }); expect(h.writes).not.toHaveBeenCalled(); await waitFor(() => expect(h.result.current.library.groups).toEqual([])); });
+function setup() {
+ const writes = vi.fn(async () => {}), errors = vi.fn(), flush = vi.fn(async () => {}), lock = vi.fn();
+ const hook = renderHook(({ readOnly, context }: {readOnly:boolean;context:string}) => {
+  const [library, setLibrary] = useState<TagLibrary>({schemaVersion:3,tags:[],groups:[]}), history = useTranscriptHistory<Transcript>();
+  const value = history.transcript ?? source();
+  const storage: TagStorage = {
+   transact: async (current, operation) => {
+    const previous = {...current.transcript,tagCollection:versionTagCollection(current.transcript,library)};
+    const result = operation(library,[{id:'current',label:'Synthetic version',transcript:previous}],'current');
+    await writes();setLibrary(result.library);
+    return {project:{} as OpenProject,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[]}};
+   },
+   restore: async(receipt,redo)=>{await writes();setLibrary(redo?receipt.afterLibrary:receipt.beforeLibrary);return {} as OpenProject},
+  };
+  const tags=useProjectTags({library,storage,recordingId:'r',modelId:'m',editId:'e',context,transcript:value,flush,lock,readOnly,undoActionKey:history.undoActionKey,redoActionKey:history.redoActionKey,onError:errors,errorMessage:'Synthetic failure',publish:(next,action,key)=>{
+   if(action==='undo')history.undo();else if(action==='redo')history.redo();else if(!history.transcript){history.reset(value);history.commit(()=>next,key)}else history.commit(()=>next,key);
+  }});
+  return {...tags,transcript:value,editText:()=>history.commit(t=>({...t,segments:t.segments.map(s=>({...s,text:'Later text'}))})),undoText:history.undo};
+ },{initialProps:{readOnly:false,context:'v1'}});
+ return {...hook,writes,errors,flush,lock};
+}
+it('admits ancestors and assigns only the leaf in one reversible transaction',async()=>{
+ const h=setup();await act(()=>h.result.current.add('s','经历/求学/小学'));const leaf=h.result.current.library.tags.find(t=>t.name==='小学')!;
+ expect(h.writes).toHaveBeenCalledTimes(1);expect(h.result.current.collection.tagIds).toHaveLength(3);expect(h.result.current.transcript.segments[0].tagIds).toEqual([leaf.id]);expect(h.result.current.canUndo).toBe(true);
+ await act(()=>h.result.current.undo());expect(h.result.current.library.tags).toEqual([]);expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();
+ await act(()=>h.result.current.redo());expect(h.result.current.transcript.segments[0].tagIds).toEqual([leaf.id]);
 });
-
-it('does not rescan a project for text-only edits, but refreshes changed associations',async()=>{
- const {projectTagCounts}=await import('../lib/projectTags');vi.mocked(projectTagCounts).mockClear();
- const project={} as import('../lib/projectStore').OpenProject,value=source(),library=emptyTagLibrary();
- const hook=renderHook(({transcript}:{transcript:Transcript})=>useProjectTags({library,project:()=>project,recordingId:'synthetic-r',modelId:'m1',context:'synthetic-v1',transcript,mutate:()=>{},readOnly:false,onError:()=>{},errorMessage:'Synthetic error'}),{initialProps:{transcript:value}});
- await waitFor(()=>expect(hook.result.current.counts).toBeInstanceOf(Map));expect(projectTagCounts).toHaveBeenCalledTimes(1);
- hook.rerender({transcript:{...value,segments:value.segments.map(segment=>({...segment,text:'Synthetic text edit'}))}});
- expect(hook.result.current.counts).toBeInstanceOf(Map);await new Promise(resolve=>setTimeout(resolve,160));expect(projectTagCounts).toHaveBeenCalledTimes(1);
- hook.rerender({transcript:{...value,segments:value.segments.map(segment=>({...segment,tagIds:['tag-a']}))}});
- await waitFor(()=>expect(projectTagCounts).toHaveBeenCalledTimes(2));
+it('library-only creation does not assign a segment and removing the last assignment retains admission',async()=>{
+ const h=setup();let id='';await act(async()=>{id=await h.result.current.create('经历/求学')});expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();
+ await act(()=>h.result.current.attach('s',id));await act(()=>h.result.current.remove('s',id));expect(h.result.current.transcript.segments[0].tagIds).toEqual([]);expect(h.result.current.collection.tagIds).toContain(id);
+ await act(async()=>{expect(await h.result.current.create('',id)).toBe(id)});expect(h.result.current.library.tags).toHaveLength(2);
 });
-
-it('retains library undo/redo when non-edit metadata and playback words are repackaged',async()=>{const h=setup();await act(()=>h.result.current.change({...emptyTagLibrary(),tags:[{id:'synthetic-tag',name:'Topic',groupIds:[]}]}));expect(h.result.current.canUndo).toBe(true);act(()=>h.result.current.rewrap());expect(h.result.current.canUndo).toBe(true);await act(()=>h.result.current.undo());expect(h.result.current.canRedo).toBe(true);act(()=>h.result.current.rewrap());expect(h.result.current.canRedo).toBe(true);await act(()=>h.result.current.redo());expect(h.result.current.library.tags[0].name).toBe('Topic')});
-
-it('renames one project entity, preserves stable references, rejects collisions and supports history',async()=>{const h=setup();await act(()=>h.result.current.add('s1','Topic'));const tag=h.result.current.library.tags[0];await act(()=>h.result.current.change({...h.result.current.library,tags:[{...tag,groupIds:['a','b']},{id:'other',name:'Other',groupIds:[],parentId:null}],groups:[{id:'a',name:'A',parentId:null},{id:'b',name:'B',parentId:null}]}));const transcript=h.result.current.transcript;await act(()=>h.result.current.rename(tag.id,' Renamed '));expect(h.result.current.library.tags[0]).toEqual({...tag,name:'Renamed',groupIds:['a','b']});expect(h.result.current.transcript).toBe(transcript);await act(async()=>{await expect(h.result.current.rename(tag.id,'OTHER')).rejects.toThrow()});expect(h.result.current.library.tags[0].name).toBe('Renamed');await act(()=>h.result.current.undo());expect(h.result.current.library.tags[0].name).toBe('Topic');await act(()=>h.result.current.redo());expect(h.result.current.library.tags[0].name).toBe('Renamed');h.writes.mockRejectedValueOnce(new Error('Synthetic disk failure'));await act(async()=>{await expect(h.result.current.rename(tag.id,'Failed')).rejects.toThrow()});expect(h.result.current.library.tags[0].name).toBe('Renamed');expect(h.result.current.transcript).toBe(transcript)});
-
-it('creates a complete path in one project write, renames its parent globally, and restores exact IDs through history',async()=>{const h=setup();await act(()=>h.result.current.add('s1','Synthetic root/Synthetic branch/Synthetic leaf'));expect(h.writes).toHaveBeenCalledTimes(1);const before=h.result.current.library,leaf=before.tags.at(-1)!;expect(h.result.current.transcript.segments[0].tagIds).toEqual([leaf.id]);await act(()=>h.result.current.renamePath(before.tags[1].id,'Other root/Renamed branch'));const after=h.result.current.library;expect(after.tags.find(t=>t.id===leaf.id)?.parentId).toBe(before.tags[1].id);expect(h.result.current.transcript.segments[0].tagIds).toEqual([leaf.id]);await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(before);await act(()=>h.result.current.redo());expect(h.result.current.library).toEqual(after);const writes=h.writes.mock.calls.length;await act(async()=>{await expect(h.result.current.add('s1','New parent/Synthetic leaf')).rejects.toThrow()});expect(h.writes).toHaveBeenCalledTimes(writes);expect(h.result.current.library).toEqual(after);h.writes.mockRejectedValueOnce(new Error('Synthetic disk failure'));await act(async()=>{await expect(h.result.current.renamePath(leaf.id,'Third root/Another leaf')).rejects.toThrow()});expect(h.result.current.library).toEqual(after)});
-it('attaches only the requested stable ID, deduplicates and leaves tree/group definitions untouched',async()=>{const h=setup();await act(()=>h.result.current.change({schemaVersion:2,tags:[{id:'parent',name:'Parent',parentId:null,groupIds:[]},{id:'child',name:'Child',parentId:'parent',groupIds:[]}],groups:[]}));const library=h.result.current.library;await act(()=>h.result.current.attach('s1','parent'));await act(()=>h.result.current.attach('s1','parent'));expect(h.result.current.transcript.segments[0].tagIds).toEqual(['parent']);expect(h.result.current.library).toBe(library);expect(h.writes).toHaveBeenCalledTimes(1)});
-it('creates a library-only path without segment or group assignments and reuses selected entities',async()=>{const h=setup();let id='';await act(async()=>{id=await h.result.current.create('Library root/Library child')});expect(h.result.current.library.tags).toHaveLength(2);expect(h.result.current.library.tags.every(t=>t.groupIds.length===0)).toBe(true);expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();const writes=h.writes.mock.calls.length;await act(async()=>{expect(await h.result.current.create('Library child',id)).toBe(id)});expect(h.writes).toHaveBeenCalledTimes(writes);expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined()});
-
-it('deletes a project branch in one reversible transaction and preserves all content on failure',async()=>{const h=setup();await act(()=>h.result.current.create('Root/Branch/Leaf'));await act(()=>h.result.current.create('Other'));const before=h.result.current.library,[root,branch,leaf,other]=before.tags;await act(()=>h.result.current.attach('s1',root.id));await act(()=>h.result.current.attach('s1',leaf.id));await act(()=>h.result.current.attach('s1',other.id));const transcript=h.result.current.transcript,writes=h.writes.mock.calls.length;await act(()=>h.result.current.change(removeTagBranch(before,root.id)));expect(h.writes).toHaveBeenCalledTimes(writes+1);expect(tagsForSegment(h.result.current.transcript.segments[0],h.result.current.library).map(t=>t.id)).toEqual([other.id]);expect(h.result.current.transcript).toBe(transcript);await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(before);expect(tagsForSegment(h.result.current.transcript.segments[0],h.result.current.library).map(t=>t.id)).toEqual([root.id,leaf.id,other.id]);await act(()=>h.result.current.redo());expect(h.result.current.library.tags.map(t=>t.id)).toEqual([other.id]);await act(()=>h.result.current.undo());h.writes.mockRejectedValueOnce(new Error('Synthetic atomic failure'));await act(async()=>{await expect(h.result.current.change(removeTagBranch(before,root.id))).rejects.toThrow()});expect(h.result.current.library).toEqual(before);expect(h.result.current.transcript).toBe(transcript);await act(()=>h.result.current.change(removeTagNode(before,branch.id)));expect(h.result.current.library.tags.find(t=>t.id===leaf.id)?.parentId).toBe(root.id);expect(h.result.current.transcript).toBe(transcript)});
+it('publishes no definitions or associations on disk failure',async()=>{
+ const h=setup();h.writes.mockRejectedValueOnce(Error('Synthetic disk failure'));await act(async()=>{await expect(h.result.current.add('s','Topic')).rejects.toThrow()});
+ expect(h.result.current.library.tags).toEqual([]);expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();expect(h.result.current.busy).toBe(false);expect(h.errors).toHaveBeenCalled();expect(h.lock).toHaveBeenLastCalledWith(false);
+});
+it('blocks all tag writing paths on an original',async()=>{
+ const h=setup();h.rerender({readOnly:true,context:'original'});
+ for(const action of [()=>h.result.current.create('Topic'),()=>h.result.current.add('s','Topic'),()=>h.result.current.attach('s','unknown'),()=>h.result.current.rename('unknown','Name')])await act(async()=>{await expect(action()).rejects.toThrow()});
+ await act(()=>h.result.current.remove('s','unknown'));expect(h.writes).not.toHaveBeenCalled();
+});
+it('keeps explicit group membership version-owned and reversible',async()=>{
+ const h=setup();await act(()=>h.result.current.create('Root/Child'));const child=h.result.current.library.tags.find(t=>t.name==='Child')!;
+ await act(()=>h.result.current.change({...h.result.current.library,groups:[{id:'g',name:'Synthetic group',parentId:null}],tags:h.result.current.library.tags.map(t=>({...t,groupIds:t.id===child.id?['g']:[]}))}));
+ expect(h.result.current.collection.groups[0].tagIds).toEqual([child.id]);await act(()=>h.result.current.undo());expect(h.result.current.collection.groups).toEqual([]);await act(()=>h.result.current.redo());expect(h.result.current.collection.groups[0].tagIds).toEqual([child.id]);
+});
+it('renames a shared parent with stable child references',async()=>{
+ const h=setup();await act(()=>h.result.current.add('s','Root/Child'));const root=h.result.current.library.tags.find(t=>t.name==='Root')!,child=h.result.current.library.tags.find(t=>t.name==='Child')!;
+ await act(()=>h.result.current.rename(root.id,'Renamed'));expect(tagPath(h.result.current.library,child.id)).toBe('Renamed/Child');expect(h.result.current.transcript.segments[0].tagIds).toEqual([child.id]);
+});
+it('does not let tag undo leap over a later text edit',async()=>{
+ const h=setup();await act(()=>h.result.current.add('s','Topic'));act(()=>h.result.current.editText());expect(h.result.current.canUndo).toBe(false);act(()=>h.result.current.undoText());expect(h.result.current.canUndo).toBe(true);await act(()=>h.result.current.undo());expect(h.result.current.library.tags).toEqual([]);
+});
