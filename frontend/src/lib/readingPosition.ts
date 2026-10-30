@@ -1,4 +1,4 @@
-import { encodeNativeHandles } from './desktopFs';
+import { encodeNativeHandles, nativeDesktopAvailable } from './desktopFs';
 import { handleValue } from './projectStore';
 
 export interface ReadingScope {
@@ -40,7 +40,15 @@ export function readReadingAnchor(key: string): ReadingAnchor | null {
             && Number.isFinite(a.fraction) && a.fraction >= 0 && a.fraction <= 1 ? a : null;
     } catch { return null; }
 }
-export function saveReadingAnchor(key: string, anchor: ReadingAnchor) {
+type Invoke = <T>(name:string,args:Record<string,unknown>)=>Promise<T>;
+const nativeInvoke = () => (window as unknown as {__TAURI__:{core:{invoke:Invoke}}}).__TAURI__.core.invoke;
+/** WebKit may not flush localStorage before immediate app exit. Await a tiny native preference write. */
+export async function loadReadingAnchor(key:string):Promise<ReadingAnchor|null>{
+    if(nativeDesktopAvailable())try{return await nativeInvoke()<ReadingAnchor|null>('reading_position_read',{keyValue:key})??readReadingAnchor(key)}catch{/* Browser preference fallback. */}
+    return readReadingAnchor(key);
+}
+export async function saveReadingAnchor(key: string, anchor: ReadingAnchor) {
     try { const raw = JSON.stringify(anchor); if (localStorage.getItem(key) !== raw) localStorage.setItem(key, raw); }
     catch { /* A view preference never changes the manuscript's saved status. */ }
+    if(nativeDesktopAvailable())try{await nativeInvoke()('reading_position_write',{keyValue:key,anchor})}catch{/* A preference failure must not block manuscript recovery. */}
 }

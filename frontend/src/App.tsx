@@ -633,11 +633,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
 
 
-  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); persistReadingPosition(); }; }, [flushPendingSave, persistReadingPosition]);
+  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); await persistReadingPosition(); }; }, [flushPendingSave, persistReadingPosition]);
   useLayoutEffect(() => registerNormalClose(async () => {
     try {
       if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy'));
-      await flushPendingSave(); persistReadingPosition();
+      await flushPendingSave(); await persistReadingPosition();
     } catch (error) { setLoadError(error instanceof Error ? error.message : msg('tags.saveFailed')); throw error; }
   }), [flushPendingSave, persistReadingPosition]);
 

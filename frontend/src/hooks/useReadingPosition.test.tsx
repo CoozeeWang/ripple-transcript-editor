@@ -20,7 +20,7 @@ async function fixture(saved?: ReadingAnchor){
  const scope:ReadingScope={directory:{storeIdentity:'synthetic-folder'}as unknown as FileSystemDirectoryHandle,audio:'synthetic.wav',model:'model',version:'v1',project:'project',recording:'recording'};
  if(saved)saveReadingAnchor(await readingKey(scope),saved);
  const ref={current:panel};const hook=renderHook(({target,items,ready,explicit}:{target:ReadingScope;items:Segment[];ready:boolean;explicit:boolean})=>useReadingPosition(target,ref,ready,items,explicit),{initialProps:{target:scope,items:segments,ready:true,explicit:false}});
- const frame=async()=>{await act(async()=>{await Promise.resolve();for(const cb of [...frames.values()])cb(0);frames.clear()})};
+ const frame=async()=>{await act(async()=>{await Promise.resolve()});await act(async()=>{for(const cb of [...frames.values()])cb(0);frames.clear()})};
  return{panel,scope,hook,frame,height:(value:number)=>{height=value}};
 }
 it('remembers pure reading without scroll writes or changing the editing cursor; saves on leave',async()=>{

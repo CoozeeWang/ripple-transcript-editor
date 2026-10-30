@@ -1,6 +1,6 @@
 import type { ConnectorHost, ConnectorDocument } from './aiConnector';
 import { AIEditOwnership } from './aiEditOwnership';
-import { ProjectConnectorHosts, type ProjectConnectorAccess, type ProjectTarget } from './projectConnectorHost';
+import { ProjectConnectorHosts, type ProjectConnectorAccess } from './projectConnectorHost';
 import { applyTagBatch, tagBatchScope, validateTagChanges, TAG_ACTIONS, type TagChange } from './tagBatch';
 import { transactProjectTags, TagRequestAlreadySaved } from './projectTagRepository';
 import { projectTagCatalog, versionTagCollection, TagCollectionConflict, TagMergeRequired } from './tagCollections';

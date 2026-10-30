@@ -2,13 +2,13 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { Segment } from '../types';
 import { RESTORE_EDIT_POSITION_KEY } from '../lib/editPosition';
 import { loadBooleanPreference } from '../lib/preferences';
-import { readingKey, readReadingAnchor, saveReadingAnchor, type ReadingAnchor, type ReadingScope } from '../lib/readingPosition';
+import { readingKey, loadReadingAnchor, saveReadingAnchor, type ReadingAnchor, type ReadingScope } from '../lib/readingPosition';
 import { useResizeReadingPosition } from './useResizeReadingPosition';
 
 /** Scroll updates only this hook's memory. Persist a small view preference on leave/normal close. */
 export function useReadingPosition(scope: ReadingScope | null, panelRef: {current: HTMLElement | null}, ready: boolean,
     segments: readonly Segment[], explicitTarget = false) {
-    const latest = useRef(segments), flush = useRef<() => void>(() => {});
+    const latest = useRef(segments), flush = useRef<() => Promise<void>>(async () => {});
     useLayoutEffect(() => { latest.current = segments; });
     useResizeReadingPosition(panelRef, scope, ready);
     useLayoutEffect(() => {
@@ -30,14 +30,15 @@ export function useReadingPosition(scope: ReadingScope | null, panelRef: {curren
             if (index < 0) return;
             anchor = { id, index, paragraph, offset: Math.max(0, r.top - bounds.top), fraction: Math.min(1, Math.max(0, bounds.top - r.top) / r.height) };
         };
-        const persist = () => { capture(); if (key && anchor) saveReadingAnchor(key, anchor); };
+        const persist = async () => { capture(); if (key && anchor) await saveReadingAnchor(key, anchor); };
         flush.current = persist;
         panel.addEventListener('scroll', capture, { passive: true });
-        const leaving = () => persist();
+        const leaving = () => { void persist(); };
         window.addEventListener('pagehide', leaving); window.addEventListener('beforeunload', leaving);
-        void readingKey(scope).then(value => {
+        void readingKey(scope).then(async value => {
             if (cancelled) return; key = value;
-            const saved = loadBooleanPreference(RESTORE_EDIT_POSITION_KEY, false) ? readReadingAnchor(key) : null;
+            const saved = loadBooleanPreference(RESTORE_EDIT_POSITION_KEY, false) ? await loadReadingAnchor(key) : null;
+            if(cancelled)return;
             frame = requestAnimationFrame(() => {
                 if (cancelled) return;
                 if (!explicitTarget) {
@@ -56,9 +57,9 @@ export function useReadingPosition(scope: ReadingScope | null, panelRef: {curren
         return () => {
             cancelled = true; cancelAnimationFrame(frame);
             // The DOM may already belong to the next version: persist the last scroll snapshot, never recapture here.
-            if (key && anchor) saveReadingAnchor(key, anchor);
+            if (key && anchor) void saveReadingAnchor(key, anchor);
             panel.removeEventListener('scroll', capture); window.removeEventListener('pagehide', leaving); window.removeEventListener('beforeunload', leaving);
-            if (flush.current === persist) flush.current = () => {};
+            if (flush.current === persist) flush.current = async () => {};
         };
     }, [scope, ready, panelRef, explicitTarget]);
     return useCallback(() => flush.current(), []);
