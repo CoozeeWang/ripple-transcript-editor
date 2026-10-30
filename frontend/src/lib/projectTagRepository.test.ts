@@ -6,6 +6,7 @@ import { restoreProjectTagTransaction, transactProjectTags } from './projectTagR
 import { admitTags, changeSharedTag, removeVersionTagBranch, TagMergeRequired, type TagConsumer } from './tagCollections';
 import { setSegmentTag, setTagPath, type TagLibrary } from './tags';
 import { tagTestFs } from './tagTestFs';
+import type { TagTransactionScope } from './projectTagRepository';
 
 function fixture(fail?: (path: string) => void) {
     const fs = tagTestFs('synthetic.ripple', fail), root = 'interviews/session/sample.transcript';
@@ -111,4 +112,59 @@ it('requires explicit merge confirmation and atomically remaps associations in e
     const undone = await restoreProjectTagTransaction(merged.project, merged.receipt, false);
     expect(JSON.parse(fs.files.get(fs.root + '/e1.json')!).transcript.segments[0].tagIds).toEqual([source]);
     expect(undone.data.tagLibrary!.tags.some(tag => tag.id === source)).toBe(true);
+});
+
+it('reads no unopened versions for additions, current memberships, removal or their undo/redo', async () => {
+    const fs = fixture(), get = fs.files.get.bind(fs.files);
+    const untouched = [fs.root + '/original.json', fs.root + '/e2.json'];
+    const originals = untouched.map(path => get(path));
+    fs.files.get = path => { if (untouched.includes(path)) throw Error('unopened version must not be read'); return get(path); };
+    const added = await transactProjectTags(fs.project, fs.current, addPath, 'additions');
+    const leaf = added.transcript.segments[0].tagIds![0];
+    const removed = await transactProjectTags(added.project, { ...fs.current, transcript: added.transcript }, (library, consumers, id) => ({ library,
+        consumers: consumers.map(consumer => consumer.id === id ? { ...consumer, transcript: removeVersionTagBranch(library, consumer.transcript, leaf) } : consumer) }), 'current');
+    const undone = await restoreProjectTagTransaction(removed.project, removed.receipt, false);
+    expect(JSON.parse(get(fs.root + '/e1.json')!).transcript.segments[0].tagIds).toEqual([leaf]);
+    const redone = await restoreProjectTagTransaction(undone, removed.receipt, true);
+    expect(JSON.parse(get(fs.root + '/e1.json')!).transcript.segments[0].tagIds).toEqual([]);
+    const undoRemoved = await restoreProjectTagTransaction(redone, removed.receipt, false);
+    const undoAdded = await restoreProjectTagTransaction(undoRemoved, added.receipt, false);
+    expect(undoAdded.data.tagLibrary?.tags).toEqual([]);
+    untouched.forEach((path, i) => expect(get(path)).toBe(originals[i]));
+});
+
+it.each(['current', 'additions'] as TagTransactionScope[])('rejects shared definition edits in a %s transaction before writing', async scope => {
+    const fs = fixture(), added = await transactProjectTags(fs.project, fs.current, addPath, 'additions');
+    const before = new Map(fs.files);
+    await expect(transactProjectTags(added.project, { ...fs.current, transcript: added.transcript }, (library, consumers) => ({
+        library: { ...library, tags: library.tags.map((tag, i) => i ? tag : { ...tag, name: 'Changed globally' }) }, consumers,
+    }), scope)).rejects.toThrow('scope_violation');
+    expect(fs.files).toEqual(before);
+});
+
+it.each(['current', 'additions'] as TagTransactionScope[])('keeps original protection and rollback on the %s path', async scope => {
+    let fail = false;
+    const fs = fixture(path => { if (fail && path === 'ripple-project.json') { fail = false; throw Error('synthetic failure'); } });
+    const added = await transactProjectTags(fs.project, fs.current, addPath, 'additions');
+    const before = new Map(fs.files), leaf = added.transcript.segments[0].tagIds![0];
+    const op = (library: TagLibrary, consumers: TagConsumer[], id: string) => ({ library, consumers: consumers.map(c => c.id === id ? { ...c,
+        transcript: setSegmentTag(c.transcript, 'segment', leaf, false) } : c) });
+    await expect(transactProjectTags(added.project, { ...fs.current, editId: 'original' }, op, scope)).rejects.toThrow('read_only');
+    fail = true;
+    await expect(transactProjectTags(added.project, { ...fs.current, transcript: added.transcript }, op, scope)).rejects.toThrow('synthetic failure');
+    for (const [path, value] of before) expect(fs.files.get(path)).toBe(value);
+});
+
+it('continues to inspect other consumers for shared edits and reject cross-version name conflicts', async () => {
+    const fs = fixture(), added = await transactProjectTags(fs.project, fs.current, addPath, 'additions');
+    const otherPath = setTagPath(added.project.data.tagLibrary!, '别的主题/童年');
+    const library = otherPath.library, index = { ...added.project.data, tagLibrary: library };
+    fs.files.set('ripple-project.json', JSON.stringify(index));
+    const other = JSON.parse(fs.files.get(fs.root + '/e2.json')!);
+    other.transcript = { ...added.transcript, tagCollection: admitTags(library, added.transcript.tagCollection!, [otherPath.tag.id]) };
+    fs.files.set(fs.root + '/e2.json', JSON.stringify(other));
+    const before = new Map(fs.files), leaf = added.transcript.segments[0].tagIds![0];
+    await expect(transactProjectTags({ ...added.project, data: index }, { ...fs.current, transcript: added.transcript },
+        (catalog, consumers) => changeSharedTag(catalog, leaf, '经历/求学/童年', consumers))).rejects.toThrow('tag_collection_name_conflict');
+    expect(fs.files).toEqual(before);
 });

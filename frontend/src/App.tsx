@@ -21,7 +21,9 @@ import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import {useProjectTags} from './hooks/useProjectTags';
 import {TagsPanel} from './components/TagsPanel';
-import {hierarchyLibrary,tagPath,hierarchyTagFilter,emptyTagLibrary,filteredTagSegments,matchesTagFilter,countTaggedSegments,tagsForSegment,tagHistoryAnchor,descendantTagIds,type TagLibrary} from './lib/tags';
+import {hierarchyLibrary,hierarchyTagFilter,emptyTagLibrary,filteredTagSegments,matchesTagFilter,tagHistoryAnchor,descendantTagIds,type TagLibrary} from './lib/tags';
+import { createTagPresenter, tagSegmentCounts } from './lib/tagPresentation';
+import { TagCandidatesContext, TagWritingContext } from './lib/tagCandidates';
 import { TagMergeDialog } from './components/TagMergeDialog';
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
@@ -32,6 +34,8 @@ import { applyComparisonDecision, comparisonReviewKey, reconcileComparisonReview
 import { useVersionComparison } from "./hooks/useVersionComparison";
 import { comparisonRows } from "./lib/comparisonSegments";
 import { useOpeningPosition } from "./hooks/useOpeningPosition";
+import { useReadingPosition } from './hooks/useReadingPosition';
+import { registerNormalClose } from './lib/normalClose';
 import { useSpeakerFilterReadingPosition } from './hooks/useSpeakerFilterReadingPosition';
 import { SegmentMergeDialog } from './components/SegmentMergeDialog';
 import { SegmentJump } from './components/SegmentJump';
@@ -507,6 +511,14 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setProcessMessage,
   });
   const comparison = useVersionComparison(dirHandle, selectedAudio ?? "", models, activeModelId, activeModel?.activeEditId, viewingOriginal, transcriptPanelRef);
+  const readingProjectId = projectProps.connectorProject?.()?.data.id;
+  const readingVersion = viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId;
+  const readingScope = useMemo(() => dirHandle && selectedAudio && activeModelId && readingVersion ? {
+    directory: dirHandle, audio: selectedAudio, model: activeModelId,
+    version: readingVersion,
+    project: readingProjectId, recording: projectProps.projectRecordingId,
+  } : null, [dirHandle, selectedAudio, activeModelId, readingVersion, readingProjectId, projectProps.projectRecordingId]);
+  const persistReadingPosition = useReadingPosition(readingScope, transcriptPanelRef, hasLoadedTranscript && saveStatus !== 'loading', transcript?.segments ?? [], !!projectProps.initialSegmentTarget);
   useEffect(() => {
     const toggle = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.code === "KeyY" && !event.isComposing && !event.repeat &&
@@ -620,7 +632,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
 
 
-  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); }; }, [flushPendingSave]);
+  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); persistReadingPosition(); }; }, [flushPendingSave, persistReadingPosition]);
+  useLayoutEffect(() => registerNormalClose(async () => {
+    try {
+      if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy'));
+      await flushPendingSave(); persistReadingPosition();
+    } catch (error) { setLoadError(error instanceof Error ? error.message : msg('tags.saveFailed')); throw error; }
+  }), [flushPendingSave, persistReadingPosition]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
   const [aiIdentity, setAIIdentity] = useState('0');
@@ -732,6 +750,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const tags=useProjectTags({library:preparedTagLibrary.library,storage:projectProps.tagStorage,recordingId:projectProps.projectRecordingId,modelId:activeModelId,editId:viewingOriginal?'original':activeModel?.activeEditId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,flush:flushPendingSave,
     undoActionKey,redoActionKey,publish:(value,action,key)=>{if(action==='commit'){commit(()=>value,key);if(metadata)setPersistedContent({transcript:value,metadata})}else if(action==='undo')undo();else redo();setSaveStatus('saved')},
     lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+  const presentTags = useMemo(() => createTagPresenter(), []);
+  const segmentTagView = presentTags(tags.library, transcript?.segments ?? []);
+  const tagCounts = useMemo(() => tagSegmentCounts({ schemaVersion: 3, tags: segmentTagView.available, groups: [] }, transcript?.segments ?? []), [segmentTagView.available, transcript?.segments]);
+  const currentTagCount = useCallback((id: string) => tagCounts.get(id) ?? 0, [tagCounts]);
   useLayoutEffect(() => { tagLibrarySaving.current = tags.busy; }, [tags.busy]);
   const dropTagToSegment = async (tagId:string,segmentId:string) => {
     if(protectedReadOnly || tags.busy || !tags.library.tags.some(tag=>tag.id===tagId)) return;
@@ -969,6 +991,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const segmentActions = useStableCallbacks({
     setSelectedSegmentId, seekTo, recordEditorCursor, addSpeaker, updateSegment,
     removeSegment, splitSegment, mergeWithNext, handleEditorKeydown,
+    copySegment, dragSegment, nativeDragSegment,
     onComparisonDecision: (decision: Parameters<typeof applyComparisonDecision>[1]) =>
       mutateTranscript(current => applyComparisonDecision(current, decision, comparison.baseline?.segments)),
   });
@@ -1406,7 +1429,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                     {msg('App.m0048')}</button>
                   {!selectedAudio && <p className="empty-transcript__hint">{msg('App.m0049')}</p>}
             </section>
-          )) : <div className="segment-list">
+          )) : <div className="segment-list"><TagWritingContext.Provider value={tags.busy}><TagCandidatesContext.Provider value={segmentTagView.available}>
             {renderedRows.map(({segment,deleted,before}) => deleted ? (
               <article className="comparison-deleted-segment" key={`deleted:${segment.id}`}>
                 <span>{transcript.timeAligned === false ? msg('App.m0050') : msg('App.m0051', { v0: formatTime(segment.start) })}</span><del>{segment.text}</del>
@@ -1421,20 +1444,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
               </article>
             ) : (
               <SegmentItem
-                tags={tagsForSegment(segment,tags.library)}
-                availableTags={tags.library.tags}
+                tags={segmentTagView.segments.get(segment.id)!.tags}
                 tagDropTarget={tagDropSegment===segment.id}
-                tagPaths={Object.fromEntries(tags.library.tags.map(tag=>[tag.id,tagPath(tags.library,tag.id)]))}
+                tagPaths={segmentTagView.segments.get(segment.id)!.paths}
                 onAddTagId={tags.attach}
-                tagRenameEnabled={!tagFilterEnabled && !protectedReadOnly}
+                tagRenameEnabled={segmentTagView.segments.get(segment.id)!.tags.length > 0 && !tagFilterEnabled && !protectedReadOnly}
                 onRenameTag={projectProps.tagStorage?tags.renamePath:undefined}
-                tagWriteDisabled={tags.busy}
                 onAddTag={projectProps.tagStorage?tags.add:undefined}
                 registerTagEntry={registerTagEntry}
                 onRemoveTag={tags.remove}
-                copySegment={copySegment}
-                dragSegment={dragSegment}
-                nativeDragSegment={hasNativeSegmentDrag() ? nativeDragSegment : undefined}
                 timeAligned={transcript.timeAligned}
                 key={`${selectedAudio}:${activeEditKey}:${viewingOriginal}:${segment.id}`}
                 segment={segment}
@@ -1442,6 +1460,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 comparisonBase={comparison.base}
                 comparisonAccepted={before !== undefined && transcript.comparisonReviews?.[comparisonReviewKey(comparison.base,segment.id)]?.before === before ? transcript.comparisonReviews[comparisonReviewKey(comparison.base,segment.id)].accepted : undefined}
                 {...segmentActions}
+                nativeDragSegment={hasNativeSegmentDrag() ? segmentActions.nativeDragSegment : undefined}
                 index={segmentIndices.get(segment.id) ?? -1}
                 totalSegments={transcript.segments.length}
                 speakers={transcript.speakers}
@@ -1456,7 +1475,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 editingRef={editingRef}
               />
             ))}
-          </div>}
+          </TagCandidatesContext.Provider></TagWritingContext.Provider></div>}
         </section>
         </main>
 
@@ -1474,7 +1493,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.collection.tagIds.length}
-          tagsPanel={projectProps.tagStorage?<TagsPanel library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id,tags.library):0} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/>:undefined}
+          tagsPanel={projectProps.tagStorage?<TagsPanel library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={currentTagCount} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly||tags.busy}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}

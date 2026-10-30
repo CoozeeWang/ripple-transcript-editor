@@ -6,11 +6,14 @@ import { projectTagCatalog, validateTagCollection, versionTagCollection, type Ta
 import type { TagLibrary } from './tags';
 
 export interface CurrentTagVersion { recordingId: string; modelId: string; editId: string; transcript: Transcript }
+/** Current-version changes cannot modify shared definitions; additions may only append entities. */
+export type TagTransactionScope = 'project' | 'current' | 'additions';
 interface StoredConsumer extends TagConsumer { path: string[]; raw: string; readOnly: boolean }
 interface TagFields { collection: Transcript['tagCollection']; segments: [string, string[] | undefined][] }
 export interface TagTransactionReceipt {
     beforeLibrary: TagLibrary; afterLibrary: TagLibrary;
     versions: { path: string[]; before: TagFields; after: TagFields }[];
+    scope?: TagTransactionScope;
 }
 export interface ProjectTagChange {
     library: TagLibrary;
@@ -21,7 +24,7 @@ const fields = (transcript: Transcript): TagFields => ({ collection: transcript.
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const safe = (name: string) => !!name && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !Array.from(name).some(char=>char.charCodeAt(0)<32);
 
-function recordingSources(project: OpenProject): { session: ProjectInterview; recording: ProjectRecording }[] {
+function recordingSources(project: OpenProject, include: (session: ProjectInterview, recording: ProjectRecording) => boolean = () => true): { session: ProjectInterview; recording: ProjectRecording }[] {
     const result = project.data.interviews.flatMap(session => session.recordings.map(recording => ({ session, recording })));
     for (const trash of project.data.trash ?? []) {
         const session = project.data.interviews.find(session => session.id === trash.interviewId);
@@ -33,6 +36,7 @@ function recordingSources(project: OpenProject): { session: ProjectInterview; re
     }
     const seen = new Set<string>();
     return result.filter(({ session, recording }) => {
+        if (!include(session, recording)) return false;
         const key = `${session.id}:${recording.manuscriptDirectory ?? stemOf(recording.file)}`;
         if (seen.has(key)) return false; seen.add(key); return true;
     }).sort((a, b) => a.recording.id.localeCompare(b.recording.id));
@@ -40,8 +44,13 @@ function recordingSources(project: OpenProject): { session: ProjectInterview; re
 
 /** Hold every version directory in stable order, including versions in recoverable project trash. */
 async function withConsumers<T>(project: OpenProject, current: CurrentTagVersion | null,
-    work: (consumers: StoredConsumer[]) => Promise<T>): Promise<T> {
-    const sources = recordingSources(project), consumers: StoredConsumer[] = [], seen = new Set<string>();
+    work: (consumers: StoredConsumer[]) => Promise<T>, selection?: { currentOnly?: boolean; paths?: readonly string[][] }): Promise<T> {
+    const paths = selection?.paths && new Set(selection.paths.map(path => JSON.stringify(path)));
+    const folders = selection?.paths && new Set(selection.paths.map(path => `${path[1]}:${path[2]}`));
+    const sources = recordingSources(project, (session, recording) =>
+        (!selection?.currentOnly || recording.id === current?.recordingId) &&
+        (!folders || folders.has(`${session.id}:${recording.manuscriptDirectory ?? stemOf(recording.file) + '.transcript'}`)));
+    const consumers: StoredConsumer[] = [], seen = new Set<string>();
     async function next(index: number): Promise<T> {
         if (index === sources.length) return work(consumers);
         const { session, recording } = sources[index];
@@ -52,14 +61,16 @@ async function withConsumers<T>(project: OpenProject, current: CurrentTagVersion
                     const versions = [...(model.original ? [{ id: 'original', file: model.original, label: model.label ?? model.id, readOnly: true }] : []),
                         ...model.edits.map(edit => ({ id: edit.id, file: edit.file, label: edit.label ?? edit.id, readOnly: !!model.designatedOriginal }))];
                     for (const version of versions) {
+                        const active = current && recording.id === current.recordingId && model.id === current.modelId && version.id === current.editId;
+                        if (selection?.currentOnly && !active) continue;
                         if (!safe(version.file) || !safe(container.name)) throw Error('tag_transaction_invalid_version_file');
                         const path = ['interviews', session.id, container.name, version.file], identity = JSON.stringify(path);
+                        if (paths && !paths.has(identity)) continue;
                         if (seen.has(identity)) continue; seen.add(identity);
                         const raw = await readTagFile(project.directory, path);
                         if (raw === null) throw Error('tag_consumer_version_unavailable');
                         const parsed = JSON.parse(raw) as { transcript?: Transcript };
                         if (!parsed.transcript || !Array.isArray(parsed.transcript.segments)) throw Error('tag_consumer_version_unavailable');
-                        const active = current && recording.id === current.recordingId && model.id === current.modelId && version.id === current.editId;
                         const transcript = active ? current.transcript : parsed.transcript;
                         consumers.push({ id: `${recording.id}:${model.id}:${version.id}`, label: `${recording.name} · ${version.label}`,
                             transcript, path, raw, readOnly: version.readOnly });
@@ -88,7 +99,8 @@ function versionPatch(consumer: StoredConsumer, next: TagFields): TagFilePatch {
 
 /** Caller flushes the active editor first and holds human/AI navigation guards until publication. */
 export async function transactProjectTags(project: OpenProject, current: CurrentTagVersion,
-    operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange | Promise<ProjectTagChange>): Promise<{
+    operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange | Promise<ProjectTagChange>,
+    scope: TagTransactionScope = 'project'): Promise<{
         project: OpenProject; transcript: Transcript; receipt: TagTransactionReceipt; changed: boolean;
     }> {
     return withProjectLock(project.data.id, async () => {
@@ -107,6 +119,12 @@ export async function transactProjectTags(project: OpenProject, current: Current
                 tagCollection: versionTagCollection(consumer.transcript, source) } }));
             const result = await operation(library, consumers, currentId);
             const nextLibrary = projectTagCatalog(result.library);
+            // The fast path is an explicit capability, never a heuristic that can skip a shared edit's preflight.
+            if (scope === 'current' && !same(library, nextLibrary)) throw Error('tag_transaction_scope_violation');
+            if (scope === 'additions') {
+                const retained = { ...nextLibrary, tags: nextLibrary.tags.filter(tag => library.tags.some(old => old.id === tag.id)) };
+                if (!same(library, retained)) throw Error('tag_transaction_scope_violation');
+            }
             if (new Set(result.consumers.map(consumer => consumer.id)).size !== stored.length) throw Error('tag_transaction_missing_consumer');
             const changed: TagTransactionReceipt['versions'] = [], patches: TagFilePatch[] = [];
             for (const previous of stored) {
@@ -120,7 +138,7 @@ export async function transactProjectTags(project: OpenProject, current: Current
                     changed.push({ path: previous.path, before, after }); patches.push(versionPatch(previous, after));
                 }
             }
-            const receipt = { beforeLibrary: source, afterLibrary: nextLibrary, versions: changed };
+            const receipt = { beforeLibrary: source, afterLibrary: nextLibrary, versions: changed, scope };
             const transcript = result.consumers.find(consumer => consumer.id === currentId)!.transcript;
             if (!patches.length && same(source, nextLibrary)) return { project, transcript, receipt, changed: false };
             const nextData = { ...data, tagLibrary: nextLibrary, revision: data.revision + 1 };
@@ -128,7 +146,7 @@ export async function transactProjectTags(project: OpenProject, current: Current
             patches.push({ path: ['ripple-project.json'], before: index, after: afterIndex });
             await commitTagFileTransaction(project.directory, patches);
             return { project: { ...project, data: nextData }, transcript, receipt, changed: true };
-        });
+        }, scope === 'project' ? undefined : { currentOnly: true });
     });
 }
 
@@ -151,6 +169,6 @@ export async function restoreProjectTagTransaction(project: OpenProject, receipt
             patches.push({ path: ['ripple-project.json'], before: index, after: JSON.stringify(next, null, 2) });
             await commitTagFileTransaction(project.directory, patches);
             return { ...project, data: next };
-        });
+        }, receipt.scope && receipt.scope !== 'project' ? { paths: receipt.versions.map(version => version.path) } : undefined);
     });
 }

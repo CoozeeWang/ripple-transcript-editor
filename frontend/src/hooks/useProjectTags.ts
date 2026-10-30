@@ -4,11 +4,11 @@ import {msg} from '../i18n';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
 import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
-import type { CurrentTagVersion, ProjectTagChange, TagTransactionReceipt } from '../lib/projectTagRepository';
+import type { CurrentTagVersion, ProjectTagChange, TagTransactionReceipt, TagTransactionScope } from '../lib/projectTagRepository';
 import type { OpenProject } from '../lib/projectStore';
 
 export interface TagStorage {
-    transact: (current: CurrentTagVersion, operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange) => Promise<{
+    transact: (current: CurrentTagVersion, operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope?: TagTransactionScope) => Promise<{
         project: OpenProject; transcript: Transcript; receipt: TagTransactionReceipt; changed?: boolean;
     }>;
     restore: (receipt: TagTransactionReceipt, redo: boolean) => Promise<OpenProject>;
@@ -54,7 +54,7 @@ export function useProjectTags(o: Options) {
         const prompt: MergePrompt = { request, finish: accepted => { mergeRef.current = null; setMergePrompt(null); resolve(accepted); } };
         mergeRef.current = prompt; setMergePrompt(prompt);
     });
-    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange) => {
+    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope: TagTransactionScope = 'project') => {
         let current = latest.current;
         if (current.readOnly || pending.current || !current.storage) throw Error('tag_write_unavailable');
         const context = current.context;
@@ -69,11 +69,11 @@ export function useProjectTags(o: Options) {
             const version = { recordingId: current.recordingId, modelId: current.modelId, editId: current.editId, transcript: current.transcript };
             const beforeAnchor = tagHistoryAnchor(current.transcript);
             let result;
-            try { result = await current.storage.transact(version, (library, consumers, id) => operation(false, library, consumers, id)); }
+            try { result = await current.storage.transact(version, (library, consumers, id) => operation(false, library, consumers, id), scope); }
             catch (error) {
                 if (!(error instanceof TagMergeRequired)) throw error;
                 if (!await confirmMerge(error)) throw Error('tag_operation_cancelled',{cause:error});
-                result = await current.storage.transact(version, (library, consumers, id) => operation(true, library, consumers, id));
+                result = await current.storage.transact(version, (library, consumers, id) => operation(true, library, consumers, id), scope);
             }
             if (!mounted.current || latest.current.context !== context) throw Error('tag_context_changed_after_save');
             if(result.changed===false)return result;
@@ -88,6 +88,7 @@ export function useProjectTags(o: Options) {
         } finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     }, []);
     const change = useCallback(async (next: TagLibrary) => {
+        const local = JSON.stringify(projectTagCatalog(next)) === JSON.stringify(projectTagCatalog(latest.current.library ?? EMPTY));
         await run((_merge, _library, consumers, currentId) => {
             const library = projectTagCatalog(next), valid = new Set(library.tags.map(tag => tag.id));
             return { library, consumers: consumers.map(consumer => {
@@ -97,9 +98,12 @@ export function useProjectTags(o: Options) {
                 const collection = admitTags(library, retained, [] , consumer.label);
                 return { ...consumer, transcript: { ...consumer.transcript,
                     tagCollection: consumer.id === currentId ? collectionFromLibrary(next, collection, consumer.label) : collection,
-                    segments: consumer.transcript.segments.map(segment => ({ ...segment, tagIds: segment.tagIds?.filter(id => valid.has(id)) })) } };
+                    segments: consumer.transcript.segments.map(segment => {
+                        const ids = segment.tagIds?.filter(id => valid.has(id));
+                        return ids?.length === segment.tagIds?.length ? segment : { ...segment, tagIds: ids };
+                    }) } };
             }) };
-        });
+        }, local ? 'current' : 'project');
     }, [run]);
     const create = useCallback(async (raw: string, existingId?: string, segmentId?: string) => {
         let created = '';
@@ -113,14 +117,14 @@ export function useProjectTags(o: Options) {
                 ...consumer, transcript: { ...(segmentId ? setSegmentTag(consumer.transcript, segmentId, created, true) : consumer.transcript),
                     tagCollection: admitTags(result.library, consumer.transcript.tagCollection!, [created], consumer.label) },
             }) };
-        });
+        }, 'additions');
         return created;
     }, [run]);
     const add = useCallback(async (segmentId: string, raw: string) => { if (normalizeTagName(raw)) await create(raw, undefined, segmentId); }, [create]);
     const attach = useCallback(async (segmentId: string, id: string) => { await create('', id, segmentId); }, [create]);
     const remove = useCallback((segmentId: string, id: string) => {
         return run((_merge, library, consumers, currentId) => ({ library, consumers: consumers.map(consumer => consumer.id !== currentId ? consumer
-            : { ...consumer, transcript: setSegmentTag(consumer.transcript, segmentId, id, false) }) })).catch(() => {});
+            : { ...consumer, transcript: setSegmentTag(consumer.transcript, segmentId, id, false) }) }), 'current').catch(() => {});
     }, [run]);
     const renamePath = useCallback(async (id: string, path: string) => {
         try { await run((merge, library, consumers) => changeSharedTag(library, id, path, consumers, merge)); }
@@ -139,9 +143,9 @@ export function useProjectTags(o: Options) {
     }, [run]);
     const removeCurrent = useCallback(async(id:string)=>{
         await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id!==currentId?consumer:
-            {...consumer,transcript:removeVersionTagBranch(library,consumer.transcript,id)})}));
+            {...consumer,transcript:removeVersionTagBranch(library,consumer.transcript,id)})}), 'current');
     },[run]);
-    const anchor = tagHistoryAnchor(o.transcript), canUndo = !!past.length && past.at(-1)!.afterAnchor === anchor && o.undoActionKey===past.at(-1)!.key,
+    const anchor = useMemo(() => tagHistoryAnchor(o.transcript), [o.transcript]), canUndo = !!past.length && past.at(-1)!.afterAnchor === anchor && o.undoActionKey===past.at(-1)!.key,
         canRedo = !!future.length && future.at(-1)!.beforeAnchor === anchor && o.redoActionKey===future.at(-1)!.key;
     const history = async (redo: boolean) => {
         const current = latest.current, entry = (redo ? future : past).at(-1);

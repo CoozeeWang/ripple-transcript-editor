@@ -331,10 +331,10 @@ export function ProjectWorkspace() {
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App registerSegmentLinkReceiver={registerLinkReceiver} onOpenSegmentLink={openSegmentLink} initialSegmentTarget={linkTarget ?? undefined} initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}:${linkOpenSequence}`} projectDirectory={editor.directory}
     tagLibrary={project.data.tagLibrary} tagStorage={{
-      transact:async(version,operation)=>{
+      transact:async(version,operation,scope)=>{
         if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
         const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
-        const result=await transactProjectTags(snapshot,version,operation);await publish(result.project);return result;
+        const result=await transactProjectTags(snapshot,version,operation,scope);if(result.changed)await publish(result.project);return result;
       },
       restore:async(receipt,redo)=>{
         if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));

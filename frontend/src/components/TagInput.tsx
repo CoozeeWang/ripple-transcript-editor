@@ -1,10 +1,11 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useId, useLayoutEffect, useRef, useState } from 'react';
+import { TagCandidatesContext } from '../lib/tagCandidates';
 import { createPortal } from 'react-dom';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { TagPill } from './TagPill';
 import { msg } from '../i18n';
 import { tagPath, normalizeTagName, sortTags, suggestTags, type ProjectTag } from '../lib/tags';
-export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds = [], libraryMode = false, disabled = false }: {
+export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assignedIds = [], libraryMode = false, disabled = false }: {
     libraryMode?:boolean;
     disabled?:boolean;
     onCommit: (name: string, tagId?:string) => void | Promise<void>;
@@ -12,6 +13,7 @@ export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds =
     availableTags?: readonly ProjectTag[];
     assignedIds?: readonly string[];
 }) {
+    const candidates = useContext(TagCandidatesContext), availableTags = suppliedTags ?? candidates;
     const [value, setValue] = useState(''),[submitting,setSubmitting]=useState(false),[focused,setFocused]=useState(true), [error, setError] = useState(''), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), pending=useRef(false),restoreCommit=useRef(false), id = useId();
     const submit=(name:string,id?:string)=>{
         if(pending.current||disabled)return;

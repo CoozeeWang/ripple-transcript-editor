@@ -34,7 +34,7 @@ export function ProjectPreferenceSettings() {
       </label>)}</div>
     </section>
     <section className="settings-block">
-      <div className="settings-heading"><div><h3>{msg('ProjectPreferenceSettings.m0775')}</h3><p>{msg('ProjectPreferenceSettings.m0776')}</p></div></div>
+      <div className="settings-heading"><div><h3>{msg('ProjectPreferenceSettings.m0775')}</h3></div></div>
       <div className="settings-options">
         <label className="settings-option"><input type="radio" name="project-location" disabled={busy} checked={!fixed} onChange={() => { setFixed(false); setLocation(''); setError(''); saveBooleanPreference(FIXED_PROJECT_LOCATION, false); }}/><span>{msg('ProjectPreferenceSettings.m0777')}</span></label>
         <div className="settings-location-option">

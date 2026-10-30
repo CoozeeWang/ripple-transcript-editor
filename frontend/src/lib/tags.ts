@@ -111,7 +111,9 @@ export function countTaggedSegments(transcript: Transcript, tagId: string, libra
 export function setSegmentTag(transcript: Transcript, segmentId: string, tagId: string, enabled: boolean): Transcript {
     if (!identity(tagId))
         throw new Error('invalid_tag_identity');
-    return { ...transcript, segments: transcript.segments.map(segment => segment.id !== segmentId ? segment : { ...segment, tagIds: enabled ? [...new Set([...segmentTagIds(segment), tagId])] : segmentTagIds(segment).filter(id => id !== tagId) }) };
+    const target = transcript.segments.find(segment => segment.id === segmentId);
+    if (!target || segmentTagIds(target).includes(tagId) === enabled) return transcript;
+    return { ...transcript, segments: transcript.segments.map(segment => segment !== target ? segment : { ...segment, tagIds: enabled ? [...segmentTagIds(segment), tagId] : segmentTagIds(segment).filter(id => id !== tagId) }) };
 }
 export type TagFilter = string | { ids: readonly string[]; mode: 'and' | 'or'; scopeIds?: Readonly<Record<string, readonly string[]>> } | null;
 export function matchesTagFilter(segment: Segment, filter: TagFilter): boolean {

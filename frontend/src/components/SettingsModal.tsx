@@ -129,7 +129,7 @@ export function SettingsModal(props: SettingsModalProps) {
             </section>
             <ProjectPreferenceSettings />
             <section className="settings-block">
-              <div className="settings-heading"><div><h3>{msg('SettingsModal.m0980')}</h3><p>{msg('SettingsModal.m0981')}</p></div></div>
+              <div className="settings-heading"><div><h3>{msg('SettingsModal.m0980')}</h3></div></div>
               <label className="settings-option"><input className="ripple-checkbox" type="checkbox" checked={restoreInterview} onChange={event => {
                 setRestoreInterview(event.target.checked); saveBooleanPreference(RESTORE_PROJECT_INTERVIEW, event.target.checked);
               }}/><span>{msg('SettingsModal.m0982')}</span></label>
@@ -146,7 +146,6 @@ export function SettingsModal(props: SettingsModalProps) {
               <div className="settings-heading">
                 <div>
                   <h3>{msg('SettingsModal.m0984')}</h3>
-                  <p>{msg('SettingsModal.m0985')}</p>
                 </div>
               </div>
               <div className="settings-grid">

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { IS_MAC } from '../lib/format';
 import { type ProjectTag, type TagLibrary, type TagGroup, moveTagGroup, removeTagGroup, transferTagGroup, tagTreeRows, tagAncestors, tagPath, descendantTagIds, removeTagBranch, suggestTags } from '../lib/tags';
@@ -51,7 +51,12 @@ export function TagsPanel(p: Props) {
     const clicks = useRef(new Map<string, ReturnType<typeof setTimeout>>()), description = useId();
     const latest = useRef(p); useLayoutEffect(() => { latest.current = p; });
     const locked = p.readOnly || busy || !!p.loadError, dragEnabled = !locked && !p.filterEnabled;
-    const admitted = new Set(p.currentTagIds), allRows = tagTreeRows(p.library, undefined, 'name', direction);
+    const admitted = new Set(p.currentTagIds), allRows = useMemo(() => tagTreeRows(p.library, undefined, 'name', direction), [p.library, direction]);
+    const tree = useMemo(() => new Map(p.library.tags.map(tag => [tag.id, {
+        ancestors: tagAncestors(p.library, tag.id), descendants: descendantTagIds(p.library, tag.id),
+    }])), [p.library]);
+    const matches = useMemo(() => query.trim() ? new Set(suggestTags(p.library.tags, query)
+        .flatMap(tag => [tag.id, ...tree.get(tag.id)!.ancestors.map(parent => parent.id)])) : null, [p.library, query, tree]);
     const levelMembers = scope === 'project' ? undefined : admitted;
     const showCount = view === 'level' && scope === 'current';
     const scopeIds = allRows.filter(row => !levelMembers || levelMembers.has(row.tag.id)).map(row => row.tag.id);
@@ -166,9 +171,10 @@ export function TagsPanel(p: Props) {
         void operation?.catch(error => setError(tagErrorMessage(error)));
     }
     function row(tag: ProjectTag, members?: ReadonlySet<string>, group?: string, guide?: TagGuide) {
-        const depth = tagAncestors(p.library, tag.id).length, descendants = descendantTagIds(p.library, tag.id), key = tagKey(tag.id, group);
+        const depth = tree.get(tag.id)!.ancestors.length, descendants = tree.get(tag.id)!.descendants, key = tagKey(tag.id, group);
         const parent = descendants.some(id => id !== tag.id && (!members || members.has(id)));
-        const selected = p.filterEnabled && p.filter.includes(tag.id), inherited = p.filterEnabled && p.filter.some(id => id !== tag.id && descendantTagIds(p.library, id).includes(tag.id));
+        const selected = p.filterEnabled && p.filter.includes(tag.id), inherited = p.filterEnabled && p.filter.some(id => id !== tag.id && tree.get(id)?.descendants.includes(tag.id));
+        const count = showCount ? p.currentCount(tag.id) : 0;
         const canBegin = (time: number) => time >= suppress.current && !gesture.current;
         const hint = msg(group ? 'tags.dragGroupTag' : 'tags.dragLevelTag', { key: IS_MAC ? '⌘' : 'Ctrl', copyKey:IS_MAC?'⌘⇧':'Ctrl+Shift' });
         return <div key={tag.id} className={'tag-tree-entry' + (selected || inherited ? ' is-inherited-region' : '')}>
@@ -179,7 +185,7 @@ export function TagsPanel(p: Props) {
                         onToggle={() => toggleTag(tag.id, group)} onSelect={() => p.onFilter(tag.id)} canBegin={canBegin} hint={hint} dragEnabled={dragEnabled} modifier={modifier}
                         buttonProps={{ onPointerDown: event => start(event, 'tag', tag.id, group ?? null), onPointerMove: move, onPointerUp: event => finish(event), onPointerCancel: event => finish(event, false) }}
                         onRemove={group && group !== 'ungrouped' ? () => void save({ ...p.library, tags: p.library.tags.map(item => item.id === tag.id ? { ...item, groupIds: item.groupIds.filter(id => id !== group) } : item) }).catch(() => {}) : undefined}/></span>
-                    {showCount && <span className="tag-count" aria-label={msg('tags.currentCount', { count: p.currentCount(tag.id) })}>{p.currentCount(tag.id)}</span>}
+                    {showCount && <span className="tag-count" aria-label={msg('tags.currentCount', { count })}>{count}</span>}
                     {!group ? <TagDeleteControl name={tag.name} scope={scope} count={scope === 'project' ? descendants.length : descendants.filter(id=>admitted.has(id)).length} filterEnabled={p.filterEnabled} disabled={locked || scope === 'current' && !p.onRemoveCurrent}
                         onDelete={() => setModal({ type: 'delete', id: tag.id, scope })}/>
                         : <span className="library-action-slot"/>}
@@ -190,8 +196,7 @@ export function TagsPanel(p: Props) {
     }
     function rowsFor(members?: ReadonlySet<string>, group?: string) {
         let rows = allRows.filter(({ tag }) => !members || members.has(tag.id));
-        const matches = query.trim() ? new Set(suggestTags(p.library.tags, query).flatMap(tag => [tag.id, ...tagAncestors(p.library, tag.id).map(tag => tag.id)])) : null;
-        rows = rows.filter(({ tag }) => matches ? matches.has(tag.id) : p.filterEnabled || !tagAncestors(p.library, tag.id).some(ancestor => (!members || members.has(ancestor.id)) && foldedTags.has(tagKey(ancestor.id, group))));
+        rows = rows.filter(({ tag }) => matches ? matches.has(tag.id) : p.filterEnabled || !tree.get(tag.id)!.ancestors.some(ancestor => (!members || members.has(ancestor.id)) && foldedTags.has(tagKey(ancestor.id, group))));
         const guides = tagTreeGuides(p.library, rows.map(row => row.tag.id), members);
         return rows.map(({ tag }) => row(tag, members, group, guides.get(tag.id)));
     }

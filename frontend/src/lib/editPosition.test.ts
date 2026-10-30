@@ -8,10 +8,10 @@ const transcript: Transcript = {audio:{filename:"test.wav",duration:20},speakers
   {id:"b",text:"乙",speaker_id:"s",start:10,end:20},
 ],lastEditedSegmentId:"b"};
 afterEach(() => localStorage.clear());
-it("restores the saved editing segment only when enabled", () => {
+it("does not confuse the edited segment with the reading viewport", () => {
   expect(openingSegmentId(transcript)).toBe("a");
   saveBooleanPreference(RESTORE_EDIT_POSITION_KEY,true);
-  expect(openingSegmentId(JSON.parse(JSON.stringify(transcript)))).toBe("b");
+  expect(openingSegmentId(JSON.parse(JSON.stringify(transcript)))).toBe("a");
   saveBooleanPreference(RESTORE_EDIT_POSITION_KEY,false);
   expect(openingSegmentId(transcript)).toBe("a");
 });

@@ -40,3 +40,22 @@ it('forwards the native open-project action to the workspace once', async () => 
   openRecent?.({payload:'synthetic-one'});
   expect((receivedRecent.mock.calls[0][0] as CustomEvent<string>).detail).toBe('synthetic-one');
 });
+
+it('waits for saves before normal close and cancels closing on failure', async () => {
+  const { registerNormalClose } = await import('./normalClose');
+  let close: (() => void) | undefined;
+  const invoke = vi.fn(async () => true), listen = vi.fn(async (name: string, callback: () => void) => {
+    if (name === 'ripple-normal-close') close = callback;
+    return vi.fn();
+  });
+  Object.assign(window, { __TAURI__: { core: { invoke }, event: { listen } } });
+  await installDesktopRuntime();
+  let finish: () => void = () => {};
+  const release = registerNormalClose(() => new Promise<void>(resolve => { finish = resolve; }));
+  close?.(); await Promise.resolve(); expect(invoke).not.toHaveBeenCalledWith('finish_normal_close', expect.anything());
+  finish(); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(invoke).toHaveBeenCalledWith('finish_normal_close', { allow: true }); release();
+  const cancel = registerNormalClose(async () => { throw Error('synthetic save failed'); });
+  close?.(); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(invoke).toHaveBeenLastCalledWith('finish_normal_close', { allow: false }); cancel();
+});
