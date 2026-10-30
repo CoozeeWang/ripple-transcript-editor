@@ -52,6 +52,7 @@
   --color-success: #6c8758;
   --color-original-badge: #ad5c4c;
   --color-danger: #b4232a;
+  --color-filter-active: var(--color-danger);
   --color-danger-bg: #fdf3f3;
   --color-danger-border: #e3b4b4;
   --color-warning: #803d31;
@@ -1488,6 +1489,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
   max-height: 50%;
   overflow-y: auto;
   padding: 30px clamp(28px, 4vw, 60px) 0;
+  padding-inline-end: calc(clamp(28px, 4vw, 60px) + var(--transcript-scrollbar-offset, 0px));
 }
 .transcript-panel {
   min-height: 0;
@@ -1507,7 +1509,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .transcript-heading-status { display: flex; align-items: center; gap: 16px; margin-left: auto; flex-wrap: wrap; }
 .transcript-heading-status p { white-space: nowrap; margin: 0; }
 .transcript-heading-status .segment-count { color: var(--color-text-muted); font-size: 0.74rem; }
-.segment-navigation { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.segment-navigation { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin-inline-start: auto; }
 .segment-jump { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--color-text-muted); font: 400 .74rem var(--font-sans); white-space: nowrap; }
 .segment-jump input { box-sizing: border-box; width: 7ch; min-width: 52px; padding: 3px 6px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface-warm); color: var(--color-text); font: inherit; font-variant-numeric: tabular-nums; }
 .segment-jump input:hover:not(:disabled) { border-color: var(--color-border-active); }
@@ -2700,7 +2702,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 
 /* Use the actual reading column, including every sidebar combination. */
 @container transcript (max-width: 620px) {
-  .transcript-header-fixed { padding-inline: 16px; }
+  .transcript-header-fixed { padding-inline-start: 16px; padding-inline-end: calc(16px + var(--transcript-scrollbar-offset, 0px)); }
   .transcript-panel { padding-inline: 16px; }
   .segment { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 8px 12px; }
   .segment-speaker, .segment-speaker:is(:hover, :focus) { grid-column: 1; grid-row: 1; padding-left: 8px; max-width: min(100%, 168px); }

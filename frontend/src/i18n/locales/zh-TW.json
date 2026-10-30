@@ -1941,7 +1941,6 @@
     "deleteTag": "刪除專案標籤",
     "deleteGroup": "刪除群組",
     "deleteTagNotice": "將從整個專案的片段和所有群組中移除此標籤。本文保留，可復原。",
-    "deleteGroupNotice": "刪除此群組，子群組提升一級，標籤和片段標註保留。",
     "members": "同一標籤可在多個群組中。勾選要納入此群組的標籤。",
     "ungrouped": "未分組",
     "add": "新增標籤",
@@ -1967,6 +1966,19 @@
     "sortName": "依名稱排序",
     "sortCount": "依目前稿件片段數排序",
     "export": "匯出",
-    "countLoading": "正在讀取專案計數"
+    "countLoading": "正在讀取專案計數",
+    "deleteGroupTree": "刪除整組",
+    "deleteGroupLevel": "僅刪除此層級",
+    "deleteGroupTreeNotice": "刪除此組及所有子組，僅移除分組結構和組內關係。專案標籤和所有片段標註保留，可復原。",
+    "deleteGroupLevelNotice": "僅刪除此組，子組依原順序提升一級。專案標籤和所有片段標註保留，可復原。",
+    "filterToggle": "標籤篩選",
+    "filterEnabled": "標籤篩選已啟用",
+    "filterDisabled": "標籤篩選已關閉",
+    "suggestions": "現有標籤",
+    "and": "與",
+    "or": "或",
+    "filterMode": "標籤組合方式",
+    "andHint": "同時包含所選標籤",
+    "orHint": "包含任一所選標籤"
   }
 }

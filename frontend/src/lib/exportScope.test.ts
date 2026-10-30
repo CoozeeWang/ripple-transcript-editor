@@ -4,6 +4,12 @@ import type { Transcript } from '../types';
 import { selectExportScope, buildExportModel, renderTxt, renderMarkdown, renderPdfHtml, renderSubtitles, buildJsonPayload, transcriptBlob } from './export';
 const source: Transcript = { audio: { filename: 'synthetic.wav', duration: 3 }, speakers: [{ id: 'a', name: 'Synthetic A' }, { id: 'b', name: 'Synthetic B' }], segments: [{ id: 's1', speaker_id: 'a', text: 'Synthetic hidden', start: 0, end: 1, tagIds: ['tag'] }, { id: 's2', speaker_id: 'b', text: 'Synthetic untagged', start: 1, end: 2 }, { id: 's3', speaker_id: 'b', text: 'Synthetic visible', start: 2, end: 3, tagIds: ['tag'] }] };
 describe('export current version scope', () => {
+    it('uses the same multi-tag AND/OR selector for full results rather than viewport rows',()=>{
+        const multiple={...source,segments:[{...source.segments[0],tagIds:['tag','other']},{...source.segments[1],tagIds:['other']},source.segments[2]]};
+        const hidden=new Set(['a']);expect(()=>selectExportScope(multiple,'visible',hidden,{ids:['tag','other'],mode:'and'})).toThrow();
+        const union=selectExportScope(multiple,'visible',hidden,{ids:['tag','other'],mode:'or'});expect(union.segments.map(segment=>segment.id)).toEqual(['s2','s3']);expect(union.exportSegmentNumbers).toEqual({s1:1,s2:2,s3:3});
+        expect(selectExportScope(multiple,'full',hidden,{ids:['missing'],mode:'and'}).segments).toHaveLength(3);
+    });
     it('keeps full text independent of filters and preserves source ordinals', () => { const full = selectExportScope(source, 'full', new Set(['a']), 'tag'); expect(full.segments).toEqual(source.segments); expect(full.exportSegmentNumbers).toEqual({ s1: 1, s2: 2, s3: 3 }); expect(source).not.toHaveProperty('exportSegmentNumbers'); });
     it('exports the complete speaker/tag intersection with original timing and numbers', async () => {
         const selected = selectExportScope(source, 'visible', new Set(['a']), 'tag'), model = buildExportModel(selected, null);

@@ -1,4 +1,5 @@
 import {TagInput} from './TagInput';
+import {TagPill} from './TagPill';
 import type {ProjectTag} from '../lib/tags';
 import { useSegmentDrag } from "../hooks/useSegmentDrag";
 import { isEditorComposing } from "../lib/editorDrafts";
@@ -24,6 +25,7 @@ import { SegmentTextArea } from "./SegmentTextArea";
  *  所有跨领域状态与操作通过 props 注入。 */
 export interface SegmentItemProps {
   tags?: ProjectTag[];
+  availableTags?: ProjectTag[];
   tagWriteDisabled?:boolean;
   onAddTag?: (segmentId:string,name:string)=>Promise<void>;
   onRemoveTag?: (segmentId:string,id:string)=>void;
@@ -302,7 +304,9 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
           <span draggable={!!(props.dragSegment || props.nativeDragSegment)} onDragStart={exportDrag} title={msg("segmentTransfer.drag", {key: IS_MAC ? '⌘' : 'Ctrl'})} className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
         </div>
         </div>
-        <div className="segment-tag-footer"><div className="segment-tag-items">{props.tags?.map(tag=><span className="tag-pill" key={tag.id} onClick={e=>e.stopPropagation()}><span>{tag.name}</span>{!viewingOriginal&&<button type="button" disabled={props.tagWriteDisabled} aria-label={`${msg('tags.remove')}: ${tag.name}`} onClick={e=>{e.stopPropagation();props.onRemoveTag?.(segment.id,tag.id)}}>×</button>}</span>)}{tagInput&&!viewingOriginal&&<TagInput onCancel={()=>setTagInput(false)} onCommit={name=>{setTagInput(false);void props.onAddTag?.(segment.id,name)}}/>}</div>
+        <div className={'segment-tag-footer' + (tagInput ? ' has-tag-input' : '')}>
+          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} stopPropagation disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
+          {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={()=>setTagInput(false)} onCommit={name=>{setTagInput(false);void props.onAddTag?.(segment.id,name)}}/>}
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
             <>

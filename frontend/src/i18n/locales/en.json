@@ -1941,7 +1941,6 @@
     "deleteTag": "Delete project tag",
     "deleteGroup": "Delete group",
     "deleteTagNotice": "Remove this tag from project segments and every group. Text is kept. You can undo this action.",
-    "deleteGroupNotice": "Delete this group and promote its children. Tags and segment assignments are kept.",
     "members": "A tag can belong to multiple groups. Select the tags for this group.",
     "ungrouped": "Ungrouped",
     "add": "Add tag",
@@ -1967,6 +1966,19 @@
     "sortName": "Sort by name",
     "sortCount": "Sort by current transcript count",
     "export": "Export",
-    "countLoading": "Loading project counts"
+    "countLoading": "Loading project counts",
+    "deleteGroupTree": "Delete group and subgroups",
+    "deleteGroupLevel": "Delete this level only",
+    "deleteGroupTreeNotice": "Delete this group and all subgroups, removing only group structure and membership. Project tags and all segment labels are kept. You can undo this.",
+    "deleteGroupLevelNotice": "Delete only this group. Its subgroups move up one level in their current order. Project tags and all segment labels are kept. You can undo this.",
+    "filterToggle": "Tag filtering",
+    "filterEnabled": "Tag filtering enabled",
+    "filterDisabled": "Tag filtering disabled",
+    "suggestions": "Existing tags",
+    "and": "AND",
+    "or": "OR",
+    "filterMode": "Tag combination",
+    "andHint": "Match every selected tag",
+    "orHint": "Match any selected tag"
   }
 }

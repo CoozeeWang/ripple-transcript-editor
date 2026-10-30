@@ -1,4 +1,4 @@
-import {filteredTagSegments} from './tags';
+import {filteredTagSegments,type TagFilter} from './tags';
 import { msg, interfaceLanguage } from '../i18n';
 import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
@@ -9,7 +9,7 @@ import { nativeDesktopAvailable, saveNativeBlob } from './desktopFs';
 
 /** Export-only ordinal map, never saved back to a manuscript. */
 export type ExportSelection = Transcript & { exportSegmentNumbers?: Record<string,number> };
-export function selectExportScope(source:Transcript,scope:'full'|'visible',hidden:ReadonlySet<string>,tagId:string|null):ExportSelection {
+export function selectExportScope(source:Transcript,scope:'full'|'visible',hidden:ReadonlySet<string>,tagId:TagFilter):ExportSelection {
  const segments=scope==='full'?source.segments:filteredTagSegments(source,hidden,tagId);
  if(!segments.length)throw new Error(msg('tags.empty'));
  return {...source,segments,exportSegmentNumbers:Object.fromEntries(source.segments.map((segment,index)=>[segment.id,index+1]))};

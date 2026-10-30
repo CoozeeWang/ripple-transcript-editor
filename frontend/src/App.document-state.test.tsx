@@ -259,3 +259,50 @@ it('connects the topbar to project-library undo and redo when manuscript history
   expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
  }finally{HTMLDialogElement.prototype.showModal=oldShow;HTMLDialogElement.prototype.close=oldClose;vi.unstubAllGlobals()}
 });
+
+it('turns off only tag filtering, preserves hidden speakers and keeps its switch across sidebar tabs',async()=>{
+ const library:import('./lib/tags').TagLibrary={schemaVersion:1,tags:[{id:'tag-a',name:'Synthetic topic',groupIds:[]}],groups:[]};
+ vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
+ const oldScroll=HTMLElement.prototype.scrollTo;HTMLElement.prototype.scrollTo=vi.fn();
+ try{
+  render(<App tagLibrary={library} saveTagLibrary={async()=>{}}/>);load('Synthetic filtering.wav');
+  const transcript={audio:{filename:'Synthetic filtering.wav',duration:3},speakers:[{id:'a',name:'Hidden speaker'},{id:'b',name:'Visible speaker'}],segments:[
+   {id:'s1',speaker_id:'a',start:0,end:1,text:'Synthetic hidden',tagIds:['tag-a']},
+   {id:'s2',speaker_id:'b',start:1,end:2,text:'Synthetic tagged',tagIds:['tag-a']},
+   {id:'s3',speaker_id:'b',start:2,end:3,text:'Synthetic untagged'},
+  ]};
+  await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:'Synthetic filtering.wav',models:[],activeModelId:''},edited:{kind:'te-edited',audio:'Synthetic filtering.wav',transcript,metadata:local.defaultMetadata('Synthetic filtering')}},'Synthetic filtering.wav')});
+  fireEvent.click(screen.getByRole('button',{name:'隐藏 Hidden speaker'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic topic'}));expect(document.querySelectorAll('.segment')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);expect(screen.queryByText('Synthetic hidden')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic topic'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button',{name:/^批注\s*0$/}));fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));expect(screen.getByRole('button',{name:'标签筛选'}).getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+ }finally{HTMLElement.prototype.scrollTo=oldScroll;vi.unstubAllGlobals()}
+});
+
+it('combines multiple tag IDs with AND/OR, preserves counts and prunes a deleted selection',async()=>{
+ const {useState}=await import('react'),oldShow=HTMLDialogElement.prototype.showModal,oldClose=HTMLDialogElement.prototype.close,oldScroll=HTMLElement.prototype.scrollTo;
+ HTMLDialogElement.prototype.showModal=function(){this.open=true};HTMLDialogElement.prototype.close=function(){this.open=false};HTMLElement.prototype.scrollTo=vi.fn();vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
+ const seed:import('./lib/tags').TagLibrary={schemaVersion:1,tags:[{id:'A',name:'Synthetic A',groupIds:['g1','g2']},{id:'B',name:'Synthetic B',groupIds:['g2']}],groups:[{id:'g1',name:'Group 1',parentId:null},{id:'g2',name:'Group 2',parentId:null}]};
+ function Harness(){const[library,setLibrary]=useState(seed);return <App tagLibrary={library} saveTagLibrary={async next=>setLibrary(next)}/>}
+ try{
+  render(<Harness/>);
+  const transcript={audio:{filename:'Synthetic multi.wav',duration:5},speakers:[{id:'h',name:'Hidden'},{id:'v',name:'Visible'}],segments:[
+   {id:'hidden',speaker_id:'h',start:0,end:1,text:'Synthetic hidden both',tagIds:['A','B']},
+   {id:'only-a',speaker_id:'v',start:1,end:2,text:'Synthetic A only',tagIds:['A']},
+   {id:'both',speaker_id:'v',start:2,end:3,text:'Synthetic both',tagIds:['A','B']},
+   {id:'only-b',speaker_id:'v',start:3,end:4,text:'Synthetic B only',tagIds:['B']},
+   {id:'neither',speaker_id:'v',start:4,end:5,text:'Synthetic neither'},
+  ]};
+  await act(async()=>{await fixture.folder!.onLoaded({url:'',manifest:{schemaVersion:2,audio:'Synthetic multi.wav',models:[],activeModelId:''},edited:{kind:'te-edited',audio:'Synthetic multi.wav',transcript,metadata:local.defaultMetadata('Synthetic multi')}},'Synthetic multi.wav')});
+  fireEvent.click(screen.getByRole('button',{name:/^标签\s*2$/}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic A'}));fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button',{name:'或'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);fireEvent.click(screen.getByRole('button',{name:'隐藏 Hidden'}));expect(document.querySelectorAll('.segment')).toHaveLength(3);
+  fireEvent.click(screen.getByRole('button',{name:'与'}));expect(document.querySelectorAll('.segment')).toHaveLength(1);expect(document.querySelector('.library-tag-row[data-tag-id="A"] .tag-count')?.textContent).toMatch(/^3\//);
+  fireEvent.click(screen.getByRole('button',{name:'分组'}));expect(document.querySelectorAll('.library-filter[aria-pressed="true"]')).toHaveLength(3);expect(document.querySelectorAll('.segment')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(screen.getByRole('button',{name:'与'}).getAttribute('aria-pressed')).toBe('true');expect(document.querySelectorAll('.segment')).toHaveLength(4);
+  fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+  fireEvent.keyDown(screen.getByRole('button',{name:'标签: Synthetic B'}),{key:'F2'});fireEvent.change(screen.getByRole('textbox',{name:'标签'}),{target:{value:'Synthetic renamed B'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'保存'})));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button',{name:'全部'}));fireEvent.click(screen.getByRole('button',{name:'删除项目标签: Synthetic renamed B'}));await act(async()=>fireEvent.click(screen.getByRole('dialog').querySelector('.button--danger')!));expect(document.querySelectorAll('.segment')).toHaveLength(4);expect(screen.queryByRole('button',{name:'标签: Synthetic renamed B'})).toBeNull();
+ }finally{cleanup();HTMLDialogElement.prototype.showModal=oldShow;HTMLDialogElement.prototype.close=oldClose;HTMLElement.prototype.scrollTo=oldScroll;vi.unstubAllGlobals()}
+});

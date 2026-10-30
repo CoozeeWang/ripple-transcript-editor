@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {addInterview,addRecordings,createProject,openProject,recordingDirectory,saveProject,trashProjectInterview,restoreProjectInterview} from './projectStore';
 import {createEdit,createModel,readModelEdit,saveActiveEdit,readModelOriginal} from '../localStore';
+import {removeTagGroup,transferTagGroup} from './tags';
 
 const fileError=(error:unknown)=>{throw (error as NodeJS.ErrnoException).code==='ENOENT'?new DOMException('Synthetic missing file','NotFoundError'):error;};
 
@@ -52,6 +53,18 @@ it('deletes, closes, reopens and restores real synthetic files with byte-identic
  expect(copied!.transcript.segments[0].tagIds).toEqual(['tag-a']);
  await saveActiveEdit(view,recording.file,made.model.id,copy.edit.id,{...copied!,transcript:{...copied!.transcript,segments:copied!.transcript.segments.map(segment=>({...segment,tagIds:['tag-b']}))}});
  project=await saveProject(project,{...project.data,tagLibrary:{schemaVersion:1,tags:[{id:'tag-a',name:'Synthetic original topic',groupIds:[]},{id:'tag-b',name:'Synthetic copied topic',groupIds:[]}],groups:[]}});
+ const defined={...project.data.tagLibrary!,groups:[{id:'parent',name:'Synthetic parent',parentId:null},{id:'child',name:'Synthetic child',parentId:'parent'},{id:'target',name:'Synthetic target',parentId:null}],tags:project.data.tagLibrary!.tags.map(tag=>({...tag,groupIds:['parent','child']}))};
+ project=await saveProject(project,{...project.data,tagLibrary:defined});const manuscriptBytes=await bytes(temporary);
+ for(const scope of ['level','tree'] as const){
+  const changed=removeTagGroup(defined,'parent',scope);project=await saveProject(project,{...project.data,tagLibrary:changed});
+  project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(changed);expect(await bytes(temporary)).toEqual(manuscriptBytes);
+  project=await saveProject(project,{...project.data,tagLibrary:defined});
+ }
+ for(const copy of [false,true]){
+  const changed=transferTagGroup(defined,'tag-a','parent','target',copy);project=await saveProject(project,{...project.data,tagLibrary:changed});
+  project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(changed);expect(await bytes(temporary)).toEqual(manuscriptBytes);
+  project=await saveProject(project,{...project.data,tagLibrary:defined});
+ }
  expect((await readModelOriginal(view,recording.file,made.model.id))!.transcript.segments[0].tagIds).toEqual(['tag-a']);
  expect((await readModelEdit(view,recording.file,made.model.id,made.model.edits[0].id))!.transcript.segments[0].tagIds).toEqual(['tag-a']);
 

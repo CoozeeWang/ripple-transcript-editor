@@ -1941,7 +1941,6 @@
     "deleteTag": "删除项目标签",
     "deleteGroup": "删除分组",
     "deleteTagNotice": "将从整个项目的片段和所有分组中移除此标签。正文保留，可撤销。",
-    "deleteGroupNotice": "删除此组，子组提升一级，标签和片段标注保留。",
     "members": "同一标签可在多个组中。勾选要纳入此组的标签。",
     "ungrouped": "未分组",
     "add": "添加标签",
@@ -1967,6 +1966,19 @@
     "sortName": "按名称排序",
     "sortCount": "按当前稿片段数排序",
     "export": "导出",
-    "countLoading": "正在读取项目计数"
+    "countLoading": "正在读取项目计数",
+    "deleteGroupTree": "删除整组",
+    "deleteGroupLevel": "仅删除此层级",
+    "deleteGroupTreeNotice": "删除此组及全部子组，仅移除分组结构和组内关系。项目标签和所有片段标注保留，可撤销。",
+    "deleteGroupLevelNotice": "仅删除此组，子组按原顺序提升一级。项目标签和所有片段标注保留，可撤销。",
+    "filterToggle": "标签筛选",
+    "filterEnabled": "标签筛选已启用",
+    "filterDisabled": "标签筛选已关闭",
+    "suggestions": "已有标签",
+    "and": "与",
+    "or": "或",
+    "filterMode": "标签组合方式",
+    "andHint": "同时包含所选标签",
+    "orHint": "包含任一所选标签"
   }
 }

@@ -65,6 +65,13 @@ export function sortTags(tags: readonly ProjectTag[], key: 'name' | 'count', dir
 export function segmentTagIds(segment: Segment): string[] {
     return [...new Set(Array.isArray(segment.tagIds) ? segment.tagIds.filter(identity) : [])];
 }
+/** Full substring matching; prefix matches precede infix matches, then normal name/ID order. */
+export function suggestTags(tags: readonly ProjectTag[], input: string, assigned: readonly string[] = []): ProjectTag[] {
+    const query = input.trim().toLowerCase(), excluded = new Set(assigned);
+    if (!query) return [];
+    const matches = sortTags(tags.filter(tag => !excluded.has(tag.id) && tag.name.toLowerCase().includes(query)), 'name', 1, () => 0);
+    return [...matches.filter(tag => tag.name.toLowerCase().startsWith(query)), ...matches.filter(tag => !tag.name.toLowerCase().startsWith(query))];
+}
 /** All read paths ignore dangling IDs. A deleted entity never matches by name. */
 export function tagsForSegment(segment: Segment, library: TagLibrary): ProjectTag[] {
     const ids = new Set(segmentTagIds(segment));
@@ -94,14 +101,48 @@ export function setSegmentTag(transcript: Transcript, segmentId: string, tagId: 
         throw new Error('invalid_tag_identity');
     return { ...transcript, segments: transcript.segments.map(segment => segment.id !== segmentId ? segment : { ...segment, tagIds: enabled ? [...new Set([...segmentTagIds(segment), tagId])] : segmentTagIds(segment).filter(id => id !== tagId) }) };
 }
-export function filteredTagSegments(transcript: Transcript, hiddenSpeakers: ReadonlySet<string>, tagId: string | null): Segment[] {
-    return transcript.segments.filter(segment => !hiddenSpeakers.has(segment.speaker_id) && (!tagId || segmentTagIds(segment).includes(tagId)));
+export type TagFilter = string | { ids: readonly string[]; mode: 'and' | 'or' } | null;
+export function matchesTagFilter(segment: Segment, filter: TagFilter): boolean {
+    if (!filter) return true;
+    const ids = typeof filter === 'string' ? [filter] : [...new Set(filter.ids)];
+    if (!ids.length) return true;
+    const assigned = new Set(segmentTagIds(segment));
+    return typeof filter === 'string' || filter.mode === 'and' ? ids.every(id => assigned.has(id)) : ids.some(id => assigned.has(id));
 }
-export function removeTagGroup(library: TagLibrary, groupId: string): TagLibrary {
+export function filteredTagSegments(transcript: Transcript, hiddenSpeakers: ReadonlySet<string>, filter: TagFilter): Segment[] {
+    return transcript.segments.filter(segment => !hiddenSpeakers.has(segment.speaker_id) && matchesTagFilter(segment, filter));
+}
+export function removeTagGroup(library: TagLibrary, groupId: string, scope: 'level' | 'tree' = 'level'): TagLibrary {
     const group = library.groups.find(group => group.id === groupId);
     if (!group)
         return library;
-    return { ...library, groups: library.groups.filter(group => group.id !== groupId).map(child => child.parentId === groupId ? { ...child, parentId: group.parentId } : child), tags: library.tags.map(tag => ({ ...tag, groupIds: tag.groupIds.filter(id => id !== groupId) })) };
+    const removed = new Set([groupId]);
+    if (scope === 'tree') {
+        for (let changed = true; changed;) {
+            changed = false;
+            for (const child of library.groups) if (child.parentId && removed.has(child.parentId) && !removed.has(child.id)) {
+                removed.add(child.id);
+                changed = true;
+            }
+        }
+    }
+    const children = library.groups.filter(child => child.parentId === groupId);
+    const childIds = new Set(children.map(child => child.id));
+    const groups = scope === 'tree' ? library.groups.filter(item => !removed.has(item.id))
+        : library.groups.flatMap(item => item.id === groupId
+            ? children.map(child => ({ ...child, parentId: group.parentId }))
+            : childIds.has(item.id) ? [] : [item]);
+    return { ...library, groups, tags: library.tags.map(tag => ({ ...tag, groupIds: tag.groupIds.filter(id => !removed.has(id)) })) };
+}
+/** Move only the explicit source membership; copying always reuses the same tag entity. */
+export function transferTagGroup(library: TagLibrary, tagId: string, sourceId: string | null, targetId: string, copy: boolean): TagLibrary {
+    const tag = library.tags.find(tag => tag.id === tagId);
+    if (!tag || sourceId === targetId || !library.groups.some(group => group.id === targetId)) return library;
+    if (sourceId ? !tag.groupIds.includes(sourceId) : tag.groupIds.length > 0) return library;
+    const groupIds = sourceId && !copy ? tag.groupIds.filter(id => id !== sourceId) : [...tag.groupIds];
+    if (!groupIds.includes(targetId)) groupIds.push(targetId);
+    if (groupIds.length === tag.groupIds.length && groupIds.every((id, index) => id === tag.groupIds[index])) return library;
+    return { ...library, tags: library.tags.map(item => item.id === tagId ? { ...item, groupIds } : item) };
 }
 export function moveTagGroup(library: TagLibrary, sourceId: string, targetId: string | null, mode: 'before' | 'after' | 'inside'): TagLibrary {
     const source = library.groups.find(group => group.id === sourceId), target = library.groups.find(group => group.id === targetId);

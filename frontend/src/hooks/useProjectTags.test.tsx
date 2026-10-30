@@ -3,7 +3,7 @@ import { act, renderHook, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { useProjectTags } from './useProjectTags';
-import { emptyTagLibrary, type TagLibrary } from '../lib/tags';
+import { emptyTagLibrary, removeTagGroup, transferTagGroup, type TagLibrary } from '../lib/tags';
 import type { Transcript } from '../types';
 vi.mock('../lib/projectTags', () => ({ projectTagCounts: vi.fn(async () => new Map()) }));
 afterEach(cleanup);
@@ -15,6 +15,20 @@ function setup(fail = false) { const writes = vi.fn(async (library: TagLibrary) 
     context?: string;
 }) => { const [library, setLibrary] = useState(emptyTagLibrary), [transcript, setTranscript] = useState(source); return { ...useProjectTags({ library, save: async (next) => { await writes(next); setLibrary(next); }, project: () => null, recordingId: 'r1', modelId: 'm1', context, transcript, mutate: update => setTranscript(update), readOnly, onError: error, errorMessage: 'Synthetic save failed' }), transcript, rewrap:()=>setTranscript(current=>({...current,lastEditedSegmentId:'s1',segments:current.segments.map(segment=>({...segment,words:[]}))})) }; }, { initialProps: { readOnly: false, context: 'v1' } }); return { ...hook, writes, error }; }
 describe('project tag integration', () => {
+    it.each([false,true])('undoes and redoes tag group transfer copy=%s without changing segment references',async copy=>{
+        const h=setup();await act(()=>h.result.current.add('s1','Topic'));const tag=h.result.current.library.tags[0],transcript=h.result.current.transcript;
+        const source={...h.result.current.library,tags:[{...tag,groupIds:['source']}],groups:[{id:'source',name:'Source',parentId:null},{id:'target',name:'Target',parentId:null}]};
+        await act(()=>h.result.current.change(source));const next=transferTagGroup(source,tag.id,'source','target',copy);await act(()=>h.result.current.change(next));expect(h.result.current.library).toEqual(next);expect(h.result.current.transcript).toBe(transcript);
+        await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(source);await act(()=>h.result.current.redo());expect(h.result.current.library).toEqual(next);expect(h.result.current.transcript).toBe(transcript);
+    });
+    it.each(['tree','level'] as const)('undoes and redoes %s group deletion without changing segment references',async scope=>{
+        const h=setup();await act(()=>h.result.current.add('s1','Topic'));const tag=h.result.current.library.tags[0],transcript=h.result.current.transcript;
+        const source={...h.result.current.library,tags:[{...tag,groupIds:['parent','child']}],groups:[{id:'parent',name:'Parent',parentId:null},{id:'child',name:'Child',parentId:'parent'}]};
+        await act(()=>h.result.current.change(source));await act(()=>h.result.current.change(removeTagGroup(source,'parent',scope)));
+        expect(h.result.current.library.tags[0].id).toBe(tag.id);expect(h.result.current.transcript).toBe(transcript);
+        await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(source);expect(h.result.current.transcript).toBe(transcript);
+        await act(()=>h.result.current.redo());expect(h.result.current.library).toEqual(removeTagGroup(source,'parent',scope));
+    });
     it('persists definitions before assignment, reuses names and protects version state', async () => { const h = setup(); await act(() => h.result.current.add('s1', 'Topic')); expect(h.writes).toHaveBeenCalledTimes(1); expect(h.result.current.transcript.segments[0].tagIds).toEqual([h.result.current.library.tags[0].id]); await act(() => h.result.current.add('s1', 'topic')); expect(h.writes).toHaveBeenCalledTimes(1); expect(h.result.current.transcript.segments[0].tagIds).toHaveLength(1); h.rerender({ readOnly: true, context: 'v1' }); await act(() => h.result.current.add('s1', 'Locked')); expect(h.result.current.library.tags).toHaveLength(1); act(() => h.result.current.remove('s1', h.result.current.library.tags[0].id)); expect(h.result.current.transcript.segments[0].tagIds).toHaveLength(1); });
     it('does not create a dangling assignment on project write failure', async () => { const h = setup(true); await act(() => h.result.current.add('s1', 'Failed')); expect(h.result.current.library.tags).toEqual([]); expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined(); expect(h.error).toHaveBeenCalled(); expect(h.result.current.busy).toBe(false); });
     it('atomically deletes and undoes a project definition without rewriting manuscript content', async () => { const h = setup(); const next = { ...emptyTagLibrary(), tags: [{ id: 'tag-a', name: 'Topic', groupIds: [] }] }; await act(() => h.result.current.change(next)); const before = h.result.current.transcript; await act(() => h.result.current.change(emptyTagLibrary())); expect(h.result.current.library.tags).toEqual([]); expect(h.result.current.canUndo).toBe(true); await act(() => h.result.current.undo()); expect(h.result.current.library).toEqual(next); expect(h.result.current.transcript).toBe(before); await act(() => h.result.current.redo()); expect(h.result.current.library.tags).toEqual([]); });

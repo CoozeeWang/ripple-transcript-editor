@@ -1,4 +1,5 @@
 import { hasNativeSegmentDrag, startNativeSegmentDrag } from './lib/segmentDragBridge';
+import { useTranscriptEdgeAlignment } from './hooks/useTranscriptEdgeAlignment';
 import { populateSegmentDrag } from './lib/segmentDragPayload';
 import { ensureVersionLinkIdentity } from './localStore';
 import type { SegmentLinkReceiver } from './lib/segmentLinkDelivery';
@@ -18,7 +19,7 @@ import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import {useProjectTags} from './hooks/useProjectTags';
 import {TagsPanel} from './components/TagsPanel';
-import {filteredTagSegments,countTaggedSegments,tagsForSegment,tagHistoryAnchor,type TagLibrary} from './lib/tags';
+import {filteredTagSegments,matchesTagFilter,countTaggedSegments,tagsForSegment,tagHistoryAnchor,type TagLibrary} from './lib/tags';
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem, type Problem } from "./lib/diagnostics";
@@ -236,8 +237,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     ? selectedSegmentId
     : (transcript?.segments[0]?.id ?? "");
   // 仅视图筛选：隐藏说话人的片段不渲染、不计入、批注也不显示（不动存档）。
-  const [selectedTagFilter,setTagFilter]=useState<string|null>(null);
-  const tagFilter=selectedTagFilter&&projectProps.tagLibrary?.tags.some(tag=>tag.id===selectedTagFilter)?selectedTagFilter:null;
+  const [selectedTagFilters,setTagFilters]=useState<string[]>([]);
+  const [tagFilterEnabled,setTagFilterEnabled]=useState(true);
+  const [tagFilterMode,setTagFilterMode]=useState<'and'|'or'>('and');
+  const selectedTagIds=useMemo(()=>selectedTagFilters.filter(id=>projectProps.tagLibrary?.tags.some(tag=>tag.id===id)),[selectedTagFilters,projectProps.tagLibrary]);
+  useEffect(()=>{let current=true;const valid=new Set(projectProps.tagLibrary?.tags.map(tag=>tag.id));queueMicrotask(()=>{if(current)setTagFilters(selected=>{const ids=selected.filter(id=>valid.has(id));return ids.length===selected.length?selected:ids})});return()=>{current=false}},[projectProps.tagLibrary]);
+  const tagFilter=useMemo(()=>tagFilterEnabled&&selectedTagIds.length?{ids:selectedTagIds,mode:tagFilterMode}:null,[selectedTagIds,tagFilterEnabled,tagFilterMode]);
   const visibleSegments = useMemo(
     () => (transcript ? filteredTagSegments(transcript,hiddenSpeakerIds,tagFilter) : []),
     [transcript, hiddenSpeakerIds,tagFilter],
@@ -324,6 +329,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
 
   useOpeningPosition(openingPosition, transcriptPanelRef, hasLoadedTranscript);
+  useTranscriptEdgeAlignment(transcriptPanelRef, hasLoadedTranscript);
 
   // 片段强调、箭头和侧栏共用同一个当前片段。
   const currentSegmentId = effectiveSelectedSegmentId;
@@ -761,7 +767,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     transcript,
     viewingOriginal: protectedReadOnly,
     mutateTranscript,
-    setSelectedSegmentId:id=>{const target=transcript?.segments.find(segment=>segment.id===id);if(tagFilter&&!target?.tagIds?.includes(tagFilter))setTagFilter(null);setSelectedSegmentId(id)},
+    setSelectedSegmentId:id=>{const target=transcript?.segments.find(segment=>segment.id===id);if(tagFilter&&(!target||!matchesTagFilter(target,tagFilter)))setTagFilters([]);setSelectedSegmentId(id)},
     textareaRefs,
   });
 
@@ -813,7 +819,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     resetDocumentViewRef.current = () => {
       setSegmentMergePrompt(null);
       setHiddenSpeakerIds(new Set());
-      setTagFilter(null);
+      setTagFilters([]);
       setActiveSegmentId("");
       setSelectedSegmentId("");
       setOpeningPosition(null);
@@ -942,7 +948,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       mutateTranscript(current => applyComparisonDecision(current, decision, comparison.baseline?.segments)),
   });
   const renderedRows = useMemo(() => comparisonRows(transcript?.segments ?? [], comparison.baseline?.segments)
-    .filter(row => !hiddenSpeakerIds.has(row.segment.speaker_id)&&(!tagFilter||row.segment.tagIds?.includes(tagFilter))),
+    .filter(row => !hiddenSpeakerIds.has(row.segment.speaker_id)&&matchesTagFilter(row.segment,tagFilter)),
     [transcript?.segments, comparison.baseline?.segments, hiddenSpeakerIds,tagFilter]);
   const segmentIndices = useMemo(() => new Map(transcript?.segments.map((segment, index) => [segment.id, index])), [transcript?.segments]);
   const [pendingSegmentJump, setPendingSegmentJump] = useState<{ segment: Segment; context: typeof speakerFilterContext } | null>(null);
@@ -950,7 +956,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const jumpToSegment = (number: number) => {
     const segment = transcript?.segments[number - 1];
     if (!segment) return;
-    if(tagFilter&&!segment.tagIds?.includes(tagFilter))setTagFilter(null);
+    if(tagFilter&&!matchesTagFilter(segment,tagFilter))setTagFilters([]);
     setHiddenSpeakerIds(previous => {
       if (!previous.has(segment.speaker_id)) return previous;
       const next = new Set(previous); next.delete(segment.speaker_id); return next;
@@ -1011,7 +1017,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // focus 会触发 textarea 的 onFocus → seekTo(segment.start)，所以顺序必须是
   // 先聚焦、后 seek，否则刚定位到的时间会被覆盖回片段开头。
   const jumpToHighlight = (segment: Segment, highlight: Highlight) => {
-    if(tagFilter&&!segment.tagIds?.includes(tagFilter))setTagFilter(null);
+    if(tagFilter&&!matchesTagFilter(segment,tagFilter))setTagFilters([]);
     setSelectedSegmentId(segment.id);
     window.requestAnimationFrame(() => {
       const textarea = textareaRefs.current.get(segment.id);
@@ -1391,6 +1397,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
             ) : (
               <SegmentItem
                 tags={tagsForSegment(segment,tags.library)}
+                availableTags={tags.library.tags}
                 tagWriteDisabled={tags.busy}
                 onAddTag={projectProps.saveTagLibrary?tags.add:undefined}
                 onRemoveTag={tags.remove}
@@ -1436,7 +1443,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.library.tags.length}
-          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} onChange={tags.change} readOnly={protectedReadOnly||tags.busy} filter={tagFilter} onFilter={id=>{setTagFilter(id);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
+          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} onChange={tags.change} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
@@ -1452,7 +1459,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           setCollapsed={setAnnotationPanelCollapsed}
           highlightGroups={highlightGroups}
           highlightCount={highlightCount}
-          setSelectedSegmentId={id=>{const target=transcript?.segments.find(segment=>segment.id===id);if(tagFilter&&!target?.tagIds?.includes(tagFilter))setTagFilter(null);setSelectedSegmentId(id)}}
+          setSelectedSegmentId={id=>{const target=transcript?.segments.find(segment=>segment.id===id);if(tagFilter&&(!target||!matchesTagFilter(target,tagFilter)))setTagFilters([]);setSelectedSegmentId(id)}}
           seekTo={seekTo}
           updateAnnotation={updateAnnotation}
           deleteAnnotation={deleteAnnotation}
