@@ -40,6 +40,10 @@ export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds =
         return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true); };
     }, [value, suggestions.length]);
     useLayoutEffect(() => { popup.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }); }, [active]);
+    const parentPath = (tag: ProjectTag) => {
+        const path = tagPath({ schemaVersion: 3, tags: [...availableTags], groups: [] }, tag.id);
+        return path.slice(0, path.lastIndexOf('/') + 1);
+    };
     return <span className={libraryMode?'tag-library-create-entry':'tag-entry'} onClick={e => e.stopPropagation()}><input ref={input} disabled={submitting||disabled} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg(libraryMode?'tags.newTag':'tags.input')} placeholder={libraryMode?msg('tags.newTag'):undefined} value={value} maxLength={1024} onChange={e => { setValue(e.target.value); setError(''); setActive(-1); }} onFocus={()=>setFocused(true)} onBlur={() => {setFocused(false);if(!pending.current)cancel('blur')}} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
             e.stopPropagation();
             if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229)
@@ -66,5 +70,5 @@ export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds =
                 }
                 submit(name);
             }
-        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/><small className="tag-suggestion-path">{tagPath({schemaVersion:3,tags:[...availableTags],groups:[]},tag.id)}</small></div>)}</div>, document.body)}{error && <span role="alert">{error}</span>}</span>;
+        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/><small className="tag-suggestion-path">{parentPath(tag)}</small></div>)}</div>, document.body)}{error && <span role="alert">{error}</span>}</span>;
 }
