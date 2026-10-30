@@ -3,7 +3,8 @@ import type { ProjectTarget } from './projectConnectorHost';
 
 export interface AIEditActivity {
   task_id: string; client: string; key: string; version: string; version_id: string; target?: ProjectTarget;
-  kind: 'text' | 'marks' | 'incremental';
+  kind: 'text' | 'marks' | 'incremental' | 'tags';
+  projectScope?: boolean;
   state: 'waiting' | 'processing' | 'saving' | 'paused' | 'completed' | 'ended' | 'failed';
   processed: number; saved: number; total: number; reason?: string;
   touched: number; inFlight: number;
@@ -36,15 +37,15 @@ export class AIEditOwnership {
       processed: saved, saved, total, touched: this.now(), inFlight: 0, reason: 'connection_recovered' });
     this.changed();
   }
-  acquire(id: string, client: string, doc: ConnectorDocument, kind: AIEditActivity['kind'], total: number) {
+  acquire(id: string, client: string, doc: ConnectorDocument, kind: AIEditActivity['kind'], total: number, projectScope=false) {
     const key = editTargetKey(doc);
-    if ([...this.entries.values()].some(task => task.key === key && blocksHumanEditing(task) && task.task_id !== id))
+    if ([...this.entries.values()].some(task => (task.key === key || (projectScope || task.projectScope) && task.target?.project_id === doc.target?.project_id) && blocksHumanEditing(task) && task.task_id !== id))
       throw Error('manuscript_locked_by_other_ai_end_editing_first');
     // Only the newest notice for a target remains; terminal receipts stay queryable.
     for (const task of this.entries.values()) if (!blocksHumanEditing(task)) task.dismissed = true;
     const previous = this.entries.get(id);
     if (previous && previous.state !== 'paused') throw Error('editing_task_ended_prepare_again');
-    this.entries.set(id, { task_id: id, client, key, target: doc.target, version: doc.label, version_id: doc.version.id, kind,
+    this.entries.set(id, { task_id: id, client, key, target: doc.target, version: doc.label, version_id: doc.version.id, kind, projectScope,
       state: 'waiting', processed: previous?.processed ?? 0, saved: previous?.saved ?? 0,
       total, touched: this.now(), inFlight: 0 });
     this.changed();

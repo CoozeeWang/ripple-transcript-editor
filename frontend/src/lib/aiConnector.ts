@@ -7,6 +7,7 @@ import { IncrementalContinuation, type ContinuationStore, type ContinuationProgr
 import type { ContinuationCheckpoint } from './continuationBatch';
 import type { ProjectTarget } from './projectConnectorHost';
 import type { AIEditActivity } from './aiEditOwnership';
+import type { TagTransactionReceipt } from './projectTagRepository';
 
 /** IDs are unique within the current interview, not paths or display names. */
 export interface ConnectorVersion {
@@ -37,6 +38,7 @@ export interface ConnectorDocument {
   references: () => Promise<ConnectorReference[]>;
 }
 export interface ConnectorHost {
+  acceptTagTransaction?: (receipt:TagTransactionReceipt) => Promise<boolean>;
   continuationWarning?: (scope: string, unreadable: number) => void;
   editingActivity?: (tasks: AIEditActivity[]) => void;
   assertWrite?: (taskId: string) => void;

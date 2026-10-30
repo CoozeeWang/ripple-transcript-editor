@@ -1828,7 +1828,9 @@
     "counts_one": "已確認儲存 {{saved}} / {{total}} 個片段",
     "counts_other": "已確認儲存 {{saved}} / {{total}} 個片段",
     "completed_one": "AI 編輯已完成，{{saved}} / {{total}} 個片段已儲存。",
-    "completed_other": "AI 編輯已完成，{{saved}} / {{total}} 個片段已儲存。"
+    "completed_other": "AI 編輯已完成，{{saved}} / {{total}} 個片段已儲存。",
+    "tagsCompleted": "已完成 {count} 項標籤操作",
+    "tagsCounts": "標籤操作 {processed}/{total}"
   },
   "recordingMove": {
     "select": "選擇 {{name}}",
@@ -2035,6 +2037,7 @@
     "filterDissolveNotice": "關閉篩選後可解散群組",
     "filterDeleteNotice": "關閉篩選後可刪除專案標籤分支",
     "filterRemoveNotice": "關閉篩選後可移除目前稿件標籤分支",
-    "filterMembershipNotice": "關閉篩選後可從此群組移除標籤"
+    "filterMembershipNotice": "關閉篩選後可從此群組移除標籤",
+    "undoConflict": "其他標籤操作已更新專案，無法復原這一步。"
   }
 }

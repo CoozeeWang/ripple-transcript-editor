@@ -10,7 +10,7 @@ import httpx
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 INSTRUCTIONS = (
     "Ripple is the local editor; this enabled connection accesses manuscripts in its current open project, not arbitrary paths, other projects or multiple windows. "
@@ -39,6 +39,7 @@ INSTRUCTIONS = (
     "On completion report the saved version, scope and exceptions; complete differences appear in Ripple. "
     "For analysis read enough context, cite relevant real snippets and timestamps, separate quotations from inference; "
     "do not claim whole-interview coverage when only pages were read. Analysis does not change text. "
+    "For tags use read_project_tags with exact IDs, then prepare_tag_changes and apply_tag_changes only for user-authorized actions and scope. Originals are read-only. Shared edits require project scope and explicit merge is separate. Use tag_changes_status after uncertain writes; never replay as a new batch. Tag operations do not edit manuscript text. "
     "Conversational summary matching records agreement, not proof of a human identity."
 )
 
@@ -63,6 +64,26 @@ class Mark(BaseModel):
     before: str
     annotation: str | None = None
     highlights: list[MarkHighlight] = []
+
+
+
+TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "assign_tags", "unassign_tags"]
+
+class TagChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: TagAction
+    tag_id: str | None = Field(default=None, max_length=120)
+    target_tag_id: str | None = Field(default=None, max_length=120)
+    path: str | None = Field(default=None, max_length=1024)
+    name: str | None = Field(default=None, max_length=120)
+    parent_id: str | None = Field(default=None, max_length=120)
+    group_id: str | None = Field(default=None, max_length=120)
+    source_group_id: str | None = Field(default=None, max_length=120)
+    tag_ids: list[str] | None = Field(default=None, max_length=2000)
+    group_ids: list[str] | None = Field(default=None, max_length=2000)
+    segment_ids: list[str] | None = Field(default=None, max_length=2000)
+    copy_membership: bool | None = Field(default=None, alias="copy")
+    ref: str | None = Field(default=None, max_length=80, pattern=r"^[a-zA-Z0-9-]+$")
 
 
 def create_server(url: str, credential_file: Path):
@@ -341,6 +362,59 @@ def register_tools(mcp, call):
     async def cancel_interview_marks(task_id: str) -> dict[str, Any]:
         """Cancel a draft annotation/highlight task; cannot undo a write already being applied."""
         return await call("cancel_marks", {"task_id": task_id})
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def read_project_tags(interview_id: str, recording_id: str, version_id: str,
+                                scope: Literal["current", "project"] = "current", cursor: str = "0", limit: int = 100) -> dict[str, Any]:
+        """Read tag tree, flat groups and paged segment tag IDs for an exact current-project version, without text/word arrays.
+
+        Resolve IDs with list_project_interviews; ask if the version is unspecified. Returns tag_snapshot for changes.
+        Counts always refer to the selected version; project scope lists shared definitions, not cross-version results.
+        """
+        return await call("tags_read", {"interview_id": interview_id, "recording_id": recording_id,
+            "version_id": version_id, "scope": scope, "cursor": cursor, "limit": limit})
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def prepare_tag_changes(tag_snapshot: str, scope: Literal["current", "project"],
+                                  allowed_actions: list[TagAction], changes: list[TagChange]) -> dict[str, Any]:
+        """Preview up to 64 explicit tag operations atomically; no data is saved. Agree on actions, target and scope.
+
+        create_tag uses path (admits ancestors, no segment assignment); optional ref can be used later as ref:NAME.
+        rename_tag edits true name; set_tag_path edits full path; move_tag requires parent_id (null=root).
+        merge_tag requires tag_id and target_tag_id; never infer merge permission from rename/move.
+        Shared rename/path/move/merge/delete_branch require project scope and affect consuming versions.
+        admit_tags uses tag_ids; remove_current_branch removes only this version's admitted subtree and references.
+        create_group uses name/ref; rename_group uses group_id/name; dissolve_group preserves tags/assignments.
+        set_group_tags uses group_id/tag_ids (explicit only, no automatic child membership).
+        transfer_group_tag uses tag_id/source_group_id/group_id/copy; null source adds from ungrouped.
+        reorder_groups uses the full group_ids order. assign_tags/unassign_tags use segment_ids/tag_ids.
+        Only supplied operation fields are accepted. New tag/group refs are batch-local; saved stable IDs are returned.
+        Original versions reject writes. Batch failure leaves all tag and manuscript data unchanged.
+        """
+        return await call("tags_prepare", {"tag_snapshot": tag_snapshot, "scope": scope,
+            "allowed_actions": allowed_actions, "changes": [change.model_dump(exclude_unset=True, by_alias=True) for change in changes]})
+
+    @mcp.tool(structured_output=True, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False))
+    async def apply_tag_changes(task_id: str, confirmed_summary: str) -> dict[str, Any]:
+        """Save the agreed tag batch once using its unchanged preview summary. No text or timestamp edits.
+
+        Confirmation must match explicit user intent; enabling MCP is not blanket editing authorization.
+        Check saved/error and exact target before claiming completion. For timeout or reconnect query status first;
+        never create a new batch to replay an uncertain write. Active-editor undo is session-only; status detects undo.
+        """
+        return await call("tags_apply", {"task_id": task_id, "confirmed_summary": confirmed_summary})
+
+    @mcp.tool(structured_output=True, annotations=read)
+    async def tag_changes_status(task_id: str) -> dict[str, Any]:
+        """Check current-project durable tag receipt, undo state or in-memory pending batch before retrying.
+        Unknown is not proof of failure and is not safe to replay. No other project is opened or scanned.
+        """
+        return await call("tags_status", {"task_id": task_id})
+
+    @mcp.tool(structured_output=True, annotations=draft)
+    async def cancel_tag_changes(task_id: str) -> dict[str, Any]:
+        """Cancel an uncommitted tag plan. A commit already in progress may finish; query status. Saved changes remain."""
+        return await call("tags_cancel", {"task_id": task_id})
 
     return mcp
 

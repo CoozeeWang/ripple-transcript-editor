@@ -43,7 +43,13 @@ export interface RippleProject {
   tagLibrary?: TagLibrary;
   kind: 'ripple-project'; schemaVersion: 1; id: string; title: string; description: string;
   revision: number; interviews: ProjectInterview[]; trash?: ProjectTrashItem[];
+  tagHead?: string;
+  tagRequests?: Record<string, TagRequestReceipt>;
   sessionTrash?: ProjectSessionTrashItem[];
+}
+export interface TagRequestReceipt {
+  signature: string; client: string; recording: string; model: string; version: string;
+  count: number; savedAt: string; references: {tags:Record<string,string>;groups:Record<string,string>}; undone?: boolean;
 }
 export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject; finderIconWarning?: boolean }
 const INDEX = 'ripple-project.json';
@@ -57,6 +63,15 @@ export function parseProject(raw: string): RippleProject {
   if (p?.kind !== 'ripple-project' || p.schemaVersion !== 1 || !id(p.id) || typeof p.title !== 'string' || !p.title.trim()
       || typeof p.description !== 'string' || !Number.isSafeInteger(p.revision) || p.revision < 0 || !Array.isArray(p.interviews)) throw new Error(msg('projectStore.m1383'));
   if (p.tagLibrary !== undefined && !isTagLibrary(p.tagLibrary)) throw new Error(msg('projectStore.m1383'));
+  if (p.tagHead !== undefined && !id(p.tagHead)) throw new Error(msg('projectStore.m1383'));
+  if (p.tagRequests !== undefined && (!p.tagRequests || typeof p.tagRequests !== 'object' || Array.isArray(p.tagRequests)
+    || Object.entries(p.tagRequests).length > 100 || Object.entries(p.tagRequests).some(([key,r]) => !id(key) || !r
+      || !/^[a-f0-9]{64}$/.test(r.signature) || typeof r.client !== 'string' || !r.client || r.client.length>80
+      || ![r.recording,r.model,r.version].every(id) || !Number.isInteger(r.count) || r.count<1 || r.count>64
+      || !Number.isFinite(Date.parse(r.savedAt)) || !r.references || ['tags','groups'].some(kind => {
+        const values=r.references[kind as 'tags'|'groups'];return !values || typeof values!=='object' || Array.isArray(values)
+          || Object.entries(values).some(([key,value])=>!id(key)||!id(value));
+      }) || r.undone!==undefined&&typeof r.undone!=='boolean'))) throw new Error(msg('projectStore.m1383'));
   const identifiers = new Set<string>();
   for (const interview of p.interviews) {
     if (!interview || !id(interview.id) || identifiers.has(interview.id) || typeof interview.title !== 'string' || !interview.title.trim() || !Array.isArray(interview.recordings)) throw new Error(msg('projectStore.m1384'));

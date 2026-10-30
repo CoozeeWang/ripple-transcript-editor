@@ -1828,7 +1828,9 @@
     "counts_one": "已确认保存 {{saved}} / {{total}} 个片段",
     "counts_other": "已确认保存 {{saved}} / {{total}} 个片段",
     "completed_one": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。",
-    "completed_other": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。"
+    "completed_other": "AI 编辑已完成，{{saved}} / {{total}} 个片段已保存。",
+    "tagsCompleted": "已完成 {count} 项标签操作",
+    "tagsCounts": "标签操作 {processed}/{total}"
   },
   "recordingMove": {
     "select": "选择 {{name}}",
@@ -2035,6 +2037,7 @@
     "filterDissolveNotice": "关闭筛选后可解散分组",
     "filterDeleteNotice": "关闭筛选后可删除项目标签分支",
     "filterRemoveNotice": "关闭筛选后可移除当前稿标签分支",
-    "filterMembershipNotice": "关闭筛选后可从该组移除标签"
+    "filterMembershipNotice": "关闭筛选后可从该组移除标签",
+    "undoConflict": "其他标签操作已更新项目，不能撤销这一步。"
   }
 }

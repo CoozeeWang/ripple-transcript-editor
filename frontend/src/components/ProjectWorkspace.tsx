@@ -342,7 +342,7 @@ export function ProjectWorkspace() {
         const next=await restoreProjectTagTransaction(snapshot,receipt,redo);await publish(next);return next;
       },
     }}
-    connectorProject={() => current.current} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
+    connectorProject={() => current.current} publishTagProject={async next=>{if(current.current?.data.id===next.data.id)await publish(next)}} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onAudioDuration={async seconds => {
       const snapshot = current.current;

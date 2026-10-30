@@ -120,6 +120,7 @@ export interface ProjectEditorProps {
   onOpenSegmentLink?: (raw:string) => Promise<void>;
   registerSegmentLinkReceiver?: (receiver:SegmentLinkReceiver | null) => void;
   connectorProject?: () => OpenProject | null;
+  publishTagProject?: (project:OpenProject) => Promise<void>;
   projectInterviewId?: string;
   projectRecordingId?: string;
   projectDirectory?: FileSystemDirectoryHandle;
@@ -650,6 +651,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     }
   }, [dirHandle, aiContext,selectedAudio]);
   const connector = useAIConnector({
+    acceptTagTransaction: async receipt => tags.acceptTransaction(receipt),
     current: async () => {
       const identity = connectorContext.current.generation;
       const dir = dirHandle, audio = selectedAudio, model = activeModel;
@@ -735,6 +737,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     },
   }, hasLoadedTranscript ? `${aiContext}:${hasLoadedTranscript}:${versionBusy}` : '', projectProps.connectorProject ? {
     project: projectProps.connectorProject,
+    publishTagProject: projectProps.publishTagProject,
     onSaved: target => { setProcessStatus('done'); setProcessMessage(msg('connector.backgroundSaved', { recording: target.recording, version: target.version })); },
     active: () => ({ interview_id: projectProps.projectInterviewId ?? '', recording_id: projectProps.projectRecordingId ?? '',
       directory: dirHandleRef.current, version_id: activeModelId
@@ -749,7 +752,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const protectedReadOnly = viewingOriginal || aiLocked;
   const tags=useProjectTags({library:preparedTagLibrary.library,storage:projectProps.tagStorage,recordingId:projectProps.projectRecordingId,modelId:activeModelId,editId:viewingOriginal?'original':activeModel?.activeEditId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,flush:flushPendingSave,
     undoActionKey,redoActionKey,publish:(value,action,key)=>{if(action==='commit'){commit(()=>value,key);if(metadata)setPersistedContent({transcript:value,metadata})}else if(action==='undo')undo();else redo();setSaveStatus('saved')},
-    lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+    lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly,originalReadOnly:viewingOriginal,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
   const presentTags = useMemo(() => createTagPresenter(), []);
   const segmentTagView = presentTags(tags.library, transcript?.segments ?? []);
   const tagCounts = useMemo(() => tagSegmentCounts({ schemaVersion: 3, tags: segmentTagView.available, groups: [] }, transcript?.segments ?? []), [segmentTagView.available, transcript?.segments]);

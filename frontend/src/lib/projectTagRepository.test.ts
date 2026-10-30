@@ -168,3 +168,22 @@ it('continues to inspect other consumers for shared edits and reject cross-versi
         (catalog, consumers) => changeSharedTag(catalog, leaf, '经历/求学/童年', consumers))).rejects.toThrow('tag_collection_name_conflict');
     expect(fs.files).toEqual(before);
 });
+
+it('blocks undo after a later foreign tag transaction, preventing dangling IDs in another version',async()=>{
+ const fs=fixture(),added=await transactProjectTags(fs.project,fs.current,addPath,'additions');
+ const leaf=added.transcript.segments[0].tagIds![0],other=JSON.parse(fs.files.get(fs.root+'/e2.json')!).transcript as Transcript;
+ const later=await transactProjectTags(added.project,{...fs.current,editId:'e2',transcript:other},(library,consumers,id)=>({library,consumers:consumers.map(c=>c.id===id?{...c,transcript:{...setSegmentTag(c.transcript,'segment',leaf,true),tagCollection:admitTags(library,c.transcript.tagCollection!,[leaf])}}:c)}),'current');
+ await expect(restoreProjectTagTransaction(later.project,added.receipt,false)).rejects.toThrow('tag_history_changed');
+ expect(JSON.parse(fs.files.get(fs.root+'/e2.json')!).transcript.segments[0].tagIds).toEqual([leaf]);
+});
+
+it('atomically rolls back request receipts and assignments on failure, and recognizes committed request IDs',async()=>{
+ let fail=true;const fs=fixture(path=>{if(path==='ripple-project.json'&&fail){fail=false;throw Error('synthetic failure')}});
+ const signature='a'.repeat(64),request={id:'synthetic-request',signature,client:'chatgpt',assert:()=>{},receipt:()=>({signature,client:'chatgpt',recording:'recording',model:'m1',version:'e1',count:1,savedAt:'2026-01-01T00:00:00Z',references:{tags:{},groups:{}}})};
+ const before=new Map(fs.files);
+ await expect(transactProjectTags(fs.project,fs.current,addPath,'additions',request)).rejects.toThrow('synthetic failure');
+ for(const [path,value]of before)expect(fs.files.get(path)).toBe(value);
+ const result=await transactProjectTags(fs.project,fs.current,addPath,'additions',request);
+ expect((await openProject(fs.project.directory)).data.tagRequests?.['synthetic-request'].count).toBe(1);
+ await expect(transactProjectTags(result.project,{...fs.current,transcript:result.transcript},addPath,'additions',request)).rejects.toThrow('tag_request_already_saved');
+});

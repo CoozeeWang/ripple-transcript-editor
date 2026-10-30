@@ -1,6 +1,6 @@
 import type { Transcript } from '../types';
 import { stemOf, withTagVersionStorage } from '../localStore';
-import { parseProject, recordingDirectory, withProjectLock, type OpenProject, type ProjectInterview, type ProjectRecording } from './projectStore';
+import { parseProject, recordingDirectory, withProjectLock, type OpenProject, type ProjectInterview, type ProjectRecording, type TagRequestReceipt } from './projectStore';
 import { commitTagFileTransaction, recoverTagFileTransaction, readTagFile, type TagFilePatch } from './tagFileTransaction';
 import { projectTagCatalog, validateTagCollection, versionTagCollection, type TagConsumer } from './tagCollections';
 import type { TagLibrary } from './tags';
@@ -9,17 +9,18 @@ export interface CurrentTagVersion { recordingId: string; modelId: string; editI
 /** Current-version changes cannot modify shared definitions; additions may only append entities. */
 export type TagTransactionScope = 'project' | 'current' | 'additions';
 interface StoredConsumer extends TagConsumer { path: string[]; raw: string; readOnly: boolean }
-interface TagFields { collection: Transcript['tagCollection']; segments: [string, string[] | undefined][] }
+export interface TagFields { collection: Transcript['tagCollection']; segments: [string, string[] | undefined][] }
 export interface TagTransactionReceipt {
     beforeLibrary: TagLibrary; afterLibrary: TagLibrary;
-    versions: { path: string[]; before: TagFields; after: TagFields }[];
+    versions: { id?: string; path: string[]; before: TagFields; after: TagFields }[];
     scope?: TagTransactionScope;
+    beforeHead?: string; afterHead?: string; requestId?: string;
 }
 export interface ProjectTagChange {
     library: TagLibrary;
     consumers: TagConsumer[];
 }
-const fields = (transcript: Transcript): TagFields => ({ collection: transcript.tagCollection,
+export const tagFields = (transcript: Transcript): TagFields => ({ collection: transcript.tagCollection,
     segments: transcript.segments.map(segment => [segment.id, segment.tagIds]) });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const safe = (name: string) => !!name && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !Array.from(name).some(char=>char.charCodeAt(0)<32);
@@ -83,24 +84,30 @@ async function withConsumers<T>(project: OpenProject, current: CurrentTagVersion
     return next(0);
 }
 
-function applyFields(transcript: Transcript, tags: TagFields): Transcript {
+export function applyTagFields(transcript: Transcript, tags: TagFields): Transcript {
     const byId = new Map(tags.segments);
     // A new/deleted segment is a concurrent content edit, not permission to restore an old body.
     if (transcript.segments.length !== byId.size || transcript.segments.some(segment => !byId.has(segment.id)))
         throw Error('tag_transaction_content_changed');
     return { ...transcript, tagCollection: tags.collection,
-        segments: transcript.segments.map(segment => ({ ...segment, tagIds: byId.get(segment.id) })) };
+        segments: transcript.segments.map(segment => same(segment.tagIds,byId.get(segment.id)) ? segment : { ...segment, tagIds: byId.get(segment.id) }) };
 }
 function versionPatch(consumer: StoredConsumer, next: TagFields): TagFilePatch {
     const document = JSON.parse(consumer.raw) as { transcript: Transcript };
     return { path: consumer.path, before: consumer.raw,
-        after: JSON.stringify({ ...document, transcript: applyFields(document.transcript, next) }, null, 2) };
+        after: JSON.stringify({ ...document, transcript: applyTagFields(document.transcript, next) }, null, 2) };
+}
+export class TagRequestAlreadySaved extends Error {
+    constructor(readonly receipt:TagRequestReceipt) { super('tag_request_already_saved'); }
+}
+export interface TagRequest {
+    id:string; receipt:()=>TagRequestReceipt; signature:string; client:string; assert:()=>void;
 }
 
 /** Caller flushes the active editor first and holds human/AI navigation guards until publication. */
 export async function transactProjectTags(project: OpenProject, current: CurrentTagVersion,
     operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange | Promise<ProjectTagChange>,
-    scope: TagTransactionScope = 'project'): Promise<{
+    scope: TagTransactionScope = 'project', request?:TagRequest): Promise<{
         project: OpenProject; transcript: Transcript; receipt: TagTransactionReceipt; changed: boolean;
     }> {
     return withProjectLock(project.data.id, async () => {
@@ -108,6 +115,10 @@ export async function transactProjectTags(project: OpenProject, current: Current
         const index = await readTagFile(project.directory, ['ripple-project.json']);
         if (!index) throw Error('project_changed');
         const data = parseProject(index);
+        if(request){
+            request.assert();const saved=data.tagRequests?.[request.id];
+            if(saved){if(saved.signature!==request.signature||saved.client!==request.client)throw Error('tag_request_conflict');throw new TagRequestAlreadySaved(saved);}
+        }
         if (data.id !== project.data.id || data.revision !== project.data.revision) throw Error('project_changed');
         return withConsumers(project, current, async stored => {
             const currentId = `${current.recordingId}:${current.modelId}:${current.editId}`;
@@ -118,6 +129,7 @@ export async function transactProjectTags(project: OpenProject, current: Current
             const consumers = stored.map(consumer => ({ ...consumer, transcript: { ...consumer.transcript,
                 tagCollection: versionTagCollection(consumer.transcript, source) } }));
             const result = await operation(library, consumers, currentId);
+            request?.assert();
             const nextLibrary = projectTagCatalog(result.library);
             // The fast path is an explicit capability, never a heuristic that can skip a shared edit's preflight.
             if (scope === 'current' && !same(library, nextLibrary)) throw Error('tag_transaction_scope_violation');
@@ -131,21 +143,24 @@ export async function transactProjectTags(project: OpenProject, current: Current
                 const updated = result.consumers.find(consumer => consumer.id === previous.id);
                 if (!updated?.transcript.tagCollection) throw Error('tag_transaction_missing_consumer');
                 validateTagCollection(nextLibrary, updated.transcript.tagCollection, previous.label);
-                const before = fields(previous.transcript), after = fields(updated.transcript);
-                const baseline = fields(consumers.find(consumer => consumer.id === previous.id)!.transcript);
+                const before = tagFields(previous.transcript), after = tagFields(updated.transcript);
+                const baseline = tagFields(consumers.find(consumer => consumer.id === previous.id)!.transcript);
                 // A read-only legacy view is not a batch migration of every unopened version.
                 if (!same(before, after) && (!same(baseline, after) || previous.id === currentId)) {
-                    changed.push({ path: previous.path, before, after }); patches.push(versionPatch(previous, after));
+                    changed.push({ id: previous.id, path: previous.path, before, after }); patches.push(versionPatch(previous, after));
                 }
             }
-            const receipt = { beforeLibrary: source, afterLibrary: nextLibrary, versions: changed, scope };
+            const semanticChange=!!patches.length||!same(source,nextLibrary), afterHead=semanticChange?crypto.randomUUID():data.tagHead;
+            const receipt = { beforeLibrary: source, afterLibrary: nextLibrary, versions: changed, scope, beforeHead:data.tagHead, afterHead, requestId:request?.id };
             const transcript = result.consumers.find(consumer => consumer.id === currentId)!.transcript;
-            if (!patches.length && same(source, nextLibrary)) return { project, transcript, receipt, changed: false };
-            const nextData = { ...data, tagLibrary: nextLibrary, revision: data.revision + 1 };
+            if (!semanticChange&&!request) return { project, transcript, receipt, changed: false };
+            const tagRequests=request?Object.fromEntries([...Object.entries(data.tagRequests??{}).slice(-99),[request.id,request.receipt()]]):data.tagRequests;
+            const nextData = { ...data, tagLibrary: nextLibrary, tagHead:afterHead, ...(tagRequests?{tagRequests}:{}), revision: data.revision + 1 };
             const afterIndex = JSON.stringify(nextData, null, 2); parseProject(afterIndex);
             patches.push({ path: ['ripple-project.json'], before: index, after: afterIndex });
+            request?.assert();
             await commitTagFileTransaction(project.directory, patches);
-            return { project: { ...project, data: nextData }, transcript, receipt, changed: true };
+            return { project: { ...project, data: nextData }, transcript, receipt, changed: semanticChange };
         }, scope === 'project' ? undefined : { currentOnly: true });
     });
 }
@@ -158,14 +173,17 @@ export async function restoreProjectTagTransaction(project: OpenProject, receipt
         if (!index) throw Error('project_changed');
         const data = parseProject(index), expected = redo ? receipt.beforeLibrary : receipt.afterLibrary;
         if (data.id !== project.data.id || data.revision !== project.data.revision || !same(data.tagLibrary, expected)) throw Error('project_changed');
+        if(receipt.afterHead && data.tagHead!==(redo?receipt.beforeHead:receipt.afterHead))throw Error('tag_history_changed');
         return withConsumers(project, null, async stored => {
             const patches: TagFilePatch[] = [];
             for (const version of receipt.versions) {
                 const previous = stored.find(consumer => same(consumer.path, version.path));
-                if (!previous || !same(fields(previous.transcript), redo ? version.before : version.after)) throw Error('tag_transaction_content_changed');
+                if (!previous || !same(tagFields(previous.transcript), redo ? version.before : version.after)) throw Error('tag_transaction_content_changed');
                 patches.push(versionPatch(previous, redo ? version.after : version.before));
             }
-            const next = { ...data, tagLibrary: redo ? receipt.afterLibrary : receipt.beforeLibrary, revision: data.revision + 1 };
+            const tagRequests=receipt.requestId&&data.tagRequests?.[receipt.requestId]?{...data.tagRequests,[receipt.requestId]:{...data.tagRequests[receipt.requestId],undone:!redo}}:data.tagRequests;
+            const next = { ...data, tagLibrary: redo ? receipt.afterLibrary : receipt.beforeLibrary,
+                ...(receipt.afterHead?{tagHead:redo?receipt.afterHead:receipt.beforeHead}:{}),...(tagRequests?{tagRequests}:{}), revision: data.revision + 1 };
             patches.push({ path: ['ripple-project.json'], before: index, after: JSON.stringify(next, null, 2) });
             await commitTagFileTransaction(project.directory, patches);
             return { ...project, data: next };

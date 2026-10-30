@@ -188,7 +188,7 @@ class Reply(StrictModel):
 
 class Call(StrictModel):
     request_id: str = Field(min_length=8, max_length=100)
-    operation: str = Field(pattern=r"^(set_rules|project_directory|read_project|project_tasks|read_current|read_page|read_examples|prepare|stage|publish|cancel|status|tasks|batch|checkpoint|pause|resume|prepare_marks|stage_marks|apply_marks|marks_status|cancel_marks)$")
+    operation: str = Field(pattern=r"^(set_rules|project_directory|read_project|project_tasks|read_current|read_page|read_examples|prepare|stage|publish|cancel|status|tasks|batch|checkpoint|pause|resume|prepare_marks|stage_marks|apply_marks|marks_status|cancel_marks|tags_read|tags_prepare|tags_apply|tags_status|tags_cancel)$")
     arguments: dict = Field(default_factory=dict)
 
 

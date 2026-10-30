@@ -21,6 +21,7 @@ SECRET = "synthetic-public-connector-runtime-test-key-123456"
 TEXT = "Synthetic 合成片段：中文路径与空格。"
 EXPECTED_TOOLS = {
     "connection_capabilities",
+    "read_project_tags", "prepare_tag_changes", "apply_tag_changes", "tag_changes_status", "cancel_tag_changes",
     "set_interview_rules",
     "list_project_interviews",
     "read_project_interview",

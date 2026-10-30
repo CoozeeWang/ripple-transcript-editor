@@ -50,6 +50,7 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
   }, [feedbackScope,setTaskError]);
   const dismissTaskError = useCallback(() => { feedbackGeneration.current++; setTaskError(''); }, [setTaskError]);
   const createController=useCallback((valid:()=>boolean=()=>true)=>new ProjectAIConnector({current:()=>latest.current.current(),publish:(...args)=>latest.current.publish(...args),
+    acceptTagTransaction:receipt=>latest.current.acceptTagTransaction?.(receipt)??Promise.resolve(false),
     applyMarks:(...args)=>{if(!latest.current.applyMarks)throw Error('marks_unavailable');return latest.current.applyMarks(...args);},
     editingActivity:next=>{if(valid())setActivities(next);},
     continuationWarning:(scope, count)=>{
@@ -174,7 +175,7 @@ export function useAIConnectorRuntime(host: ConnectorHost, context = '', project
   }, [enabled, attempt,createController]);
   const targetLocked = (version: string, recording?: string, interview?: string, projectId?: string, identity?: string) =>
     controllerRef.current?.editing.values().some(task => blocksHumanEditing(task) && (task.target
-      ? (!version || task.target.version_id === version) && task.target.recording_id === recording && task.target.interview_id === interview && task.target.project_id === projectId
+      ? task.target.project_id === projectId && (task.projectScope || (!version || task.target.version_id === version) && task.target.recording_id === recording && task.target.interview_id === interview)
       : task.version_id === version && (identity === undefined || task.key === JSON.stringify([identity, version])))) ?? false;
   const visibleTasks = tasks.map(task => {
     const activity = activities.find(item => item.task_id === task.task_id);

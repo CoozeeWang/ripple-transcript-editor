@@ -12,6 +12,7 @@ export interface ProjectTarget {
   recording_id: string; recording: string; version_id: string; version: string;
 }
 export interface ProjectConnectorAccess {
+  publishTagProject?: (project:OpenProject) => Promise<void>;
   onSaved?: (target: ProjectTarget) => void;
   project: () => OpenProject | null;
   active: () => { interview_id: string; recording_id: string; version_id: string | null;

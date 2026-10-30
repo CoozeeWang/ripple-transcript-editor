@@ -6,6 +6,7 @@ import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncest
 import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
 import type { CurrentTagVersion, ProjectTagChange, TagTransactionReceipt, TagTransactionScope } from '../lib/projectTagRepository';
 import type { OpenProject } from '../lib/projectStore';
+import { applyTagFields, tagFields } from '../lib/projectTagRepository';
 
 export interface TagStorage {
     transact: (current: CurrentTagVersion, operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope?: TagTransactionScope) => Promise<{
@@ -27,6 +28,7 @@ interface Options {
     redoActionKey: string | null;
     lock: (busy: boolean) => void;
     readOnly: boolean;
+    originalReadOnly?: boolean;
     onError: (message: string) => void;
     errorMessage: string;
 }
@@ -50,6 +52,18 @@ export function useProjectTags(o: Options) {
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; mergeRef.current?.finish(false); }; }, []);
     useEffect(() => { const context = o.context; queueMicrotask(() => { if (latest.current.context === context) { setPast([]); setFuture([]); } }); }, [o.context]);
     const discardRedo = useCallback(() => setFuture([]), []);
+    const acceptTransaction = useCallback((receipt: TagTransactionReceipt) => {
+        const current = latest.current;
+        if (!current.transcript) throw Error('tag_view_changed_after_save');
+        const id = `${current.recordingId}:${current.modelId}:${current.originalReadOnly ? 'original' : current.editId}`;
+        const patch = receipt.versions.find(version => version.id === id);
+        if (patch && JSON.stringify(tagFields(current.transcript)) !== JSON.stringify(patch.before)) throw Error('tag_view_changed_after_save');
+        const next = patch ? applyTagFields(current.transcript, patch.after) : current.transcript;
+        const key = 'tag-transaction:' + crypto.randomUUID(), beforeAnchor = tagHistoryAnchor(current.transcript);
+        current.publish(next, 'commit', key);
+        setPast(entries => [...entries, {receipt,beforeAnchor,afterAnchor:tagHistoryAnchor(next),key}].slice(-100)); setFuture([]);
+        return !current.originalReadOnly;
+    }, []);
     const confirmMerge = (request: TagMergeRequired) => new Promise<boolean>(resolve => {
         const prompt: MergePrompt = { request, finish: accepted => { mergeRef.current = null; setMergePrompt(null); resolve(accepted); } };
         mergeRef.current = prompt; setMergePrompt(prompt);
@@ -160,6 +174,6 @@ export function useProjectTags(o: Options) {
         } catch (error) { current.onError(tagErrorMessage(error)); }
         finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     };
-    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent, attach, canUndo, canRedo,
+    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent, attach, canUndo, canRedo, acceptTransaction,
         undo: () => history(false), redo: () => history(true), discardRedo, mergePrompt };
 }

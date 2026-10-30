@@ -1828,7 +1828,9 @@
     "counts_one": "{{saved}} / {{total}} segment confirmed saved",
     "counts_other": "{{saved}} / {{total}} segments confirmed saved",
     "completed_one": "AI editing completed. {{saved}} / {{total}} segment saved.",
-    "completed_other": "AI editing completed. {{saved}} / {{total}} segments saved."
+    "completed_other": "AI editing completed. {{saved}} / {{total}} segments saved.",
+    "tagsCompleted": "Completed {count} tag operations",
+    "tagsCounts": "Tag operations {processed}/{total}"
   },
   "recordingMove": {
     "select": "Select {{name}}",
@@ -2035,6 +2037,7 @@
     "filterDissolveNotice": "Turn off filtering to dissolve groups",
     "filterDeleteNotice": "Turn off filtering to delete project tag branches",
     "filterRemoveNotice": "Turn off filtering to remove tag branches from this version",
-    "filterMembershipNotice": "Turn off filtering to remove a tag from this group"
+    "filterMembershipNotice": "Turn off filtering to remove a tag from this group",
+    "undoConflict": "Another tag operation updated the project; this step cannot be undone."
   }
 }
