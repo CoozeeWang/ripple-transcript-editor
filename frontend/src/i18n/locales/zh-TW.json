@@ -2032,6 +2032,12 @@
     "filterEditNotice": "關閉篩選後可編輯或移動標籤",
     "filterGroupEditNotice": "關閉篩選後可編輯或移動群組",
     "groupModeUnavailable": "請在分組檢視中新增群組",
-    "exportVisibleScope": "目前顯示片段（{{count}} 個）"
+    "exportVisibleScope": "目前顯示片段（{{count}} 個）",
+    "filterFoldNotice": "關閉篩選後可展開或摺疊",
+    "filterManageNotice": "關閉篩選後可管理群組",
+    "filterDissolveNotice": "關閉篩選後可解散群組",
+    "filterDeleteNotice": "關閉篩選後可刪除專案標籤分支",
+    "filterRemoveNotice": "關閉篩選後可移除目前稿件標籤分支",
+    "filterMembershipNotice": "關閉篩選後可從此群組移除標籤"
   }
 }

@@ -344,7 +344,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
             <>
-              {props.onAddTag&&<button type="button" data-add-tag disabled={props.tagWriteDisabled} data-tip={nativeDesktopAvailable()?msg('tags.addShortcut',{key:keys('T')}):msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();openTagEntry()}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg></button>}
+              {props.onAddTag&&<button type="button" data-add-tag disabled={props.tagWriteDisabled} data-tip={nativeDesktopAvailable()?msg('tags.addShortcut',{key:keys('T')}):msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();openTagEntry()}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M3 3h8l10 10-8 8L3 11Z"/><circle cx="7.5" cy="7.5" r="1"/></svg></button>}
               <button
                 type="button"
                 aria-label={msg('SegmentItem.m0952', { v0: keys("↵") })}

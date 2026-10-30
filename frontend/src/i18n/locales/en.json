@@ -2032,6 +2032,12 @@
     "filterEditNotice": "Turn off filtering to edit or move tags",
     "filterGroupEditNotice": "Turn off filtering to edit or move groups",
     "groupModeUnavailable": "Switch to Group view to create a group",
-    "exportVisibleScope": "Displayed segments ({{count}})"
+    "exportVisibleScope": "Displayed segments ({{count}})",
+    "filterFoldNotice": "Turn off filtering to expand or collapse",
+    "filterManageNotice": "Turn off filtering to manage groups",
+    "filterDissolveNotice": "Turn off filtering to dissolve groups",
+    "filterDeleteNotice": "Turn off filtering to delete project tag branches",
+    "filterRemoveNotice": "Turn off filtering to remove tag branches from this version",
+    "filterMembershipNotice": "Turn off filtering to remove a tag from this group"
   }
 }

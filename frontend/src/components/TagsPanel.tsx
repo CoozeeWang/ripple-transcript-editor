@@ -15,10 +15,11 @@ import { TagTreeGuides } from './TagTreeGuides';
 import { tagTreeGuides, type TagGuide } from '../lib/tagTreeGuides';
 import { showActionHint } from '../lib/actionHint';
 import { TagPill } from './TagPill';
+import { FilterActionHint } from './FilterActionHint';
 import './tags.css';
 
 export function TagChevron() {
-    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4 9 5 9-5M3 12h18m-18 8 9-5 9 5"/></svg>;
+    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5 / 3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4 9 5 9-5M3 12h18m-18 8 9-5 9 5"/></svg>;
 }
 interface Props {
     loadError?: string; library: TagLibrary; currentTagIds: readonly string[];
@@ -179,7 +180,7 @@ export function TagsPanel(p: Props) {
                         buttonProps={{ onPointerDown: event => start(event, 'tag', tag.id, group ?? null), onPointerMove: move, onPointerUp: event => finish(event), onPointerCancel: event => finish(event, false) }}
                         onRemove={group && group !== 'ungrouped' ? () => void save({ ...p.library, tags: p.library.tags.map(item => item.id === tag.id ? { ...item, groupIds: item.groupIds.filter(id => id !== group) } : item) }).catch(() => {}) : undefined}/></span>
                     {showCount && <span className="tag-count" aria-label={msg('tags.currentCount', { count: p.currentCount(tag.id) })}>{p.currentCount(tag.id)}</span>}
-                    {!group ? <TagDeleteControl name={tag.name} scope={scope} count={scope === 'project' ? descendants.length : descendants.filter(id=>admitted.has(id)).length} disabled={locked || scope === 'current' && !p.onRemoveCurrent}
+                    {!group ? <TagDeleteControl name={tag.name} scope={scope} count={scope === 'project' ? descendants.length : descendants.filter(id=>admitted.has(id)).length} filterEnabled={p.filterEnabled} disabled={locked || scope === 'current' && !p.onRemoveCurrent}
                         onDelete={() => setModal({ type: 'delete', id: tag.id, scope })}/>
                         : <span className="library-action-slot"/>}
                 </InlineTagName>
@@ -208,8 +209,8 @@ export function TagsPanel(p: Props) {
                         onKeyDown={event => { if (p.filterEnabled || locked || !event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return; event.preventDefault(); const position = groups.findIndex(item => item.id === group.id), target = groups[position + (event.key === 'ArrowUp' ? -1 : 1)]; if (target) void save(moveTagGroup(p.library, group.id, target.id, event.key === 'ArrowUp' ? 'before' : 'after')).catch(() => {}); }}
                         onClick={event => { if (!p.filterEnabled && event.timeStamp >= suppress.current && !event.metaKey && !event.ctrlKey) delayed(key, event.detail, () => toggleGroup(group.id)); }}><span className="group-name" data-tip-anchor>{group.name}</span></GroupNameButton>
                     <span className="group-actions" onDoubleClick={event => event.stopPropagation()}>
-                        <button type="button" className="group-manage" aria-label={`${msg('tags.manage')}: ${group.name}`} disabled={locked} onClick={() => setModal({ type: 'group', id: group.id })}><span aria-hidden="true">⋯</span></button>
-                        <button type="button" className="group-delete" aria-label={`${msg('tags.dissolve')}: ${group.name}`} data-tip={msg('tags.dissolve')} disabled={locked} onClick={() => setModal({ type: 'dissolve', id: group.id })}><ActionIcon kind="trash"/></button>
+                        <FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterManageNotice')}><button type="button" className="group-manage" aria-label={`${msg('tags.manage')}: ${group.name}`} disabled={locked || p.filterEnabled} onClick={() => setModal({ type: 'group', id: group.id })}><span aria-hidden="true">⋯</span></button></FilterActionHint>
+                        <FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterDissolveNotice')}><button type="button" className="group-delete" aria-label={`${msg('tags.dissolve')}: ${group.name}`} data-tip={p.filterEnabled ? undefined : msg('tags.dissolve')} disabled={locked || p.filterEnabled} onClick={() => setModal({ type: 'dissolve', id: group.id })}><ActionIcon kind="trash"/></button></FilterActionHint>
                     </span>
                 </InlineTagName>
             </div>
@@ -234,9 +235,9 @@ export function TagsPanel(p: Props) {
         <TagLibraryInput allowGroup={view === 'groups'} library={p.library} query={query} onQuery={value => { setQuery(value); setError(''); }} readOnly={locked} onCreate={p.onCreateTag} onCreateGroup={createGroup}/>
         {(p.loadError || error && !modal) && <p role="alert" className="tag-error">{p.loadError || error}</p>}
         <div className="group-tools tag-filter-tools">
-            <button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron/></button>
+            <FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterFoldNotice')}><button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron/></button></FilterActionHint>
             <div className="tag-filter-controls">
-                <button className="tag-filter-toggle" aria-label={msg('tags.filterToggle')} aria-pressed={p.filterEnabled} data-tip={msg(p.filterEnabled ? 'tags.filterEnabled' : 'tags.filterDisabled')} onClick={() => p.onFilterEnabledChange(!p.filterEnabled)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v9l-4-2v-7Z"/></svg></button>
+                <button className="tag-filter-toggle" aria-label={msg('tags.filterToggle')} aria-pressed={p.filterEnabled} data-tip={msg(p.filterEnabled ? 'tags.filterEnabled' : 'tags.filterDisabled')} onClick={() => p.onFilterEnabledChange(!p.filterEnabled)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5 / 3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v9l-4-2v-7Z"/></svg></button>
                 {p.filterEnabled && <div className="tag-filter-mode" role="group" aria-label={msg('tags.filterMode')}>{(['and', 'or'] as const).map(mode => <button key={mode} aria-label={msg('tags.' + mode)} aria-pressed={p.filterMode === mode} onClick={() => p.onFilterModeChange(mode)}>{msg('tags.' + mode)}</button>)}</div>}
             </div>
             {view === 'level' && <TagScope value={scope} onChange={setScope}/>}

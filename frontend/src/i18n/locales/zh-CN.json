@@ -2032,6 +2032,12 @@
     "filterEditNotice": "关闭筛选后可编辑或移动标签",
     "filterGroupEditNotice": "关闭筛选后可编辑或移动分组",
     "groupModeUnavailable": "请在分组视图中新建分组",
-    "exportVisibleScope": "当前显示片段（{{count}} 个）"
+    "exportVisibleScope": "当前显示片段（{{count}} 个）",
+    "filterFoldNotice": "关闭筛选后可展开或折叠",
+    "filterManageNotice": "关闭筛选后可管理分组",
+    "filterDissolveNotice": "关闭筛选后可解散分组",
+    "filterDeleteNotice": "关闭筛选后可删除项目标签分支",
+    "filterRemoveNotice": "关闭筛选后可移除当前稿标签分支",
+    "filterMembershipNotice": "关闭筛选后可从该组移除标签"
   }
 }

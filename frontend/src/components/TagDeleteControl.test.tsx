@@ -5,7 +5,7 @@ import {TagDeleteControl} from './TagDeleteControl';
 afterEach(cleanup);
 it.each(['current','project'] as const)('requests a scope-aware branch confirmation directly: %s',scope=>{
  const onDelete=vi.fn();render(<TagDeleteControl name="Synthetic parent" count={3} disabled={false} scope={scope} onDelete={onDelete}/>);
- const trigger=screen.getByRole('button');expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');expect(trigger.getAttribute('data-action-tip')).toContain('3');expect(trigger.hasAttribute('title')).toBe(false);
+ const trigger=screen.getByRole('button');expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');expect(trigger.parentElement?.getAttribute('data-action-tip')).toContain('3');expect(trigger.hasAttribute('title')).toBe(false);
  fireEvent.click(trigger,{detail:1});expect(onDelete).toHaveBeenCalledExactlyOnceWith();expect(screen.queryByRole('group')).toBeNull();
  fireEvent.click(trigger,{detail:2});fireEvent.doubleClick(trigger);expect(onDelete).toHaveBeenCalledOnce();
 });

@@ -1,6 +1,7 @@
 import {useEffect,useLayoutEffect,useRef,useState,type ButtonHTMLAttributes} from 'react';
 import {InlineTagName} from './InlineTagName';
 import {msg} from '../i18n';
+import {FilterActionHint} from './FilterActionHint';
 export function TagLibraryPill({name,selected,inherited,filterEnabled,locked,parent,onToggle,onSelect,onRename,onRemove,canBegin,buttonProps,hint,dragEnabled=false,modifier=false}: {
  hint?:string;dragEnabled?:boolean;modifier?:boolean;
  name:string;selected:boolean;inherited:boolean;filterEnabled:boolean;locked:boolean;parent:boolean;
@@ -17,6 +18,6 @@ export function TagLibraryPill({name,selected,inherited,filterEnabled,locked,par
    if(filterEnabled){if(!inherited||selected)onSelect();return}
    if(parent){clear();timer.current=setTimeout(onToggle,500)}
   }}><span ref={text} className="library-label-text">{name}</span></button></InlineTagName>
-  {onRemove&&<button className="group-tag-remove tag-pill-remove" disabled={locked||editing} aria-label={`${msg('tags.remove')}: ${name}`} onDoubleClick={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();clear();if(e.detail<2)onRemove()}}>×</button>}
+  {onRemove&&<FilterActionHint blocked={filterEnabled} hint={msg('tags.filterMembershipNotice')}><button className="group-tag-remove tag-pill-remove" disabled={locked||editing||filterEnabled} aria-label={`${msg('tags.remove')}: ${name}`} onDoubleClick={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();clear();if(e.detail<2)onRemove()}}>×</button></FilterActionHint>}
  </span>;
 }
