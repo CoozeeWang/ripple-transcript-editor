@@ -23,6 +23,7 @@ pub fn diagnostic(app: &tauri::AppHandle, key: &str) -> String {
     localized_diagnostic(&saved_language(app), key)
 }
 
+pub const QUIT_ID: &str = "ripple-normal-quit";
 pub const UPDATE_ID: &str = "check-for-updates";
 pub const OPEN_PROJECT_ID: &str = "file-open-project";
 pub const RECENT_PROJECT_PREFIX: &str = "file-recent-project-";
@@ -74,6 +75,19 @@ pub fn set_menu_language(app: tauri::AppHandle, labels: HashMap<String, String>,
     let menu = Menu::default(&app).map_err(|error| error.to_string())?;
     for (index, item) in menu.items().map_err(|e| e.to_string())?.into_iter().enumerate() {
         if let MenuItemKind::Submenu(parent) = item {
+            // The macOS predefined Quit dispatches NSApplication terminate: directly,
+            // bypassing our async save handshake. A normal menu item routes through it.
+            #[cfg(target_os="macos")]
+            for (position, child) in parent.items().map_err(|e|e.to_string())?.into_iter().enumerate() {
+                if let MenuItemKind::Predefined(entry) = child {
+                    let text=entry.text().map_err(|e|e.to_string())?;
+                    if text.starts_with("Quit ") {
+                        parent.remove_at(position).map_err(|e|e.to_string())?;
+                        let quit=MenuItem::with_id(&app,QUIT_ID,text,true,Some("CmdOrCtrl+Q")).map_err(|e|e.to_string())?;
+                        parent.insert(&quit,position).map_err(|e|e.to_string())?;
+                    }
+                }
+            }
             if file_parent(&parent.text().map_err(|error| error.to_string())?) {
                 let text = labels.get("Open Project…").map(String::as_str).unwrap_or("Open Project…");
                 let entry = MenuItem::with_id(&app, OPEN_PROJECT_ID, text, true, Some("CmdOrCtrl+O")).map_err(|error| error.to_string())?;

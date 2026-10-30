@@ -812,7 +812,9 @@ fn main() {
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_status, connector_local_ready, connector_tunnel_stop])
         .on_menu_event(|app, event| {
-            if event.id().as_ref() == native_menu::UPDATE_ID {
+            if event.id().as_ref() == native_menu::QUIT_ID {
+                if !normal_close::request(app) { app.exit(0); }
+            } else if event.id().as_ref() == native_menu::UPDATE_ID {
                 if let Err(error) = update_window::open(app) { eprintln!("Update window failed: {error}"); }
             } else if event.id().as_ref() == native_menu::OPEN_PROJECT_ID {
                 if let Some(window) = app.get_webview_window("main") {
