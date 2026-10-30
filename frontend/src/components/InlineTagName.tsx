@@ -3,7 +3,9 @@ import { msg } from '../i18n';
 import { normalizeTagName } from '../lib/tags';
 
 /** Edits an existing project entity; cancellation never creates or merges a tag. */
-export function InlineTagName({ name, enabled, onRename, children, canBegin, onEditingChange, focusable = false }: {
+export function InlineTagName({ name, enabled, onRename, children, canBegin, onEditingChange, focusable = false, maxLength = 120, label }: {
+    label?:string;
+    maxLength?: number;
     name: string;
     enabled: boolean;
     onRename?: (name: string) => Promise<void>;
@@ -37,7 +39,7 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
             if (!enabled || !onRename || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || performance.now() < dragUntil.current || canBegin?.(event.timeStamp) === false) return;
             event.preventDefault(); event.stopPropagation(); begin();
         }}>
-        {editing ? <><input ref={input} value={draft} maxLength={120} size={Math.min(24, Math.max(4, draft.length + 1))} aria-label={msg('tags.renameTag')} disabled={busy} onChange={event => { setDraft(event.target.value); setError(''); }}
+        {editing ? <><input ref={input} value={draft} maxLength={maxLength} size={Math.min(24, Math.max(4, draft.length + 1))} aria-label={label??msg('tags.renameTag')} disabled={busy} onChange={event => { setDraft(event.target.value); setError(''); }}
             onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
             onBlur={() => { if (!pending.current) finish(false); }} onKeyDown={event => {
                 event.stopPropagation();

@@ -1926,9 +1926,9 @@
   },
   "tags": {
     "title": "Tags",
-    "all": "All",
+    "all": "Level",
     "groups": "Groups",
-    "search": "Search tags or groups",
+    "search": "Search tags",
     "name": "Tag",
     "count": "Segments",
     "newGroup": "New group",
@@ -1940,7 +1940,7 @@
     "delete": "Delete",
     "deleteTag": "Delete project tag",
     "deleteGroup": "Delete group",
-    "deleteTagNotice": "Remove this tag from project segments and every group. Text is kept. You can undo this action.",
+    "deleteTagNotice": "Remove this tag from project segments and groups. Child tags move up one level; descendant tags and their associations are kept. You can undo this action.",
     "members": "A tag can belong to multiple groups. Select the tags for this group.",
     "ungrouped": "Ungrouped",
     "add": "Add tag",
@@ -1981,6 +1981,16 @@
     "andHint": "Match every selected tag",
     "orHint": "Match any selected tag",
     "nameExists": "A tag with this name already exists. Choose another name.",
-    "addShortcut": "Add tag ({{key}})"
+    "addShortcut": "Add tag ({{key}})",
+    "pathConflict": "The name “{{name}}” already belongs to another path. Choose another name.",
+    "treeCycle": "A tag cannot be moved inside itself or a descendant.",
+    "pathInvalid": "Enter a valid path with nonempty, unique names separated by /.",
+    "inheritedHint": "Included by a selected parent tag. Deselect the parent to select this tag separately.",
+    "dragSearch": "Clear the search before adjusting tag hierarchy.",
+    "parentPath": "Parent path: {{path}}",
+    "foldTag": "Expand or collapse {{name}}",
+    "resetTags": "Reset project tags",
+    "resetTagsNotice": "Clear project tags and their segment/group associations. Keep group structure, transcripts and audio. This can be undone in this session.",
+    "newTag": "Create tag"
   }
 }

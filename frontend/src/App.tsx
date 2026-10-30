@@ -1,3 +1,4 @@
+import { tagErrorMessage } from './lib/tagErrors';
 import { nativeDesktopAvailable } from './lib/desktopFs';
 import { hasNativeSegmentDrag, startNativeSegmentDrag } from './lib/segmentDragBridge';
 import { useTranscriptEdgeAlignment } from './hooks/useTranscriptEdgeAlignment';
@@ -20,7 +21,7 @@ import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import {useProjectTags} from './hooks/useProjectTags';
 import {TagsPanel} from './components/TagsPanel';
-import {filteredTagSegments,matchesTagFilter,countTaggedSegments,tagsForSegment,tagHistoryAnchor,type TagLibrary} from './lib/tags';
+import {hierarchyLibrary,tagPath,hierarchyTagFilter,emptyTagLibrary,filteredTagSegments,matchesTagFilter,countTaggedSegments,tagsForSegment,tagHistoryAnchor,setSegmentTag,type TagLibrary} from './lib/tags';
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
 import { recordProblem, type Problem } from "./lib/diagnostics";
@@ -35,7 +36,7 @@ import { SegmentMergeDialog } from './components/SegmentMergeDialog';
 import { SegmentJump } from './components/SegmentJump';
 import { openingSegmentId } from "./lib/editPosition";
 import type { ParagraphEditorElement } from "./lib/paragraphEditor";
-import { flushEditorDrafts, hasEditorDrafts, hasPendingInputs, isEditorComposing } from "./lib/editorDrafts";
+import { flushEditorDrafts, hasEditorDrafts, hasPendingInputs, isEditorComposing, registerPendingInput } from "./lib/editorDrafts";
 import {
   useLayoutEffect,
   useCallback,
@@ -238,12 +239,17 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     ? selectedSegmentId
     : (transcript?.segments[0]?.id ?? "");
   // 仅视图筛选：隐藏说话人的片段不渲染、不计入、批注也不显示（不动存档）。
+  const preparedTagLibrary=useMemo(()=>{
+    const source=projectProps.tagLibrary??emptyTagLibrary();
+    try {return {library:source.schemaVersion===1&&source.tags.some(tag=>tag.name.includes('/'))?hierarchyLibrary(source):source,error:''};}
+    catch(error){return {library:source,error:tagErrorMessage(error)}}
+  },[projectProps.tagLibrary]);
   const [selectedTagFilters,setTagFilters]=useState<string[]>([]);
   const [tagFilterEnabled,setTagFilterEnabled]=useState(true);
   const [tagFilterMode,setTagFilterMode]=useState<'and'|'or'>('and');
-  const selectedTagIds=useMemo(()=>selectedTagFilters.filter(id=>projectProps.tagLibrary?.tags.some(tag=>tag.id===id)),[selectedTagFilters,projectProps.tagLibrary]);
-  useEffect(()=>{let current=true;const valid=new Set(projectProps.tagLibrary?.tags.map(tag=>tag.id));queueMicrotask(()=>{if(current)setTagFilters(selected=>{const ids=selected.filter(id=>valid.has(id));return ids.length===selected.length?selected:ids})});return()=>{current=false}},[projectProps.tagLibrary]);
-  const tagFilter=useMemo(()=>tagFilterEnabled&&selectedTagIds.length?{ids:selectedTagIds,mode:tagFilterMode}:null,[selectedTagIds,tagFilterEnabled,tagFilterMode]);
+  const selectedTagIds=useMemo(()=>selectedTagFilters.filter(id=>preparedTagLibrary.library.tags.some(tag=>tag.id===id)),[selectedTagFilters,preparedTagLibrary.library]);
+  useEffect(()=>{let current=true;const valid=new Set(preparedTagLibrary.library.tags.map(tag=>tag.id));queueMicrotask(()=>{if(current)setTagFilters(selected=>{const ids=selected.filter(id=>valid.has(id));return ids.length===selected.length?selected:ids})});return()=>{current=false}},[preparedTagLibrary.library]);
+  const tagFilter=useMemo(()=>tagFilterEnabled&&selectedTagIds.length?hierarchyTagFilter(preparedTagLibrary.library,selectedTagIds,tagFilterMode):null,[selectedTagIds,tagFilterEnabled,tagFilterMode,preparedTagLibrary.library]);
   const visibleSegments = useMemo(
     () => (transcript ? filteredTagSegments(transcript,hiddenSpeakerIds,tagFilter) : []),
     [transcript, hiddenSpeakerIds,tagFilter],
@@ -260,6 +266,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const renamingRef = useRef(false);
   const canChangeDocumentRef = useRef<() => boolean>(() => true);
   const tagLibrarySaving = useRef(false);
+  const tagAssociationPending = useRef(false);
+  const [tagAssociationBusy,setTagAssociationBusy] = useState(false);
+  useEffect(()=>registerPendingInput(()=>tagAssociationPending.current),[]);
   const openingProjectRef = useRef(false);
   const beforeChangeRef = useRef<() => Promise<void>>(async () => {});
   const latestExport = useRef({ transcript, metadata });
@@ -278,7 +287,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const mutateTranscript = useCallback(
     (updater: (current: Transcript) => Transcript, groupKey?: string) => {
       const aiWrite = groupKey?.startsWith('ai-marks:') || groupKey?.startsWith('ai-continuation:');
-      if (viewingOriginal || !aiWrite && editLockedRef.current()) return;
+      if (viewingOriginal || tagAssociationPending.current || !aiWrite && editLockedRef.current()) return;
       tagContentEditPending.current=true;
       commit(current => !aiWrite && editLockedRef.current() ? current : reconcileComparisonReviews(updater(current)), groupKey);
       setSaveStatus("unsaved");
@@ -594,6 +603,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     setSaveToast,
     handleSave,
     flushPendingSave,
+    persistTranscriptChange,
   } = usePersistence({
     persistedContent,
     dirHandleRef,
@@ -718,11 +728,23 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const aiVersionId = activeModelId ? `${activeModelId}:${viewingOriginal || activeModel?.designatedOriginal ? 'original' : activeModel?.activeEditId}` : '';
   const aiLocked = connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, aiIdentity);
   useLayoutEffect(() => {
-    editLockedRef.current = () => connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
+    editLockedRef.current = () => tagAssociationPending.current || connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
   });
-  const protectedReadOnly = viewingOriginal || aiLocked;
-  const tags=useProjectTags({library:projectProps.tagLibrary,save:projectProps.saveTagLibrary,project:projectProps.connectorProject??(()=>null),recordingId:projectProps.projectRecordingId,modelId:activeModelId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,mutate:mutateTranscript,readOnly:protectedReadOnly,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
-  useLayoutEffect(() => { tagLibrarySaving.current = tags.busy; }, [tags.busy]);
+  const protectedReadOnly = viewingOriginal || aiLocked || tagAssociationBusy;
+  const tags=useProjectTags({library:preparedTagLibrary.library,save:projectProps.saveTagLibrary,project:projectProps.connectorProject??(()=>null),recordingId:projectProps.projectRecordingId,modelId:activeModelId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,mutate:mutateTranscript,readOnly:protectedReadOnly,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+  useLayoutEffect(() => { tagLibrarySaving.current = tags.busy || tagAssociationBusy; }, [tags.busy,tagAssociationBusy]);
+  const dropTagToSegment = async (tagId:string,segmentId:string) => {
+    if(protectedReadOnly || tags.busy || tagAssociationPending.current || !tags.library.tags.some(tag=>tag.id===tagId)) return;
+    flushEditorDrafts();
+    if(!latestExport.current.transcript?.segments.some(segment=>segment.id===segmentId && !segment.tagIds?.includes(tagId)))return;
+    tagAssociationPending.current=true; tagLibrarySaving.current=true;
+    flushSync(()=>setTagAssociationBusy(true));
+    try {
+      const saved=await persistTranscriptChange(value=>setSegmentTag(value,segmentId,tagId,true));
+      tagContentEditPending.current=true;
+      flushSync(()=>{commit(()=>saved,'tag-drop:'+segmentId+':'+tagId);setSaveStatus('saved')});
+    } finally { tagAssociationPending.current=false;tagLibrarySaving.current=tags.busy;setTagAssociationBusy(false); }
+  };
   const priorTagContentAnchor=useRef<string|null>(null);
   useLayoutEffect(()=>{const next=tagHistoryAnchor(transcript);if(tagContentEditPending.current&&priorTagContentAnchor.current!==next)queueMicrotask(tags.discardRedo);tagContentEditPending.current=false;priorTagContentAnchor.current=next},[transcript,tags.discardRedo]);
   const guardedRenameVersion: typeof renameVersion = (...args) => {
@@ -914,6 +936,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     catch (error) { transfer.effectAllowed='none'; failTransfer(msg('segmentTransfer.dragFailed'),error); }
   };
 
+  const [tagDropSegment,setTagDropSegment]=useState<string|null>(null);
   const tagEntries = useRef(new Map<string, () => void>());
   const registerTagEntry = useCallback((id: string, open: (() => void) | null) => { if (open) tagEntries.current.set(id,open); else tagEntries.current.delete(id); }, []);
   const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tags.busy && projectProps.saveTagLibrary) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tags.busy,projectProps.saveTagLibrary]);
@@ -921,7 +944,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     addTag: openActiveTagEntry, nativeTagShortcut: nativeDesktopAvailable(), tagWriteDisabled: tags.busy || protectedReadOnly,
     visibleSegmentIds,
     copySegment,
-    disabled: renaming || versionBusy || saveStatus === "loading",
+    disabled: renaming || versionBusy || tagAssociationBusy || saveStatus === "loading",
     transcript,
     viewingOriginal,
     removeSegment,
@@ -1242,8 +1265,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         viewingOriginal={viewingOriginal}
         performUndo={performUndo}
         performRedo={performRedo}
-        canUndo={(canUndo||tags.canUndo)&&!aiLocked&&!tags.busy}
-        canRedo={(canRedo||tags.canRedo)&&!aiLocked&&!tags.busy}
+        canUndo={(canUndo||tags.canUndo)&&!aiLocked&&!tags.busy&&!tagAssociationBusy}
+        canRedo={(canRedo||tags.canRedo)&&!aiLocked&&!tags.busy&&!tagAssociationBusy}
         setFindOpen={setFindOpen}
         exportMenuOpen={exportMenuOpen}
         setExportMenuOpen={setExportMenuOpen}
@@ -1350,7 +1373,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           segmentNavigation={<SegmentJump key={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} count={transcript.segments.length} onJump={jumpToSegment} />}
           viewingOriginal={viewingOriginal}
           activeModelId={activeModelId}
-          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy || tags.busy} mutationDisabled={aiLocked}
+          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy || tags.busy || tagAssociationBusy} mutationDisabled={aiLocked}
             onSelect={(model,edit)=>{if(edit==="original")void openOriginal(model);else void selectEdit(model,edit);}}
             onRename={guardedRenameVersion} onCopy={(model,edit)=>{if(editLockedRef.current())return;if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
             onDelete={(modelId,editId,label,isLast)=>{if(editLockedRef.current())return;setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast});}} />}
@@ -1367,7 +1390,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         {!preparingTranscript && transcriptionNotice}
         </div>
 
-        <section className="transcript-panel" ref={transcriptPanelRef} tabIndex={-1} aria-label={msg('App.m0045')}>
+        <section className="transcript-panel" data-tag-drop-scroll ref={transcriptPanelRef} tabIndex={-1} aria-label={msg('App.m0045')}>
           {followingPaused && isPlaying && (
             <button type="button" className="follow-resume" onClick={resumeFollow}>
               {msg('App.m0046')}</button>
@@ -1406,8 +1429,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
               <SegmentItem
                 tags={tagsForSegment(segment,tags.library)}
                 availableTags={tags.library.tags}
+                tagDropTarget={tagDropSegment===segment.id}
+                tagPaths={Object.fromEntries(tags.library.tags.map(tag=>[tag.id,tagPath(tags.library,tag.id)]))}
+                onAddTagId={tags.attach}
                 tagRenameEnabled={!tagFilterEnabled && !protectedReadOnly}
-                onRenameTag={projectProps.saveTagLibrary?tags.rename:undefined}
+                onRenameTag={projectProps.saveTagLibrary?tags.renamePath:undefined}
                 tagWriteDisabled={tags.busy}
                 onAddTag={projectProps.saveTagLibrary?tags.add:undefined}
                 registerTagEntry={registerTagEntry}
@@ -1454,7 +1480,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.library.tags.length}
-          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} onChange={tags.change} onRenameTag={tags.rename} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
+          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} loadError={preparedTagLibrary.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id,tags.library):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}

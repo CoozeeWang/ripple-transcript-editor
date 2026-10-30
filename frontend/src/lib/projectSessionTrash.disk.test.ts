@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {addInterview,addRecordings,createProject,openProject,recordingDirectory,saveProject,trashProjectInterview,restoreProjectInterview} from './projectStore';
 import {createEdit,createModel,readModelEdit,saveActiveEdit,readModelOriginal} from '../localStore';
-import {removeTagGroup,transferTagGroup} from './tags';
+import {setTagPath,renameTagLeaf,removeTagNode,tagPath,removeTagGroup,transferTagGroup} from './tags';
 
 const fileError=(error:unknown)=>{throw (error as NodeJS.ErrnoException).code==='ENOENT'?new DOMException('Synthetic missing file','NotFoundError'):error;};
 
@@ -65,6 +65,11 @@ it('deletes, closes, reopens and restores real synthetic files with byte-identic
   project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(changed);expect(await bytes(temporary)).toEqual(manuscriptBytes);
   project=await saveProject(project,{...project.data,tagLibrary:defined});
  }
+ const hierarchy=setTagPath(setTagPath(defined,'Synthetic hierarchy/Synthetic parent','tag-a').library,'Synthetic hierarchy/Synthetic parent/Synthetic child','tag-b').library;
+ project=await saveProject(project,{...project.data,tagLibrary:hierarchy});project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(hierarchy);expect(await bytes(temporary)).toEqual(manuscriptBytes);
+ const renamedHierarchy=renameTagLeaf(hierarchy,'tag-a','Synthetic renamed parent');project=await saveProject(project,{...project.data,tagLibrary:renamedHierarchy});project=await openProject(project.directory);expect(tagPath(project.data.tagLibrary!,'tag-b')).toBe('Synthetic hierarchy/Synthetic renamed parent/Synthetic child');expect(await bytes(temporary)).toEqual(manuscriptBytes);
+ const lifted=removeTagNode(renamedHierarchy,'tag-a');project=await saveProject(project,{...project.data,tagLibrary:lifted});project=await openProject(project.directory);expect(tagPath(project.data.tagLibrary!,'tag-b')).toBe('Synthetic hierarchy/Synthetic child');expect(project.data.tagLibrary!.tags.find(t=>t.id==='tag-b')?.groupIds).toEqual(['parent','child']);expect(await bytes(temporary)).toEqual(manuscriptBytes);
+ project=await saveProject(project,{...project.data,tagLibrary:defined});
  const renamed={...defined,tags:defined.tags.map(tag=>tag.id==='tag-a'?{...tag,name:'Synthetic renamed topic'}:tag)};
  project=await saveProject(project,{...project.data,tagLibrary:renamed});
  project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(renamed);expect(await bytes(temporary)).toEqual(manuscriptBytes);

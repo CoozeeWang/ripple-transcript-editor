@@ -165,3 +165,32 @@ it('does not publish manual-save success after its document has changed', async 
   await act(async () => { finish(); await saving; });
   expect(ui.result.current.saveToast).toBeNull();
 });
+
+it('persists an exact association before publication without rewriting unchanged audio details', async () => {
+  const deps=loadedDeps(); deps.saveAudioDraft=vi.fn(async()=>{});
+  const {result,rerender}=renderHook(usePersistence,{initialProps:deps});
+  let release!:()=>void;
+  vi.mocked(saveActiveEdit).mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve}));
+  const next={...deps.transcript!,segments:[{...deps.transcript!.segments[0],tagIds:['parent-only']}]};
+  let saved:Transcript|undefined;
+  let operation!:Promise<void>;
+  await act(async()=>{operation=result.current.persistTranscriptChange(()=>next).then(value=>{saved=value});await Promise.resolve()});
+  expect(saved).toBeUndefined(); expect(deps.transcript!.segments[0].tagIds).toBeUndefined();
+  await act(async()=>{await result.current.handleSave();await expect(result.current.flushPendingSave()).rejects.toThrow()});
+  expect(saveActiveEdit).toHaveBeenCalledTimes(1);
+  await act(async()=>{release();await operation});
+  expect(saved).toBe(next);expect(deps.saveAudioDraft).not.toHaveBeenCalled();
+  rerender({...deps,transcript:next});
+  await act(async()=>{await result.current.flushPendingSave()});
+  expect(saveActiveEdit).toHaveBeenCalledTimes(1);
+});
+
+it('does not publish a failed association or retry it on later navigation', async () => {
+  const deps=loadedDeps();const {result}=renderHook(usePersistence,{initialProps:deps});
+  vi.mocked(saveActiveEdit).mockRejectedValueOnce(new Error('synthetic atomic failure'));
+  const publish=vi.fn();
+  await act(async()=>{await expect(result.current.persistTranscriptChange(value=>({...value,segments:[{...value.segments[0],tagIds:['one']}]})).then(publish)).rejects.toThrow('synthetic atomic failure')});
+  expect(publish).not.toHaveBeenCalled();expect(deps.transcript!.segments[0].tagIds).toBeUndefined();
+  await act(async()=>{await result.current.flushPendingSave()});
+  expect(saveActiveEdit).toHaveBeenCalledTimes(1);
+});

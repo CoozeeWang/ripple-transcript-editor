@@ -4,6 +4,7 @@ export interface ProjectTag {
     id: string;
     name: string;
     groupIds: string[];
+    parentId?: string | null;
 }
 export interface TagGroup {
     id: string;
@@ -11,7 +12,7 @@ export interface TagGroup {
     parentId: string | null;
 }
 export interface TagLibrary {
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     tags: ProjectTag[];
     groups: TagGroup[];
 }
@@ -22,7 +23,7 @@ export const normalizeTagName = (name: string): string => name.trim().normalize(
 const validName = (name: unknown): name is string => typeof name === 'string' && !!normalizeTagName(name) && name.length <= 120 && !Array.from(name).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 /** Optional extension: absence means an empty library, never a write-on-open migration. */
 export function isTagLibrary(value: unknown): value is TagLibrary {
-    if (!record(value) || value.schemaVersion !== 1 || !Array.isArray(value.tags) || !Array.isArray(value.groups))
+    if (!record(value) || ![1,2].includes(value.schemaVersion as number) || !Array.isArray(value.tags) || !Array.isArray(value.groups))
         return false;
     const groups = new Map<string, string | null>();
     for (const group of value.groups) {
@@ -45,10 +46,18 @@ export function isTagLibrary(value: unknown): value is TagLibrary {
         if (!record(tag) || !identity(tag.id) || ids.has(tag.id) || !validName(tag.name) || !Array.isArray(tag.groupIds) || !tag.groupIds.every(id => typeof id === 'string' && groups.has(id)) || new Set(tag.groupIds).size !== tag.groupIds.length)
             return false;
         const name = normalizeTagName(tag.name).toLowerCase();
+        if (value.schemaVersion === 2 && (tag.name.includes('/') || (tag.parentId !== null && !identity(tag.parentId)))) return false;
         if (names.has(name))
             return false;
         ids.add(tag.id);
         names.add(name);
+    }
+    if (value.schemaVersion === 2) {
+        const parents = new Map(value.tags.map(tag => [(tag as ProjectTag).id, (tag as ProjectTag).parentId ?? null]));
+        for (const id of parents.keys()) {
+            const seen = new Set<string>(); let next: string | null = id;
+            while (next !== null) { if (seen.has(next) || !parents.has(next)) return false; seen.add(next); next = parents.get(next)!; }
+        }
     }
     return true;
 }
@@ -67,32 +76,36 @@ export function segmentTagIds(segment: Segment): string[] {
 }
 /** Full substring matching; prefix matches precede infix matches, then normal name/ID order. */
 export function suggestTags(tags: readonly ProjectTag[], input: string, assigned: readonly string[] = []): ProjectTag[] {
-    const query = input.trim().toLowerCase(), excluded = new Set(assigned);
+    const query = normalizeTagName(input).toLowerCase(), excluded = new Set(assigned);
     if (!query) return [];
-    const matches = sortTags(tags.filter(tag => !excluded.has(tag.id) && tag.name.toLowerCase().includes(query)), 'name', 1, () => 0);
-    return [...matches.filter(tag => tag.name.toLowerCase().startsWith(query)), ...matches.filter(tag => !tag.name.toLowerCase().startsWith(query))];
+    const library:TagLibrary={schemaVersion:2,tags:[...tags],groups:[]};
+    const rank=(tag:ProjectTag)=>tag.name.toLowerCase().startsWith(query)?0:tag.name.toLowerCase().includes(query)?1:tagPath(library,tag.id).toLowerCase().includes(query)?2:3;
+    return sortTags(tags.filter(tag=>!excluded.has(tag.id)&&rank(tag)<3),'name',1,()=>0).sort((a,b)=>rank(a)-rank(b));
 }
 /** All read paths ignore dangling IDs. A deleted entity never matches by name. */
 export function tagsForSegment(segment: Segment, library: TagLibrary): ProjectTag[] {
     const ids = new Set(segmentTagIds(segment));
     return library.tags.filter(tag => ids.has(tag.id));
 }
-export function countTaggedSegments(transcript: Transcript, tagId: string): number {
-    return transcript.segments.filter(segment => segmentTagIds(segment).includes(tagId)).length;
+export function countTaggedSegments(transcript: Transcript, tagId: string, library?: TagLibrary): number {
+    const scope = new Set(library ? descendantTagIds(library, tagId) : [tagId]);
+    return transcript.segments.filter(segment => segmentTagIds(segment).some(id=>scope.has(id))).length;
 }
 /** Caller supplies exactly one representative version per manuscript, not its history. */
 export function countProjectTags(versions: readonly {
     manuscriptId: string;
     transcript: Transcript;
-}[]): Map<string, number> {
+}[], library?: TagLibrary): Map<string, number> {
     const counts = new Map<string, number>(), manuscripts = new Set<string>();
     for (const version of versions) {
         if (manuscripts.has(version.manuscriptId))
             throw new Error('duplicate_manuscript_representative');
         manuscripts.add(version.manuscriptId);
-        for (const segment of version.transcript.segments)
-            for (const id of segmentTagIds(segment))
-                counts.set(id, (counts.get(id) ?? 0) + 1);
+        for (const segment of version.transcript.segments) {
+            const ids = new Set(segmentTagIds(segment));
+            if (library) for (const id of [...ids]) for (const ancestor of tagAncestors(library, id)) ids.add(ancestor.id);
+            for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
     }
     return counts;
 }
@@ -101,13 +114,14 @@ export function setSegmentTag(transcript: Transcript, segmentId: string, tagId: 
         throw new Error('invalid_tag_identity');
     return { ...transcript, segments: transcript.segments.map(segment => segment.id !== segmentId ? segment : { ...segment, tagIds: enabled ? [...new Set([...segmentTagIds(segment), tagId])] : segmentTagIds(segment).filter(id => id !== tagId) }) };
 }
-export type TagFilter = string | { ids: readonly string[]; mode: 'and' | 'or' } | null;
+export type TagFilter = string | { ids: readonly string[]; mode: 'and' | 'or'; scopeIds?: Readonly<Record<string, readonly string[]>> } | null;
 export function matchesTagFilter(segment: Segment, filter: TagFilter): boolean {
     if (!filter) return true;
     const ids = typeof filter === 'string' ? [filter] : [...new Set(filter.ids)];
     if (!ids.length) return true;
     const assigned = new Set(segmentTagIds(segment));
-    return typeof filter === 'string' || filter.mode === 'and' ? ids.every(id => assigned.has(id)) : ids.some(id => assigned.has(id));
+    const hit = (id: string) => (typeof filter !== 'string' && filter.scopeIds?.[id] || [id]).some(value => assigned.has(value));
+    return typeof filter === 'string' || filter.mode === 'and' ? ids.every(hit) : ids.some(hit);
 }
 export function filteredTagSegments(transcript: Transcript, hiddenSpeakers: ReadonlySet<string>, filter: TagFilter): Segment[] {
     return transcript.segments.filter(segment => !hiddenSpeakers.has(segment.speaker_id) && matchesTagFilter(segment, filter));
@@ -135,10 +149,10 @@ export function removeTagGroup(library: TagLibrary, groupId: string, scope: 'lev
     return { ...library, groups, tags: library.tags.map(tag => ({ ...tag, groupIds: tag.groupIds.filter(id => !removed.has(id)) })) };
 }
 /** Move only the explicit source membership; copying always reuses the same tag entity. */
-export function transferTagGroup(library: TagLibrary, tagId: string, sourceId: string | null, targetId: string, copy: boolean): TagLibrary {
+export function transferTagGroup(library: TagLibrary, tagId: string, sourceId: string | null, targetId: string, copy: boolean, detachedSource=false): TagLibrary {
     const tag = library.tags.find(tag => tag.id === tagId);
     if (!tag || sourceId === targetId || !library.groups.some(group => group.id === targetId)) return library;
-    if (sourceId ? !tag.groupIds.includes(sourceId) : tag.groupIds.length > 0) return library;
+    if (sourceId ? !tag.groupIds.includes(sourceId) : !detachedSource && tag.groupIds.length > 0) return library;
     const groupIds = sourceId && !copy ? tag.groupIds.filter(id => id !== sourceId) : [...tag.groupIds];
     if (!groupIds.includes(targetId)) groupIds.push(targetId);
     if (groupIds.length === tag.groupIds.length && groupIds.every((id, index) => id === tag.groupIds[index])) return library;
@@ -163,4 +177,97 @@ export function moveTagGroup(library: TagLibrary, sourceId: string, targetId: st
 /** Editable content only: audio playback anchoring and cursor metadata are not edits. */
 export function tagHistoryAnchor(transcript:Transcript|null):string {
  return JSON.stringify(transcript?{speakers:transcript.speakers,segments:transcript.segments.map(segment=>[segment.id,segment.text,segment.speaker_id,segment.tagIds,segment.annotations,segment.highlights])}:null);
+}
+
+export class TagTreeError extends Error {
+    constructor(public code: 'invalid_path'|'path_conflict'|'cycle'|'invalid_tree', public value='') { super(code); this.name='TagTreeError'; }
+}
+export const tagParentId = (tag: ProjectTag): string|null => tag.parentId ?? null;
+export function hierarchyLibrary(library: TagLibrary): TagLibrary {
+    if(library.schemaVersion===2) {if(!isTagLibrary(library))throw new TagTreeError('invalid_tree');return library;}
+    // Only returned to an explicit tag transaction; never write on project open.
+    // Legacy path labels become relations, retaining each terminal tag's ID.
+    const tags:ProjectTag[]=library.tags.filter(tag=>!tag.name.includes('/')).map(tag=>({...tag,name:normalizeTagName(tag.name),parentId:null}));
+    const paths=library.tags.filter(tag=>tag.name.includes('/')).sort((a,b)=>a.name.split('/').length-b.name.split('/').length);
+    for(const source of paths) {
+        const parts=splitTagPath(source.name);let parentId:string|null=null;
+        for(let index=0;index<parts.length;index++) {
+            const name=parts[index],leaf=index===parts.length-1,existing=tags.find(tag=>tag.name.toLowerCase()===name.toLowerCase());
+            if(existing) {
+                if(tagParentId(existing)!==parentId || leaf&&existing.id!==source.id)throw new TagTreeError('path_conflict',name);
+                parentId=existing.id;
+            } else {const tag:ProjectTag={...(leaf?source:{id:crypto.randomUUID(),groupIds:[]}),name,parentId};tags.push(tag);parentId=tag.id;}
+        }
+    }
+    const result:TagLibrary={...library,schemaVersion:2,tags};if(!isTagLibrary(result))throw new TagTreeError('invalid_tree');return result;
+}
+
+/** Nearest ancestor first. Defensive traversal also permits inspecting legacy data. */
+export function tagAncestors(library:TagLibrary,id:string):ProjectTag[] {
+    const tags=new Map(library.tags.map(tag=>[tag.id,tag])),result:ProjectTag[]=[],seen=new Set([id]);let next=tags.get(id);
+    while(next && tagParentId(next)) { const parent=tags.get(tagParentId(next)!);if(!parent || seen.has(parent.id))break;seen.add(parent.id);result.push(parent);next=parent; }
+    return result;
+}
+export function tagPath(library:TagLibrary,id:string):string {
+    const tag=library.tags.find(tag=>tag.id===id);return tag?[...tagAncestors(library,id).reverse().map(tag=>tag.name),tag.name].join('/'):'';
+}
+export function descendantTagIds(library:TagLibrary,id:string):string[] {
+    const result=new Set([id]);for(let changed=true;changed;){changed=false;for(const tag of library.tags)if(tagParentId(tag)&&result.has(tagParentId(tag)!)&&!result.has(tag.id)){result.add(tag.id);changed=true;}}
+    return [...result];
+}
+export function hierarchyTagFilter(library:TagLibrary,ids:readonly string[],mode:'and'|'or'):TagFilter {
+    return {ids:[...new Set(ids)],mode,scopeIds:Object.fromEntries(ids.map(id=>[id,descendantTagIds(library,id)]))};
+}
+export function splitTagPath(raw:string):string[] {
+    const parts=raw.split('/').map(normalizeTagName);
+    if(!parts.length || parts.some(part=>!validName(part) || part.includes('/')))throw new TagTreeError('invalid_path',raw);
+    return parts;
+}
+/** Preflight the complete path in memory, then return one transaction. No caller-visible partial ancestors. */
+export function setTagPath(source:TagLibrary,raw:string,targetId?:string):{library:TagLibrary;tag:ProjectTag} {
+    const library=hierarchyLibrary(source),parts=splitTagPath(raw),tags=[...library.tags],target=targetId?tags.find(tag=>tag.id===targetId):undefined;
+    if(targetId&&!target)throw new TagTreeError('invalid_tree');
+    let parentId:string|null=null,last:ProjectTag|undefined;
+    for(let index=0;index<parts.length;index++) {
+        const name=parts[index],leaf=index===parts.length-1,existing=tags.find(tag=>normalizeTagName(tag.name).toLowerCase()===name.toLowerCase());
+        if(leaf&&target) {
+            if(existing&&existing.id!==target.id)throw new TagTreeError('path_conflict',name);
+            if(parentId===target.id || (parentId&&descendantTagIds(library,target.id).includes(parentId)))throw new TagTreeError('cycle');
+            last={...target,name,parentId};tags[tags.findIndex(tag=>tag.id===target.id)]=last;
+        } else if(existing) {
+            if(existing.id===targetId || tagParentId(existing)!==parentId)throw new TagTreeError(existing.id===targetId?'cycle':'path_conflict',name);
+            last=existing;
+        } else {last={id:crypto.randomUUID(),name,parentId,groupIds:[]};tags.push(last);}
+        parentId=last.id;
+    }
+    const result={...library,tags};if(!isTagLibrary(result))throw new TagTreeError('invalid_tree');
+    return {library:result,tag:last!};
+}
+export function renameTagLeaf(source:TagLibrary,id:string,raw:string):TagLibrary {
+    if(raw.includes('/'))throw new TagTreeError('invalid_path',raw);
+    const library=hierarchyLibrary(source),tag=library.tags.find(tag=>tag.id===id),name=normalizeTagName(raw);
+    if(!tag||!validName(name))throw new TagTreeError('invalid_path',raw);
+    if(library.tags.some(other=>other.id!==id&&normalizeTagName(other.name).toLowerCase()===name.toLowerCase()))throw new TagTreeError('path_conflict',name);
+    return {...library,tags:library.tags.map(tag=>tag.id===id?{...tag,name}:tag)};
+}
+export function reparentTag(source:TagLibrary,id:string,parentId:string|null):TagLibrary {
+    const tag=source.tags.find(tag=>tag.id===id);
+    if(!tag || tagParentId(tag)===parentId || parentId===id || parentId&&!source.tags.some(tag=>tag.id===parentId) || parentId&&descendantTagIds(source,id).includes(parentId))return source;
+    const library=hierarchyLibrary(source);return {...library,tags:library.tags.map(tag=>tag.id===id?{...tag,parentId}:tag)};
+}
+/** Group view omits absent ancestors without compressing the real depth difference. */
+export function tagTreeRows(library:TagLibrary,memberIds?:ReadonlySet<string>,key:'name'|'count'='name',direction:1|-1=1,count:(id:string)=>number=()=>0):{tag:ProjectTag;depth:number;parentPath:string;includedParentId:string|null}[] {
+    const result:{tag:ProjectTag;depth:number;parentPath:string;includedParentId:string|null}[]=[];
+    const visit=(parentId:string|null,depth:number,rootDepth:number|null,includedParentId:string|null)=>{
+        for(const tag of sortTags(library.tags.filter(tag=>tagParentId(tag)===parentId),key,direction,count)) {
+            const included=!memberIds||memberIds.has(tag.id),base=included?(rootDepth??depth):rootDepth;
+            if(included)result.push({tag,depth:depth-(base??depth),parentPath:tagAncestors(library,tag.id).reverse().map(tag=>tag.name).join('/'),includedParentId});
+            visit(tag.id,depth+1,base,included?tag.id:includedParentId);
+        }
+    };visit(null,0,null,null);return result;
+}
+/** Delete the entity only, lifting children; descendants and their associations survive. */
+export function removeTagNode(source:TagLibrary,id:string):TagLibrary {
+    const library=hierarchyLibrary(source),tag=library.tags.find(tag=>tag.id===id);if(!tag)return source;
+    return {...library,tags:library.tags.filter(tag=>tag.id!==id).map(child=>tagParentId(child)===id?{...child,parentId:tagParentId(tag)}:child)};
 }

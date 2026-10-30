@@ -1,15 +1,25 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { tagErrorMessage } from '../lib/tagErrors';
 import { TagPill } from './TagPill';
 import { msg } from '../i18n';
-import { normalizeTagName, suggestTags, type ProjectTag } from '../lib/tags';
-export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds = [] }: {
-    onCommit: (name: string) => void;
+import { tagPath, normalizeTagName, suggestTags, type ProjectTag } from '../lib/tags';
+export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds = [], libraryMode = false, disabled = false }: {
+    libraryMode?:boolean;
+    disabled?:boolean;
+    onCommit: (name: string, tagId?:string) => void | Promise<void>;
     onCancel: (reason: 'escape' | 'blur') => void;
     availableTags?: readonly ProjectTag[];
     assignedIds?: readonly string[];
 }) {
-    const [value, setValue] = useState(''), [error, setError] = useState(false), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), id = useId();
+    const [value, setValue] = useState(''),[submitting,setSubmitting]=useState(false), [error, setError] = useState(''), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), pending=useRef(false),restoreCommit=useRef(false), id = useId();
+    const submit=(name:string,id?:string)=>{
+        if(pending.current||disabled)return;
+        try {const result=id?onCommit(name,id):onCommit(name);if(result&&typeof result.then==='function'){pending.current=true;setSubmitting(true);void result.then(()=>{if(libraryMode){setValue('');setActive(-1);restoreCommit.current=true}},error=>setError(tagErrorMessage(error))).finally(()=>{pending.current=false;setSubmitting(false)})}}
+        catch(error){setError(tagErrorMessage(error))}
+    };
+    useLayoutEffect(()=>{if(!submitting&&(error||restoreCommit.current)){restoreCommit.current=false;input.current?.focus()}},[error,submitting]);
+    const cancel=(reason:'escape'|'blur')=>{if(libraryMode){setValue('');setActive(-1);setError('')}onCancel(reason)};
     const suggestions = suggestTags(availableTags, value, assignedIds), selected = suggestions[active];
     useLayoutEffect(() => { input.current?.focus(); }, []);
     useLayoutEffect(() => {
@@ -27,31 +37,31 @@ export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds =
         return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true); };
     }, [value, suggestions.length]);
     useLayoutEffect(() => { popup.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }); }, [active]);
-    return <span className="tag-entry" onClick={e => e.stopPropagation()}><input ref={input} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg('tags.input')} value={value} maxLength={120} onChange={e => { setValue(e.target.value); setError(false); setActive(-1); }} onBlur={() => onCancel('blur')} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
+    return <span className={libraryMode?'tag-library-create-entry':'tag-entry'} onClick={e => e.stopPropagation()}><input ref={input} disabled={submitting||disabled} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg(libraryMode?'tags.newTag':'tags.input')} placeholder={libraryMode?msg('tags.newTag'):undefined} value={value} maxLength={1024} onChange={e => { setValue(e.target.value); setError(''); setActive(-1); }} onBlur={() => {if(!pending.current)cancel('blur')}} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
             e.stopPropagation();
             if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229)
                 return;
             if (e.key === 'Escape') {
                 e.preventDefault();
-                onCancel('escape');
+                cancel('escape');
             }
             if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && suggestions.length) {
                 e.preventDefault();
                 setActive(old => old < 0 ? (e.key === 'ArrowDown' ? 0 : suggestions.length - 1) : (old + (e.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length);
             }
-            if (e.key === 'Enter' || e.key === ' ') {
+            if (e.key === 'Enter' || e.key === ' '&&!libraryMode) {
                 e.preventDefault();
-                if (e.key === 'Enter' && selected) { onCommit(selected.name); return; }
+                if (e.key === 'Enter' && selected) { submit(selected.name,selected.id); return; }
                 const name = normalizeTagName(value);
                 if (!name) {
-                    onCancel('escape');
+                    cancel('escape');
                     return;
                 }
                 if (Array.from(name).some(c => c.charCodeAt(0) < 32)) {
-                    setError(true);
+                    setError(msg('tags.invalidName'));
                     return;
                 }
-                onCommit(name);
+                submit(name);
             }
-        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) onCommit(tag.name); }}><TagPill name={tag.name}/></div>)}</div>, document.body)}{error && <span role="alert">{msg('tags.invalidName')}</span>}</span>;
+        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/>{tag.parentId&&<small className="tag-parent-path">{tagPath({schemaVersion:2,tags:[...availableTags],groups:[]},tag.parentId)}</small>}</div>)}</div>, document.body)}{error && <span role="alert">{error}</span>}</span>;
 }

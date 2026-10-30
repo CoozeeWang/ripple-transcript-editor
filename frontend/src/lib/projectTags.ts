@@ -2,7 +2,7 @@ import { readManifest, readModelEdit, readModelOriginal } from '../localStore';
 import type { Transcript } from '../types';
 import { recordingDirectory, type OpenProject } from './projectStore';
 import { originalGroups } from './originalGroups';
-import { countProjectTags } from './tags';
+import { type TagLibrary, countProjectTags } from './tags';
 export interface TagCountVersion {
     recordingId: string;
     modelId: string;
@@ -12,7 +12,7 @@ export interface TagCountVersion {
  * The visible version substitutes its manuscript's representative even when it is an original.
  * Trash is deliberately excluded. Failure is surfaced; partial counts are never returned.
  */
-export async function projectTagCounts(project: OpenProject, current: TagCountVersion): Promise<Map<string, number>> {
+export async function projectTagCounts(project: OpenProject, current: TagCountVersion, library?:TagLibrary): Promise<Map<string, number>> {
     const versions: {
         manuscriptId: string;
         transcript: Transcript;
@@ -37,5 +37,5 @@ export async function projectTagCounts(project: OpenProject, current: TagCountVe
                 versions.push({ manuscriptId: `${recording.id}:${(group.original ?? group.models[0]).id}`, transcript });
             }
         }
-    return countProjectTags(versions);
+    return countProjectTags(versions,library??project.data.tagLibrary);
 }

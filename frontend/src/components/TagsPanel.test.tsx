@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { TagsPanel } from './TagsPanel';
 import type { TagLibrary } from '../lib/tags';
 const initial: TagLibrary = { schemaVersion: 1, tags: [{ id: 't1', name: 'Topic', groupIds: ['g1', 'g2'] }], groups: [{ id: 'g1', name: 'Parent', parentId: null }, { id: 'g2', name: 'Child', parentId: 'g1' }] };
-beforeEach(() => { vi.stubGlobal('ResizeObserver', class {
+beforeEach(() => { HTMLElement.prototype.scrollBy=function(x?:number|ScrollToOptions,y?:number){this.scrollTop+=typeof x==='object'?x.top??0:y??0}; vi.stubGlobal('ResizeObserver', class {
     observe() { }
     disconnect() { }
 }); HTMLDialogElement.prototype.showModal = function () { this.open = true; }; HTMLDialogElement.prototype.close = function () { this.open = false; }; HTMLElement.prototype.setPointerCapture = () => { }; HTMLElement.prototype.releasePointerCapture = () => { }; });
@@ -22,7 +22,7 @@ describe('production tags panel', () => {
     });
     it.each([false,true])('latches tag membership drag copy=%s after modifier release without filtering',async copy=>{
         const seed={...initial,groups:[...initial.groups,{id:'g3',name:'Target',parentId:null}]},h=mount(seed);fireEvent.click(screen.getByRole('button',{name:'分组'}));
-        const source=h.container.querySelector('[data-tag-group="g1"]>.tag-group-content>.group-tags .library-filter')!,target=h.container.querySelector('[data-tag-group="g3"]')!;document.elementFromPoint=vi.fn(()=>target);
+        const source=h.container.querySelector('[data-tag-group="g1"]>.tag-group-content>.group-tags .library-filter')!,target=h.container.querySelector('[data-tag-group="g3"]')!;document.elementFromPoint=vi.fn(()=>target.querySelector('.tag-group-header')!);
         pointer(source,'pointerdown',80,200,true,copy);pointer(source,'pointermove',100,400,false,false);expect(h.container.querySelector('[data-tag-group="g3"]')?.classList.contains('tag-drop-target')).toBe(true);
         expect(h.container.querySelector('.tag-library')?.getAttribute('data-tag-drag')).toBe(copy?'copy':'move');pointer(source,'pointerup',100,400,false,false);
         await waitFor(()=>expect(h.changed).toHaveBeenCalledOnce());expect(h.changed.mock.calls[0][0].tags[0].id).toBe('t1');expect(h.changed.mock.calls[0][0].tags[0].groupIds).toEqual(copy?['g1','g2','g3']:['g2','g3']);expect(h.filter).not.toHaveBeenCalled();
@@ -30,7 +30,7 @@ describe('production tags panel', () => {
     it('renders ungrouped as a final divider without group controls and adds its dragged tag to a collapsed group',async()=>{
         const h=mount({...initial,tags:[...initial.tags,{id:'loose',name:'Loose',groupIds:[]}]});fireEvent.click(screen.getByRole('button',{name:'分组'}));const ungrouped=h.container.querySelector('.tag-ungrouped')!;
         expect(ungrouped.querySelector('.ungrouped-divider')?.textContent).toBe('未分组');expect(ungrouped.querySelector('.group-toggle,.group-manage,.group-collapse,.group-delete,[data-tag-group]')).toBeNull();
-        const target=h.container.querySelector('[data-tag-group="g1"]')!;fireEvent.click(target.querySelector('.group-collapse')!);const source=ungrouped.querySelector('.library-filter')!;document.elementFromPoint=vi.fn(()=>target);
+        const target=h.container.querySelector('[data-tag-group="g1"]')!;fireEvent.click(target.querySelector('.group-collapse')!);const source=ungrouped.querySelector('.library-filter')!;document.elementFromPoint=vi.fn(()=>target.querySelector('.tag-group-header')!);
         pointer(source,'pointerdown',60,500,true,true);pointer(source,'pointermove',100,200,false,false);expect(h.container.querySelector('.tag-library')?.getAttribute('data-tag-drag')).toBe('move');pointer(source,'pointerup',100,200);
         await waitFor(()=>expect(h.changed).toHaveBeenCalledOnce());expect(h.changed.mock.calls[0][0].tags.find((tag:{id:string})=>tag.id==='loose').groupIds).toEqual(['g1']);expect(h.container.querySelector('.tag-ungrouped')).toBeNull();
     });
@@ -42,13 +42,13 @@ describe('production tags panel', () => {
     it('keeps original memberships and reports a failed drag save without filtering',async()=>{
         const change=vi.fn(async()=>{throw new Error('Synthetic persistence failure')});
         const h=render(<TagsPanel library={initial} onChange={change} readOnly={false} filter={[]} filterMode="and" onFilterModeChange={()=>{}} filterEnabled onFilterEnabledChange={()=>{}} onFilter={()=>{throw new Error('Unexpected filter')}} currentCount={()=>1} projectCounts={new Map()} countError={false} retryCounts={()=>{}}/>);
-        fireEvent.click(screen.getByRole('button',{name:'分组'}));const source=h.container.querySelector('[data-tag-group="g1"] .library-filter')!,target=h.container.querySelector('[data-tag-group="g2"]')!;document.elementFromPoint=vi.fn(()=>target);
+        fireEvent.click(screen.getByRole('button',{name:'分组'}));const source=h.container.querySelector('[data-tag-group="g1"] .library-filter')!,target=h.container.querySelector('[data-tag-group="g2"]')!;document.elementFromPoint=vi.fn(()=>target.querySelector('.tag-group-header')!);
         pointer(source,'pointerdown',60,200,true);pointer(source,'pointermove',80,300);pointer(source,'pointerup',80,300);await screen.findByRole('alert');expect(change).toHaveBeenCalledOnce();expect(h.container.querySelectorAll('.library-filter')).toHaveLength(2);expect(initial.tags[0].groupIds).toEqual(['g1','g2']);
     });
     it('scrolls at the list edge during a held drag, then stops and preserves data on window blur',()=>{
         const frames:FrameRequestCallback[]=[],cancel=vi.fn();vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback)=>{frames.push(callback);return frames.length});vi.stubGlobal('cancelAnimationFrame',cancel);
         const h=mount();fireEvent.click(screen.getByRole('button',{name:'分组'}));const list=h.container.querySelector<HTMLElement>('.library-list')!,source=h.container.querySelector('[data-tag-group="g1"] .library-filter')!;
-        list.getBoundingClientRect=()=>({top:100,bottom:300} as DOMRect);document.elementFromPoint=vi.fn(()=>h.container.querySelector('[data-tag-group="g2"]')!);
+        list.getBoundingClientRect=()=>({top:100,bottom:300,left:0,right:400,width:400,height:200} as DOMRect);document.elementFromPoint=vi.fn(()=>h.container.querySelector('[data-tag-group="g2"]')!);
         pointer(source,'pointerdown',80,150,true);pointer(source,'pointermove',90,290);expect(frames).toHaveLength(1);frames[0](0);expect(list.scrollTop).toBe(12);fireEvent.blur(window);expect(cancel).toHaveBeenCalled();pointer(source,'pointerup',90,290);expect(h.changed).not.toHaveBeenCalled();expect(h.container.querySelector('.tag-drop-target')).toBeNull();
     });
     it('creates a root inline on explicit Enter, permits spaces, protects IME, and cancels blur/duplicates safely',async()=>{

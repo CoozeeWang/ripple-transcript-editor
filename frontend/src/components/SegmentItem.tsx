@@ -25,6 +25,9 @@ import { SegmentTextArea } from "./SegmentTextArea";
 /** 单段渲染：说话人下拉 + 文字编辑（草稿/播放高亮/只读三态）+ 时间戳 + 操作图标。
  *  所有跨领域状态与操作通过 props 注入。 */
 export interface SegmentItemProps {
+  tagDropTarget?:boolean;
+  tagPaths?: Record<string,string>;
+  onAddTagId?: (segmentId:string,tagId:string)=>Promise<void>;
   tags?: ProjectTag[];
   availableTags?: ProjectTag[];
   tagRenameEnabled?: boolean;
@@ -212,6 +215,8 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
 
   return (
     <article
+      data-tag-drop-enabled={!viewingOriginal&&!props.tagWriteDisabled&&!!props.onAddTagId}
+      data-tag-drop-target={props.tagDropTarget||undefined}
       ref={transferElement}
       draggable={transferReady}
       data-transfer-ready={transferReady || undefined}
@@ -334,8 +339,8 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         </div>
         </div>
         <div ref={tagFooter} className={'segment-tag-footer' + (tagInput ? ' has-tag-input' : '')}>
-          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} stopPropagation renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
-          {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={reason=>closeTagEntry(reason==='escape')} onCommit={name=>{closeTagEntry(true);void props.onAddTag?.(segment.id,name)}}/>}
+          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} fullPath={props.tagPaths?.[tag.id]} stopPropagation renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
+          {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={reason=>closeTagEntry(reason==='escape')} onCommit={async(name,id)=>{await(id&&props.onAddTagId?props.onAddTagId(segment.id,id):props.onAddTag?.(segment.id,name));closeTagEntry(true)}}/>}
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
             <>

@@ -1926,9 +1926,9 @@
   },
   "tags": {
     "title": "標籤",
-    "all": "全部",
+    "all": "分級",
     "groups": "分組",
-    "search": "搜尋標籤或分組",
+    "search": "搜尋標籤",
     "name": "標籤",
     "count": "片段數",
     "newGroup": "新增群組",
@@ -1940,7 +1940,7 @@
     "delete": "刪除",
     "deleteTag": "刪除專案標籤",
     "deleteGroup": "刪除群組",
-    "deleteTagNotice": "將從整個專案的片段和所有群組中移除此標籤。本文保留，可復原。",
+    "deleteTagNotice": "從整個專案的片段與群組移除此標籤。子標籤提升一級，後代標籤及其關聯保留。可復原此操作。",
     "members": "同一標籤可在多個群組中。勾選要納入此群組的標籤。",
     "ungrouped": "未分組",
     "add": "新增標籤",
@@ -1981,6 +1981,16 @@
     "andHint": "同時包含所選標籤",
     "orHint": "包含任一所選標籤",
     "nameExists": "已有同名標籤，請使用其他名稱。",
-    "addShortcut": "新增標籤（{{key}}）"
+    "addShortcut": "新增標籤（{{key}}）",
+    "pathConflict": "真名「{{name}}」已屬於其他路徑，請使用其他名稱。",
+    "treeCycle": "不能將標籤移入自身或後代。",
+    "pathInvalid": "請輸入有效路徑，以 / 分隔非空且不重複的真名。",
+    "inheritedHint": "已包含在選取父標籤的範圍內，取消父標籤後可單獨選取。",
+    "dragSearch": "清除搜尋後可調整標籤層級。",
+    "parentPath": "父路徑：{{path}}",
+    "foldTag": "展開或收合 {{name}}",
+    "resetTags": "重設專案標籤",
+    "resetTagsNotice": "清空專案標籤及其片段、群組關聯。群組結構、逐字稿及音訊保留，可在本次工作階段復原。",
+    "newTag": "新增標籤"
   }
 }

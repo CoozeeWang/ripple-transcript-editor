@@ -1,0 +1,19 @@
+import {useEffect,useRef,useState,type ButtonHTMLAttributes} from 'react';
+import {InlineTagName} from './InlineTagName';
+import {msg} from '../i18n';
+export function TagLibraryPill({name,selected,inherited,filterEnabled,locked,parent,onToggle,onSelect,onRename,onRemove,canBegin,buttonProps}: {
+ name:string;selected:boolean;inherited:boolean;filterEnabled:boolean;locked:boolean;parent:boolean;
+ onToggle:()=>void;onSelect:()=>void;onRename?:(name:string)=>Promise<void>;onRemove?:()=>void;canBegin:(time:number)=>boolean;
+ buttonProps:ButtonHTMLAttributes<HTMLButtonElement>;
+}){
+ const [editing,setEditing]=useState(false),timer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const clear=()=>{if(timer.current)clearTimeout(timer.current);timer.current=null};useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current)},[]);
+ return <span className={'tag-pill library-pill'+(onRemove?' tag-pill--removable':'')+(selected?' is-filtered':'')}>
+  <InlineTagName name={name} enabled={!filterEnabled&&!locked} onRename={onRename} canBegin={canBegin} onEditingChange={value=>{clear();setEditing(value)}}><button {...buttonProps} className="library-filter" aria-label={`${msg('tags.title')}: ${name}`} aria-pressed={selected} data-action-tip={filterEnabled&&inherited&&!selected?msg('tags.inheritedHint'):undefined} onClick={event=>{
+   if(event.detail>=2||event.metaKey||event.ctrlKey||!canBegin(event.timeStamp))return;
+   if(filterEnabled){if(!inherited||selected)onSelect();return}
+   if(parent){clear();timer.current=setTimeout(onToggle,500)}
+  }}><span className="library-label-text">{name}</span></button></InlineTagName>
+  {onRemove&&<button className="group-tag-remove tag-pill-remove" disabled={locked||editing} aria-label={`${msg('tags.remove')}: ${name}`} onDoubleClick={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();clear();if(e.detail<2)onRemove()}}>×</button>}
+ </span>;
+}

@@ -62,6 +62,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
   const adoptedContent = useRef<UsePersistenceDeps["persistedContent"]>(null);
   const timer = useRef<number | null>(null);
   const writing = useRef<Promise<void>>(Promise.resolve());
+  const transcriptChangePending=useRef(false);
   const snapshot = (): Snapshot | null => {
     const d = latest.current;
     if (!d.initialLoadRef.current && !d.hasLoadedTranscript && d.saveAudioDraft &&
@@ -92,7 +93,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
     return saved && sameDocument(task, saved) && task.data.transcript === saved.data.transcript &&
       task.data.metadata === saved.data.metadata;
   };
-  const write = (task: Snapshot) => {
+  const write = (task: Snapshot, transcriptOnly = false) => {
     const run = writing.current.catch(() => {}).then(async () => {
       if (!unchanged(task) && sameDocument(task, snapshot())) latest.current.setSaveStatus("saving");
       try {
@@ -100,7 +101,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
           if (task.edit === "draft") await latest.current.saveAudioDraft?.({ metadata: task.data.metadata, speakers: task.data.transcript.speakers });
           else if (task.edit === "original") await saveInterviewDetails(task.dir,task.audio,task.data.metadata);
           else await saveActiveEdit(task.dir, task.audio, task.model, task.edit, task.data);
-          if (task.edit !== "draft") await latest.current.saveAudioDraft?.({ metadata: task.data.metadata, speakers: task.data.transcript.speakers });
+          if (task.edit !== "draft" && !transcriptOnly) await latest.current.saveAudioDraft?.({ metadata: task.data.metadata, speakers: task.data.transcript.speakers });
           lastWritten.current = task;
         }
         if (pending.current === task) {
@@ -123,6 +124,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
     return run;
   };
   const flushPendingSave = async () => {
+    if(transcriptChangePending.current)throw Error(msg('ProjectWorkspace.openProjectBusy'));
     for (;;) {
       flushEditorDrafts();
       adoptLoadedContent();
@@ -137,6 +139,24 @@ export function usePersistence(deps: UsePersistenceDeps) {
       if (!hasEditorDrafts() && task.data.transcript === current?.data.transcript &&
           task.data.metadata === current?.data.metadata) return;
     }
+  };
+
+  // The caller holds an editing/navigation lock until it publishes this exact
+  // snapshot. A failed atomic edit write never becomes visible or enters undo.
+  const persistTranscriptChange = async (update: (value: Transcript) => Transcript) => {
+    await flushPendingSave();
+    if(transcriptChangePending.current)throw Error(msg('ProjectWorkspace.openProjectBusy'));
+    const before = snapshot();
+    if (!before || before.edit === 'draft' || before.edit === 'original') throw Error(msg('tags.saveFailed'));
+    const next = update(before.data.transcript);
+    if (next === before.data.transcript) return next;
+    const task = {...before, data: {...before.data, transcript: next}};
+    transcriptChangePending.current=true;
+    pending.current = task;
+    try { await write(task, true); }
+    catch (error) { pending.current = before; throw error; }
+    finally { transcriptChangePending.current=false; }
+    return next;
   };
 
   useEffect(() => {
@@ -188,6 +208,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
   }
 
   const handleSave = async () => {
+    if(transcriptChangePending.current)return;
     if (!snapshot()) { setSaveToast({kind:"error",text:msg('usePersistence.m1138')}); return; }
     const owner = toastGeneration.current;
     try {
@@ -212,6 +233,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
 
   return {
     flushPendingSave,
+    persistTranscriptChange,
     saveToast,
     setSaveToast,
     handleSave,

@@ -1926,9 +1926,9 @@
   },
   "tags": {
     "title": "标签",
-    "all": "全部",
+    "all": "分级",
     "groups": "分组",
-    "search": "搜索标签或分组",
+    "search": "搜索标签",
     "name": "标签",
     "count": "片段数",
     "newGroup": "新建组",
@@ -1940,7 +1940,7 @@
     "delete": "删除",
     "deleteTag": "删除项目标签",
     "deleteGroup": "删除分组",
-    "deleteTagNotice": "将从整个项目的片段和所有分组中移除此标签。正文保留，可撤销。",
+    "deleteTagNotice": "从整个项目的片段和分组中移除此标签。子标签提升一级，后代标签及其关联保留。可撤销此操作。",
     "members": "同一标签可在多个组中。勾选要纳入此组的标签。",
     "ungrouped": "未分组",
     "add": "添加标签",
@@ -1981,6 +1981,16 @@
     "andHint": "同时包含所选标签",
     "orHint": "包含任一所选标签",
     "nameExists": "已有同名标签，请换一个名称。",
-    "addShortcut": "添加标签（{{key}}）"
+    "addShortcut": "添加标签（{{key}}）",
+    "pathConflict": "真名“{{name}}”已属于其他路径，请使用其他名称。",
+    "treeCycle": "不能将标签移入自身或后代。",
+    "pathInvalid": "请输入有效路径，用 / 分隔非空且不重复的真名。",
+    "inheritedHint": "已包含在选中父标签的范围内，取消父标签后可单独选择。",
+    "dragSearch": "清除搜索后可调整标签层级。",
+    "parentPath": "父路径：{{path}}",
+    "foldTag": "展开或收起 {{name}}",
+    "resetTags": "重置项目标签",
+    "resetTagsNotice": "清空项目标签及其片段、分组关联。分组结构、转录稿和音频保留，可在本会话撤销。",
+    "newTag": "新建标签"
   }
 }
