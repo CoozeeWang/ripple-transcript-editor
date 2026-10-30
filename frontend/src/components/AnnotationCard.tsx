@@ -69,7 +69,7 @@ export function AnnotationCard({ annotation, onCommit, onDelete, onJump, meta, i
           }
         }}
         rows={2}
-      /> : <div className="annotation-text annotation-text--readonly" title={msg(readOnly ? 'AnnotationCard.readOnly' : 'AnnotationCard.m0317')}>{annotation.text}</div>}
+      /> : <div className="annotation-text annotation-text--readonly" data-action-tip={msg(readOnly ? 'AnnotationCard.readOnly' : 'AnnotationCard.m0317')}>{annotation.text}</div>}
       <div className="annotation-card-actions">
         <span className="annotation-time">{formatRelativeTime(annotation.createdAt)}</span>
         <span className="annotation-card-buttons">
@@ -107,7 +107,7 @@ export function AnnotationAddBox({ onSubmit, disabled = false, draftKey = "defau
         onChange={(event) => setDraft(event.target.value)}
         placeholder={msg('AnnotationCard.m0320')}
         aria-label={msg('AnnotationCard.m0321')}
-        data-tip={msg('AnnotationCard.m0322', { v0: keys("↵") })}
+        data-action-tip={msg('AnnotationCard.m0322', { v0: keys("↵") })}
         data-tip-pos="top"
         rows={2}
         onKeyDown={(event) => {

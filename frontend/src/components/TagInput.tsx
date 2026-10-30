@@ -1,17 +1,17 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TagPill } from './TagPill';
 import { msg } from '../i18n';
 import { normalizeTagName, suggestTags, type ProjectTag } from '../lib/tags';
 export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds = [] }: {
     onCommit: (name: string) => void;
-    onCancel: () => void;
+    onCancel: (reason: 'escape' | 'blur') => void;
     availableTags?: readonly ProjectTag[];
     assignedIds?: readonly string[];
 }) {
     const [value, setValue] = useState(''), [error, setError] = useState(false), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), id = useId();
     const suggestions = suggestTags(availableTags, value, assignedIds), selected = suggestions[active];
-    useEffect(() => { input.current?.focus(); }, []);
+    useLayoutEffect(() => { input.current?.focus(); }, []);
     useLayoutEffect(() => {
         if (!suggestions.length || !popup.current || !input.current) return;
         const position = () => {
@@ -27,13 +27,13 @@ export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds =
         return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true); };
     }, [value, suggestions.length]);
     useLayoutEffect(() => { popup.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }); }, [active]);
-    return <span className="tag-entry" onClick={e => e.stopPropagation()}><input ref={input} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg('tags.input')} value={value} maxLength={120} onChange={e => { setValue(e.target.value); setError(false); setActive(-1); }} onBlur={onCancel} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
+    return <span className="tag-entry" onClick={e => e.stopPropagation()}><input ref={input} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg('tags.input')} value={value} maxLength={120} onChange={e => { setValue(e.target.value); setError(false); setActive(-1); }} onBlur={() => onCancel('blur')} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
             e.stopPropagation();
             if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229)
                 return;
             if (e.key === 'Escape') {
                 e.preventDefault();
-                onCancel();
+                onCancel('escape');
             }
             if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && suggestions.length) {
                 e.preventDefault();
@@ -44,7 +44,7 @@ export function TagInput({ onCommit, onCancel, availableTags = [], assignedIds =
                 if (e.key === 'Enter' && selected) { onCommit(selected.name); return; }
                 const name = normalizeTagName(value);
                 if (!name) {
-                    onCancel();
+                    onCancel('escape');
                     return;
                 }
                 if (Array.from(name).some(c => c.charCodeAt(0) < 32)) {

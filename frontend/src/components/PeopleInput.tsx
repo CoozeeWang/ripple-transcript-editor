@@ -14,7 +14,7 @@ export function PeopleInput({ names, onChange, disabled = false }: { names: stri
     setText('');
   };
   return <div className="people-input">
-    {names.map((name, index) => <button className="people-chip" type="button" key={`${name}-${index}`} disabled={disabled} aria-label={msg('PeopleInput.m0624', { v0: name })} title={msg('PeopleInput.m0625')} onKeyDown={e => {
+    {names.map((name, index) => <button className="people-chip" type="button" key={`${name}-${index}`} disabled={disabled} aria-label={msg('PeopleInput.m0624', { v0: name })} data-action-tip={msg('PeopleInput.m0625')} onKeyDown={e => {
       if ((e.key === 'Backspace' || e.key === 'Delete') && !e.nativeEvent.isComposing && e.keyCode !== 229) {
         e.preventDefault(); e.stopPropagation(); remove(index);
       }

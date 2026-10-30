@@ -1979,6 +1979,8 @@
     "or": "或",
     "filterMode": "标签组合方式",
     "andHint": "同时包含所选标签",
-    "orHint": "包含任一所选标签"
+    "orHint": "包含任一所选标签",
+    "nameExists": "已有同名标签，请换一个名称。",
+    "addShortcut": "添加标签（{{key}}）"
   }
 }

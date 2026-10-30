@@ -1979,6 +1979,8 @@
     "or": "或",
     "filterMode": "標籤組合方式",
     "andHint": "同時包含所選標籤",
-    "orHint": "包含任一所選標籤"
+    "orHint": "包含任一所選標籤",
+    "nameExists": "已有同名標籤，請使用其他名稱。",
+    "addShortcut": "新增標籤（{{key}}）"
   }
 }

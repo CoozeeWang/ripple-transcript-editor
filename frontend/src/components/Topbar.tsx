@@ -104,7 +104,7 @@ export function Topbar(props: TopbarProps) {
       <Brand className="brand" type={props.onReturnToProjects ? "button" : undefined}
         onClick={props.onReturnToProjects} disabled={props.onReturnToProjects ? props.navigationDisabled : undefined}
         aria-label={props.onReturnToProjects ? msg('Topbar.m1031') : undefined}
-        title={props.onReturnToProjects ? msg('Topbar.m1032') : undefined}>
+        data-tip={props.onReturnToProjects ? msg('Topbar.m1032') : undefined}>
         <img className="brand-mark" src="/ripple-icon.svg?v=transparent-2" alt="Ripple" width={80} height={80} />
         <div>
           <p className="product-name">Ripple</p>
@@ -115,7 +115,7 @@ export function Topbar(props: TopbarProps) {
       {props.onReturnToProjects && <button type="button" className="topbar-project"
         onClick={props.onReturnToProjects} disabled={props.navigationDisabled}
         aria-label={props.projectLabel ? msg('Topbar.m1033', { v0: props.projectLabel }) : msg('Topbar.m1034')}
-        title={props.projectLabel ? msg('Topbar.m1035', { v0: props.projectLabel }) : msg('Topbar.m1036')}>
+        data-tip={props.projectLabel ? msg('Topbar.m1035', { v0: props.projectLabel }) : msg('Topbar.m1036')}>
         <ProjectIcon kind="project" />
         <span>{props.projectLabel || msg('Topbar.m1037')}</span>
       </button>}
@@ -393,7 +393,7 @@ export function Topbar(props: TopbarProps) {
                     role="menuitem"
                     tabIndex={-1}
                     disabled={(props.exportScope==='visible'&&!props.visibleCount)||((format === 'srt' || format === 'vtt') && !props.subtitlesAvailable)}
-                    title={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable ? msg('Topbar.m1060') : undefined}
+                    data-action-tip={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable ? msg('Topbar.m1060') : undefined}
                     onClick={() => {
                       setExportMenuOpen(false);
                       void exportAs(format);

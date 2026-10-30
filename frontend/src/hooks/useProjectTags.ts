@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Transcript } from '../types';
+import { msg } from '../i18n';
 import { emptyTagLibrary, normalizeTagName, setSegmentTag, tagHistoryAnchor, type TagLibrary } from '../lib/tags';
 import { projectTagCounts } from '../lib/projectTags';
 import type { OpenProject } from '../lib/projectStore';
@@ -39,13 +40,13 @@ export function useProjectTags(o: Options) {
     const persist = useCallback(async (next: TagLibrary) => { const current = latest.current; if (!current.save || current.readOnly || pending.current)
         throw new Error('tag_write_unavailable'); pending.current = true; setBusy(true); try {
         await current.save(next);
-        libraryRef.current = next;
+        if (latest.current.context === current.context) libraryRef.current = next;
     }
     finally {
         pending.current = false;
         setBusy(false);
     } }, []);
-    const change = useCallback(async (next: TagLibrary) => { const before = libraryRef.current, anchor=tagHistoryAnchor(latest.current.transcript); await persist(next); setPast(old => [...old, { before, after: next, anchor }].slice(-100)); setFuture([]); }, [persist]);
+    const change = useCallback(async (next: TagLibrary) => { const before = libraryRef.current, context = latest.current.context, anchor=tagHistoryAnchor(latest.current.transcript); await persist(next); if (latest.current.context !== context) return; setPast(old => [...old, { before, after: next, anchor }].slice(-100)); setFuture([]); }, [persist]);
     const add = useCallback(async (segmentId: string, rawName: string) => { const current = latest.current, context = current.context; if (current.readOnly || pending.current)
         return; const name = normalizeTagName(rawName); if (!name)
         return; let tag = libraryRef.current.tags.find(t => t.name.toLowerCase() === name.toLowerCase()); try {
@@ -63,6 +64,14 @@ export function useProjectTags(o: Options) {
     } }, [change]);
     const remove = useCallback((segmentId: string, id: string) => { if (latest.current.readOnly || pending.current)
         return; latest.current.mutate(t => setSegmentTag(t, segmentId, id, false), 'tag:' + segmentId + ':' + id); }, []);
+    const rename = useCallback(async (id: string, raw: string) => {
+        const name = normalizeTagName(raw), library = libraryRef.current, tag = library.tags.find(tag => tag.id === id);
+        if (!tag || !name || name.length > 120 || Array.from(name).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new Error(msg('tags.invalidName'));
+        if (library.tags.some(other => other.id !== id && normalizeTagName(other.name).toLowerCase() === name.toLowerCase())) throw new Error(msg('tags.nameExists'));
+        if (tag.name === name) return;
+        try { await change({ ...library, tags: library.tags.map(tag => tag.id === id ? { ...tag, name } : tag) }); }
+        catch { throw new Error(msg('tags.saveFailed')); }
+    }, [change]);
     const canUndo = past.length > 0 && past.at(-1)?.anchor === anchor, canRedo = future.length > 0 && future.at(-1)?.anchor === anchor;
     const undo = async () => { const entry = past.at(-1); if (!entry || !canUndo || busy)
         return; try {
@@ -87,5 +96,5 @@ export function useProjectTags(o: Options) {
         setCountResult({ key:countKey, counts, error: false }); }, () => { if (!cancelled)
         setCountResult({ key:countKey, counts: null, error: true }); }); }, 120); return () => { cancelled = true; clearTimeout(timer); }; }, [countKey, retry]);
     const countCurrent = countResult?.key === countKey, counts = countCurrent ? countResult?.counts ?? null : null, countError = countCurrent && !!countResult?.error;
-    return { library, busy, change, add, remove, canUndo, canRedo, undo, redo, counts, countError, discardRedo, retryCounts: () => setRetry(n => n + 1) };
+    return { library, busy, change, add, remove, rename, canUndo, canRedo, undo, redo, counts, countError, discardRedo, retryCounts: () => setRetry(n => n + 1) };
 }

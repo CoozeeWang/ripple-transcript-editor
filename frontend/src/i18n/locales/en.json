@@ -1979,6 +1979,8 @@
     "or": "OR",
     "filterMode": "Tag combination",
     "andHint": "Match every selected tag",
-    "orHint": "Match any selected tag"
+    "orHint": "Match any selected tag",
+    "nameExists": "A tag with this name already exists. Choose another name.",
+    "addShortcut": "Add tag ({{key}})"
   }
 }

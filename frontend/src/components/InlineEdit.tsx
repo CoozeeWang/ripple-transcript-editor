@@ -134,7 +134,7 @@ export function InlineEdit({
       onClick={doubleClick ? undefined : startEdit}
       onDoubleClick={doubleClick ? startEdit : undefined}
       aria-disabled={disabled}
-      title={doubleClick ? msg('InlineEdit.m0543') : undefined}
+      data-action-tip={doubleClick ? msg('InlineEdit.m0543') : undefined}
       onKeyDown={(event) => {
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === "Enter" || event.key === " ") {

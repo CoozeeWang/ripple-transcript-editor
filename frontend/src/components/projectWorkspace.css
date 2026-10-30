@@ -106,13 +106,6 @@
 .project-home--board .project-saved-title { max-height:40vh; max-height:40dvh; overflow-x:hidden; overflow-y:scroll; }
 /* Reserve the same native gutter in both rows, including WebKit overlay-scrollbar mode. */
 .project-home--board .project-saved-title, .project-home--board .setup-canvas { scrollbar-gutter:stable; scrollbar-width:thin; }
-/* Keep right-edge hints inside the newly bounded scrolling panes. */
-.project-home--board :is(.project-title-actions,.setup-row-actions) [data-tip]::after,
-.project-home--board :is(.project-session-delete,.setup-grip)[data-tip]::after { left:auto; right:0; transform:translateY(-3px); }
-.project-home--board :is(.project-title-actions,.setup-row-actions) [data-tip][data-tip-pos="top"]::after,
-.project-home--board :is(.project-session-delete,.setup-grip)[data-tip][data-tip-pos="top"]::after { transform:translateY(3px); }
-.project-home--board :is(.project-title-actions,.setup-row-actions) [data-tip]:is(:hover,:focus-visible)::after,
-.project-home--board :is(.project-session-delete,.setup-grip)[data-tip]:is(:hover,:focus-visible)::after { transform:translateY(0); }
 .project-home--board .project-saved-title::-webkit-scrollbar, .project-home--board .setup-canvas::-webkit-scrollbar { width:8px; }
 .project-home--board .project-saved-title::-webkit-scrollbar-thumb, .project-home--board .setup-canvas::-webkit-scrollbar-thumb { background:var(--color-border-strong); border-radius:8px; }
 .project-section { background:var(--color-surface);border-radius:var(--radius-lg);padding:var(--space-5); }

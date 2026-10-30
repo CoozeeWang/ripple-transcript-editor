@@ -398,14 +398,14 @@ export function ProjectWorkspace() {
             <button className="welcome-card" disabled={busy} onClick={() => { setError(''); setCreating(true); }}><ProjectIcon kind="plus" /><span>{msg('ProjectWorkspace.m0914')}</span></button>
             <button className="welcome-card" disabled={busy} onClick={() => void chooseProject()}><ProjectIcon kind="project" /><span>{msg('ProjectWorkspace.m0915')}</span></button>
             <div className="recent-dock" ref={recentRef}>
-              <button className="recent-dock__btn" aria-label={msg('ProjectWorkspace.m0916')} title={msg('ProjectWorkspace.m0917')} aria-expanded={recentOpen} aria-controls="welcome-recent-projects" disabled={busy} onClick={() => setRecentOpen(open => !open)}>
+              <button className="recent-dock__btn" aria-label={msg('ProjectWorkspace.m0916')} data-tip={msg('ProjectWorkspace.m0917')} aria-expanded={recentOpen} aria-controls="welcome-recent-projects" disabled={busy} onClick={() => setRecentOpen(open => !open)}>
                 <ActionIcon kind="clock"/>
               </button>
               {recentOpen && <section id="welcome-recent-projects" className="recent-pop project-welcome__recent"><h2>{msg('ProjectWorkspace.m0918')}</h2>
           {!recent.length ? <p className="settings-hint">{msg('ProjectWorkspace.m0919')}</p> : <div className="project-list">{recent.map(item => <div className="project-recent-row" key={item.id}>
             <button className="project-list__item" disabled={busy} onClick={() => void chooseProject(item.directory, item.id)}><ProjectIcon kind="project" /><strong>{item.title}</strong></button>
             <button type="button" className="icon-button project-recent-remove" disabled={busy}
-              aria-label={msg('ProjectWorkspace.m0920', { v0: item.title })} title={msg('ProjectWorkspace.m0921')}
+              aria-label={msg('ProjectWorkspace.m0920', { v0: item.title })} data-action-tip={msg('ProjectWorkspace.m0921')}
               onClick={() => void run(async () => { await forgetRecentProject(item.id); setRecent(await recentProjects()); })}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
@@ -451,7 +451,7 @@ export function ProjectWorkspace() {
         }, false); }}>
           <textarea autoFocus aria-label={msg('ProjectWorkspace.m0929')} disabled={busy} value={descriptionDrafts[project.data.id] ?? project.data.description} onChange={e => setDescriptionDrafts(previous => ({ ...previous, [project.data.id]: e.target.value }))}/>
           <div className="project-actions"><button type="button" className="cred-btn" disabled={busy} onClick={() => { setEditingDescription(null); setDescriptionDrafts(previous => { const next = { ...previous }; delete next[project.data.id]; return next; }); }}>{msg('ProjectWorkspace.m0930')}</button><button className="cred-btn" disabled={busy}>{msg('ProjectWorkspace.m0931')}</button></div>
-        </form> : <button type="button" className={`project-description-display${project.data.description ? '' : ' is-empty'}`} aria-label={msg('ProjectWorkspace.m0932')} title={msg('ProjectWorkspace.m0933')} disabled={busy} onDoubleClick={() => setEditingDescription(project.data.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingDescription(project.data.id); } }}>{project.data.description || msg('ProjectWorkspace.m0934')}</button>}
+        </form> : <button type="button" className={`project-description-display${project.data.description ? '' : ' is-empty'}`} aria-label={msg('ProjectWorkspace.m0932')} data-action-tip={msg('ProjectWorkspace.m0933')} disabled={busy} onDoubleClick={() => setEditingDescription(project.data.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingDescription(project.data.id); } }}>{project.data.description || msg('ProjectWorkspace.m0934')}</button>}
         </div></div>
         {materialTarget !== undefined ? <ProjectSetup onBusyChange={setBusy} project={project} interviewId={materialTarget ?? undefined} onCancel={() => setMaterialTarget(undefined)} onDone={next => { void publish(next); setSuccessNotice(msg('projectImport.materialsDone')); setMaterialTarget(undefined); setInterviewId(materialTarget ?? next.data.interviews.at(-1)?.id ?? null); }} /> : <>
         {importStage && <ProjectImportStatus stage={importStage} onCancel={() => importController.current?.abort()} />}

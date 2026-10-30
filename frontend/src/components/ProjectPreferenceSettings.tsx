@@ -39,7 +39,7 @@ export function ProjectPreferenceSettings() {
         <label className="settings-option"><input type="radio" name="project-location" disabled={busy} checked={!fixed} onChange={() => { setFixed(false); setLocation(''); setError(''); saveBooleanPreference(FIXED_PROJECT_LOCATION, false); }}/><span>{msg('ProjectPreferenceSettings.m0777')}</span></label>
         <div className="settings-location-option">
           <label className="settings-option"><input type="radio" name="project-location" disabled={busy} checked={fixed} onChange={() => { setFixed(true); setLocation(''); setError(''); saveBooleanPreference(FIXED_PROJECT_LOCATION, true); }}/><span>{msg('ProjectPreferenceSettings.m0778')}</span></label>
-          {fixed && <div className="settings-location-control"><span className={`settings-location-value${location ? ' settings-location-value--selected' : ''}`} title={location ? msg('ProjectPreferenceSettings.m0779', { v0: location }) : undefined}>{location || msg('ProjectPreferenceSettings.m0780')}</span><button className="cred-btn" disabled={busy} onClick={() => void choose()}>{msg('ProjectPreferenceSettings.m0781')}</button></div>}
+          {fixed && <div className="settings-location-control"><span className={`settings-location-value${location ? ' settings-location-value--selected' : ''}`} data-action-tip={location ? msg('ProjectPreferenceSettings.m0779', { v0: location }) : undefined}>{location || msg('ProjectPreferenceSettings.m0780')}</span><button className="cred-btn" disabled={busy} onClick={() => void choose()}>{msg('ProjectPreferenceSettings.m0781')}</button></div>}
         </div>
       </div>
       {error && <p className="form-error" role="alert">{uiMessage(error)}</p>}

@@ -456,47 +456,7 @@ button.brand:disabled { opacity: .5; cursor: default; }
 .button { padding: 0 14px; gap: 6px; }
 .button--icon { padding: 0 10px; }
 
-/* 自定义悬停说明：延迟比原生 title 更短且统一可控 */
-[data-tip] { position: relative; }
-[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%) translateY(-3px);
-  max-width: min(190px, calc(100vw - 32px));
-  width: max-content;
-  padding: 6px 9px;
-  border-radius: 7px;
-  background: #2b2f36;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: left;
-  overflow-wrap: anywhere;
-  text-wrap: pretty;
-  white-space: normal;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 60;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  transition-delay: 0s;
-}
-/* 向上的 tooltip（用于会被下方容器裁剪的场景，如批注输入框贴面板底部）。 */
-[data-tip][data-tip-pos="top"]::after {
-  top: auto;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%) translateY(3px);
-}
-[data-tip]:hover::after,
-[data-tip]:focus-visible::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  transition-delay: 140ms;
-}
-/* 引擎名旁的说明图标（ⓘ）—— OpenAI 兼容端点等抽象项用。tooltip 内容较长所以放宽 max-width。 */
+/* 引擎名旁的说明图标（ⓘ）；提示排版由共享 TooltipHost 管理。 */
 .cred-info-icon {
   display: inline-flex;
   align-items: center;

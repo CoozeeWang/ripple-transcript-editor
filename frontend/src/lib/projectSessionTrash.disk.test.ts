@@ -65,6 +65,10 @@ it('deletes, closes, reopens and restores real synthetic files with byte-identic
   project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(changed);expect(await bytes(temporary)).toEqual(manuscriptBytes);
   project=await saveProject(project,{...project.data,tagLibrary:defined});
  }
+ const renamed={...defined,tags:defined.tags.map(tag=>tag.id==='tag-a'?{...tag,name:'Synthetic renamed topic'}:tag)};
+ project=await saveProject(project,{...project.data,tagLibrary:renamed});
+ project=await openProject(project.directory);expect(project.data.tagLibrary).toEqual(renamed);expect(await bytes(temporary)).toEqual(manuscriptBytes);
+ project=await saveProject(project,{...project.data,tagLibrary:defined});
  expect((await readModelOriginal(view,recording.file,made.model.id))!.transcript.segments[0].tagIds).toEqual(['tag-a']);
  expect((await readModelEdit(view,recording.file,made.model.id,made.model.edits[0].id))!.transcript.segments[0].tagIds).toEqual(['tag-a']);
 

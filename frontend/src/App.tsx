@@ -1,3 +1,4 @@
+import { nativeDesktopAvailable } from './lib/desktopFs';
 import { hasNativeSegmentDrag, startNativeSegmentDrag } from './lib/segmentDragBridge';
 import { useTranscriptEdgeAlignment } from './hooks/useTranscriptEdgeAlignment';
 import { populateSegmentDrag } from './lib/segmentDragPayload';
@@ -258,6 +259,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const renamingRef = useRef(false);
   const canChangeDocumentRef = useRef<() => boolean>(() => true);
+  const tagLibrarySaving = useRef(false);
   const openingProjectRef = useRef(false);
   const beforeChangeRef = useRef<() => Promise<void>>(async () => {});
   const latestExport = useRef({ transcript, metadata });
@@ -554,6 +556,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // User navigation is blocked while the job is alive, including upload and result saving.
   useLayoutEffect(() => {
     canChangeDocumentRef.current = () => {
+      if (tagLibrarySaving.current) return false;
       if (!transcribeJob) return true;
       window.alert(msg('App.m0010', { v0: transcribeJob.audio }));
       return false;
@@ -609,7 +612,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
 
 
-  useLayoutEffect(() => { beforeChangeRef.current = flushPendingSave; }, [flushPendingSave]);
+  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); }; }, [flushPendingSave]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
   const [aiIdentity, setAIIdentity] = useState('0');
@@ -719,6 +722,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
   const protectedReadOnly = viewingOriginal || aiLocked;
   const tags=useProjectTags({library:projectProps.tagLibrary,save:projectProps.saveTagLibrary,project:projectProps.connectorProject??(()=>null),recordingId:projectProps.projectRecordingId,modelId:activeModelId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,mutate:mutateTranscript,readOnly:protectedReadOnly,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+  useLayoutEffect(() => { tagLibrarySaving.current = tags.busy; }, [tags.busy]);
   const priorTagContentAnchor=useRef<string|null>(null);
   useLayoutEffect(()=>{const next=tagHistoryAnchor(transcript);if(tagContentEditPending.current&&priorTagContentAnchor.current!==next)queueMicrotask(tags.discardRedo);tagContentEditPending.current=false;priorTagContentAnchor.current=next},[transcript,tags.discardRedo]);
   const guardedRenameVersion: typeof renameVersion = (...args) => {
@@ -910,7 +914,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     catch (error) { transfer.effectAllowed='none'; failTransfer(msg('segmentTransfer.dragFailed'),error); }
   };
 
+  const tagEntries = useRef(new Map<string, () => void>());
+  const registerTagEntry = useCallback((id: string, open: (() => void) | null) => { if (open) tagEntries.current.set(id,open); else tagEntries.current.delete(id); }, []);
+  const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tags.busy && projectProps.saveTagLibrary) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tags.busy,projectProps.saveTagLibrary]);
   useShortcuts({
+    addTag: openActiveTagEntry, nativeTagShortcut: nativeDesktopAvailable(), tagWriteDisabled: tags.busy || protectedReadOnly,
     visibleSegmentIds,
     copySegment,
     disabled: renaming || versionBusy || saveStatus === "loading",
@@ -998,7 +1006,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
   useLayoutEffect(() => {
     projectProps.registerSegmentLinkReceiver?.({
-      ready: () => !openingProjectRef.current && !renaming && !versionBusy && !transcribing && saveStatus !== 'loading' && !hasPendingInputs() && !isEditorComposing(),
+      ready: () => !tags.busy && !openingProjectRef.current && !renaming && !versionBusy && !transcribing && saveStatus !== 'loading' && !hasPendingInputs() && !isEditorComposing(),
       open: async raw => {
         if (!projectProps.onOpenSegmentLink || openingProjectRef.current) return;
         if (!canChangeDocumentRef.current()) { setLoadError(msg('ProjectWorkspace.openProjectBusy')); return; }
@@ -1108,7 +1116,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   };
 
   const returnToProjects = async (exportFiles = false) => {
-    if (renaming || versionBusy || (saveStatus === "loading" && transcript) || !canChangeDocumentRef.current()) return;
+    if (tags.busy || renaming || versionBusy || (saveStatus === "loading" && transcript) || !canChangeDocumentRef.current()) return;
     try { await flushPendingSave(); if (exportFiles) projectProps.onExportProjectFiles?.(); else projectProps.onReturnToProjects?.(); }
     catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0018')); }
   };
@@ -1118,7 +1126,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if (openingProjectRef.current) return;
       // The native menu must not open a second picker above an application dialog.
       if (document.querySelector('dialog[open], [role="dialog"]')) return;
-      if (renaming || versionBusy || transcribing || processStatus === 'uploading' || (saveStatus === 'loading' && transcript)) {
+      if (tags.busy || renaming || versionBusy || transcribing || processStatus === 'uploading' || (saveStatus === 'loading' && transcript)) {
         setLoadError(msg('ProjectWorkspace.openProjectBusy')); return;
       }
       openingProjectRef.current = true;
@@ -1142,9 +1150,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     return () => { window.removeEventListener('ripple-open-project', onOpenDirectory); window.removeEventListener('ripple-open-recent-project', onOpenRecent); };
   });
   const projectNav = projectProps.onReturnToProjects && <div className="project-editor-nav">
-    <button type="button" className="cred-btn" disabled={renaming || versionBusy || transcribing}
+    <button type="button" className="cred-btn" disabled={renaming || versionBusy || transcribing || tags.busy}
       aria-label={projectProps.projectLabel ? msg('App.m0019', { v0: projectProps.projectLabel }) : msg('App.m0020')}
-      title={msg('App.m0021')} onClick={() => void returnToProjects()}>{projectProps.projectLabel || msg('App.m0022')}</button>
+      data-tip={msg('App.m0021')} onClick={() => void returnToProjects()}>{projectProps.projectLabel || msg('App.m0022')}</button>
   </div>;
 
   if (!transcript) {
@@ -1217,7 +1225,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         projectMode={Boolean(projectProps.projectDirectory)}
         projectLabel={projectProps.projectLabel}
         onReturnToProjects={projectProps.onReturnToProjects ? () => void returnToProjects() : undefined}
-        navigationDisabled={renaming || versionBusy || transcribing}
+        navigationDisabled={renaming || versionBusy || transcribing || tags.busy}
         dirHandle={dirHandle}
         handleOpenFolder={handleOpenFolder}
         folderShortcutHint={folderShortcutHint}
@@ -1342,7 +1350,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           segmentNavigation={<SegmentJump key={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} count={transcript.segments.length} onJump={jumpToSegment} />}
           viewingOriginal={viewingOriginal}
           activeModelId={activeModelId}
-          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy} mutationDisabled={aiLocked}
+          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy || tags.busy} mutationDisabled={aiLocked}
             onSelect={(model,edit)=>{if(edit==="original")void openOriginal(model);else void selectEdit(model,edit);}}
             onRename={guardedRenameVersion} onCopy={(model,edit)=>{if(editLockedRef.current())return;if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
             onDelete={(modelId,editId,label,isLast)=>{if(editLockedRef.current())return;setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast});}} />}
@@ -1398,8 +1406,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
               <SegmentItem
                 tags={tagsForSegment(segment,tags.library)}
                 availableTags={tags.library.tags}
+                tagRenameEnabled={!tagFilterEnabled && !protectedReadOnly}
+                onRenameTag={projectProps.saveTagLibrary?tags.rename:undefined}
                 tagWriteDisabled={tags.busy}
                 onAddTag={projectProps.saveTagLibrary?tags.add:undefined}
+                registerTagEntry={registerTagEntry}
                 onRemoveTag={tags.remove}
                 copySegment={copySegment}
                 dragSegment={dragSegment}
@@ -1443,7 +1454,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.library.tags.length}
-          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} onChange={tags.change} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
+          tagsPanel={projectProps.saveTagLibrary?<TagsPanel library={tags.library} onChange={tags.change} onRenameTag={tags.rename} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={id=>transcript?countTaggedSegments(transcript,id):0} projectCounts={tags.counts} countError={tags.countError} retryCounts={tags.retryCounts}/>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}

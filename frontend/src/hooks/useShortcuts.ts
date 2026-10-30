@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 
 import type { Transcript } from "../types";
 import { IS_MAC } from "../lib/format";
-import { flushEditorDrafts } from "../lib/editorDrafts";
+import { flushEditorDrafts, isEditorComposing } from "../lib/editorDrafts";
 
 /** 全局键盘快捷键（编辑器操作在输入控件内由各组件自行处理）。
  *  所有动作通过回调注入，本 hook 只负责监听 window keydown 与分发。 */
@@ -11,6 +11,9 @@ export interface UseShortcutsDeps {
   visibleSegmentIds?:ReadonlySet<string>;
   disabled?: boolean;
   copySegment?: (id: string) => void;
+  addTag?: (id: string) => void;
+  nativeTagShortcut?: boolean;
+  tagWriteDisabled?: boolean;
   transcript: Transcript | null;
   viewingOriginal: boolean;
   removeSegment: (segmentId: string) => void;
@@ -57,6 +60,21 @@ export function useShortcuts(deps: UseShortcutsDeps) {
   } = deps;
 
   useEffect(() => {
+    // Desktop only: browsers own Ctrl/⌘T. Capture just this command so a focused
+    // tag input can be refocused without reconstructing its draft.
+    const handleTagKeydown = (event: globalThis.KeyboardEvent) => {
+      if (!deps.nativeTagShortcut || !deps.addTag || disabled || viewingOriginal || deps.tagWriteDisabled || event.isComposing || event.keyCode === 229 || isEditorComposing()) return;
+      if ((event.code !== 'KeyT' && event.key.toLowerCase() !== 't') || event.altKey || event.shiftKey || !(IS_MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      if (document.querySelector('[role="dialog"],dialog[open]')) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const editor = target?.closest<HTMLElement>('[data-transcript-editor]');
+      const tagInput = target?.closest('.tag-entry input');
+      if (!editor && !tagInput && target?.closest('input,textarea,select,[contenteditable]')) return;
+      const id = editor?.dataset.segmentId ?? (tagInput?.closest('.segment')?.id.slice('segment-'.length)) ?? effectiveSelectedSegmentId;
+      if (!id || !transcript?.segments.some(segment => segment.id === id) || (deps.visibleSegmentIds && !deps.visibleSegmentIds.has(id))) return;
+      event.preventDefault(); event.stopPropagation();
+      flushEditorDrafts(); deps.addTag(id);
+    };
     const handleKeydown = (event: globalThis.KeyboardEvent) => {
       if (disabled) return;
       if (event.isComposing || event.keyCode === 229) return;
@@ -167,10 +185,14 @@ export function useShortcuts(deps: UseShortcutsDeps) {
       }
     };
     window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+    window.addEventListener('keydown', handleTagKeydown, true);
+    return () => { window.removeEventListener("keydown", handleKeydown); window.removeEventListener('keydown', handleTagKeydown, true); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     deps.copySegment,
+    deps.addTag,
+    deps.nativeTagShortcut,
+    deps.tagWriteDisabled,
     deps.visibleSegmentIds,
     disabled,
     transcript,

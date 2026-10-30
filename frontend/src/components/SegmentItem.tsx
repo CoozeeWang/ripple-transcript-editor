@@ -10,7 +10,8 @@ import { revisionFor } from "../lib/revisions";
 import { speakerColorStyle, SPEAKER_PALETTE } from "../lib/speakers";
 import { flushEditorDrafts } from "../lib/editorDrafts";
 import type { ParagraphEditorElement } from "../lib/paragraphEditor";
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { nativeDesktopAvailable } from '../lib/desktopFs';
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { Segment, Speaker } from "../types";
@@ -26,6 +27,9 @@ import { SegmentTextArea } from "./SegmentTextArea";
 export interface SegmentItemProps {
   tags?: ProjectTag[];
   availableTags?: ProjectTag[];
+  tagRenameEnabled?: boolean;
+  onRenameTag?: (id: string, name: string) => Promise<void>;
+  registerTagEntry?: (id: string, open: (() => void) | null) => void;
   tagWriteDisabled?:boolean;
   onAddTag?: (segmentId:string,name:string)=>Promise<void>;
   onRemoveTag?: (segmentId:string,id:string)=>void;
@@ -91,6 +95,30 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
     mergeWithNext,
     handleEditorKeydown,
   } = props;
+
+  const tagFooter = useRef<HTMLDivElement>(null), closingTag = useRef(false), restoreTag = useRef(false);
+  const tagOpener = useRef<{ element: HTMLElement | null; editor?: ParagraphEditorElement; start: number; end: number } | null>(null);
+  const openTagEntry = useCallback(() => {
+    if (viewingOriginal || props.tagWriteDisabled || !props.onAddTag) return;
+    const existing = tagFooter.current?.querySelector<HTMLInputElement>('.tag-entry input');
+    if (existing) { existing.focus({ preventScroll: true }); return; }
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const editor = textareaRefs.current.get(segment.id), fromEditor = editor && (active === editor || (active && editor.contains(active)));
+    tagOpener.current = { element: active, editor: fromEditor ? editor : undefined, start: fromEditor ? editor.selectionStart : 0, end: fromEditor ? editor.selectionEnd : 0 };
+    if (fromEditor) recordEditorCursor(segment.id, editor.selectionStart);
+    flushEditorDrafts(); setSelectedSegmentId(segment.id); closingTag.current = false; setTagInput(true);
+  }, [viewingOriginal, props.tagWriteDisabled, props.onAddTag, textareaRefs, segment.id, recordEditorCursor, setSelectedSegmentId]);
+  const registerTagEntry = props.registerTagEntry;
+  useLayoutEffect(() => { registerTagEntry?.(segment.id, openTagEntry); return () => registerTagEntry?.(segment.id, null); }, [registerTagEntry, segment.id, openTagEntry]);
+  useLayoutEffect(() => {
+    if (tagInput || !restoreTag.current) return;
+    restoreTag.current = false;
+    const previous = tagOpener.current;
+    if (previous?.element?.isConnected) {
+      previous.element.focus({ preventScroll: true }); previous.editor?.setSelectionRange(previous.start, previous.end);
+    } else tagFooter.current?.querySelector<HTMLButtonElement>('[data-add-tag]')?.focus({ preventScroll: true });
+  }, [tagInput]);
+  const closeTagEntry = (restore: boolean) => { if (closingTag.current) return; closingTag.current = true; restoreTag.current = restore; setTagInput(false); };
 
   const transferElement = useRef<HTMLElement>(null);
   const {ready: transferReady, start: startTransfer, end: endTransfer} = useSegmentDrag(!!(props.dragSegment || props.nativeDragSegment), transferElement);
@@ -187,7 +215,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
       ref={transferElement}
       draggable={transferReady}
       data-transfer-ready={transferReady || undefined}
-      title={transferReady ? msg('segmentTransfer.drag', {key: IS_MAC ? '⌘' : 'Ctrl'}) : undefined}
+      data-action-tip={transferReady ? msg('segmentTransfer.drag', {key: IS_MAC ? '⌘' : 'Ctrl'}) : undefined}
       onDragStartCapture={event => {
         if (!transferReady) return;
         if (isEditorComposing() || document.querySelector('[role="dialog"], dialog[open]') || (event.target as Element).closest('button, select, a, input')) { event.preventDefault(); return; }
@@ -202,7 +230,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         if (props.timeAligned !== false) seekTo(segment.start);
       }}
     >
-      <div className="segment-speaker" title={speakerEntry?.name ?? segment.speaker_id}>
+      <div className="segment-speaker" data-action-tip={speakerEntry?.name ?? segment.speaker_id}>
         <span aria-hidden="true">{speakerEntry?.name ?? segment.speaker_id}</span>
       <select
         aria-label={msg('SegmentItem.m0944')}
@@ -245,7 +273,8 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
             seekTo(segment.start, true);
           }}
           disabled={!audioUrl || props.timeAligned === false}
-          data-tip={props.timeAligned === false ? msg('SegmentItem.m0946') : audioUrl ? msg('SegmentItem.m0947') : msg('SegmentItem.m0948')}
+          data-tip={props.timeAligned !== false && audioUrl ? msg('SegmentItem.m0947') : undefined}
+          data-action-tip={props.timeAligned === false ? msg('SegmentItem.m0946') : !audioUrl ? msg('SegmentItem.m0948') : undefined}
         >
           {timeRange}
         </button>
@@ -301,16 +330,16 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
               {segment.annotations!.length}
             </span>
           )}
-          <span draggable={!!(props.dragSegment || props.nativeDragSegment)} onDragStart={exportDrag} title={msg("segmentTransfer.drag", {key: IS_MAC ? '⌘' : 'Ctrl'})} className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
+          <span draggable={!!(props.dragSegment || props.nativeDragSegment)} onDragStart={exportDrag} data-action-tip={props.dragSegment || props.nativeDragSegment ? msg("segmentTransfer.drag", {key: IS_MAC ? '⌘' : 'Ctrl'}) : undefined} className="segment-number" style={{ width: `${Math.max(2, String(totalSegments).length)}ch` }}>{String(index + 1).padStart(2, "0")}</span>
         </div>
         </div>
-        <div className={'segment-tag-footer' + (tagInput ? ' has-tag-input' : '')}>
-          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} stopPropagation disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
-          {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={()=>setTagInput(false)} onCommit={name=>{setTagInput(false);void props.onAddTag?.(segment.id,name)}}/>}
+        <div ref={tagFooter} className={'segment-tag-footer' + (tagInput ? ' has-tag-input' : '')}>
+          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} stopPropagation renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
+          {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={reason=>closeTagEntry(reason==='escape')} onCommit={name=>{closeTagEntry(true);void props.onAddTag?.(segment.id,name)}}/>}
         <div className="segment-actions__icons">
           {!viewingOriginal ? (
             <>
-              {props.onAddTag&&<button type="button" disabled={props.tagWriteDisabled} data-tip={msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();setTagInput(true)}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m10 3-4 18M18 3l-4 18M3 9h18M1 15h18"/></svg></button>}
+              {props.onAddTag&&<button type="button" data-add-tag disabled={props.tagWriteDisabled} data-tip={nativeDesktopAvailable()?msg('tags.addShortcut',{key:keys('T')}):msg('tags.add')} aria-label={msg('tags.add')} onClick={e=>{e.stopPropagation();openTagEntry()}}><svg className="segment-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m10 3-4 18M18 3l-4 18M3 9h18M1 15h18"/></svg></button>}
               <button
                 type="button"
                 aria-label={msg('SegmentItem.m0952', { v0: keys("↵") })}
@@ -403,7 +432,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         </div>
       </div>
       {isSelected && (
-        <span className="segment-link-arrow" aria-hidden="true" data-tip={msg('SegmentItem.m0958')} />
+        <span className="segment-link-arrow" aria-hidden="true" data-action-tip={msg('SegmentItem.m0958')} />
       )}
     </article>
   );

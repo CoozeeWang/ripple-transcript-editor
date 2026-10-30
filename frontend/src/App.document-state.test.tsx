@@ -112,13 +112,13 @@ it("clears find and replace text when loading another document", () => {
   load("A.wav");
   fireEvent.keyDown(window, { key: "f", code: "KeyF", ctrlKey: true });
   fireEvent.change(screen.getByPlaceholderText("查找"), { target: { value: "A.wav" } });
-  fireEvent.click(screen.getByTitle("显示替换选项"));
+  fireEvent.click(document.querySelector('[data-tip="显示替换选项"]')!);
   fireEvent.change(screen.getByPlaceholderText("替换为"), { target: { value: "旧文稿的替换" } });
   load("B.wav");
   expect(screen.queryByPlaceholderText("查找")).toBeNull();
   fireEvent.keyDown(window, { key: "f", code: "KeyF", ctrlKey: true });
   expect((screen.getByPlaceholderText("查找") as HTMLInputElement).value).toBe("");
-  fireEvent.click(screen.getByTitle("显示替换选项"));
+  fireEvent.click(document.querySelector('[data-tip="显示替换选项"]')!);
   expect((screen.getByPlaceholderText("替换为") as HTMLInputElement).value).toBe("");
 });
 
@@ -247,9 +247,9 @@ it('connects the topbar to project-library undo and redo when manuscript history
  try{
   render(<Harness/>);load('Synthetic tags.wav');
   expect((screen.getByRole('button',{name:'撤销'}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.keyDown(screen.getByRole('button',{name:'标签: Synthetic topic'}),{key:'F2'});
-  fireEvent.change(screen.getByRole('textbox',{name:'标签'}),{target:{value:'Synthetic renamed'}});
-  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'保存'})));
+  fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Synthetic renamed'}});
+  await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'}));
   expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
   expect((screen.getByRole('button',{name:'撤销'}) as HTMLButtonElement).disabled).toBe(false);
   await act(async()=>fireEvent.click(screen.getByRole('button',{name:'撤销'})));
@@ -302,7 +302,16 @@ it('combines multiple tag IDs with AND/OR, preserves counts and prunes a deleted
   fireEvent.click(screen.getByRole('button',{name:'分组'}));expect(document.querySelectorAll('.library-filter[aria-pressed="true"]')).toHaveLength(3);expect(document.querySelectorAll('.segment')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect(screen.getByRole('button',{name:'与'}).getAttribute('aria-pressed')).toBe('true');expect(document.querySelectorAll('.segment')).toHaveLength(4);
   fireEvent.click(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(document.querySelectorAll('.segment')).toHaveLength(2);
-  fireEvent.keyDown(screen.getByRole('button',{name:'标签: Synthetic B'}),{key:'F2'});fireEvent.change(screen.getByRole('textbox',{name:'标签'}),{target:{value:'Synthetic renamed B'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'保存'})));expect(document.querySelectorAll('.segment')).toHaveLength(2);
+  fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic B'}));expect(screen.queryByRole('textbox',{name:'重命名标签'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic B'}));fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Synthetic renamed B'}});await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'}));expect(document.querySelectorAll('.segment')).toHaveLength(4);
   fireEvent.click(screen.getByRole('button',{name:'全部'}));fireEvent.click(screen.getByRole('button',{name:'删除项目标签: Synthetic renamed B'}));await act(async()=>fireEvent.click(screen.getByRole('dialog').querySelector('.button--danger')!));expect(document.querySelectorAll('.segment')).toHaveLength(4);expect(screen.queryByRole('button',{name:'标签: Synthetic renamed B'})).toBeNull();
  }finally{cleanup();HTMLDialogElement.prototype.showModal=oldShow;HTMLDialogElement.prototype.close=oldClose;HTMLElement.prototype.scrollTo=oldScroll;vi.unstubAllGlobals()}
+});
+
+it('blocks project navigation while an inline project tag rename is saving',async()=>{
+ const {useState}=await import('react');let finish!:()=>void;const leave=vi.fn(),open=vi.fn();
+ vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
+ function Harness(){const[library,setLibrary]=useState<import('./lib/tags').TagLibrary>({schemaVersion:1,tags:[{id:'synthetic-tag',name:'Synthetic topic',groupIds:[]}],groups:[]});return <App onReturnToProjects={leave} onOpenProject={open} tagLibrary={library} saveTagLibrary={async next=>{await new Promise<void>(resolve=>{finish=resolve});setLibrary(next)}}/>}
+ render(<Harness/>);load('Synthetic saving.wav');fireEvent.click(screen.getByRole('button',{name:/^标签\s*1$/}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Renamed'}});fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'});
+ expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(true);fireEvent(window,new Event('ripple-open-project'));expect(open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();await act(async()=>finish());expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(false);expect(screen.getByRole('button',{name:'标签: Renamed'})).toBeTruthy();
+ vi.unstubAllGlobals();
 });

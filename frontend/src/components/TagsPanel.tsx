@@ -8,6 +8,7 @@ import { TagModal } from './TagModal';
 import { GroupDeleteMenu } from './GroupDeleteMenu';
 import { NewGroupInput } from './NewGroupInput';
 import { TagPill } from './TagPill';
+import { InlineTagName } from './InlineTagName';
 import './tags.css';
 export function TagChevron({ open }: {
     open: boolean;
@@ -18,6 +19,7 @@ function SortIcon({ direction }: {
 interface Props {
     library: TagLibrary;
     onChange: (library: TagLibrary) => Promise<void>;
+    onRenameTag?: (id: string, name: string) => Promise<void>;
     readOnly: boolean;
     filter: readonly string[];
     filterMode: 'and' | 'or';
@@ -39,9 +41,6 @@ type Modal = {
     scope: 'tree' | 'level';
 } | {
     type: 'delete-tag';
-    id: string;
-} | {
-    type: 'rename';
     id: string;
 };
 type Drop = {
@@ -182,14 +181,8 @@ export function TagsPanel(p: Props) {
     function row(tag: ProjectTag, gid?: string) {
         const current = p.currentCount(tag.id), project = p.projectCounts?.get(tag.id) ?? 0;
         return <div className="library-tag-row" key={tag.id} data-tag-id={tag.id}>
-  <span className={'tag-pill library-pill' + (gid && gid !== 'ungrouped' ? ' tag-pill--removable' : '') + (p.filterEnabled && p.filter.includes(tag.id) ? ' is-filtered' : '')}><button className="library-filter" aria-label={`${msg('tags.title')}: ${tag.name}`} aria-pressed={p.filterEnabled && p.filter.includes(tag.id)} onPointerDown={e => { if (gid) startTagDrag(e, tag.id, gid); }} onPointerMove={moveTagDrag} onPointerUp={e => finishTagDrag(e)} onPointerCancel={e => finishTagDrag(e, false)} onClick={e => { if (p.filterEnabled && e.timeStamp >= suppressClick.current && !e.metaKey && !e.ctrlKey) p.onFilter(tag.id); }} onContextMenu={e => { if (!locked) {
-            e.preventDefault();
-            setModal({ type: 'rename', id: tag.id });
-        } }} onKeyDown={e => { if (e.key === 'F2' && !locked) {
-            e.preventDefault();
-            setModal({ type: 'rename', id: tag.id });
-        } }}>{tag.name}</button>{gid && gid !== 'ungrouped' && <button className="group-tag-remove tag-pill-remove" disabled={locked} aria-label={`${msg('tags.remove')}: ${tag.name}`} onClick={e => { e.stopPropagation(); void save({ ...p.library, tags: p.library.tags.map(t => t.id === tag.id ? { ...t, groupIds: t.groupIds.filter(id => id !== gid) } : t) }); }}>×</button>}</span>
-  <span className="tag-count" aria-label={p.projectCounts ? msg('tags.countDescription', { current, project }) : msg(p.countError ? 'tags.countFailed' : 'tags.countLoading')} title={p.projectCounts ? msg('tags.countDescription', { current, project }) : undefined}>{current}/{p.projectCounts ? project : '–'}</span>
+  <span className={'tag-pill library-pill' + (gid && gid !== 'ungrouped' ? ' tag-pill--removable' : '') + (p.filterEnabled && p.filter.includes(tag.id) ? ' is-filtered' : '')}><InlineTagName name={tag.name} enabled={!p.filterEnabled && !locked} onRename={p.onRenameTag ? name=>p.onRenameTag!(tag.id,name) : undefined} canBegin={time=>time >= suppressClick.current && !tagGesture.current && !gesture.current}><button className="library-filter" aria-label={`${msg('tags.title')}: ${tag.name}`} aria-pressed={p.filterEnabled && p.filter.includes(tag.id)} onPointerDown={e => { if (gid) startTagDrag(e, tag.id, gid); }} onPointerMove={moveTagDrag} onPointerUp={e => finishTagDrag(e)} onPointerCancel={e => finishTagDrag(e, false)} onClick={e => { if (p.filterEnabled && e.detail < 2 && e.timeStamp >= suppressClick.current && !e.metaKey && !e.ctrlKey) p.onFilter(tag.id); }}>{tag.name}</button></InlineTagName>{gid && gid !== 'ungrouped' && <button className="group-tag-remove tag-pill-remove" onDoubleClick={e=>e.stopPropagation()} disabled={locked} aria-label={`${msg('tags.remove')}: ${tag.name}`} onClick={e => { e.stopPropagation(); if(e.detail >= 2) return; void save({ ...p.library, tags: p.library.tags.map(t => t.id === tag.id ? { ...t, groupIds: t.groupIds.filter(id => id !== gid) } : t) }); }}>×</button>}</span>
+  <span className="tag-count" aria-label={p.projectCounts ? msg('tags.countDescription', { current, project }) : msg(p.countError ? 'tags.countFailed' : 'tags.countLoading')} data-action-tip={p.projectCounts ? msg('tags.countDescription', { current, project }) : undefined}>{current}/{p.projectCounts ? project : '–'}</span>
   <span className="library-action-slot">{!gid && <button className="library-delete" disabled={locked} aria-label={`${msg('tags.deleteTag')}: ${tag.name}`} data-tip={msg('tags.deleteTag')} onClick={() => setModal({ type: 'delete-tag', id: tag.id })}><ActionIcon kind="trash"/></button>}</span></div>;
     }
     function groupNode(group: TagGroup, inherited = false): React.ReactNode {
@@ -197,7 +190,7 @@ export function TagsPanel(p: Props) {
         if (query && !match && !tags.length && !children.length)
             return null;
         const shut = collapsed.has(group.id) || (hiddenTags.has(group.id) && !children.length);
-        return <section className={'tag-group' + (drop?.target === group.id ? ' drop-' + drop.mode : '') + (tagDrop === group.id ? ' tag-drop-target' : '')} data-tag-group={group.id} key={group.id}><div className="tag-group-header"><button className="group-collapse" aria-label={group.name} aria-expanded={!shut} onClick={() => toggle(group.id)}><TagChevron open={!shut}/></button><GroupNameButton className={'group-toggle' + (dragged === group.id ? ' is-dragging' : '')} isMac={IS_MAC} dragging={!!dragged || !!draggedTag} aria-label={group.name} aria-expanded={!shut} onPointerDown={e => startDrag(e, group.id)} onPointerMove={moveDrag} onPointerUp={e => finishDrag(e)} onPointerCancel={e => finishDrag(e, false)} onKeyDown={e => { if (e.key === 'Escape') {
+        return <section className={'tag-group' + (drop?.target === group.id ? ' drop-' + drop.mode : '') + (tagDrop === group.id ? ' tag-drop-target' : '')} data-tag-group={group.id} key={group.id}><div className="tag-group-header"><button className="group-collapse" aria-label={group.name} aria-expanded={!shut} onClick={() => toggle(group.id)}><TagChevron open={!shut}/></button><GroupNameButton className={'group-toggle' + (dragged === group.id ? ' is-dragging' : '')} isMac={IS_MAC} dragEnabled={!locked} dragging={!!dragged || !!draggedTag} aria-label={group.name} aria-expanded={!shut} onPointerDown={e => startDrag(e, group.id)} onPointerMove={moveDrag} onPointerUp={e => finishDrag(e)} onPointerCancel={e => finishDrag(e, false)} onKeyDown={e => { if (e.key === 'Escape') {
             finishDrag();
             return;
         } if (e.altKey && !locked) {
@@ -216,7 +209,7 @@ export function TagsPanel(p: Props) {
                 void save(next);
             }
         } }} onClick={e => { if (e.timeStamp < suppressClick.current || e.metaKey || e.ctrlKey)
-            return; toggle(group.id); }}><span className="group-name">{group.name}</span></GroupNameButton><span className="group-actions"><button className="group-manage" aria-label={`${msg('tags.manage')}: ${group.name}`} disabled={locked} onClick={() => setModal({ type: 'group', id: group.id })}><span aria-hidden="true">⋯</span></button><GroupDeleteMenu name={group.name} disabled={locked} onChoose={scope => setModal({ type: 'delete-group', id: group.id, scope })}/></span></div>{!shut && <div className="tag-group-content">{!hiddenTags.has(group.id) && <div className="group-tags">{tags.map(t => row(t, group.id))}</div>}{children}</div>}</section>;
+            return; toggle(group.id); }}><span className="group-name" data-tip-anchor>{group.name}</span></GroupNameButton><span className="group-actions"><button className="group-manage" aria-label={`${msg('tags.manage')}: ${group.name}`} disabled={locked} onClick={() => setModal({ type: 'group', id: group.id })}><span aria-hidden="true">⋯</span></button><GroupDeleteMenu name={group.name} disabled={locked} onChoose={scope => setModal({ type: 'delete-group', id: group.id, scope })}/></span></div>{!shut && <div className="tag-group-content">{!hiddenTags.has(group.id) && <div className="group-tags">{tags.map(t => row(t, group.id))}</div>}{children}</div>}</section>;
     }
     const modalGroup = modal && 'id' in modal ? p.library.groups.find(g => g.id === modal.id) : undefined, modalTag = modal && 'id' in modal ? p.library.tags.find(t => t.id === modal.id) : undefined;
     const ungrouped = sortTags(p.library.tags.filter(tag => !tag.groupIds.length && tag.name.toLowerCase().includes(query.toLowerCase())), 'name', 1, p.currentCount);
@@ -226,29 +219,20 @@ export function TagsPanel(p: Props) {
   {p.countError && <p role="alert" className="tag-error">{msg('tags.countFailed')} <button onClick={p.retryCounts}>{msg('tags.retry')}</button></p>}
   {error && !modal && <p role="alert" className="tag-error">{error}</p>}
 
-  <div className="group-tools tag-filter-tools"><div className="tag-filter-controls">{view === 'groups' ? <button className="group-cycle" aria-label={msg(cycleLabels[nextCycle])} onClick={cycleGroups}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m4 2 4 3 4-3M4 14l4-3 4 3M3 8h10"/></svg></button> : <span className="group-cycle-placeholder" aria-hidden="true"/>}<button className="tag-filter-toggle" aria-label={msg('tags.filterToggle')} aria-pressed={p.filterEnabled} data-tip={msg(p.filterEnabled ? 'tags.filterEnabled' : 'tags.filterDisabled')} onClick={() => p.onFilterEnabledChange(!p.filterEnabled)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v9l-4-2v-7Z"/></svg></button>{p.filterEnabled && <div className="tag-filter-mode" role="group" aria-label={msg('tags.filterMode')}><button aria-label={msg('tags.and')} aria-pressed={p.filterMode === 'and'} data-tip={msg('tags.andHint')} onClick={() => p.onFilterModeChange('and')}>{msg('tags.and')}</button><button aria-label={msg('tags.or')} aria-pressed={p.filterMode === 'or'} data-tip={msg('tags.orHint')} onClick={() => p.onFilterModeChange('or')}>{msg('tags.or')}</button></div>}</div>{view === 'groups' && <><button ref={newGroupTrigger} hidden={newGroup} disabled={locked} onClick={() => setNewGroup(true)}>＋ {msg('tags.newGroup')}</button>{newGroup && <NewGroupInput busy={locked} onCreate={createGroup} onCancel={reason => { returnToNewGroup.current = reason === 'escape'; setNewGroup(false); }}/>}</>}</div>
+  <div className="group-tools tag-filter-tools"><div className="tag-filter-controls">{view === 'groups' ? <button className="group-cycle" aria-label={msg(cycleLabels[nextCycle])} onClick={cycleGroups}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m4 2 4 3 4-3M4 14l4-3 4 3M3 8h10"/></svg></button> : <span className="group-cycle-placeholder" aria-hidden="true"/>}<button className="tag-filter-toggle" aria-label={msg('tags.filterToggle')} aria-pressed={p.filterEnabled} data-tip={msg(p.filterEnabled ? 'tags.filterEnabled' : 'tags.filterDisabled')} onClick={() => p.onFilterEnabledChange(!p.filterEnabled)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v9l-4-2v-7Z"/></svg></button>{p.filterEnabled && <div className="tag-filter-mode" role="group" aria-label={msg('tags.filterMode')}><button aria-label={msg('tags.and')} aria-pressed={p.filterMode === 'and'} data-action-tip={msg('tags.andHint')} onClick={() => p.onFilterModeChange('and')}>{msg('tags.and')}</button><button aria-label={msg('tags.or')} aria-pressed={p.filterMode === 'or'} data-action-tip={msg('tags.orHint')} onClick={() => p.onFilterModeChange('or')}>{msg('tags.or')}</button></div>}</div>{view === 'groups' && <><button ref={newGroupTrigger} hidden={newGroup} disabled={locked} onClick={() => setNewGroup(true)}>＋ {msg('tags.newGroup')}</button>{newGroup && <NewGroupInput busy={locked} onCreate={createGroup} onCancel={reason => { returnToNewGroup.current = reason === 'escape'; setNewGroup(false); }}/>}</>}</div>
   {view === 'all' ? <div className="tag-list-head"><button aria-label={msg('tags.sortName')} aria-sort={sort.key === 'name' ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined} onClick={() => setSort({ key: 'name', dir: sort.key === 'name' && sort.dir === 1 ? -1 : 1 })}>{msg('tags.name')}<SortIcon direction={sort.key === 'name' ? sort.dir : 0}/></button><button aria-label={msg('tags.sortCount')} onClick={() => setSort({ key: 'count', dir: sort.key === 'count' && sort.dir === -1 ? 1 : -1 })}>{msg('tags.count')}<SortIcon direction={sort.key === 'count' ? sort.dir : 0}/></button><span className="delete-column"/></div> : null}
   <div ref={list} className={'library-list' + (view === 'all' ? ' library-list-all' : '')}>{view === 'all' ? sortTags(p.library.tags.filter(t => t.name.toLowerCase().includes(query.toLowerCase())), sort.key, sort.dir, p.currentCount).map(t => row(t)) : <>{p.library.groups.filter(g => !g.parentId).map(g => groupNode(g))}{ungrouped.length > 0 && !hiddenTags.has('ungrouped') && <section className="tag-ungrouped"><div className="ungrouped-divider"><span>{msg('tags.ungrouped')}</span></div><div className="group-tags">{ungrouped.map(tag => row(tag, 'ungrouped'))}</div></section>}{dragged && <div className={'root-drop' + (drop?.target === null ? ' is-drop-target' : '')}/>}</>}</div>
-  {modal && <TagModal descriptionId={modal.type === 'delete-group' || modal.type === 'delete-tag' ? confirmationDescription : undefined} title={msg(modal.type === 'group' ? 'tags.manage' : modal.type === 'delete-group' ? (modal.scope === 'tree' ? 'tags.deleteGroupTree' : 'tags.deleteGroupLevel') : modal.type === 'rename' ? 'tags.renameTag' : 'tags.deleteTag')} onClose={() => { if (!busy) {
+  {modal && <TagModal descriptionId={modal.type === 'delete-group' || modal.type === 'delete-tag' ? confirmationDescription : undefined} title={msg(modal.type === 'group' ? 'tags.manage' : modal.type === 'delete-group' ? (modal.scope === 'tree' ? 'tags.deleteGroupTree' : 'tags.deleteGroupLevel') : 'tags.deleteTag')} onClose={() => { if (!busy) {
             setModal(null);
             setError('');
         } }}>
-   {modal.type === 'group' || modal.type === 'rename' ? <TagLibraryForm key={JSON.stringify(modal)} group={modal.type === 'group' ? modalGroup : undefined} tag={modal.type === 'rename' ? modalTag : undefined} library={p.library} busy={busy} error={error} onCancel={() => { setModal(null); setError(''); }} onSave={(name, ids) => {
-                    if (modal.type === 'rename' && modalTag) {
-                        if (p.library.tags.some(t => t.id !== modalTag.id && t.name.toLowerCase() === name.toLowerCase())) {
-                            setError(msg('tags.duplicate'));
-                            return;
-                        }
-                        void save({ ...p.library, tags: p.library.tags.map(t => t.id === modalTag.id ? { ...t, name } : t) });
-                    }
-                    else {
+   {modal.type === 'group' ? <TagLibraryForm key={JSON.stringify(modal)} group={modal.type === 'group' ? modalGroup : undefined} library={p.library} busy={busy} error={error} onCancel={() => { setModal(null); setError(''); }} onSave={(name, ids) => {
                         if (p.library.groups.some(g => g.id !== modalGroup?.id && g.parentId === (modalGroup?.parentId ?? null) && g.name === name)) {
                             setError(msg('tags.duplicate'));
                             return;
                         }
                         const id = modalGroup?.id ?? crypto.randomUUID();
                         void save({ ...p.library, groups: modalGroup ? p.library.groups.map(g => g.id === id ? { ...g, name } : g) : [...p.library.groups, { id, name, parentId: null }], tags: modalGroup ? p.library.tags.map(t => ({ ...t, groupIds: ids.has(t.id) ? [...new Set([...t.groupIds, id])] : t.groupIds.filter(g => g !== id) })) : p.library.tags });
-                    }
                 }}/> : <><p className="trash-material-name">{modalTag ? <TagPill name={modalTag.name}/> : modalGroup?.name}</p><p id={confirmationDescription} className="settings-hint">{msg(modal.type === 'delete-tag' ? 'tags.deleteTagNotice' : modal.scope === 'tree' ? 'tags.deleteGroupTreeNotice' : 'tags.deleteGroupLevelNotice')}</p>{error && <p role="alert" className="tag-error">{error}</p>}<div className="project-actions audio-project-footer"><button data-cancel className="button button--secondary" disabled={busy} onClick={() => setModal(null)}>{msg('tags.cancel')}</button><button className="button button--danger" disabled={busy} onClick={() => { if (modal.type === 'delete-tag')
                 void save({ ...p.library, tags: p.library.tags.filter(t => t.id !== modal.id) });
             else if (modal.type === 'delete-group')
@@ -256,18 +240,17 @@ export function TagsPanel(p: Props) {
   </TagModal>}
  </div>;
 }
-function TagLibraryForm({ group, tag, library, busy, error, onSave, onCancel }: {
+function TagLibraryForm({ group, library, busy, error, onSave, onCancel }: {
     group?: TagGroup;
-    tag?: ProjectTag;
     library: TagLibrary;
     busy: boolean;
     error: string;
     onSave: (name: string, ids: Set<string>) => void;
     onCancel: () => void;
 }) {
-    const [name, setName] = useState(group?.name ?? tag?.name ?? ''), [query, setQuery] = useState(''), [checked, setChecked] = useState(new Set(library.tags.filter(t => group && t.groupIds.includes(group.id)).map(t => t.id)));
+    const [name, setName] = useState(group?.name ?? ''), [query, setQuery] = useState(''), [checked, setChecked] = useState(new Set(library.tags.filter(t => group && t.groupIds.includes(group.id)).map(t => t.id)));
     return <form onSubmit={e => { e.preventDefault(); if (name.trim())
-        onSave(name.trim(), checked); }}><label className="field"><span>{msg(tag ? 'tags.name' : 'tags.groupName')}</span><input data-dialog-initial-focus maxLength={120} value={name} onChange={e => setName(e.target.value)} disabled={busy}/></label>{group && <><p className="settings-hint">{msg('tags.members')}</p><label className="field"><input aria-label={msg('tags.search')} placeholder={msg('tags.search')} value={query} onChange={e => setQuery(e.target.value)}/></label><div className="tag-check-list">{sortTags(library.tags.filter(t => t.name.toLowerCase().includes(query.toLowerCase())), 'name', 1, () => 0).map(t => <label className="tag-check" key={t.id}><input type="checkbox" className="ripple-checkbox" disabled={busy} checked={checked.has(t.id)} onChange={e => setChecked(old => { const next = new Set(old); if (e.target.checked)
+        onSave(name.trim(), checked); }}><label className="field"><span>{msg('tags.groupName')}</span><input data-dialog-initial-focus maxLength={120} value={name} onChange={e => setName(e.target.value)} disabled={busy}/></label>{group && <><p className="settings-hint">{msg('tags.members')}</p><label className="field"><input aria-label={msg('tags.search')} placeholder={msg('tags.search')} value={query} onChange={e => setQuery(e.target.value)}/></label><div className="tag-check-list">{sortTags(library.tags.filter(t => t.name.toLowerCase().includes(query.toLowerCase())), 'name', 1, () => 0).map(t => <label className="tag-check" key={t.id}><input type="checkbox" className="ripple-checkbox" disabled={busy} checked={checked.has(t.id)} onChange={e => setChecked(old => { const next = new Set(old); if (e.target.checked)
         next.add(t.id);
     else
         next.delete(t.id); return next; })}/><TagPill name={t.name}/></label>)}</div></>}{error && <p role="alert" className="tag-error">{error}</p>}<div className="project-actions audio-project-footer"><button data-cancel type="button" disabled={busy} className="button button--secondary" onClick={onCancel}>{msg('tags.cancel')}</button><button className="button button--primary" disabled={busy || !name.trim()}>{msg('tags.save')}</button></div></form>;

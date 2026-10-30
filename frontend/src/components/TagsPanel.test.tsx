@@ -120,3 +120,4 @@ describe('production tags panel', () => {
         expect(h.changed).not.toHaveBeenCalled();
     });
 });
+it('a double-click second click cannot toggle a filter a second time',()=>{const h=mount(),pill=screen.getByRole('button',{name:'标签: Topic'});fireEvent.click(pill,{detail:1});fireEvent.click(pill,{detail:2});fireEvent.doubleClick(pill);expect(h.filter).toHaveBeenCalledExactlyOnceWith('t1');expect(pill.getAttribute('aria-pressed')).toBe('true');expect(screen.queryByRole('dialog')).toBeNull()});

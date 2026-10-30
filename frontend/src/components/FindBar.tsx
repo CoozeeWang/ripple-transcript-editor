@@ -90,10 +90,10 @@ export function FindBar(props: FindBarProps) {
             : msg('FindBar.m0528')}
         </span>
       </div>
-      <button type="button" onClick={findPrev} disabled={matchCount === 0} title={msg('FindBar.m0529')}>{msg('FindBar.m0530')}</button>
-      <button type="button" onClick={findNext} disabled={matchCount === 0} title={msg('FindBar.m0531')}>{msg('FindBar.m0532')}</button>
+      <button type="button" onClick={findPrev} disabled={matchCount === 0} data-tip={msg('FindBar.m0529')}>{msg('FindBar.m0530')}</button>
+      <button type="button" onClick={findNext} disabled={matchCount === 0} data-tip={msg('FindBar.m0531')}>{msg('FindBar.m0532')}</button>
       {!viewingOriginal && !showReplace ? (
-        <button type="button" onClick={focusReplace} title={msg('FindBar.m0533')}>
+        <button type="button" onClick={focusReplace} data-tip={msg('FindBar.m0533')}>
           {msg('FindBar.m0534')}</button>
       ) : null}
       {showReplace ? (
@@ -114,7 +114,7 @@ export function FindBar(props: FindBarProps) {
               placeholder={msg('FindBar.m0536')}
             />
           </div>
-          <button type="button" onClick={() => replaceCurrent()} disabled={matchCount === 0} title={msg('FindBar.m0537', { v0: keys("↵") })}>{msg('FindBar.m0538')}</button>
+          <button type="button" onClick={() => replaceCurrent()} disabled={matchCount === 0} data-tip={msg('FindBar.m0537', { v0: keys("↵") })}>{msg('FindBar.m0538')}</button>
           <button type="button" onClick={replaceAll} disabled={matchCount === 0}>{msg('FindBar.m0539')}</button>
         </>
       ) : null}

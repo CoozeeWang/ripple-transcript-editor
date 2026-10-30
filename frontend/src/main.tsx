@@ -1,3 +1,4 @@
+import { TooltipHost } from "./components/TooltipHost";
 import { UpdateWindow } from "./components/UpdateWindow";
 import { isDesktopUpdateWindow } from "./lib/desktopUpdates";
 import { normalizeInterfaceLanguage, setInterfaceLanguage } from "./i18n";
@@ -23,7 +24,7 @@ const root = createRoot(document.getElementById("root")!);
 if (isDesktopUpdateWindow()) {
   document.documentElement.classList.add('desktop-update-document');
   const language=(window as unknown as {__RIPPLE_UPDATE_WINDOW__:{language:string}}).__RIPPLE_UPDATE_WINDOW__.language;
-  void setInterfaceLanguage(normalizeInterfaceLanguage(language)).then(()=>root.render(<StrictMode><UpdateWindow /></StrictMode>));
+  void setInterfaceLanguage(normalizeInterfaceLanguage(language)).then(()=>root.render(<StrictMode><UpdateWindow /><TooltipHost /></StrictMode>));
 } else void installDesktopRuntime().then(() => root.render(
-  <StrictMode><AIConnectorProvider><ProjectWorkspace /></AIConnectorProvider></StrictMode>,
+  <StrictMode><AIConnectorProvider><ProjectWorkspace /><TooltipHost /></AIConnectorProvider></StrictMode>,
 )).catch(error => root.render(<main style={{ padding: 32 }} role="alert">{String(error)}</main>));
