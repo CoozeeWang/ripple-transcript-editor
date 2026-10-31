@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import {TagCountTotals} from '../lib/tagCountCache';
 import { TagsPanel } from './TagsPanel';
 import { setTagPath, type TagLibrary } from '../lib/tags';
 const seed=():TagLibrary=>{let library=setTagPath({schemaVersion:3,tags:[],groups:[]},'Root/Branch/Leaf').library;library=setTagPath(library,'Other').library;return {...library,groups:[{id:'g1',name:'Group one',parentId:null},{id:'g2',name:'Group two',parentId:null}],tags:library.tags.map(tag=>({...tag,groupIds:tag.name==='Root'||tag.name==='Leaf'?['g1']:tag.name==='Other'?['g2']:[]}))}};
@@ -63,4 +64,13 @@ it('keeps filter-locked controls inert while exposing accurate lightweight expla
  const hint=(button:HTMLElement,text:string)=>{expect((button as HTMLButtonElement).disabled).toBe(true);const wrapper=button.parentElement!;fireEvent.pointerOver(wrapper);act(()=>vi.advanceTimersByTime(800));expect(screen.getByRole('tooltip').textContent).toBe(text);expect(screen.getByRole('tooltip').className).toContain('--action');fireEvent.click(button);expect(screen.queryByRole('dialog')).toBeNull();fireEvent.pointerOut(wrapper);act(()=>vi.advanceTimersByTime(160));};
  hint(screen.getByRole('button',{name:'全部收起'}),'关闭筛选后可展开或折叠');hint(screen.getByRole('button',{name:'从当前稿移除: Root'}),'关闭筛选后可移除当前稿标签分支');fireEvent.click(screen.getByRole('button',{name:'项目'}));hint(screen.getByRole('button',{name:'删除项目标签: Root'}),'关闭筛选后可删除项目标签分支');fireEvent.click(screen.getByRole('button',{name:'分组'}));hint(screen.getByRole('button',{name:'管理分组: Group one'}),'关闭筛选后可管理分组');hint(screen.getByRole('button',{name:'解散该组: Group one'}),'关闭筛选后可解散分组');hint(screen.getByRole('button',{name:'移除标签: Leaf'}),'关闭筛选后可从该组移除标签');expect(h.changed).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));expect((screen.getByRole('button',{name:'管理分组: Group one'}) as HTMLButtonElement).disabled).toBe(false);expect(h.container.querySelector('.group-tools .filter-action-hint')?.hasAttribute('data-action-tip')).toBe(false);
+});
+
+it('uses direct/coverage for real parents and scope-specific project totals with a lightweight explanation',async()=>{
+ const library=seed(),root=library.tags.find(t=>t.name==='Root')!,leaf=library.tags.find(t=>t.name==='Leaf')!,loader=vi.fn(async()=>new TagCountTotals([[root.id,1],[leaf.id,9]],[[root.id,12],[leaf.id,9]]));
+ const h=render(<TagsPanel library={library} projectRevision={1} versionKey="synthetic" loadProjectCounts={loader} currentTagIds={library.tags.map(t=>t.id)} onChange={async()=>{}} readOnly={false} filter={[]} filterMode="and" onFilterModeChange={()=>{}} filterEnabled={false} onFilterEnabledChange={()=>{}} onFilter={()=>{}} currentCount={id=>id===root.id?0:2} currentCoverage={()=>3}/>);
+ const count=(name:string)=>label(name).closest('.library-tag-row')!.querySelector('.tag-count')!;
+ expect(count('Root').textContent).toBe('0/3');expect(count('Leaf').textContent).toBe('2');expect(count('Root').getAttribute('data-action-tip')).toContain('直接标注 0');
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'项目'})));expect(count('Root').textContent).toBe('1/12');expect(count('Leaf').textContent).toBe('9');
+ fireEvent.click(screen.getByRole('button',{name:'分组'}));expect(count('Root').textContent).toBe('0/3');expect(h.container.querySelector('.tag-count-heading')?.textContent).toBe('片段数');
 });

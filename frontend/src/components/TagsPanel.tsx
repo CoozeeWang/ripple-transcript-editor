@@ -3,6 +3,7 @@ import { msg, useInterfaceLanguage } from '../i18n';
 import { IS_MAC } from '../lib/format';
 import { type ProjectTag, type TagLibrary, type TagGroup, moveTagGroup, removeTagGroup, transferTagGroup, tagTreeRows, tagAncestors, tagPath, descendantTagIds, removeTagBranch, suggestTags } from '../lib/tags';
 import { savedTagOrder, type TagOrderView } from '../lib/tagOrdering';
+import type {GroupTagPlacement} from '../lib/tagPlacement';
 import type { TagCollection } from '../lib/tagCollections';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { TagLibraryInput } from './TagLibraryInput';
@@ -25,6 +26,7 @@ export function TagChevron() {
 }
 interface Props {
     loadProjectCounts?:()=>Promise<import('../lib/tagCountCache').TagCountTotals>;projectRevision?:number;
+    onPlaceGroupTag?:(placement:GroupTagPlacement)=>Promise<void>;
     versionKey?: string; collection?: TagCollection;
     onReorder?: (view: TagOrderView, id: string, anchor: string | null, after: boolean, groupId?: string) => Promise<void>;
     loadError?: string; library: TagLibrary; currentTagIds: readonly string[];
@@ -41,7 +43,7 @@ interface Props {
     onTagDropTarget?: (segmentId: string | null) => void;
 }
 type Modal = { type: 'group'; id: string } | { type: 'dissolve'; id: string } | { type: 'delete'; id: string; scope: 'current' | 'project' };
-type Target = { kind: 'group'; id: string } | { kind: 'tree'; parentId: string | null; anchorId: string | null; siblingId?: string | null; after?: boolean; depth: number } | { kind: 'tag-order'; view: TagOrderView; groupId?: string; anchorId: string; after: boolean; depth: number } | { kind: 'segment'; id: string } | { kind: 'order'; id: string | null; after: boolean };
+type Target = {kind:'group-tree';groupId:string;parentId:string|null;siblingId:string|null;anchorId:string|null;after:boolean;depth:number} | { kind: 'group'; id: string } | { kind: 'tree'; parentId: string | null; anchorId: string | null; siblingId?: string | null; after?: boolean; depth: number } | { kind: 'tag-order'; view: TagOrderView; groupId?: string; anchorId: string; after: boolean; depth: number } | { kind: 'segment'; id: string } | { kind: 'order'; id: string | null; after: boolean };
 interface Gesture { kind: 'tag' | 'group'; id: string; source: string | null; copy: boolean; level: boolean; pointer: number; x: number; y: number; lastX: number; lastY: number; active: boolean; target: Target | null }
 
 type Sort = 'manual' | 'ascending' | 'descending';
@@ -133,6 +135,20 @@ export function TagsPanel(p: Props) {
             return element?.closest('.root-drop') ? { kind: 'order', id: null, after: true } : null;
         }
         if (!g.level) {
+            if(p.onPlaceGroupTag&&section){
+                const groupId=section.dataset.tagGroup!,row=element?.closest<HTMLElement>('.library-tag-row[data-tag-id]'),source=p.library.tags.find(tag=>tag.id===g.id)!;
+                if(row&&!element?.closest('.library-action-slot,.tag-count,.tag-delete-control')){
+                    const id=row.dataset.tagId!,absolute=tagAncestors(p.library,id).reverse(),depth=absolute.length,rect=row.getBoundingClientRect();
+                    const desired=Math.max(0,Math.min(depth+1,Math.floor((g.lastX-rect.left+8)/16)));
+                    const parentId=desired>depth?id:desired===0?null:absolute[desired-1]?.id??null;
+                    const siblingId=desired>depth?null:desired===depth?id:absolute[desired]?.id??null;
+                    if(parentId&&descendantTagIds(p.library,g.id).includes(parentId)||siblingId===g.id&&groupId===g.source)return null;
+                    return{kind:'group-tree',groupId,parentId,siblingId,anchorId:siblingId??id,after:desired>depth||g.lastY>=rect.top+rect.height/2,depth:desired};
+                }
+                if(element?.closest('.group-tag-root-drop'))return{kind:'group-tree',groupId,parentId:null,siblingId:null,anchorId:null,after:true,depth:0};
+                if(groupId!==g.source)return{kind:'group-tree',groupId,parentId:source.parentId??null,siblingId:null,anchorId:null,after:true,depth:tagAncestors(p.library,g.id).length};
+                return null;
+            }
             const sourceSection = element?.closest<HTMLElement>('[data-tag-group],.tag-ungrouped');
             const sourceId = sourceSection?.dataset.tagGroup ?? (sourceSection?.classList.contains('tag-ungrouped')?'ungrouped':undefined);
             const row = element?.closest<HTMLElement>('.library-tag-row[data-tag-id]');
@@ -177,7 +193,7 @@ export function TagsPanel(p: Props) {
     function start(event: PointerEvent<HTMLButtonElement>, kind: 'tag' | 'group', id: string, source: string | null = null) {
         if (!dragEnabled || event.button !== 0 || !(IS_MAC ? event.metaKey : event.ctrlKey)) return;
         if (query.trim()) { setError(msg('tags.dragSearch')); return; }
-        event.preventDefault(); event.stopPropagation();
+        event.preventDefault(); event.stopPropagation();for(const timer of clicks.current.values())clearTimeout(timer);clicks.current.clear();
         gesture.current = { kind, id, source, copy: !!source && source !== 'ungrouped' && event.shiftKey, level: kind === 'tag' && view === 'level',
             pointer: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, active: false, target: null };
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -196,14 +212,15 @@ export function TagsPanel(p: Props) {
         if (!g.active) return; suppress.current = event.timeStamp + 500;
         if (!commit || !g.target || !dragEnabled) return;
         const target = g.target;
-        const operation = target.kind === 'segment' ? p.onDropTagToSegment?.(g.id, target.id)
+        const operation = target.kind==='group-tree'?p.onPlaceGroupTag?.({tagId:g.id,sourceGroupId:g.source==='ungrouped'?null:g.source,groupId:target.groupId,parentId:target.parentId,anchorId:target.siblingId,after:target.after,copy:g.copy})
+            :target.kind === 'segment' ? p.onDropTagToSegment?.(g.id, target.id)
             : target.kind === 'tree' ? ((p.library.tags.find(tag=>tag.id===g.id)?.parentId??null)===target.parentId
                 ? p.onReorder?.('level',g.id,target.siblingId??null,target.after??true)
                 : p.onReparentTag?.(g.id,target.parentId,target.siblingId??null,target.after??true))
             : target.kind === 'tag-order' ? p.onReorder?.(target.view,g.id,target.anchorId,target.after,target.groupId)
             : target.kind === 'group' ? save(transferTagGroup(p.library, g.id, g.source === 'ungrouped' ? null : g.source, target.id, g.copy))
             : save(moveTagGroup(p.library, g.id, target.id, target.after ? 'after' : 'before'));
-        void operation?.then(()=>{if(target.kind==='tree'||target.kind==='tag-order')setSort('manual')}).catch(error => setError(tagErrorMessage(error)));
+        void operation?.then(()=>{if(target.kind==='tree'||target.kind==='tag-order'||target.kind==='group-tree')setSort('manual')}).catch(error => setError(tagErrorMessage(error)));
     }
     function row(tag: ProjectTag, members?: ReadonlySet<string>, group?: string, guide?: TagGuide, insertionId?:string|null) {
         const depth = tree.get(tag.id)!.ancestors.length, descendants = tree.get(tag.id)!.descendants, key = tagKey(tag.id, group);
@@ -214,7 +231,7 @@ export function TagsPanel(p: Props) {
         const countHint=count===undefined?msg('tags.countLoading'):msg(projectCountActive?'tags.projectCountCoverage':'tags.currentCountCoverage',{direct:count,coverage:coverage??0});
         const canBegin = (time: number) => time >= suppress.current && !gesture.current;
         const hint = msg(group ? 'tags.dragGroupTag' : 'tags.dragLevelTag', { key: IS_MAC ? '⌘' : 'Ctrl', copyKey:IS_MAC?'⌘⇧':'Ctrl+Shift' });
-        const target=drag?.target, insert=target?.kind==='tree'||target?.kind==='tag-order'?target:null;
+        const target=drag?.target, insert=target?.kind==='tree'||target?.kind==='tag-order'||target?.kind==='group-tree'?target:null;
         const line=insert&&insertionId===tag.id&&(!('groupId'in insert)||insert.groupId===(group==='ungrouped'?undefined:group))?<div className="tag-drop-line" style={{marginLeft:insert.depth*16}}/>:null;
         return <div key={tag.id} className={'tag-tree-entry' + (selected || inherited ? ' is-inherited-region' : '')}>
             {line&&!insert?.after&&line}
@@ -244,9 +261,9 @@ export function TagsPanel(p: Props) {
         let rows = (group&&p.collection?tagTreeRows(p.library,members,sort==='manual'?'manual':'name',direction,()=>0,savedTagOrder(p.collection,group==='ungrouped'?'ungrouped':'group',group==='ungrouped'?undefined:group)):allRows).filter(({ tag }) => !members || members.has(tag.id));
         rows = rows.filter(({ tag }) => matches ? matches.has(tag.id) : p.filterEnabled || !tree.get(tag.id)!.ancestors.some(ancestor => (!members || members.has(ancestor.id)) && foldedTags.has(tagKey(ancestor.id, group))));
         const guides = tagTreeGuides(p.library, rows.map(row => row.tag.id), members);
-        const target=drag?.target,insert=target?.kind==='tree'||target?.kind==='tag-order'?target:null;
+        const target=drag?.target,insert=target?.kind==='tree'||target?.kind==='tag-order'||target?.kind==='group-tree'?target:null;
         let insertionId=insert?.anchorId;
-        if(insert?.after&&insertionId){const descendants=new Set(tree.get(insertionId)?.descendants);for(const candidate of rows)if(descendants.has(candidate.tag.id))insertionId=candidate.tag.id;}
+        if(insert&&insertionId){const descendants=new Set(tree.get(insertionId)?.descendants),visible=rows.filter(row=>descendants.has(row.tag.id));if(insert.after)insertionId=visible.at(-1)?.tag.id??insertionId;else if(!rows.some(row=>row.tag.id===insertionId))insertionId=visible[0]?.tag.id??insertionId;}
         return rows.map(({ tag }) => row(tag, members, group, guides.get(tag.id),insertionId));
     }
     function groupNode(group: TagGroup) {
@@ -254,7 +271,7 @@ export function TagsPanel(p: Props) {
         if (query.trim() && !rows.length) return null;
         const open = p.filterEnabled || !!query.trim() || !foldedGroups.has(group.id), key = 'group:' + group.id;
         const target = drag?.target;
-        return <section key={group.id} data-tag-group={group.id} className={'tag-group' + (target?.kind === 'group' && target.id === group.id ? ' tag-drop-target' : '') + (target?.kind === 'order' && target.id === group.id ? target.after ? ' drop-after' : ' drop-before' : '')}>
+        return <section key={group.id} data-tag-group={group.id} className={'tag-group' + ((target?.kind === 'group' && target.id === group.id || target?.kind==='group-tree'&&target.groupId===group.id) ? ' tag-drop-target' : '') + (target?.kind === 'order' && target.id === group.id ? target.after ? ' drop-after' : ' drop-before' : '')}>
             <div className="tag-group-header">
                 <InlineTagName row name={group.name} label={msg('tags.groupName')} enabled={!p.filterEnabled && !locked} canBegin={time => time >= suppress.current && !gesture.current} onEditingChange={() => cancelClick(key)}
                     onRename={async name => { if (groups.some(other => other.id !== group.id && other.name.toLowerCase() === name.toLowerCase())) throw Error(msg('tags.duplicate')); await save({ ...p.library, groups: groups.map(item => item.id === group.id ? { ...item, name } : item) }); }}>
@@ -268,7 +285,8 @@ export function TagsPanel(p: Props) {
                     </span>
                 </InlineTagName>
             </div>
-            {open && <div className="group-tags">{rows}</div>}
+            {!open&&target?.kind==='group-tree'&&target.groupId===group.id&&<div className="tag-drop-line" style={{marginLeft:target.depth*16}}/>}
+            {open && <div className="group-tags">{rows}{drag?.kind==='tag'&&p.onPlaceGroupTag&&<div className="group-tag-root-drop">{target?.kind==='group-tree'&&target.groupId===group.id&&target.anchorId===null&&<div className="tag-drop-line" style={{marginLeft:target.depth*16}}/>}</div>}</div>}
         </section>;
     }
     const modalGroup = modal && modal.type !== 'delete' ? groups.find(group => group.id === modal.id) : undefined;

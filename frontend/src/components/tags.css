@@ -52,3 +52,5 @@
 .tag-dialog.tag-dialog--confirm{width:fit-content;min-width:min(360px,calc(100vw - 32px));max-width:min(480px,calc(100vw - 32px));min-height:0;padding:20px;gap:12px}.tag-dialog--confirm .dialog-header{margin:0}.tag-dialog--confirm .dialog-header h2{margin:0}.tag-dialog--confirm>.trash-material-name,.tag-dialog--confirm>.settings-hint{margin:0;overflow-wrap:anywhere}.tag-dialog--confirm>.settings-hint{font:400 .8rem/1.6 var(--font-sans)}.tag-dialog--confirm>.audio-project-footer{padding-top:0;margin-top:4px;gap:8px}.tag-dialog--confirm>.audio-project-footer .button{flex:none}
 
 .tag-drag-ghost{position:fixed;left:0;top:0;z-index:10000;pointer-events:none;opacity:.65;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;will-change:transform}
+
+.group-tag-root-drop{height:14px;position:relative}.group-tag-root-drop .tag-drop-line{position:absolute;left:0;right:0;bottom:0}

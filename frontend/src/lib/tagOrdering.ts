@@ -1,5 +1,5 @@
 import {tagTreeRows,tagParentId,type TagLibrary} from './tags';
-import type {TagCollection} from './tagCollections';
+import {withAncestors,type TagCollection} from './tagCollections';
 export type TagOrderView='level'|'group'|'ungrouped';
 export function orderMembers(library:TagLibrary,collection:TagCollection,view:TagOrderView,groupId?:string):string[]{
     if(view==='level')return library.tags.map(tag=>tag.id);
@@ -14,7 +14,7 @@ export function reorderVersionTags(library:TagLibrary,collection:TagCollection,v
     const members=new Set(orderMembers(library,collection,view,groupId));
     const siblings=library.tags.filter(tag=>members.has(tag.id)&&tagParentId(tag)===parentId).map(tag=>tag.id);
     if(new Set(ids).size!==ids.length||ids.length!==siblings.length||ids.some(id=>!siblings.includes(id)))throw Error('invalid_tag_order');
-    const old=savedTagOrder(collection,view,groupId),ranked=tagTreeRows(library,members,'manual',1,()=>0,old).map(row=>row.tag.id),selected=new Set(siblings);
+    const old=savedTagOrder(collection,view,groupId),ranked=tagTreeRows(library,view==='group'?new Set(withAncestors(library,[...members])):members,'manual',1,()=>0,old).map(row=>row.tag.id),selected=new Set(siblings);
     const at=ranked.findIndex(id=>selected.has(id)),rest=ranked.filter(id=>!selected.has(id));rest.splice(at<0?rest.length:at,0,...ids);
     if(view==='level')return{...collection,levelOrder:rest};
     if(view==='ungrouped')return{...collection,ungroupedOrder:rest};
@@ -33,6 +33,6 @@ export function cleanTagOrders(library:TagLibrary,collection:TagCollection):TagC
     const valid=new Set(library.tags.map(tag=>tag.id)),ungrouped=new Set(orderMembers(library,collection,'ungrouped'));
     const next={...collection,...(collection.levelOrder?{levelOrder:collection.levelOrder.filter(id=>valid.has(id))}:{}),
         ...(collection.ungroupedOrder?{ungroupedOrder:collection.ungroupedOrder.filter(id=>valid.has(id)&&ungrouped.has(id))}:{}),
-        groups:collection.groups.map(g=>g.order?{...g,order:g.order.filter(id=>g.tagIds.includes(id)&&valid.has(id))}:g)};
+        groups:collection.groups.map(g=>{const display=new Set(withAncestors(library,g.tagIds.filter(id=>valid.has(id))));return g.order?{...g,order:g.order.filter(id=>display.has(id))}:g})};
     return JSON.stringify(next)===JSON.stringify(collection)?collection:next;
 }

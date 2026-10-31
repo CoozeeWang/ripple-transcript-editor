@@ -2016,7 +2016,7 @@
     "collapseAll": "全部收起",
     "expandAll": "全部展开",
     "dragLevelTag": "按住 {{key}} 调整位置或添加到片段",
-    "dragGroupTag": "按住 {{key}} 移到其他组或添加到片段；{{copyKey}} 复制到其他组",
+    "dragGroupTag": "按住 {{key}} 调整分组、层级和顺序，或添加到片段；{{copyKey}} 保留来源组",
     "dissolve": "解散该组",
     "dissolveNotice": "只解散分组，不删除标签和片段关联",
     "removeCurrent": "从当前稿移除",

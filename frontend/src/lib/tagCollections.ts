@@ -6,6 +6,7 @@ import {
 } from './tags';
 
 /** Definitions live in the project; these explicit memberships belong to one saved version. */
+/** order may retain invisible real ancestors as branch-position anchors, never as group members. */
 export interface VersionTagGroup { id: string; name: string; tagIds: string[]; order?:string[] }
 export interface TagCollection { schemaVersion: 1; tagIds: string[]; groups: VersionTagGroup[]; levelOrder?:string[];ungroupedOrder?:string[] }
 export interface TagConsumer { id: string; label: string; transcript: Transcript }
@@ -45,7 +46,7 @@ export function isTagCollection(value: unknown): value is TagCollection {
         && c.groups.every(group => group && identity(group.id) && typeof group.name === 'string'
             && !!normalizeTagName(group.name) && group.name.length <= 120
             && Array.isArray(group.tagIds) && group.tagIds.every(id => identity(id) && c.tagIds.includes(id))
-            && unique(group.tagIds).length === group.tagIds.length&&order(group.order)&&(!group.order||group.order.every(id=>group.tagIds.includes(id))));
+            && unique(group.tagIds).length === group.tagIds.length&&order(group.order)&&(!group.order||group.order.every(id=>c.tagIds.includes(id))));
 }
 
 export function withAncestors(library: TagLibrary, ids: readonly string[]): string[] {
@@ -102,9 +103,11 @@ export function collectionLibrary(catalog: TagLibrary, collection: TagCollection
 }
 
 export function collectionFromLibrary(library: TagLibrary, before: TagCollection, consumer = ''): TagCollection {
-    const groups = library.groups.map(group => ({ id: group.id, name: group.name,
-        tagIds: library.tags.filter(tag => tag.groupIds.includes(group.id)).map(tag => tag.id),
-        ...(before.groups.find(old=>old.id===group.id)?.order?{order:before.groups.find(old=>old.id===group.id)!.order!.filter(id=>library.tags.some(tag=>tag.id===id&&tag.groupIds.includes(group.id)))}:{}) }));
+    const groups = library.groups.map(group => {
+        const tagIds=library.tags.filter(tag=>tag.groupIds.includes(group.id)).map(tag=>tag.id),display=new Set(withAncestors(library,tagIds));
+        const order=before.groups.find(old=>old.id===group.id)?.order;
+        return{id:group.id,name:group.name,tagIds,...(order?{order:order.filter(id=>display.has(id))}:{})};
+    });
     const admitted = admitTags(library, before, groups.flatMap(group => group.tagIds), consumer);
     return { ...admitted, groups };
 }

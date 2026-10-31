@@ -246,6 +246,7 @@ def test_tag_tools_route_strict_batches_and_expose_safety_contract():
         await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['reorder_tags'], 'changes':[{'action':'reorder_tags','view':'group','parent_id':'root','group_id':'g','tag_ids':['b','a']}]})
         assert calls[-1][1]['changes'][0]['view'] == 'group'
         assert calls[-1][1]['changes'][0]['tag_ids'] == ['b','a']
+        assert TagChange(action='place_group_tag',tag_id='a',source_group_id='source',group_id='target',parent_id='parent',anchor_id=None,after=True,copy=False).model_dump(by_alias=True)['copy'] is False
         await server.call_tool('apply_tag_changes', {'task_id':'synthetic','confirmed_summary':'exact'})
         assert calls[-1] == ('tags_apply', {'task_id':'synthetic','confirmed_summary':'exact'})
         await server.call_tool('tag_changes_status', {'task_id':'synthetic'})

@@ -5,6 +5,7 @@ import {openProject,recordingDirectory,type RippleProject} from './projectStore'
 import {readModelEdit,saveActiveEdit,defaultMetadata,createEdit} from '../localStore';
 import {transactProjectTags,restoreProjectTagTransaction,readProjectTagCounts} from './projectTagRepository';
 import {setSegmentTag} from './tags';
+import {placeGroupTag} from './tagPlacement';
 import {applyTagBatch,tagBatchScope} from './tagBatch';
 import {changeSharedTag} from './tagCollections';
 import {parseTagSidecar,sidecarName,TAG_STORAGE_MARKER} from './tagSidecar';
@@ -24,7 +25,7 @@ function fixture(fail?:(path:string)=>void){
  for(const file of ['e1.json','e2.json','original.json','recoverable-orphan.json'])fs.files.set(folder+'/'+file,JSON.stringify({kind:'te-edited',audio:'sample.wav',metadata:defaultMetadata('Synthetic'),transcript}));
  return{...fs,backup,folder,project:{directory:fs.root,data},transcript};
 }
-async function migrated(){const f=fixture(),project=await migrateProjectTagStorage(f.project,f.backup.root),directory=await recordingDirectory(project,'session',project.data.interviews[0].recordings[0]);
+async function migrated(fail?:(path:string)=>void){const f=fixture(fail),project=await migrateProjectTagStorage(f.project,f.backup.root),directory=await recordingDirectory(project,'session',project.data.interviews[0].recordings[0]);
  const document=(await readModelEdit(directory,'sample.wav','m1','e1'))!;
  return{...f,project,directory,document,current:{recordingId:'recording',modelId:'m1',editId:'e1',transcript:document.transcript}}}
 it('explicitly backs up every file and migrates metadata without changing any manuscript bytes; repeated migration is a no-op',async()=>{
@@ -107,4 +108,31 @@ it('counts direct IDs across independent versions, reuses a hot cache and increm
  f.files.get=path=>{if(path.startsWith(f.folder+'/tags-'))throw Error('incremental count reread metadata');return get(path)};
  expect((await readProjectTagCounts(next.project)).get('leaf')).toBe(4);expect((await readProjectTagCounts(next.project)).coverage.get('root')).toBe(4);
  f.files.get=get;const undone=await restoreProjectTagTransaction(next.project,next.receipt,false);expect((await readProjectTagCounts(undone)).get('leaf')).toBe(3);
+});
+it('recomputes cached coverage on a shared move and merge while exact-ID direct counts remain independent',async()=>{
+ const f=await migrated();expect((await readProjectTagCounts(f.project)).coverage.get('root')).toBe(3);
+ const moved=await transactProjectTags(f.project,f.current,(library,consumers)=>changeSharedTag(library,'leaf','童年',consumers));
+ const after=await readProjectTagCounts(moved.project);expect(after.get('root')).toBe(0);expect(after.coverage.get('root')).toBe(0);expect(after.get('leaf')).toBe(3);
+ const merged=await transactProjectTags(moved.project,{...f.current,transcript:moved.transcript},(library,consumers)=>changeSharedTag(library,'leaf','主题',consumers,true));
+ const combined=await readProjectTagCounts(merged.project);expect(combined.has('leaf')).toBe(false);expect(combined.get('root')).toBe(3);expect(combined.coverage.get('root')).toBe(3);
+});
+
+it('commits a compound group placement in one metadata transaction and one undo/redo without touching bodies',async()=>{
+ const f=await migrated(),prep=[{action:'create_tag' as const,path:'新根',ref:'root'},{action:'create_group' as const,name:'Synthetic destination',ref:'group'}];
+ const ready=await transactProjectTags(f.project,f.current,(lib,rows,id)=>applyTagBatch(lib,rows,id,prep),'additions');
+ const parent=ready.project.data.tagLibrary!.tags.find(tag=>tag.name==='新根')!.id,group=ready.transcript.tagCollection!.groups[1].id,before=new Map(f.files);
+ const next=await transactProjectTags(ready.project,{...f.current,transcript:ready.transcript},(lib,rows,id)=>placeGroupTag(lib,rows,id,{tagId:'leaf',sourceGroupId:'group',groupId:group,parentId:parent,anchorId:null,after:true,copy:false}));
+ expect(next.transcript.tagCollection!.groups[0].tagIds).toEqual([]);expect(next.transcript.tagCollection!.groups[1].tagIds).toEqual(['leaf']);expect(next.project.data.tagLibrary!.tags.find(tag=>tag.id==='leaf')!.parentId).toBe(parent);
+ expect(parseTagSidecar(f.files.get(f.folder+'/'+await sidecarName('e2.json'))!).collection.groups[0].tagIds).toEqual(['leaf']);
+ for(const file of ['e1.json','e2.json','original.json'])expect(f.files.get(f.folder+'/'+file)).toBe(before.get(f.folder+'/'+file));
+ const undone=await restoreProjectTagTransaction(next.project,next.receipt,false);expect(undone.data.tagLibrary!.tags.find(tag=>tag.id==='leaf')!.parentId).toBe('root');expect(parseTagSidecar(f.files.get(f.folder+'/'+await sidecarName('e1.json'))!).collection.groups[0].tagIds).toEqual(['leaf']);
+ const redone=await restoreProjectTagTransaction(undone,next.receipt,true);expect(redone.data.tagLibrary!.tags.find(tag=>tag.id==='leaf')!.parentId).toBe(parent);
+});
+
+it('rolls back all compound placement effects if the final index write fails',async()=>{
+ let fail=false;const f=await migrated(path=>{if(fail&&path==='ripple-project.json'){fail=false;throw Error('synthetic compound disk failure')}});
+ const ready=await transactProjectTags(f.project,f.current,(lib,rows,id)=>applyTagBatch(lib,rows,id,[{action:'create_tag',path:'新根'},{action:'create_group',name:'Synthetic destination'}]),'additions');
+ const parent=ready.project.data.tagLibrary!.tags.find(tag=>tag.name==='新根')!.id,group=ready.transcript.tagCollection!.groups[1].id,before=new Map(f.files);fail=true;
+ await expect(transactProjectTags(ready.project,{...f.current,transcript:ready.transcript},(lib,rows,id)=>placeGroupTag(lib,rows,id,{tagId:'leaf',sourceGroupId:'group',groupId:group,parentId:parent,anchorId:null,after:true,copy:false}))).rejects.toThrow('synthetic compound disk failure');
+ for(const[path,raw]of before)expect(f.files.get(path)).toBe(raw);expect((await openProject(f.root)).data.revision).toBe(ready.project.data.revision);
 });

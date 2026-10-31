@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Transcript } from '../types';
 import {msg} from '../i18n';
 import {beginTagProbe} from '../lib/tagPerformance';
+import {placeGroupTag,type GroupTagPlacement} from '../lib/tagPlacement';
 import {dragSiblingOrder,type TagOrderView} from '../lib/tagOrdering';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
@@ -173,6 +174,10 @@ export function useProjectTags(o: Options) {
         await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
             {...consumer,transcript:{...consumer.transcript,tagCollection:dragSiblingOrder(library,consumer.transcript.tagCollection!,view,id,anchor,after,groupId)}}:consumer)}),'current');
     },[run]);
+    const placeInGroup=useCallback(async(placement:GroupTagPlacement)=>{
+        const source=latest.current.library?.tags.find(tag=>tag.id===placement.tagId);
+        await run((merge,library,consumers,currentId)=>placeGroupTag(library,consumers,currentId,placement,merge),(source?.parentId??null)===placement.parentId?'current':'project');
+    },[run]);
     const removeCurrent = useCallback(async(id:string)=>{
         await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id!==currentId?consumer:
             {...consumer,transcript:removeVersionTagBranch(library,consumer.transcript,id)})}), 'current');
@@ -192,6 +197,6 @@ export function useProjectTags(o: Options) {
         } catch (error) { current.onError(tagErrorMessage(error)); }
         finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     };
-    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent,reorder, attach, canUndo, canRedo, acceptTransaction,
+    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent,reorder,placeInGroup, attach, canUndo, canRedo, acceptTransaction,
         undo: () => history(false), redo: () => history(true), discardRedo, mergePrompt };
 }

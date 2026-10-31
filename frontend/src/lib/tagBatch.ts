@@ -1,20 +1,21 @@
 import type { Transcript } from '../types';
+import {placeGroupTag} from './tagPlacement';
 import {cleanTagOrders,reorderVersionTags} from './tagOrdering';
 import type { ProjectTagChange, TagTransactionScope } from './projectTagRepository';
 import { admitTags, changeSharedTag, projectTagCatalog, removeVersionTagBranch, validateTagCollection, versionTagCollection, type TagConsumer } from './tagCollections';
 import { normalizeTagName, removeTagBranch, setTagPath, tagAncestors, tagPath, type TagLibrary } from './tags';
 
 export const TAG_ACTIONS = ['create_tag','rename_tag','set_tag_path','move_tag','merge_tag','delete_branch','admit_tags','remove_current_branch',
-    'create_group','rename_group','dissolve_group','set_group_tags','transfer_group_tag','reorder_groups','reorder_tags','assign_tags','unassign_tags'] as const;
+    'create_group','rename_group','dissolve_group','set_group_tags','transfer_group_tag','reorder_groups','reorder_tags','place_group_tag','assign_tags','unassign_tags'] as const;
 export type TagAction = typeof TAG_ACTIONS[number];
 export type TagChange = { action: TagAction; [key: string]: unknown };
-const SHARED = new Set<TagAction>(['rename_tag','set_tag_path','move_tag','merge_tag','delete_branch']);
+const SHARED = new Set<TagAction>(['rename_tag','set_tag_path','move_tag','merge_tag','delete_branch','place_group_tag']);
 const FIELDS: Record<TagAction, string[]> = {
     create_tag:['path','ref'], rename_tag:['tag_id','name'], set_tag_path:['tag_id','path'], move_tag:['tag_id','parent_id'], merge_tag:['tag_id','target_tag_id'],
     delete_branch:['tag_id'], admit_tags:['tag_ids'], remove_current_branch:['tag_id'], create_group:['name','ref'], rename_group:['group_id','name'],
     dissolve_group:['group_id'], set_group_tags:['group_id','tag_ids'], transfer_group_tag:['tag_id','source_group_id','group_id','copy'],
     reorder_groups:['group_ids'], assign_tags:['segment_ids','tag_ids'], unassign_tags:['segment_ids','tag_ids'],
-    reorder_tags:['view','parent_id','group_id','tag_ids'],
+    reorder_tags:['view','parent_id','group_id','tag_ids'],place_group_tag:['tag_id','source_group_id','group_id','parent_id','anchor_id','after','copy'],
 };
 function error(code: string): never { throw Error(code); }
 const text = (value: unknown, max = 1024): string => typeof value === 'string' && value.trim() && value.length <= max ? value.trim() : error('invalid_tag_change');
@@ -103,6 +104,11 @@ export function applyTagBatch(source: TagLibrary, consumers: readonly TagConsume
                 const order = list(c.group_ids).map(id=>resolve(id,'group')), groups = current().tagCollection!.groups;
                 if (order.length !== groups.length || order.some(id=>!groups.some(g=>g.id===id))) error('invalid_group_order');
                 update(t=>({...t,tagCollection:{...t.tagCollection!,groups:order.map(id=>groups.find(g=>g.id===id)!)}})); break;
+            }
+            case 'place_group_tag':{
+                if(!Object.hasOwn(c,'parent_id')||!Object.hasOwn(c,'source_group_id')||!Object.hasOwn(c,'anchor_id')||typeof c.copy!=='boolean'||typeof c.after!=='boolean')error('invalid_tag_change');
+                const changed=placeGroupTag(library,rows,currentId,{tagId:resolve(c.tag_id,'tag'),sourceGroupId:c.source_group_id===null?null:resolve(c.source_group_id,'group'),groupId:resolve(c.group_id,'group'),parentId:c.parent_id===null?null:resolve(c.parent_id,'tag'),anchorId:c.anchor_id===null?null:resolve(c.anchor_id,'tag'),after:c.after,copy:c.copy});
+                library=changed.library;rows=changed.consumers;break;
             }
             case 'reorder_tags':{
                 if(!['level','group','ungrouped'].includes(String(c.view))||!Object.hasOwn(c,'parent_id'))error('invalid_tag_order');

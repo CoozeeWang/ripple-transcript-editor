@@ -67,7 +67,7 @@ class Mark(BaseModel):
 
 
 
-TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "reorder_tags", "assign_tags", "unassign_tags"]
+TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "reorder_tags", "place_group_tag", "assign_tags", "unassign_tags"]
 
 class TagChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -84,6 +84,8 @@ class TagChange(BaseModel):
     segment_ids: list[str] | None = Field(default=None, max_length=2000)
     copy_membership: bool | None = Field(default=None, alias="copy")
     ref: str | None = Field(default=None, max_length=80, pattern=r"^[a-zA-Z0-9-]+$")
+    anchor_id: str | None = Field(default=None,max_length=120)
+    after: bool | None = None
     view: Literal["level", "group", "ungrouped"] | None = None
 
 
@@ -393,7 +395,9 @@ def register_tools(mcp, call):
         reorder_groups uses the full group_ids order. assign_tags/unassign_tags use segment_ids/tag_ids.
         reorder_tags uses view (level/group/ungrouped), parent_id (null=root), full sibling tag_ids,
         and group_id for group view. Orders belong only to this exact version/view/group and never change hierarchy.
-        Only supplied operation fields are accepted. New tag/group refs are batch-local; saved stable IDs are returned.
+        place_group_tag atomically sets group membership, shared parent and local sibling order; requires tag_id,
+        source_group_id (null=add), group_id, parent_id (null=root), anchor_id (null=append), after and copy.
+        It requires project scope; it never automatically merges a name collision. Only supplied operation fields are accepted. New tag/group refs are batch-local; saved stable IDs are returned.
         Original versions reject writes. Batch failure leaves all tag and manuscript data unchanged.
         """
         return await call("tags_prepare", {"tag_snapshot": tag_snapshot, "scope": scope,
