@@ -15,6 +15,7 @@ import { TagModal } from './TagModal';
 import { InlineTagName } from './InlineTagName';
 import { ActionIcon } from './ActionIcon';
 import { TagTreeGuides } from './TagTreeGuides';
+import { useTagTreeLayout } from './useTagTreeLayout';
 import { tagTreeGuides, type TagGuide } from '../lib/tagTreeGuides';
 import { showActionHint } from '../lib/actionHint';
 import { TagPill } from './TagPill';
@@ -22,7 +23,7 @@ import { FilterActionHint } from './FilterActionHint';
 import './tags.css';
 
 export function TagChevron() {
-    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5 / 3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4 9 5 9-5M3 12h18m-18 8 9-5 9 5"/></svg>;
+    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5 / 3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4 9 5 9-5m-18 16 9-5 9 5"/></svg>;
 }
 interface Props {
     countVersionId?:string;loadProjectCounts?:(currentId?:string)=>Promise<import('../lib/tagCountCache').TagCountTotals>;projectRevision?:number;
@@ -55,6 +56,7 @@ export function TagsPanel(p: Props) {
     const [modal, setModal] = useState<Modal | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
     const [drag, setDrag] = useState<Gesture | null>(null), [modifier, setModifier] = useState(false);
     const list = useRef<HTMLDivElement>(null), gesture = useRef<Gesture | null>(null), frame = useRef<number | null>(null), suppress = useRef(0);
+    useTagTreeLayout(list, [p.library, p.collection, p.currentTagIds, view, scope, query, foldedGroups, foldedTags, p.filterEnabled]);
     const confirming = useRef(false), ghost = useRef<HTMLDivElement|null>(null), shownTarget = useRef<string | null>(null);
     const clicks = useRef(new Map<string, ReturnType<typeof setTimeout>>()), description = useId();
     const latest = useRef(p); useLayoutEffect(() => { latest.current = p; });
@@ -303,14 +305,13 @@ export function TagsPanel(p: Props) {
         <TagLibraryInput allowGroup={view === 'groups'} library={p.library} query={query} onQuery={value => { setQuery(value); setError(''); }} readOnly={locked} onCreate={p.onCreateTag} onCreateGroup={createGroup}/>
         {(p.loadError || error && !modal) && <p role="alert" className="tag-error">{p.loadError || error}</p>}
         <div className="group-tools tag-filter-tools">
-            <FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterFoldNotice')}><button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron/></button></FilterActionHint>
             <div className="tag-filter-controls">
                 <button className="tag-filter-toggle" aria-label={msg('tags.filterToggle')} aria-pressed={p.filterEnabled} data-tip={msg(p.filterEnabled ? 'tags.filterEnabled' : 'tags.filterDisabled')} onClick={() => p.onFilterEnabledChange(!p.filterEnabled)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5 / 3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v9l-4-2v-7Z"/></svg></button>
                 {p.filterEnabled && <div className="tag-filter-mode" role="group" aria-label={msg('tags.filterMode')}>{(['and', 'or'] as const).map(mode => <button key={mode} aria-label={msg('tags.' + mode)} aria-pressed={p.filterMode === mode} onClick={() => p.onFilterModeChange(mode)}>{msg('tags.' + mode)}</button>)}</div>}
             </div>
             {view === 'level' && <TagScope value={scope} onChange={setScope}/>}
         </div>
-        <div className={'tag-list-head'+(!showCount?' tag-list-head--no-count':'')}><FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterSortNotice')}><button aria-label={msg('tags.sortName')} data-action-tip={p.filterEnabled?undefined:msg('tags.sortNameHint')} disabled={locked||p.filterEnabled||!p.onSortName} onClick={async()=>{setBusy(true);setError('');try{await p.onSortName?.(view)}catch(error){setError(tagErrorMessage(error))}finally{setBusy(false)}}}>{msg('tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button></FilterActionHint>{showCount&&<span className="tag-count-heading">{msg('tags.count')}</span>}<span/></div>
+        <div className={'tag-list-head'+(!showCount?' tag-list-head--no-count':'')}><div className="tag-name-tools"><FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterSortNotice')}><button aria-label={msg('tags.sortName')} data-action-tip={p.filterEnabled?undefined:msg('tags.sortNameHint')} disabled={locked||p.filterEnabled||!p.onSortName} onClick={async()=>{setBusy(true);setError('');try{await p.onSortName?.(view)}catch(error){setError(tagErrorMessage(error))}finally{setBusy(false)}}}>{msg('tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button></FilterActionHint><FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterFoldNotice')}><button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron/></button></FilterActionHint></div>{showCount&&<span className="tag-count-heading">{msg('tags.count')}</span>}<span/></div>
         {projectCountActive&&countError&&<p role="alert" className="tag-error">{msg('tags.countFailed')} <button type="button" onClick={()=>retryCounts(value=>value+1)}>{msg('tags.retry')}</button></p>}
         <div ref={list} className={'library-list' + (view === 'level' ? ' library-list-all' : '')} style={{'--tag-row-min-width':`${maxDepth*16+194}px`} as React.CSSProperties}>
             {view === 'level' ? <>{levelRows.length?levelRows:<p className="annotation-empty tag-library-empty">{msg(query.trim()?'tags.noSearchResults':scope==='current'?'tags.noAdmitted':'tags.noTags')}</p>}{drag?.level && <div className={'tag-tree-root-drop' + (drag.target?.kind === 'tree' && drag.target.anchorId === null ? ' is-drop-target' : '')}/>}</>
