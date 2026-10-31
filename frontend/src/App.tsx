@@ -147,7 +147,7 @@ function App(projectProps: ProjectEditorProps = {}) {
   // 平台检测——tooltip 与按钮文案里显示对应的快捷键（避免 Mac 用户看到 Ctrl+O）
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform);
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
-  const { transcript, reset: resetHistory, commit, undo, redo, canUndo, canRedo, undoActionKey, redoActionKey } =
+  const { transcript, reset: resetHistory, commit, undo, redo, canUndo, canRedo, undoTarget, redoTarget, undoActionKey, redoActionKey } =
     useTranscriptHistory<Transcript>();
   const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
   const [persistedContent, setPersistedContent] = useState<{ transcript: Transcript; metadata: InterviewMetadata } | null>(null);
@@ -754,7 +754,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const protectedReadOnly = viewingOriginal || aiLocked;
   const tagUpgradeRequired=!!projectProps.tagStorage?.requiresMigration;
   const tags=useProjectTags({library:preparedTagLibrary.library,storage:projectProps.tagStorage,recordingId:projectProps.projectRecordingId,modelId:activeModelId,editId:viewingOriginal?'original':activeModel?.activeEditId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,flush:flushPendingSave,
-    undoActionKey,redoActionKey,publish:(value,action,key)=>{if(action==='commit'){commit(()=>value,key);if(metadata)setPersistedContent({transcript:value,metadata})}else if(action==='undo')undo();else redo();setSaveStatus('saved')},
+    undoActionKey,redoActionKey,publish:(value,action,key)=>{
+      // Tag undo/redo is already durable. Adopt the exact history snapshot, so autosave
+      // cannot mistake a metadata-only restoration for a fresh whole-body text edit.
+      const saved=action==='commit'?value:action==='undo'?undoTarget:redoTarget;
+      if(action==='commit')commit(()=>value,key);else if(action==='undo')undo();else redo();
+      if(metadata&&saved)setPersistedContent({transcript:saved,metadata});setSaveStatus('saved');
+    },
     lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly||tagUpgradeRequired,originalReadOnly:viewingOriginal,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
   const presentTags = useMemo(() => createTagPresenter(), []);
   const segmentTagView = presentTags(tags.library, transcript?.segments ?? []);

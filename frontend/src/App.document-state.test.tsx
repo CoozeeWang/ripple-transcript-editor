@@ -259,8 +259,8 @@ it('connects project tag transactions to one undo and redo step',async()=>{
  render(<Harness/>);loadTagDocument({audio:{filename:'Synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'v',text:'Synthetic text',start:0,end:1}]},syntheticTagLibrary());
  fireEvent.click(screen.getByRole('button',{name:'标签 1'}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));
  fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Synthetic renamed'}});await act(async()=>fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'}));
- expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'撤销'})));expect(screen.getByRole('button',{name:'标签: Synthetic topic'})).toBeTruthy();
- await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重做'})));expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();
+ expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'撤销'})));expect(screen.getByRole('button',{name:'标签: Synthetic topic'})).toBeTruthy();expect(fixture.persistence!.persistedContent?.transcript).toBe(fixture.persistence!.transcript);
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'重做'})));expect(screen.getByRole('button',{name:'标签: Synthetic renamed'})).toBeTruthy();expect(fixture.persistence!.persistedContent?.transcript).toBe(fixture.persistence!.transcript);
 });
 it('tag filtering preserves speaker hiding, switches views and clears only its own conditions',async()=>{
  const {useState}=await import('react');setupTagUi();

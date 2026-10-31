@@ -101,6 +101,8 @@ export function useTranscriptHistory<T>() {
     redo,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
+    undoTarget: history.past.at(-1) ?? null,
+    redoTarget: history.future[0] ?? null,
     undoActionKey: history.pastActions.at(-1) ?? null,
     redoActionKey: history.futureActions[0] ?? null,
   };
