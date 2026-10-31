@@ -13,7 +13,7 @@ import { applyTagFields, tagFields } from '../lib/projectTagRepository';
 
 export interface TagStorage {
     projectId?:string;
-    projectRevision?:number;counts?:()=>Promise<import('../lib/tagCountCache').TagCountTotals>;
+    projectRevision?:number;counts?:(currentId?:string)=>Promise<import('../lib/tagCountCache').TagCountTotals>;
     requiresMigration?: boolean;
     transact: (current: CurrentTagVersion, operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope?: TagTransactionScope) => Promise<{
         project: OpenProject; transcript: Transcript; receipt: TagTransactionReceipt; changed?: boolean;

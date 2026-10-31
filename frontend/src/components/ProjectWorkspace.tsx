@@ -341,7 +341,7 @@ export function ProjectWorkspace() {
       if(recording){setEditor({...editor,directory:await recordingDirectory(next,interview!.id,recording)});setLinkOpenSequence(value=>value+1)}
     }}
     tagLibrary={project.data.tagLibrary} tagStorage={{
-      projectRevision:project.data.revision,counts:()=>readProjectTagCounts(project),
+      projectRevision:project.data.revision,counts:id=>readProjectTagCounts(project,id),
       requiresMigration:project.data.schemaVersion!==2,
       projectId:project.data.id,
       transact:async(version,operation,scope)=>{

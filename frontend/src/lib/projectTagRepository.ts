@@ -189,7 +189,7 @@ export async function transactProjectTags(project: OpenProject, current: Current
             patches.push({ path: ['ripple-project.json'], before: index, after: afterIndex });
             request?.assert();
             await commitTagFileTransaction(project.directory, patches);
-            updateProjectTagCounts(project.directory,index,afterIndex,changed.map(v=>({path:v.path,fields:v.after})),nextLibrary);
+            updateProjectTagCounts(project.directory,index,afterIndex,changed.map(v=>({id:v.id,path:v.path,fields:v.after})),nextLibrary);
             probe?.mark('durableCommit');
             return { project: { ...project, data: nextData }, transcript, receipt, changed: semanticChange };
         }, scope === 'project' ? undefined : { currentOnly: true });
@@ -217,22 +217,22 @@ export async function restoreProjectTagTransaction(project: OpenProject, receipt
                 ...(receipt.afterHead?{tagHead:redo?receipt.afterHead:receipt.beforeHead}:{}),...(tagRequests?{tagRequests}:{}), revision: data.revision + 1 };
             patches.push({ path: ['ripple-project.json'], before: index, after: JSON.stringify(next, null, 2) });
             await commitTagFileTransaction(project.directory, patches);
-            updateProjectTagCounts(project.directory,index,JSON.stringify(next,null,2),receipt.versions.map(version=>({path:version.path,fields:redo?version.after:version.before})),next.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
+            updateProjectTagCounts(project.directory,index,JSON.stringify(next,null,2),receipt.versions.map(version=>({id:version.id,path:version.path,fields:redo?version.after:version.before})),next.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
             return { ...project, data: next };
         }, receipt.scope && receipt.scope !== 'project' ? { paths: receipt.versions.map(version => version.path) } : undefined);
     });
 }
 
 /** Project counts use exact IDs in every independently saved version, never body/content equivalence. */
-export async function readProjectTagCounts(project:OpenProject):Promise<TagCountTotals>{
+export async function readProjectTagCounts(project:OpenProject,currentId?:string):Promise<TagCountTotals>{
     return withProjectLock(project.data.id,async()=>{
         await recoverTagFileTransaction(project.directory);
         const index=await readTagFile(project.directory,['ripple-project.json']);if(!index)throw Error('project_changed');
         const data=parseProject(index);if(data.id!==project.data.id||data.revision!==project.data.revision)throw Error('project_changed');
         if(data.schemaVersion!==2)throw Error('tag_storage_migration_required');
-        const cached=cachedProjectTagCounts(project.directory,index);if(cached)return cached;
+        const cached=cachedProjectTagCounts(project.directory,index,currentId);if(cached)return cached;
         const library=projectTagCatalog(data.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
         return withConsumers({...project,data},null,async consumers=>{for(const consumer of consumers)validateTagCollection(library,consumer.transcript.tagCollection!,consumer.label);return storeProjectTagCounts(project.directory,index,
-            consumers.map(consumer=>({path:consumer.path,fields:tagFields(consumer.transcript)})),library)});
+            consumers.map(consumer=>({id:consumer.id,path:consumer.path,fields:tagFields(consumer.transcript)})),library,currentId)});
     });
 }

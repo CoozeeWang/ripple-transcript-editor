@@ -25,7 +25,7 @@ export function TagChevron() {
     return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5 / 3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4 9 5 9-5M3 12h18m-18 8 9-5 9 5"/></svg>;
 }
 interface Props {
-    loadProjectCounts?:()=>Promise<import('../lib/tagCountCache').TagCountTotals>;projectRevision?:number;
+    countVersionId?:string;loadProjectCounts?:(currentId?:string)=>Promise<import('../lib/tagCountCache').TagCountTotals>;projectRevision?:number;
     onPlaceGroupTag?:(placement:GroupTagPlacement)=>Promise<void>;
     versionKey?: string; collection?: TagCollection;
     onReorder?: (view: TagOrderView, id: string, anchor: string | null, after: boolean, groupId?: string) => Promise<void>;
@@ -71,11 +71,11 @@ export function TagsPanel(p: Props) {
         .flatMap(tag => [tag.id, ...tree.get(tag.id)!.ancestors.map(parent => parent.id)])) : null, [p.library, query, tree]);
     const levelMembers = scope === 'project' ? undefined : admitted;
     const showCount = true;
-    const {loadProjectCounts:projectCounter,projectRevision:countRevision,versionKey:countVersion}=p;
-    const [projectCounts,setProjectCounts]=useState<{revision?:number;key?:string;values:import('../lib/tagCountCache').TagCountTotals}|null>(null),[countError,setCountError]=useState(false),[countAttempt,retryCounts]=useState(0);
+    const {loadProjectCounts:projectCounter,projectRevision:countRevision,versionKey:countVersion,countVersionId}=p;
+    const [projectCounts,setProjectCounts]=useState<{revision?:number;key?:string;id?:string;values:import('../lib/tagCountCache').TagCountTotals}|null>(null),[countError,setCountError]=useState(false),[countAttempt,retryCounts]=useState(0);
     const projectCountActive=view==='level'&&scope==='project';
-    useEffect(()=>{if(!projectCountActive||!projectCounter)return;let disposed=false;void projectCounter().then(values=>{if(!disposed){setProjectCounts({revision:countRevision,key:countVersion,values});setCountError(false)}},()=>{if(!disposed)setCountError(true)});return()=>{disposed=true}},[projectCountActive,countRevision,countVersion,projectCounter,countAttempt]);
-    const countReady=!!projectCounts&&projectCounts.revision===p.projectRevision&&projectCounts?.key===p.versionKey;
+    useEffect(()=>{if(!projectCountActive||!projectCounter)return;let disposed=false;void projectCounter(countVersionId).then(values=>{if(!disposed){setProjectCounts({revision:countRevision,key:countVersion,id:countVersionId,values});setCountError(false)}},()=>{if(!disposed)setCountError(true)});return()=>{disposed=true}},[projectCountActive,countRevision,countVersion,countVersionId,projectCounter,countAttempt]);
+    const countReady=!!projectCounts&&projectCounts.revision===p.projectRevision&&projectCounts.key===p.versionKey&&projectCounts.id===p.countVersionId;
     const scopeIds = allRows.filter(row => !levelMembers || levelMembers.has(row.tag.id)).map(row => row.tag.id);
     const tagKey = (id: string, group = 'level') => group + ':' + id;
     const cancelClick = (key: string) => { clearTimeout(clicks.current.get(key)); clicks.current.delete(key); };
@@ -226,8 +226,8 @@ export function TagsPanel(p: Props) {
         const depth = tree.get(tag.id)!.ancestors.length, descendants = tree.get(tag.id)!.descendants, key = tagKey(tag.id, group);
         const parent = descendants.some(id => id !== tag.id && (!members || members.has(id)));
         const selected = p.filterEnabled && p.filter.includes(tag.id), inherited = p.filterEnabled && p.filter.some(id => id !== tag.id && tree.get(id)?.descendants.includes(tag.id));
-        const count=projectCountActive?(countReady?projectCounts!.values.get(tag.id)??0:undefined):p.currentCount(tag.id);
-        const coverage=projectCountActive?(countReady?projectCounts!.values.coverage.get(tag.id)??0:undefined):(p.currentCoverage?.(tag.id)??count);
+        const count=projectCountActive?(countReady?(projectCounts!.values.get(tag.id)??0)-(projectCounts!.values.current?.get(tag.id)??0)+(projectCounts!.values.current?p.currentCount(tag.id):0):undefined):p.currentCount(tag.id);
+        const coverage=projectCountActive?(countReady?(projectCounts!.values.coverage.get(tag.id)??0)-(projectCounts!.values.current?.coverage.get(tag.id)??0)+(projectCounts!.values.current?(p.currentCoverage?.(tag.id)??p.currentCount(tag.id)):0):undefined):(p.currentCoverage?.(tag.id)??count);
         const countHint=count===undefined?msg('tags.countLoading'):msg(projectCountActive?'tags.projectCountCoverage':'tags.currentCountCoverage',{direct:count,coverage:coverage??0});
         const canBegin = (time: number) => time >= suppress.current && !gesture.current;
         const hint = msg(group ? 'tags.dragGroupTag' : 'tags.dragLevelTag', { key: IS_MAC ? '⌘' : 'Ctrl', copyKey:IS_MAC?'⌘⇧':'Ctrl+Shift' });

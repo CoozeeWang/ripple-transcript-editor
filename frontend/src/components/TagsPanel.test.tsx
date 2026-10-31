@@ -74,3 +74,12 @@ it('uses direct/coverage for real parents and scope-specific project totals with
  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'项目'})));expect(count('Root').textContent).toBe('1/12');expect(count('Leaf').textContent).toBe('9');
  fireEvent.click(screen.getByRole('button',{name:'分组'}));expect(count('Root').textContent).toBe('0/3');expect(h.container.querySelector('.tag-count-heading')?.textContent).toBe('片段数');
 });
+
+it('updates project preview counts after a current structural change without reloading other versions',async()=>{
+ const library=seed(),root=library.tags.find(t=>t.name==='Root')!.id,leaf=library.tags.find(t=>t.name==='Leaf')!.id;
+ const loader=vi.fn(async()=>new TagCountTotals([[root,0],[leaf,3]],[[root,3],[leaf,3]],new TagCountTotals([[root,0],[leaf,1]],[[root,1],[leaf,1]])));
+ const props={library,currentTagIds:library.tags.map(t=>t.id),loadProjectCounts:loader,versionKey:'synthetic',countVersionId:'synthetic:m:e',projectRevision:1,onChange:async()=>{},readOnly:false,filter:[],filterMode:'and' as const,onFilterModeChange:()=>{},filterEnabled:false,onFilterEnabledChange:()=>{},onFilter:()=>{}};
+ const h=render(<TagsPanel {...props} currentCount={id=>id===leaf?1:0} currentCoverage={()=>1}/>);await act(async()=>fireEvent.click(screen.getByRole('button',{name:'项目'})));
+ const count=()=>label('Root').closest('.library-tag-row')!.querySelector('.tag-count')!.textContent;expect(count()).toBe('0/3');
+ h.rerender(<TagsPanel {...props} currentCount={id=>id===leaf?2:0} currentCoverage={()=>2}/>);expect(count()).toBe('0/4');expect(loader).toHaveBeenCalledOnce();
+});

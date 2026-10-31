@@ -100,7 +100,7 @@ it('an atomic mixed batch reuses entities, updates groups once and cannot leak p
 it('counts direct IDs across independent versions, reuses a hot cache and incrementally publishes committed changes and undo',async()=>{
  const f=await migrated(),get=f.files.get.bind(f.files),bodyPaths=['e1.json','e2.json','original.json','recoverable-orphan.json'].map(name=>f.folder+'/'+name);
  f.files.get=path=>{if(bodyPaths.includes(path))throw Error('body read forbidden');return get(path)};
- const cold=await readProjectTagCounts(f.project);expect(cold.get('leaf')).toBe(3);expect(cold.get('root')).toBe(0);expect(cold.coverage.get('root')).toBe(3);
+ const cold=await readProjectTagCounts(f.project,'recording:m1:e1');expect(cold.current?.get('leaf')).toBe(1);expect(cold.current?.coverage.get('root')).toBe(1);expect(cold.get('leaf')).toBe(3);expect(cold.get('root')).toBe(0);expect(cold.coverage.get('root')).toBe(3);
  f.files.get=path=>{if(path.startsWith(f.folder+'/tags-'))throw Error('hot count reread metadata');return get(path)};
  expect((await readProjectTagCounts(f.project)).get('leaf')).toBe(3);
  f.files.get=path=>{if(bodyPaths.includes(path))throw Error('body read forbidden');return get(path)};
