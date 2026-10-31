@@ -117,8 +117,9 @@ export class ProjectTagTasks {
                     });
                 let undo=false,refreshFailed=false;
                 if(this.access()?.project()?.data.id===context.project.data.id){
-                    try{await this.access()?.publishTagProject?.(result.project);
-                        if(result.changed&&(context.bound.isActive()||task!.scope==='project'))undo=await this.active.acceptTagTransaction?.(result.receipt)??false;
+                    try{await this.access()?.publishTagProject?.(result.project,()=>{
+                        if(result.changed&&(context.bound.isActive()||task!.scope==='project'))undo=this.active.acceptTagTransaction?.(result.receipt)??false;
+                        });
                         this.access()?.onSaved?.(context.bound.target());
                     }catch{refreshFailed=true}
                 }

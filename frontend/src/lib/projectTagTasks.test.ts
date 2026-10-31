@@ -6,8 +6,8 @@ import {applyTagFields,restoreProjectTagTransaction,type TagTransactionReceipt} 
 const target={interview_id:'session-b',recording_id:'recording-session-b',version_id:'m1:e1'};
 async function fixture(){
  const f=await projectConnectorFixture(true);let receipt:TagTransactionReceipt|undefined;
- const accept=vi.fn(async(r:TagTransactionReceipt)=>{receipt=r;const patch=r.versions.find(p=>p.id==='recording-session-a:m1:e1');if(patch)f.current={...f.current,transcript:applyTagFields(f.current.transcript,patch.after)};return true});
- const connector=()=>new ProjectAIConnector({...f.active,acceptTagTransaction:accept},()=>({project:()=>f.project,active:()=>({interview_id:'session-a',recording_id:'recording-session-a',version_id:'m1:e1',directory:f.dirA}),publishTagProject:async p=>{f.project=p}}));
+ const accept=vi.fn((r:TagTransactionReceipt)=>{receipt=r;const patch=r.versions.find(p=>p.id==='recording-session-a:m1:e1');if(patch)f.current={...f.current,transcript:applyTagFields(f.current.transcript,patch.after)};return true});
+ const connector=()=>new ProjectAIConnector({...f.active,acceptTagTransaction:accept},()=>({project:()=>f.project,active:()=>({interview_id:'session-a',recording_id:'recording-session-a',version_id:'m1:e1',directory:f.dirA}),publishTagProject:async(p,publishVersion)=>{f.project=p;publishVersion?.()}}));
  return{...f,f,connector,accept,get receipt(){return receipt}};
 }
 async function prepare(c:ProjectAIConnector,changes:Record<string,unknown>[],scope='current',t=target,client='local'){
@@ -56,7 +56,7 @@ describe('exact-version tag MCP transaction integration',()=>{
   x.f.project=await restoreProjectTagTransaction(x.f.project!,x.receipt!,true);expect(await c.handle('tags_status',{task_id:task.task_id})).toMatchObject({currently_applied:true});
  });
  it('retains saved receipt when UI notification fails and never claims the disk save failed',async()=>{
-  const x=await fixture();x.accept.mockRejectedValueOnce(Error('Synthetic UI failure'));const c=x.connector(),task=await prepare(c,create,'current',{...target,interview_id:'session-a',recording_id:'recording-session-a'});
+  const x=await fixture();x.accept.mockImplementationOnce(()=>{throw Error('Synthetic UI failure')});const c=x.connector(),task=await prepare(c,create,'current',{...target,interview_id:'session-a',recording_id:'recording-session-a'});
   expect(await c.handle('tags_apply',{task_id:task.task_id,confirmed_summary:task.summary})).toMatchObject({saved:true,view_refresh_failed:true});expect(await x.connector().handle('tags_status',{task_id:task.task_id})).toMatchObject({saved:true});
  });
  it('rejects implicit shared merges and requires project capability before persistence',async()=>{

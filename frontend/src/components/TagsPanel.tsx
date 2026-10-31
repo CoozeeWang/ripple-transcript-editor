@@ -35,7 +35,7 @@ interface Props {
     onRenameTag?: (id: string, name: string) => Promise<void>;
     onReparentTag?: (id: string, parentId: string | null, anchor?: string | null, after?: boolean) => Promise<void>;
     onRemoveCurrent?: (id: string) => Promise<void>;
-    readOnly: boolean; filter: readonly string[]; filterMode: 'and' | 'or';
+    saving?:boolean;readOnly: boolean; filter: readonly string[]; filterMode: 'and' | 'or';
     onFilterModeChange: (mode: 'and' | 'or') => void;
     filterEnabled: boolean; onFilterEnabledChange: (enabled: boolean) => void; onFilter: (id: string | null) => void;
     currentCount: (id: string) => number;currentCoverage?:(id:string)=>number;
@@ -58,7 +58,7 @@ export function TagsPanel(p: Props) {
     const confirming = useRef(false), ghost = useRef<HTMLDivElement|null>(null), shownTarget = useRef<string | null>(null);
     const clicks = useRef(new Map<string, ReturnType<typeof setTimeout>>()), description = useId();
     const latest = useRef(p); useLayoutEffect(() => { latest.current = p; });
-    const locked = p.readOnly || busy || !!p.loadError, dragEnabled = !locked && !p.filterEnabled;
+    const locked = p.readOnly || !!p.loadError, dragEnabled = !locked && !busy && !p.saving && !p.filterEnabled;
     const hasOrder = view === 'level' ? !!p.collection?.levelOrder?.length : !!p.collection?.ungroupedOrder?.length || !!p.collection?.groups.some(group => group.order?.length);
     const sort: Sort = (sorts.key === p.versionKey ? sorts[view] : undefined) ?? (hasOrder ? 'manual' : 'ascending');
     const setSort = (next:Sort) => setSorts(old => ({...(old.key===p.versionKey?old:{}),key:p.versionKey,[view]:next}));
@@ -107,7 +107,7 @@ export function TagsPanel(p: Props) {
         return () => { window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); window.removeEventListener('blur', blur); if (frame.current !== null) cancelAnimationFrame(frame.current); for (const timer of pendingClicks.values()) clearTimeout(timer); ghost.current?.remove();latest.current.onTagDropTarget?.(null); };
     }, []);
     async function save(next: TagLibrary) {
-        if (locked) throw Error(msg('tags.saveFailed'));
+        if (locked || p.saving) throw Error(msg('tags.saveFailed'));
         if(JSON.stringify(next)===JSON.stringify(p.library)){setModal(null);return;}
         setBusy(true); setError('');
         try { await p.onChange(next); setModal(null); }
@@ -302,7 +302,7 @@ export function TagsPanel(p: Props) {
     return <div className="tag-library" onDoubleClickCapture={event => { if (blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }}
         onPointerDownCapture={event => { if ((IS_MAC ? event.metaKey : event.ctrlKey) && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }}
         onClickCapture={event => { if ((IS_MAC ? event.metaKey : event.ctrlKey) && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }}
-        onKeyDownCapture={event => { if (event.key === 'F2' && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }} aria-busy={busy} data-tag-drag={drag ? drag.copy ? 'copy' : 'move' : undefined} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
+        onKeyDownCapture={event => { if (event.key === 'F2' && blocked(event.target)) { event.preventDefault(); event.stopPropagation(); } }} inert={busy||p.saving} aria-busy={busy||p.saving} data-tag-drag={drag ? drag.copy ? 'copy' : 'move' : undefined} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
         <div className="tag-view-toolbar"><div className="annotation-view-toggle"><button data-tag-view="level" className={view === 'level' ? 'is-active' : ''} onClick={() => setView('level')}>{msg('tags.all')}</button><button data-tag-view="groups" className={view === 'groups' ? 'is-active' : ''} onClick={() => setView('groups')}>{msg('tags.groups')}</button></div></div>
         <TagLibraryInput allowGroup={view === 'groups'} library={p.library} query={query} onQuery={value => { setQuery(value); setError(''); }} readOnly={locked} onCreate={p.onCreateTag} onCreateGroup={createGroup}/>
         {(p.loadError || error && !modal) && <p role="alert" className="tag-error">{p.loadError || error}</p>}

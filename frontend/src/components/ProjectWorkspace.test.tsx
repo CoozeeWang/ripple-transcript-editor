@@ -5,8 +5,8 @@ import { ConnectorContext } from '../hooks/connectorContext';
 import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
 import { msg, setInterfaceLanguage } from '../i18n';
-const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn() }));
-vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; onAudioDuration?: (seconds:number) => Promise<void>; interviewTitle?: string }) => <div><span>编辑 {props.interviewTitle}</span><button onClick={()=>void props.onAudioDuration?.(3924).catch(()=>{})}>Synthetic accepted duration</button><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div> }));
+const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn(), editorTags:null as import('../hooks/useProjectTags').TagStorage|null, catalog:undefined as import('../lib/tags').TagLibrary|undefined }));
+vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; onAudioDuration?: (seconds:number) => Promise<void>; interviewTitle?: string; tagStorage?:import('../hooks/useProjectTags').TagStorage;tagLibrary?:import('../lib/tags').TagLibrary }) => {state.editorTags=props.tagStorage??null;state.catalog=props.tagLibrary;return <div><span>编辑 {props.interviewTitle}</span><button onClick={()=>void props.onAudioDuration?.(3924).catch(()=>{})}>Synthetic accepted duration</button><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div>} }));
 vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), saveRecordingDuration: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), trashProjectInterview: vi.fn(), restoreProjectTrashItem: vi.fn(), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
 const project = { directory: { name: '测试.ripple' }, data: { id: 'p', title: '测试项目', description: '', revision: 0, interviews: [{ id: 'i', title: '第一次访谈', recordings: [{ id: 'r', name: '录音.wav', storage: 'copy' }] }] } } as store.OpenProject;
@@ -796,4 +796,14 @@ it('disables deletion of a session whose recording is owned by an active AI task
   fireEvent.click(remove);
   expect(screen.queryByRole('dialog',{name:'删除场次？'})).toBeNull();
   expect(store.trashProjectInterview).not.toHaveBeenCalled();
+});
+
+it('publishes a durable tag catalog and editor callback together without waiting for recents',async()=>{
+ render(<ProjectWorkspace/>);fireEvent.click(screen.getByRole('button',{name:'打开项目'}));
+ fireEvent.click(await screen.findByRole('button',{name:'打开 音频 录音.wav'}));await screen.findByText('编辑 第一次访谈');
+ let release!:()=>void;vi.mocked(store.rememberProject).mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve}));
+ const next={...project,data:{...project.data,revision:1,tagLibrary:{schemaVersion:3 as const,tags:[],groups:[]}}},apply=vi.fn();
+ act(()=>state.editorTags!.publish!(next,apply));
+ expect(apply).toHaveBeenCalledOnce();expect(state.catalog).toEqual(next.data.tagLibrary);expect(store.rememberProject).toHaveBeenCalledWith(next);
+ await act(async()=>release());
 });

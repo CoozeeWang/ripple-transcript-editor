@@ -17,6 +17,7 @@ export interface AnnotationPanelProps {
   tagCount?: number;
   transcript: Transcript | null;
   readOnly?: boolean;
+  pending?:boolean;
   readOnlyMessage?: string;
   annotationView: "selected" | "all";
   setAnnotationView: Dispatch<SetStateAction<"selected" | "all">>;
@@ -157,7 +158,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
         </div>
       </div>
 
-      {panelTab==='tags'?props.tagsPanel:<>
+      {panelTab==='tags'?props.tagsPanel:<div className="annotation-editing-content" inert={props.pending} aria-busy={props.pending}>
       {readOnly && <p className="annotation-empty" role="note">{props.readOnlyMessage ?? msg('AnnotationPanel.readOnly')}</p>}
       {panelTab === "annotation" ? (
         <>
@@ -333,7 +334,7 @@ export function AnnotationPanel(props: AnnotationPanelProps) {
           )}
         </div>
       )}
-      </>}
+      </div>}
     </aside>
   );
 }

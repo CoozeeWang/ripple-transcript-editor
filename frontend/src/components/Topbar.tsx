@@ -1,3 +1,4 @@
+import {pendingWriteControl} from '../lib/pendingWriteControl';
 import { ActionIcon } from './ActionIcon';
 import { LanguageControl } from './LanguageControl';
 import { msg, useInterfaceLanguage } from '../i18n';
@@ -17,6 +18,7 @@ export interface TopbarProps {
   projectLabel?: string;
   onReturnToProjects?: () => void;
   navigationDisabled?: boolean;
+  transactionPending?: boolean;
   // 品牌/文件
   audioFilename: string;
   // 文件夹
@@ -102,7 +104,7 @@ export function Topbar(props: TopbarProps) {
     <header className={`topbar${props.projectMode ? " topbar--project" : ""}`}>
       <div className="topbar-identity">
       <Brand className="brand" type={props.onReturnToProjects ? "button" : undefined}
-        onClick={props.onReturnToProjects} disabled={props.onReturnToProjects ? props.navigationDisabled : undefined}
+        onClick={props.onReturnToProjects} {...pendingWriteControl(props.onReturnToProjects ? props.navigationDisabled : undefined,!!props.onReturnToProjects&&props.transactionPending)}
         aria-label={props.onReturnToProjects ? msg('Topbar.m1031') : undefined}
         data-tip={props.onReturnToProjects ? msg('Topbar.m1032') : undefined}>
         <img className="brand-mark" src="/ripple-icon.svg?v=transparent-2" alt="Ripple" width={80} height={80} />
@@ -113,7 +115,7 @@ export function Topbar(props: TopbarProps) {
       </Brand>
 
       {props.onReturnToProjects && <button type="button" className="topbar-project"
-        onClick={props.onReturnToProjects} disabled={props.navigationDisabled}
+        onClick={props.onReturnToProjects} {...pendingWriteControl(props.navigationDisabled,props.transactionPending)}
         aria-label={props.projectLabel ? msg('Topbar.m1033', { v0: props.projectLabel }) : msg('Topbar.m1034')}
         data-tip={props.projectLabel ? msg('Topbar.m1035', { v0: props.projectLabel }) : msg('Topbar.m1036')}>
         <ProjectIcon kind="project" />
@@ -288,7 +290,7 @@ export function Topbar(props: TopbarProps) {
           <button
             type="button"
             onClick={performUndo}
-            disabled={!canUndo}
+            {...pendingWriteControl(!canUndo,props.transactionPending)}
             data-tip={msg('Topbar.m1052', { v0: keys("Z") })}
             aria-label={msg('Topbar.m1053')}
           >
@@ -311,7 +313,7 @@ export function Topbar(props: TopbarProps) {
           <button
             type="button"
             onClick={performRedo}
-            disabled={!canRedo}
+            {...pendingWriteControl(!canRedo,props.transactionPending)}
             data-tip={msg('Topbar.m1054', { v0: keys("Z", true) })}
             aria-label={msg('Topbar.m1055')}
           >

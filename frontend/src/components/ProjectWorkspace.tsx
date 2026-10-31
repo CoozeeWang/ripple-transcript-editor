@@ -5,6 +5,7 @@ import { nextSegmentLink } from '../lib/segmentLinkBridge';
 import { resolveSegmentTarget } from '../lib/segmentTarget';
 import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
+import {flushSync} from 'react-dom';
 import { restoreProjectTagTransaction, transactProjectTags } from '../lib/projectTagRepository';
 import {readProjectTagCounts} from '../lib/projectTagRepository';
 import {migrateProjectTagStorage} from '../lib/tagMigration';
@@ -160,6 +161,11 @@ export function ProjectWorkspace() {
   const publish = async (next: OpenProject) => {
     setProject(next); current.current = next;
     await updateRecent(next);
+  };
+  const publishTags = (next: OpenProject, publishVersion?: () => void) => {
+    flushSync(() => { publishVersion?.(); current.current = next; setProject(next); });
+    // Recents are ancillary. They must not split a durable catalog/editor snapshot.
+    void updateRecent(next);
   };
   const run = async (work: () => Promise<void>, progress = true) => {
     if (busyRef.current) return;
@@ -344,18 +350,19 @@ export function ProjectWorkspace() {
       projectRevision:project.data.revision,counts:id=>readProjectTagCounts(project,id),
       requiresMigration:project.data.schemaVersion!==2,
       projectId:project.data.id,
+      publish:publishTags,
       transact:async(version,operation,scope)=>{
         if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
         const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
-        const result=await transactProjectTags(snapshot,version,operation,scope);if(result.changed)await publish(result.project);return result;
+        return await transactProjectTags(snapshot,version,operation,scope);
       },
       restore:async(receipt,redo)=>{
         if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
         const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
-        const next=await restoreProjectTagTransaction(snapshot,receipt,redo);await publish(next);return next;
+        return await restoreProjectTagTransaction(snapshot,receipt,redo);
       },
     }}
-    connectorProject={() => current.current} publishTagProject={async next=>{if(current.current?.data.id===next.data.id)await publish(next)}} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
+    connectorProject={() => current.current} publishTagProject={async(next,publishVersion)=>{if(current.current?.data.id===next.data.id)publishTags(next,publishVersion)}} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onAudioDuration={async seconds => {
       const snapshot = current.current;

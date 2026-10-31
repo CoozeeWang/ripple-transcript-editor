@@ -1,3 +1,4 @@
+import {flushSync} from 'react-dom';
 // @vitest-environment jsdom
 import { ConnectorContext, type ConnectorState } from './hooks/connectorContext';
 import { act, cleanup, fireEvent, render as renderBase, screen } from "@testing-library/react";
@@ -248,8 +249,9 @@ function memoryTagStorage(library:import('./lib/tags').TagLibrary,setLibrary:(li
  return {transact:async(current,operation)=>{
   const {projectTagCatalog}=await import('./lib/tagCollections');
   const result=operation(projectTagCatalog(library),[{id:'current',label:'Synthetic version',transcript:current.transcript}],'current');
-  await beforeWrite();setLibrary(result.library);return {project:{} as import('./lib/projectStore').OpenProject,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[]}};
- },restore:async(receipt,redo)=>{setLibrary(redo?receipt.afterLibrary:receipt.beforeLibrary);return {} as import('./lib/projectStore').OpenProject}};
+  await beforeWrite();return {project:{data:{tagLibrary:result.library}} as import('./lib/projectStore').OpenProject,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[]}};
+ },restore:async(receipt,redo)=>({data:{tagLibrary:redo?receipt.afterLibrary:receipt.beforeLibrary}} as import('./lib/projectStore').OpenProject),
+ publish:(project,publishVersion)=>flushSync(()=>{setLibrary(project.data.tagLibrary!);publishVersion()})};
 }
 const syntheticTagLibrary=():import('./lib/tags').TagLibrary=>({schemaVersion:3,tags:[{id:'synthetic-tag',name:'Synthetic topic',parentId:null,groupIds:[]}],groups:[]});
 function setupTagUi(){vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});HTMLDialogElement.prototype.showModal=function(){this.open=true};HTMLDialogElement.prototype.close=function(){this.open=false};HTMLElement.prototype.scrollTo=vi.fn()}
@@ -278,5 +280,5 @@ it('blocks project navigation while a shared inline rename is saving',async()=>{
  render(<Harness/>);loadTagDocument({audio:{filename:'Synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'v',text:'Synthetic text',start:0,end:1}]},syntheticTagLibrary());
  fireEvent.click(screen.getByRole('button',{name:'标签 1'}));fireEvent.click(screen.getByRole('button',{name:'标签筛选'}));fireEvent.doubleClick(screen.getByRole('button',{name:'标签: Synthetic topic'}));fireEvent.change(screen.getByRole('textbox',{name:'重命名标签'}),{target:{value:'Renamed'}});
  await act(async()=>{fireEvent.keyDown(screen.getByRole('textbox',{name:'重命名标签'}),{key:'Enter'});await Promise.resolve()});
- expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(true);fireEvent(window,new Event('ripple-open-project'));expect(open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();await act(async()=>finish());expect(screen.getByRole('button',{name:'标签: Renamed'})).toBeTruthy();
+ expect((screen.getByRole('button',{name:'返回项目'}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('button',{name:'返回项目'}).getAttribute('data-write-pending')).toBe('true');expect(screen.queryByText('当前转录稿为只读。请先新建修改版本，再编辑批注或高亮。')).toBeNull();expect(document.querySelector('.tag-library')?.hasAttribute('inert')).toBe(true);expect((screen.getByRole('button',{name:'新建标签'}) as HTMLButtonElement).disabled).toBe(false);fireEvent(window,new Event('ripple-open-project'));expect(open).not.toHaveBeenCalled();expect(leave).not.toHaveBeenCalled();await act(async()=>finish());expect(screen.getByRole('button',{name:'标签: Renamed'})).toBeTruthy();
 });

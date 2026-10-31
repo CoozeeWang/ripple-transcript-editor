@@ -40,7 +40,7 @@ export interface ConnectorDocument {
   references: () => Promise<ConnectorReference[]>;
 }
 export interface ConnectorHost {
-  acceptTagTransaction?: (receipt:TagTransactionReceipt) => Promise<boolean>;
+  acceptTagTransaction?: (receipt:TagTransactionReceipt) => boolean;
   continuationWarning?: (scope: string, unreadable: number) => void;
   editingActivity?: (tasks: AIEditActivity[]) => void;
   assertWrite?: (taskId: string) => void;

@@ -22,7 +22,7 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
     if (binding.current?.token === token) { binding.current = null; setContext(''); }
   }, []);
   const host: ConnectorHost = {
-    acceptTagTransaction: async receipt => {
+    acceptTagTransaction: receipt => {
       if (!binding.current?.host.acceptTagTransaction) return false;
       return binding.current.host.acceptTagTransaction(receipt);
     },

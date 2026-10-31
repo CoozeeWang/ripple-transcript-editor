@@ -12,6 +12,8 @@ import type { OpenProject } from '../lib/projectStore';
 import { applyTagFields, tagFields } from '../lib/projectTagRepository';
 
 export interface TagStorage {
+    /** Publish catalog and editor history together, after durability; never await recents between them. */
+    publish?: (project: OpenProject, publishVersion: () => void) => void;
     projectId?:string;
     projectRevision?:number;counts?:(currentId?:string)=>Promise<import('../lib/tagCountCache').TagCountTotals>;
     requiresMigration?: boolean;
@@ -100,10 +102,13 @@ export function useProjectTags(o: Options) {
             if (!mounted.current || latest.current.context !== context) throw Error('tag_context_changed_after_save');
             if(result.changed===false)return result;
             const key='tag-transaction:'+crypto.randomUUID();
-            latest.current.publish(result.transcript, 'commit',key);
+            const publish = () => {
+                latest.current.publish(result.transcript, 'commit',key);
+                setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));
+                setFuture([]); setBusy(false);
+            };
+            if(current.storage.publish)current.storage.publish(result.project,publish);else publish();
             probe?.mark('published');
-            setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));
-            setFuture([]);
             return result;
         } catch (error) {
             if (!(error instanceof TagMergeRequired) && (error as Error)?.message !== 'tag_operation_cancelled') latest.current.onError(tagErrorMessage(error));
@@ -190,10 +195,14 @@ export function useProjectTags(o: Options) {
         pending.current = true;
         try {
             await current.flush(); current.lock(true); setBusy(true);
-            await current.storage.restore(entry.receipt, redo);
-            current.publish(current.transcript!, redo ? 'redo' : 'undo');
-            if (redo) { setFuture(old => old.slice(0, -1)); setPast(old => [...old, entry]); }
-            else { setPast(old => old.slice(0, -1)); setFuture(old => [...old, entry]); }
+            const project=await current.storage.restore(entry.receipt, redo);
+            const publish=()=>{
+                current.publish(current.transcript!, redo ? 'redo' : 'undo');
+                if (redo) { setFuture(old => old.slice(0, -1)); setPast(old => [...old, entry]); }
+                else { setPast(old => old.slice(0, -1)); setFuture(old => [...old, entry]); }
+                setBusy(false);
+            };
+            if(current.storage.publish)current.storage.publish(project,publish);else publish();
         } catch (error) { current.onError(tagErrorMessage(error)); }
         finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     };

@@ -122,7 +122,7 @@ export interface ProjectEditorProps {
   onOpenSegmentLink?: (raw:string) => Promise<void>;
   registerSegmentLinkReceiver?: (receiver:SegmentLinkReceiver | null) => void;
   connectorProject?: () => OpenProject | null;
-  publishTagProject?: (project:OpenProject) => Promise<void>;
+  publishTagProject?: (project:OpenProject, publishVersion?:()=>void) => Promise<void>;
   projectInterviewId?: string;
   projectRecordingId?: string;
   projectDirectory?: FileSystemDirectoryHandle;
@@ -653,7 +653,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     }
   }, [dirHandle, aiContext,selectedAudio]);
   const connector = useAIConnector({
-    acceptTagTransaction: async receipt => tags.acceptTransaction(receipt),
+    acceptTagTransaction: receipt => tags.acceptTransaction(receipt),
     current: async () => {
       const identity = connectorContext.current.generation;
       const dir = dirHandle, audio = selectedAudio, model = activeModel;
@@ -971,7 +971,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const registerTagEntry = useCallback((id: string, open: (() => void) | null) => { if (open) tagEntries.current.set(id,open); else tagEntries.current.delete(id); }, []);
   const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tagUpgradeRequired && !tags.busy && projectProps.tagStorage) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tagUpgradeRequired,tags.busy,projectProps.tagStorage]);
   useShortcuts({
-    addTag: openActiveTagEntry, nativeTagShortcut: nativeDesktopAvailable(), tagWriteDisabled: tags.busy || protectedReadOnly,
+    addTag: openActiveTagEntry, nativeTagShortcut: nativeDesktopAvailable(), tagWriteDisabled: protectedReadOnly || tagUpgradeRequired,
     visibleSegmentIds,
     copySegment,
     disabled: renaming || versionBusy || saveStatus === "loading",
@@ -1279,7 +1279,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         projectMode={Boolean(projectProps.projectDirectory)}
         projectLabel={projectProps.projectLabel}
         onReturnToProjects={projectProps.onReturnToProjects ? () => void returnToProjects() : undefined}
-        navigationDisabled={renaming || versionBusy || transcribing || tags.busy}
+        navigationDisabled={renaming || versionBusy || transcribing}
+        transactionPending={tags.busy}
         dirHandle={dirHandle}
         handleOpenFolder={handleOpenFolder}
         folderShortcutHint={folderShortcutHint}
@@ -1296,8 +1297,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         viewingOriginal={viewingOriginal}
         performUndo={performUndo}
         performRedo={performRedo}
-        canUndo={(canUndo||tags.canUndo)&&!aiLocked&&!tags.busy}
-        canRedo={(canRedo||tags.canRedo)&&!aiLocked&&!tags.busy}
+        canUndo={(canUndo||tags.canUndo)&&!aiLocked}
+        canRedo={(canRedo||tags.canRedo)&&!aiLocked}
         setFindOpen={setFindOpen}
         exportMenuOpen={exportMenuOpen}
         setExportMenuOpen={setExportMenuOpen}
@@ -1404,7 +1405,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           segmentNavigation={<SegmentJump key={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} count={transcript.segments.length} onJump={jumpToSegment} />}
           viewingOriginal={viewingOriginal}
           activeModelId={activeModelId}
-          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy || tags.busy} mutationDisabled={aiLocked}
+          versionControls={<VersionPicker key={`${selectedAudio}:current`} models={models} value={currentVersionKey} variant="current" disabled={versionBusy} pending={tags.busy} mutationDisabled={aiLocked}
             onSelect={(model,edit)=>{if(edit==="original")void openOriginal(model);else void selectEdit(model,edit);}}
             onRename={guardedRenameVersion} onCopy={(model,edit)=>{if(editLockedRef.current())return;if(edit==="original")void forkFromOriginal(model);else void duplicateEdit(model,edit);}}
             onDelete={(modelId,editId,label,isLast)=>{if(editLockedRef.current())return;setDeletePrompt({kind:editId==="original"?"original":"edit",modelId,editId:editId==="original"?undefined:editId,label,isLast});}} />}
@@ -1443,7 +1444,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                     {msg('App.m0048')}</button>
                   {!selectedAudio && <p className="empty-transcript__hint">{msg('App.m0049')}</p>}
             </section>
-          )) : <div className="segment-list"><TagWritingContext.Provider value={tags.busy||tagUpgradeRequired}><TagCandidatesContext.Provider value={segmentTagView.available}>
+          )) : <div className="segment-list"><TagWritingContext.Provider value={tags.busy}><TagCandidatesContext.Provider value={segmentTagView.available}>
             {renderedRows.map(({segment,deleted,before}) => deleted ? (
               <article className="comparison-deleted-segment" key={`deleted:${segment.id}`}>
                 <span>{transcript.timeAligned === false ? msg('App.m0050') : msg('App.m0051', { v0: formatTime(segment.start) })}</span><del>{segment.text}</del>
@@ -1508,9 +1509,9 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.collection.tagIds.length}
-          tagsPanel={projectProps.tagStorage?<>{tagUpgradeRequired&&<TagStorageUpgrade onUpgrade={projectProps.onUpgradeTagStorage?async()=>{await beforeChangeRef.current();await projectProps.onUpgradeTagStorage!()}:undefined}/>}<TagsPanel countVersionId={`${projectProps.projectRecordingId}:${activeModelId}:${viewingOriginal?'original':activeModel?.activeEditId}`} onPlaceGroupTag={tags.placeInGroup} loadProjectCounts={projectProps.tagStorage?.counts} projectRevision={projectProps.tagStorage?.projectRevision} versionKey={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} collection={tags.collection} onReorder={tags.reorder} library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tagUpgradeRequired||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCoverage={currentTagCoverage} currentCount={currentTagCount} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/></>:undefined}
+          tagsPanel={projectProps.tagStorage?<>{tagUpgradeRequired&&<TagStorageUpgrade onUpgrade={projectProps.onUpgradeTagStorage?async()=>{await beforeChangeRef.current();await projectProps.onUpgradeTagStorage!()}:undefined}/>}<TagsPanel countVersionId={`${projectProps.projectRecordingId}:${activeModelId}:${viewingOriginal?'original':activeModel?.activeEditId}`} onPlaceGroupTag={tags.placeInGroup} loadProjectCounts={projectProps.tagStorage?.counts} projectRevision={projectProps.tagStorage?.projectRevision} versionKey={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} collection={tags.collection} onReorder={tags.reorder} library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tagUpgradeRequired} saving={tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCoverage={currentTagCoverage} currentCount={currentTagCount} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/></>:undefined}
           transcript={transcript}
-          readOnly={protectedReadOnly||tags.busy}
+          readOnly={protectedReadOnly} pending={tags.busy}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
           annotationView={annotationView}
           setAnnotationView={setAnnotationView}

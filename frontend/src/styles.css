@@ -3358,3 +3358,7 @@ button > svg.action-icon[aria-hidden="true"] {
 .segment-transfer-surface { position: absolute; inset: 0; z-index: 2; cursor: grab; -webkit-user-drag: element; }
 .segment[data-transfer-ready] { -webkit-user-drag: element; }
 .segment-number[draggable="true"] { cursor: grab; }
+
+/* A short tag transaction is not a read-only state. Keep only its temporary locks visually quiet. */
+.app-shell [data-write-pending]:disabled { opacity:1; }
+.annotation-editing-content { display:contents; }
