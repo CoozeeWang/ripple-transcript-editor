@@ -1,9 +1,11 @@
+/** Room for the 14px disclosure slot, a 2px gap, and the rounded edge. */
+export const TAG_TREE_STEP = 24;
 export interface TagEdgeBox { left: number; top: number; width: number; height: number }
 /** Coordinates relative to the child's row; only a real, visible ancestor is an anchor. */
-export function tagEdgeGeometry(row: TagEdgeBox, child: TagEdgeBox, parent: TagEdgeBox | undefined, fallbackLeft: number, fontSize: number, missing: number, anchorOffset = 6) {
+export function tagEdgeGeometry(row: TagEdgeBox, child: TagEdgeBox, parent: TagEdgeBox | undefined, fallbackLeft: number, fontSize: number, missing: number, anchorOffset = 4, disclosure?: TagEdgeBox) {
     const center = child.top + child.height / 2 - row.top;
     const left = parent ? parent.left + Math.min(anchorOffset, parent.width / 2) - row.left : fallbackLeft;
-    const end = child.left - row.left;
+    const end = (disclosure ? disclosure.left - 2 : child.left) - row.left;
     const top = parent ? parent.top + parent.height - row.top
         : Math.min(center - 2, child.top - row.top + fontSize * .5);
     const start = Math.min(left + 4, end);

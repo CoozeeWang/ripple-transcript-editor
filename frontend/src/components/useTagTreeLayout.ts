@@ -22,9 +22,10 @@ export function useTagTreeLayout(ref: RefObject<HTMLDivElement | null>, dependen
                 if (!child) return [() => { guide.style.visibility = 'hidden'; }];
                 const scope = row.closest('.group-tags,.tag-membership-tree,.library-list')!;
                 const parent = scopes.get(scope)?.get(edge.dataset.guideParent!)?.querySelector<HTMLElement>('.tag-pill');
+                const disclosure = row.querySelector<HTMLElement>('.tag-fold-slot');
                 const dots = [...row.querySelectorAll<HTMLElement>('.tag-tree-missing')];
                 // The checkbox tree has a 21px step; its trunk stays beyond the 13px checkbox.
-                const geometry = tagEdgeGeometry(row.getBoundingClientRect(), child.getBoundingClientRect(), parent?.getBoundingClientRect(), Number(edge.dataset.guideFallback), parseFloat(getComputedStyle(child).fontSize), dots.length, row.classList.contains('tag-membership-row') ? 16 : 6);
+                const geometry = tagEdgeGeometry(row.getBoundingClientRect(), child.getBoundingClientRect(), parent?.getBoundingClientRect(), Number(edge.dataset.guideFallback), parseFloat(getComputedStyle(child).fontSize), dots.length, row.classList.contains('tag-membership-row') ? 16 : 4, disclosure?.getBoundingClientRect());
                 return [() => {
                     guide.style.visibility = 'visible';
                     for (const key of ['left', 'top', 'width', 'bottom'] as const) edge.style[key] = `${geometry[key]}px`;

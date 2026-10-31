@@ -1,3 +1,4 @@
+import { TAG_TREE_STEP } from '../lib/tagEdgeGeometry';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { IS_MAC } from '../lib/format';
@@ -137,7 +138,7 @@ export function TagsPanel(p: Props) {
                 const groupId=section.dataset.tagGroup!,row=element?.closest<HTMLElement>('.library-tag-row[data-tag-id]'),source=p.library.tags.find(tag=>tag.id===g.id)!;
                 if(row&&!element?.closest('.library-action-slot,.tag-count,.tag-delete-control')){
                     const id=row.dataset.tagId!,absolute=tagAncestors(p.library,id).reverse(),depth=absolute.length,rect=row.getBoundingClientRect();
-                    const desired=Math.max(0,Math.min(depth+1,Math.floor((g.lastX-rect.left+8)/16)));
+                    const desired=Math.max(0,Math.min(depth+1,Math.floor((g.lastX-rect.left+TAG_TREE_STEP/2)/TAG_TREE_STEP)));
                     const parentId=desired>depth?id:desired===0?null:absolute[desired-1]?.id??null;
                     const siblingId=desired>depth?null:desired===depth?id:absolute[desired]?.id??null;
                     if(parentId&&descendantTagIds(p.library,g.id).includes(parentId)||siblingId===g.id&&groupId===g.source)return null;
@@ -162,7 +163,7 @@ export function TagsPanel(p: Props) {
         const row = element?.closest<HTMLElement>('.library-tag-row[data-tag-id]');
         if (!row || element?.closest('.library-action-slot,.tag-count,.tag-delete-control')) return null;
         const id = row.dataset.tagId!, absolute = tagAncestors(p.library, id).reverse(), depth = absolute.length;
-        const base = row.getBoundingClientRect().left, desired = Math.max(0, Math.min(depth + 1, Math.floor((g.lastX - base + 8) / 16)));
+        const base = row.getBoundingClientRect().left, desired = Math.max(0, Math.min(depth + 1, Math.floor((g.lastX - base + TAG_TREE_STEP/2) / TAG_TREE_STEP)));
         const parentId = desired > depth ? id : desired === 0 ? null : absolute[desired - 1]?.id ?? null;
         const source = p.library.tags.find(tag => tag.id === g.id)!;
         if (parentId && descendantTagIds(p.library, g.id).includes(parentId)) return null;
@@ -230,10 +231,10 @@ export function TagsPanel(p: Props) {
         const canBegin = (time: number) => time >= suppress.current && !gesture.current;
         const hint = msg(group ? 'tags.dragGroupTag' : 'tags.dragLevelTag', { key: IS_MAC ? '⌘' : 'Ctrl', copyKey:IS_MAC?'⌘⇧':'Ctrl+Shift' });
         const target=drag?.target, insert=target?.kind==='tree'||target?.kind==='tag-order'||target?.kind==='group-tree'?target:null;
-        const line=insert&&insertionId===tag.id&&(!('groupId'in insert)||insert.groupId===(group==='ungrouped'?undefined:group))?<div className="tag-drop-line" data-edge={insert.after?'after':'before'} style={{left:insert.depth*16}}/>:null;
+        const line=insert&&insertionId===tag.id&&(!('groupId'in insert)||insert.groupId===(group==='ungrouped'?undefined:group))?<div className="tag-drop-line" data-edge={insert.after?'after':'before'} style={{left:insert.depth*TAG_TREE_STEP}}/>:null;
         return <div key={tag.id} className={'tag-tree-entry' + (selected || inherited ? ' is-inherited-region' : '')}>
             {line&&!insert?.after&&line}
-            <div className={'library-tag-row' + (!showCount ? ' library-tag-row--no-count' : '')} data-tag-id={tag.id} data-tag-depth={depth} style={{ paddingLeft: depth * 16 }}>
+            <div className={'library-tag-row' + (!showCount ? ' library-tag-row--no-count' : '')} data-tag-id={tag.id} data-tag-depth={depth} style={{ paddingLeft: depth * TAG_TREE_STEP }}>
                 <TagTreeGuides guide={guide}/>
                 <InlineTagName row name={tag.name} enabled={!p.filterEnabled && !locked} onRename={p.onRenameTag ? name => p.onRenameTag!(tag.id, name) : undefined} canBegin={canBegin} onEditingChange={() => cancelClick(key)}>
                     <span className="tag-row-main"><span className="tag-fold-slot">{parent&&<FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterFoldNotice')}><button type="button" className="tag-fold-toggle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled||!!query.trim()||!foldedTags.has(key)?'tags.collapseTag':'tags.expandTag',{name:tag.name})} aria-expanded={p.filterEnabled||!!query.trim()||!foldedTags.has(key)} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();if(!p.filterEnabled&&canBegin(event.timeStamp))toggleTag(tag.id,group)}}><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={p.filterEnabled||!!query.trim()||!foldedTags.has(key)?'m2 4 4 4 4-4':'m4 2 4 4-4 4'}/></svg></button></FilterActionHint>}</span><TagLibraryPill name={tag.name} selected={selected} inherited={inherited} filterEnabled={p.filterEnabled} locked={locked} parent={parent}
@@ -283,8 +284,8 @@ export function TagsPanel(p: Props) {
                     </span>
                 </InlineTagName>
             </div>
-            {!open&&target?.kind==='group-tree'&&target.groupId===group.id&&<div className="tag-drop-line" data-edge="after" style={{left:target.depth*16}}/>}
-            {open && <div className="group-tags">{rows}{drag?.kind==='tag'&&p.onPlaceGroupTag&&<div className="group-tag-root-drop">{target?.kind==='group-tree'&&target.groupId===group.id&&target.anchorId===null&&<div className="tag-drop-line" data-edge="after" style={{left:target.depth*16}}/>}</div>}</div>}
+            {!open&&target?.kind==='group-tree'&&target.groupId===group.id&&<div className="tag-drop-line" data-edge="after" style={{left:target.depth*TAG_TREE_STEP}}/>}
+            {open && <div className="group-tags">{rows}{drag?.kind==='tag'&&p.onPlaceGroupTag&&<div className="group-tag-root-drop">{target?.kind==='group-tree'&&target.groupId===group.id&&target.anchorId===null&&<div className="tag-drop-line" data-edge="after" style={{left:target.depth*TAG_TREE_STEP}}/>}</div>}</div>}
         </section>;
     }
     const modalGroup = modal && modal.type !== 'delete' ? groups.find(group => group.id === modal.id) : undefined;
@@ -313,7 +314,7 @@ export function TagsPanel(p: Props) {
         </div>
         <div className={'tag-list-head'+(!showCount?' tag-list-head--no-count':'')}><div className="tag-name-tools"><FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterSortNotice')}><button aria-label={msg('tags.sortName')} data-action-tip={p.filterEnabled?undefined:msg('tags.sortNameHint')} disabled={locked||p.filterEnabled||!p.onSortName} onClick={async()=>{setBusy(true);setError('');try{await p.onSortName?.(view)}catch(error){setError(tagErrorMessage(error))}finally{setBusy(false)}}}>{msg('tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button></FilterActionHint><FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterFoldNotice')}><button className="group-cycle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled || fullyExpanded ? 'tags.collapseAll' : 'tags.expandAll')} onClick={toggleAll}><TagChevron/></button></FilterActionHint></div>{showCount&&<span className="tag-count-heading">{msg('tags.count')}</span>}<span/></div>
         {projectCountActive&&countError&&<p role="alert" className="tag-error">{msg('tags.countFailed')} <button type="button" onClick={()=>retryCounts(value=>value+1)}>{msg('tags.retry')}</button></p>}
-        <div ref={list} className={'library-list' + (view === 'level' ? ' library-list-all' : '')} style={{'--tag-row-min-width':`${maxDepth*16+194}px`} as React.CSSProperties}>
+        <div ref={list} className={'library-list' + (view === 'level' ? ' library-list-all' : '')} style={{'--tag-row-min-width':`${maxDepth*TAG_TREE_STEP+194}px`} as React.CSSProperties}>
             {view === 'level' ? <>{levelRows.length?levelRows:<p className="annotation-empty tag-library-empty">{msg(query.trim()?'tags.noSearchResults':scope==='current'?'tags.noAdmitted':'tags.noTags')}</p>}{drag?.level && <div className={'tag-tree-root-drop' + (drag.target?.kind === 'tree' && drag.target.anchorId === null ? ' is-drop-target' : '')}/>}</>
                 : <>{groups.map(groupNode)}{ungrouped.size > 0 && <section className="tag-ungrouped"><div className="ungrouped-divider"><span>{msg('tags.ungrouped')}</span></div>{(p.filterEnabled || !!query.trim() || !foldedGroups.has('ungrouped')) && <div className="group-tags">{rowsFor(ungrouped, 'ungrouped')}</div>}</section>}{drag?.kind === 'group' && <div className={'root-drop' + (drag.target?.kind === 'order' && drag.target.id === null ? ' is-drop-target' : '')}/>}</>}
         </div>

@@ -1,6 +1,7 @@
+import { TAG_TREE_STEP } from '../lib/tagEdgeGeometry';
 import type { TagGuide } from '../lib/tagTreeGuides';
 /** One rounded elbow per edge; dots denote only absent ancestor levels. */
-export function TagTreeGuides({ guide, step = 16, origin = 4 }: { guide?: TagGuide; step?: number; origin?: number }) {
+export function TagTreeGuides({ guide, step = TAG_TREE_STEP, origin = 4 }: { guide?: TagGuide; step?: number; origin?: number }) {
     if (!guide?.depth) return null;
     const left = (guide.parentDepth ?? 0) * step + origin, end = guide.depth * step - 4;
     const horizontalStart = Math.min(left + 4, end);

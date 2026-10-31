@@ -2020,7 +2020,7 @@
     "mergeConfirm": "合併標籤",
     "collapseAll": "全部收合",
     "expandAll": "全部展開",
-    "dragSegmentTag": "按住 {{key}} 拖到其他片段複製標籤",
+    "dragSegmentTag": "按住 {{key}} 拖到其他片段，複製標籤",
     "filterCopyNotice": "關閉篩選後可複製標籤到其他片段",
     "dragLevelTag": "按住 {{key}} 調整位置或加入片段",
     "dragGroupTag": "按住 {{key}} 調整分組、層級和順序，或加入片段；{{copyKey}} 保留來源組",

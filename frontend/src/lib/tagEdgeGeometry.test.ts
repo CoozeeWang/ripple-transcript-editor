@@ -34,3 +34,15 @@ it('keeps the checkbox-tree trunk outside the child checkbox while touching both
     expect(edge.left + edge.width).toBe(child.left);
     expect(edge.top + row.top).toBe(parent.top + parent.height);
 });
+
+
+it('reserves a disclosure slot and gap while keeping the stem attached to the real parent', () => {
+    const row={left:0,top:32,width:300,height:28};
+    const parent={left:14,top:3,width:70,height:22};
+    const child={left:38,top:35,width:70,height:22};
+    const slot={left:24,top:34,width:14,height:24};
+    const edge=tagEdgeGeometry(row,child,parent,4,12,0,4,slot);
+    expect(edge.left+edge.width).toBe(slot.left-2);
+    expect(edge.width).toBeGreaterThan(0);
+    expect(edge.top+row.top).toBe(parent.top+parent.height);
+});

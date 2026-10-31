@@ -33,6 +33,8 @@ it('does not refresh unrelated cards on tag assignment or sidebar-only parent up
  fireEvent.click(screen.getByText('Attach'));expect([...renders.values()]).toEqual([2,1,1]);
  fireEvent.click(screen.getByText('Busy'));expect([...renders.values()]).toEqual([2,1,1]);
  expect([...ui.container.querySelectorAll<HTMLButtonElement>('[data-add-tag],.tag-pill-remove')].every(button=>button.disabled)).toBe(true);
+ // The CSS keeps temporary locks in flow; unavailable controls remain distinguishable.
+ expect([...ui.container.querySelectorAll<HTMLButtonElement>('[data-add-tag]')].every(button=>button.dataset.writePending==='true')).toBe(true);
  fireEvent.click(screen.getByText('Busy'));expect([...renders.values()]).toEqual([2,1,1]);
  fireEvent.click(ui.container.querySelector<HTMLButtonElement>('#segment-s1 [data-add-tag]')!);
  expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1);

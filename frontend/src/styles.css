@@ -3364,4 +3364,7 @@ button > svg.action-icon[aria-hidden="true"] {
 
 /* A short tag transaction is not a read-only state. Keep only its temporary locks visually quiet. */
 .app-shell [data-write-pending]:disabled { opacity:1; }
+/* Temporary durability locks must not remove the tag button, widen the chip
+   column, and rewrap every tagged paragraph while a sidebar drop is saving. */
+.app-shell .segment-actions__icons button[data-write-pending]:disabled { display:inline-flex; }
 .annotation-editing-content { display:contents; }

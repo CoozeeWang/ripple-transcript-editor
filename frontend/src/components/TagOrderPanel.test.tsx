@@ -23,6 +23,6 @@ it('retains saved ordering and reports failure without publishing a speculative 
 it('previews compound Group placement with whole-group tint plus a correctly indented insertion line',async()=>{
  const h=mount(false,true);fireEvent.click(screen.getByRole('button',{name:'分组'}));const source=h.container.querySelector('[data-tag-group="g1"] .library-filter')!,destination=h.container.querySelector('[data-tag-group="g2"]')!,target=destination.querySelectorAll('.library-tag-row')[1];
  vi.spyOn(target,'getBoundingClientRect').mockReturnValue({left:0,top:100,height:28} as DOMRect);document.elementFromPoint=()=>target;
- pointer(source,'pointerdown',16,150,true);pointer(source,'pointermove',32,101);expect(destination.classList.contains('tag-drop-target')).toBe(true);expect((destination.querySelector('.tag-drop-line') as HTMLElement).style.left).toBe('32px');await act(async()=>pointer(source,'pointerup',32,101));
+ pointer(source,'pointerdown',16,150,true);pointer(source,'pointermove',48,101);expect(destination.classList.contains('tag-drop-target')).toBe(true);expect((destination.querySelector('.tag-drop-line') as HTMLElement).style.left).toBe('48px');await act(async()=>pointer(source,'pointerup',48,101));
  await waitFor(()=>{expect(h.changed).toHaveBeenCalledOnce();expect(h.container.querySelector('[data-tag-group="g1"] [data-tag-id="Alpha"]')).toBeNull();expect(destination.querySelector('[data-tag-id="Alpha"]')?.getAttribute('data-tag-depth')).toBe('2')});
 });

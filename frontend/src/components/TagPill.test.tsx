@@ -27,3 +27,14 @@ it('allows F2 into the same path editor only when filtering permits rename',asyn
 it('explains the filter gate on label double click without confusing the remove control',async()=>{
  const {TooltipHost}=await import('./TooltipHost');const rename=vi.fn(async()=>{}),remove=vi.fn();render(<><TooltipHost/><TagPill name="Synthetic" editingBlockedByFilter onRename={rename} onRemove={remove} removeLabel="Remove"/></>);fireEvent.doubleClick(screen.getByText('Synthetic'));expect(screen.queryByRole('textbox')).toBeNull();expect(screen.getByRole('tooltip').textContent).toBe('关闭筛选后可编辑或移动标签');fireEvent.keyDown(window,{key:'Escape'});fireEvent.doubleClick(screen.getByRole('button',{name:'Remove'}));expect(screen.queryByRole('tooltip')).toBeNull();expect(rename).not.toHaveBeenCalled();
 });
+
+it('offers the lightweight copy hint on segment labels and an accurate filter gate, never read-only or pending',async()=>{
+ const {TooltipHost}=await import('./TooltipHost'),{SegmentTagDragContext}=await import('../hooks/useSegmentTagDrag'),{TagWritingContext}=await import('../lib/tagCandidates');
+ vi.useFakeTimers();const noop=()=>{},drag={enabled:()=>true,canClick:()=>true,start:noop,move:noop,finish:noop};
+ const content=(filter=false,pending=false,source=true)=><><TooltipHost/><SegmentTagDragContext.Provider value={drag}><TagWritingContext.Provider value={pending}><TagPill name="Synthetic copy" dragSource={source?{segmentId:'s',tagId:'t'}:undefined} editingBlockedByFilter={filter} onRename={async()=>{}} renameEnabled={!filter}/></TagWritingContext.Provider></SegmentTagDragContext.Provider></>;
+ const view=render(content());const label=screen.getByText('Synthetic copy');
+ fireEvent.pointerOver(label);act(()=>vi.advanceTimersByTime(799));expect(screen.queryByRole('tooltip')).toBeNull();act(()=>vi.advanceTimersByTime(1));expect(screen.getByRole('tooltip').className).toContain('--action');expect(screen.getByRole('tooltip').textContent).toMatch(/拖到其他片段，复制标签/);expect(label.closest('.tag-pill')?.hasAttribute('title')).toBe(false);
+ fireEvent.pointerOut(label);act(()=>vi.advanceTimersByTime(160));view.rerender(content(true));fireEvent.pointerOver(screen.getByText('Synthetic copy'));act(()=>vi.advanceTimersByTime(800));expect(screen.getByRole('tooltip').textContent).toBe('关闭筛选后可复制标签到其他片段');
+ fireEvent.pointerOut(screen.getByText('Synthetic copy'));act(()=>vi.advanceTimersByTime(160));view.rerender(content(false,true));expect(view.container.querySelector('.tag-pill')?.hasAttribute('data-action-tip')).toBe(false);
+ view.rerender(content(false,false,false));expect(view.container.querySelector('.tag-pill')?.hasAttribute('data-action-tip')).toBe(false);
+});
