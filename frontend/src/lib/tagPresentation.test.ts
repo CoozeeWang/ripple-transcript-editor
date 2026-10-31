@@ -51,3 +51,13 @@ it('keeps direct and descendant union counts distinct when one segment has sever
  const segments=[{id:'s1',text:'Synthetic',speaker_id:'v',start:0,end:1,tagIds:['a','b']},{id:'s2',text:'Synthetic',speaker_id:'v',start:1,end:2,tagIds:['r','a']}];
  expect(tagSegmentCounts(library,segments).get('r')).toBe(1);expect(tagCoverageCounts(library,segments).get('r')).toBe(2);expect(tagCoverageCounts(library,segments).get('a')).toBe(2);
 });
+
+it('sorts segment chips by the shared default comparator, independent of assignment/catalog/sidebar order',()=>{
+ const names=['工作','Alpha','10','2','求学','!Flag'];
+ const library:TagLibrary={schemaVersion:3,groups:[],tags:names.map((name,i)=>({id:String(i),name,parentId:null,groupIds:[]}))};
+ const segment={id:'s',text:'Synthetic',speaker_id:'v',start:0,end:1,tagIds:['5','4','3','2','1','0']};const before=JSON.stringify(segment);
+ const show=createTagPresenter();const first=show(library,[segment]);expect(first.segments.get('s')!.tags.map(tag=>tag.name)).toEqual(['2','10','Alpha','工作','求学','!Flag']);expect(JSON.stringify(segment)).toBe(before);
+ expect(show({...library,tags:[...library.tags].reverse()},[segment]).segments.get('s')!.tags).toEqual(first.segments.get('s')!.tags);
+ const renamed={...library,tags:library.tags.map(t=>t.name==='Alpha'?{...t,name:'Zulu'}:t)};
+ expect(show(renamed,[segment]).segments.get('s')!.tags.map(tag=>tag.name)).toEqual(['2','10','Zulu','工作','求学','!Flag']);
+});

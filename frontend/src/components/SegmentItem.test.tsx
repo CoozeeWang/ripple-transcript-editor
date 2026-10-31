@@ -147,7 +147,7 @@ it('exports body on modifier drag while preserving ordinary selection drags and 
     audioRef={{current:null}} textareaRefs={{current:new Map()}} editingRef={{current:false}}
     setSelectedSegmentId={noop} seekTo={noop} recordEditorCursor={noop} addSpeaker={noop}
     updateSegment={noop} removeSegment={remove} splitSegment={noop} mergeWithNext={noop}
-    handleEditorKeydown={noop} dragSegment={drag} copySegment={noop}/>);
+    handleEditorKeydown={noop} dragSegment={drag} copySegment={noop} tags={[{id:'topic',name:'Synthetic tag',parentId:null,groupIds:[]}]}/>);
   const article=ui.container.querySelector('article')!;
   const body=ui.getByLabelText('00:00–00:01 的文字');
   const transfer={setData:vi.fn()};
@@ -156,6 +156,7 @@ it('exports body on modifier drag while preserving ordinary selection drags and 
   fireEvent.pointerMove(article);fireEvent.keyDown(window,{key:'Control',ctrlKey:true});expect(article.draggable).toBe(true);
   expect(ui.container.querySelector('.segment-transfer-surface')?.getAttribute('draggable')).toBe('true');
   fireEvent.dragStart(body,{dataTransfer:transfer});expect(drag).toHaveBeenCalledExactlyOnceWith('synthetic',transfer);
+  fireEvent.dragStart(ui.container.querySelector('.tag-pill')!,{dataTransfer:transfer});expect(drag).toHaveBeenCalledTimes(1);
   const deletion=ui.getByRole('button',{name:'删除'});
   fireEvent.click(deletion,{ctrlKey:true});expect(remove).not.toHaveBeenCalled();
   fireEvent.dragStart(deletion,{dataTransfer:transfer});expect(drag).toHaveBeenCalledTimes(1);

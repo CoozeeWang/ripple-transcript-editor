@@ -2020,6 +2020,8 @@
     "mergeConfirm": "Merge tags",
     "collapseAll": "Collapse all",
     "expandAll": "Expand all",
+    "dragSegmentTag": "Hold {{key}} and drag to another segment to copy this tag",
+    "filterCopyNotice": "Turn off filtering to copy tags to other segments",
     "dragLevelTag": "Hold {{key}} to move in the tree or add to a segment",
     "dragGroupTag": "Hold {{key}} to change group, level and order, or add to a segment; {{copyKey}} keeps the source group",
     "dissolve": "Dissolve group",

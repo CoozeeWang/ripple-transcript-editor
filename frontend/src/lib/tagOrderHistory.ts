@@ -21,9 +21,11 @@ export function carryTagOrder(library: TagLibrary, collection: TagCollection, ba
 
 /** Rebase both editor snapshots and exact durable receipts, never the manuscript text. */
 export function tagOrderHistoryRebase(base: TagCollection, view: View, versionId: string,
-    receipts: readonly TagTransactionReceipt[], sorted: TagTransactionReceipt) {
+    receipts: readonly TagTransactionReceipt[], sorted: TagTransactionReceipt, current: Transcript) {
     const catalogs = new Map<string, TagLibrary>();
     const snapshots = new Map<string, { fields: TagFields; revision?: string }>();
+    // A no-op sort has no file patch, but this exact current revision must survive later redo.
+    snapshots.set(key(tagFields(current)), { fields: tagFields(current), revision: current.tagStorageRevision });
     const fields = (previous: TagFields, library: TagLibrary): TagFields => previous.collection
         ? { ...previous, collection: carryTagOrder(library, previous.collection, base, view) } : previous;
     // A tag operation creates a collection snapshot; intervening body edits share its catalog epoch.

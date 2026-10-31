@@ -20,6 +20,7 @@ import { assertEditorReadyForAI } from './lib/editorDrafts';
 import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
 import {useProjectTags} from './hooks/useProjectTags';
+import {useSegmentTagDrag,SegmentTagDragContext} from './hooks/useSegmentTagDrag';
 import {TagsPanel} from './components/TagsPanel';
 import {hierarchyLibrary,hierarchyTagFilter,emptyTagLibrary,filteredTagSegments,matchesTagFilter,tagHistoryAnchor,descendantTagIds,type TagLibrary} from './lib/tags';
 import { createTagPresenter, tagSegmentCounts,tagCoverageCounts } from './lib/tagPresentation';
@@ -768,13 +769,18 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const tagCoverage = useMemo(()=>tagCoverageCounts(tags.library,transcript?.segments??[]),[tags.library,transcript?.segments]);
   const currentTagCoverage=useCallback((id:string)=>tagCoverage.get(id)??0,[tagCoverage]);
   const currentTagCount = useCallback((id: string) => tagCounts.get(id) ?? 0, [tagCounts]);
+  const [tagDropSegment,setTagDropSegment]=useState<string|null>(null);
   useLayoutEffect(() => { tagLibrarySaving.current = tags.busy; }, [tags.busy]);
   const dropTagToSegment = async (tagId:string,segmentId:string) => {
-    if(protectedReadOnly || tagUpgradeRequired || tags.busy || !tags.library.tags.some(tag=>tag.id===tagId)) return;
+    if(protectedReadOnly || tagUpgradeRequired || tagFilterEnabled || tags.busy || editLockedRef.current() || !tags.library.tags.some(tag=>tag.id===tagId)) return;
     flushEditorDrafts();
     if(!latestExport.current.transcript?.segments.some(segment=>segment.id===segmentId && !segment.tagIds?.includes(tagId)))return;
     await tags.attach(segmentId,tagId);
   };
+  const segmentTagDrag=useSegmentTagDrag({context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,enabled:!!projectProps.tagStorage&&!protectedReadOnly&&!tagUpgradeRequired&&!tagFilterEnabled&&!tags.busy,
+    canStart:(source,id)=>!!segmentTagView.segments.get(source)?.tags.some(tag=>tag.id===id),
+    canDrop:(source,target,id)=>!!segmentTagView.segments.get(source)?.tags.some(tag=>tag.id===id)&&!!segmentTagView.segments.has(target)&&!segmentTagView.segments.get(target)!.tags.some(tag=>tag.id===id),
+    onTarget:setTagDropSegment,onDrop:dropTagToSegment,onError:error=>setLoadError(tagErrorMessage(error))});
   const priorTagContentAnchor=useRef<string|null>(null);
   useLayoutEffect(()=>{const next=tagHistoryAnchor(transcript);if(tagContentEditPending.current&&priorTagContentAnchor.current!==next)queueMicrotask(tags.discardRedo);tagContentEditPending.current=false;priorTagContentAnchor.current=next},[transcript,tags.discardRedo]);
   const guardedRenameVersion: typeof renameVersion = (...args) => {
@@ -966,7 +972,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     catch (error) { transfer.effectAllowed='none'; failTransfer(msg('segmentTransfer.dragFailed'),error); }
   };
 
-  const [tagDropSegment,setTagDropSegment]=useState<string|null>(null);
   const tagEntries = useRef(new Map<string, () => void>());
   const registerTagEntry = useCallback((id: string, open: (() => void) | null) => { if (open) tagEntries.current.set(id,open); else tagEntries.current.delete(id); }, []);
   const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tagUpgradeRequired && !tags.busy && projectProps.tagStorage) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tagUpgradeRequired,tags.busy,projectProps.tagStorage]);
@@ -1444,7 +1449,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                     {msg('App.m0048')}</button>
                   {!selectedAudio && <p className="empty-transcript__hint">{msg('App.m0049')}</p>}
             </section>
-          )) : <div className="segment-list"><TagWritingContext.Provider value={tags.busy}><TagCandidatesContext.Provider value={segmentTagView.available}>
+          )) : <div className="segment-list"><SegmentTagDragContext.Provider value={segmentTagDrag}><TagWritingContext.Provider value={tags.busy}><TagCandidatesContext.Provider value={segmentTagView.available}>
             {renderedRows.map(({segment,deleted,before}) => deleted ? (
               <article className="comparison-deleted-segment" key={`deleted:${segment.id}`}>
                 <span>{transcript.timeAligned === false ? msg('App.m0050') : msg('App.m0051', { v0: formatTime(segment.start) })}</span><del>{segment.text}</del>
@@ -1491,7 +1496,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 editingRef={editingRef}
               />
             ))}
-          </TagCandidatesContext.Provider></TagWritingContext.Provider></div>}
+          </TagCandidatesContext.Provider></TagWritingContext.Provider></SegmentTagDragContext.Provider></div>}
         </section>
         </main>
 

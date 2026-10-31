@@ -1,5 +1,5 @@
 import type { Segment } from '../types';
-import { segmentTagIds, tagAncestors, tagPath, type ProjectTag, type TagLibrary } from './tags';
+import { compareTagNames, segmentTagIds, tagAncestors, tagPath, type ProjectTag, type TagLibrary } from './tags';
 
 export interface SegmentTagPresentation { tags: ProjectTag[]; paths: Record<string, string> }
 export interface TagPresentation {
@@ -27,8 +27,9 @@ export function presentSegmentTags(library: TagLibrary, segments: readonly Segme
             : { id: tag.id, name: tag.name, parentId: tag.parentId, groupIds: [] };
     });
     const available = equalItems(previous?.available, next) ? previous!.available : next;
-    const byId = new Map(available.map((tag, index) => [tag.id, { tag, index }]));
     const paths = new Map(available.map(tag => [tag.id, tagPath(library, tag.id)]));
+    const ordered = [...available].sort((a,b)=>compareTagNames(a.name,b.name)||compareTagNames(paths.get(a.id)!,paths.get(b.id)!)||a.id.localeCompare(b.id));
+    const byId = new Map(ordered.map((tag,index)=>[tag.id,{tag,index}]));
     const rows = new Map<string, SegmentTagPresentation>();
     for (const segment of segments) {
         const tags = segmentTagIds(segment).flatMap(id => byId.has(id) ? [byId.get(id)!] : [])

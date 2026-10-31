@@ -2020,6 +2020,8 @@
     "mergeConfirm": "合并标签",
     "collapseAll": "全部收起",
     "expandAll": "全部展开",
+    "dragSegmentTag": "按住 {{key}} 拖到其他片段复制标签",
+    "filterCopyNotice": "关闭筛选后可复制标签到其他片段",
     "dragLevelTag": "按住 {{key}} 调整位置或添加到片段",
     "dragGroupTag": "按住 {{key}} 调整分组、层级和顺序，或添加到片段；{{copyKey}} 保留来源组",
     "dissolve": "解散该组",

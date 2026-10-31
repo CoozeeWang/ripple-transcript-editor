@@ -57,5 +57,6 @@
 
 /* Fold affordances reserve one stable column for both parents and leaves. */
 .tag-fold-slot{display:inline-grid;place-items:center;flex:0 0 14px;width:14px;height:24px}.tag-fold-toggle{display:grid;place-items:center;width:14px;height:24px;padding:0;border:0;background:none;color:var(--color-text-3)}.tag-fold-toggle svg{width:11px;height:11px;flex:none}.tag-fold-toggle:focus-visible{outline:1px solid var(--color-focus);outline-offset:1px;border-radius:var(--radius-sm)}
+.segment-tag-items .tag-pill{touch-action:none}.segment-tag-items .tag-pill.is-tag-drag-ready{cursor:grab}
 
 .tag-name-tools{display:flex;align-items:center;gap:4px;min-width:0}.tag-name-tools button{margin-right:0}

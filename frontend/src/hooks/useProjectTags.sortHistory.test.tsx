@@ -21,7 +21,7 @@ async function fixture() {
     const data: RippleProject = { kind:'ripple-project',schemaVersion:1,id:'synthetic-sort',title:'Synthetic',description:'',revision:0,
         tagLibrary:{schemaVersion:3,groups:[],tags:[{id:'root',name:'Root',parentId:null,groupIds:[]},{id:'beta',name:'Beta',parentId:'root',groupIds:[]},{id:'alpha',name:'Alpha',parentId:'root',groupIds:[]},{id:'other',name:'Other',parentId:null,groupIds:[]}]},
         interviews:[{id:'session',title:'Synthetic',recordings:[{id:'recording',name:'Synthetic',file:'sample.wav',storage:'none',fingerprint:''}]}] };
-    const seed:Transcript={audio:{filename:'sample.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'v',text:'Original synthetic text',start:0,end:1}],
+    const seed:Transcript={audio:{filename:'sample.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'v',text:'Original synthetic text',start:0,end:1},{id:'t',speaker_id:'v',text:'Synthetic target',start:0,end:1}],
         tagCollection:{schemaVersion:1,tagIds:['root','alpha','beta','other'],levelOrder:['root','beta','alpha','other'],groups:[{id:'z',name:'Zulu',tagIds:['beta'],order:['root','beta']},{id:'a',name:'Alpha group',tagIds:['other'],order:['other']}]}};
     fs.files.set('ripple-project.json',JSON.stringify(data));
     fs.files.set(folder+'/manifest.json',JSON.stringify({schemaVersion:2,audio:'sample.wav',activeModelId:'m',models:[{id:'m',engine:'imported',original:'original.json',activeEditId:'e',edits:[{id:'e',file:'e.json'}]}]}));
@@ -90,4 +90,26 @@ it('undoes/redoes pre-sort tag creation without dangling order IDs or losing oth
     const h=await fixture();let created='';await act(async()=>{created=await h.result.current.tags.create('New synthetic tag')});await act(()=>h.result.current.tags.sortByName('level'));
     await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.tags.some(t=>t.id===created)).toBe(false);expect(h.result.current.tags.collection.levelOrder).not.toContain(created);h.consistent();
     await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.tags.some(t=>t.id===created)).toBe(true);expect(h.result.current.tags.collection.levelOrder).toContain(created);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+});
+
+it('keeps the exact present revision through no-op sort and earlier drag undo/redo',async()=>{
+    const h=await fixture();await act(()=>h.result.current.tags.sortByName('level'));
+    await act(()=>h.result.current.tags.reorder('level','beta','alpha',false));await act(()=>h.result.current.tags.reorder('level','alpha','beta',false));
+    const sorted=h.result.current.tags.collection.levelOrder;await act(()=>h.result.current.tags.sortByName('level'));h.consistent();
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.collection.levelOrder).toEqual(sorted);h.consistent();
+    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.collection.levelOrder).toEqual(sorted);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+});
+
+it('the shared attach transaction copies only the target, deduplicates, and persists undo/redo without source changes',async()=>{
+    const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));
+    await act(()=>h.result.current.tags.attach('t','alpha'));expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([['alpha'],['alpha']]);h.consistent();
+    const revision=h.result.current.project.data.revision;await act(()=>h.result.current.tags.attach('t','alpha'));expect(h.result.current.project.data.revision).toBe(revision);
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([['alpha'],undefined]);h.consistent();
+    await act(()=>h.result.current.tags.redo());expect(h.read().segments).toEqual([['s',['alpha']],['t',['alpha']]]);h.consistent();
+});
+
+it('a failed shared attach leaves source and target associations intact with history still usable',async()=>{
+    const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));const before=new Map(h.files);h.fail();
+    await act(async()=>{await expect(h.result.current.tags.attach('t','alpha')).rejects.toThrow('synthetic sort failure')});expect(h.files).toEqual(before);expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([['alpha'],undefined]);h.consistent();
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([undefined,undefined]);h.consistent();
 });

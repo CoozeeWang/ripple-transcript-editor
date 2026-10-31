@@ -108,7 +108,7 @@ export function useProjectTags(o: Options) {
             const key='tag-transaction:'+crypto.randomUUID();
             const previous = historyEntries.current;
             const rebase = orderView && tagOrderHistoryRebase(result.transcript.tagCollection!, orderView,
-                `${current.recordingId}:${current.modelId}:${current.editId}`, [...previous.past, ...[...previous.future].reverse()].map(entry => entry.receipt), result.receipt);
+                `${current.recordingId}:${current.modelId}:${current.editId}`, [...previous.past, ...[...previous.future].reverse()].map(entry => entry.receipt), result.receipt, result.transcript);
             const publish = () => {
                 latest.current.publish(result.transcript, undoable?'commit':'rebase', key, rebase ? rebase.snapshot : undefined);
                 if(undoable) {
