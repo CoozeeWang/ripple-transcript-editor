@@ -28,6 +28,7 @@ interface Props {
     countVersionId?:string;loadProjectCounts?:(currentId?:string)=>Promise<import('../lib/tagCountCache').TagCountTotals>;projectRevision?:number;
     onPlaceGroupTag?:(placement:GroupTagPlacement)=>Promise<void>;
     versionKey?: string; collection?: TagCollection;
+    onSortName?: (view: 'level' | 'groups') => Promise<void>;
     onReorder?: (view: TagOrderView, id: string, anchor: string | null, after: boolean, groupId?: string) => Promise<void>;
     loadError?: string; library: TagLibrary; currentTagIds: readonly string[];
     onChange: (library: TagLibrary) => Promise<void>;
@@ -46,11 +47,10 @@ type Modal = { type: 'group'; id: string } | { type: 'dissolve'; id: string } | 
 type Target = {kind:'group-tree';groupId:string;parentId:string|null;siblingId:string|null;anchorId:string|null;after:boolean;depth:number} | { kind: 'group'; id: string } | { kind: 'tree'; parentId: string | null; anchorId: string | null; siblingId?: string | null; after?: boolean; depth: number } | { kind: 'tag-order'; view: TagOrderView; groupId?: string; anchorId: string; after: boolean; depth: number } | { kind: 'segment'; id: string } | { kind: 'order'; id: string | null; after: boolean };
 interface Gesture { kind: 'tag' | 'group'; id: string; source: string | null; copy: boolean; level: boolean; pointer: number; x: number; y: number; lastX: number; lastY: number; active: boolean; target: Target | null }
 
-type Sort = 'manual' | 'ascending' | 'descending';
 export function TagsPanel(p: Props) {
     useInterfaceLanguage();
     const [view, setView] = useState<'level' | 'groups'>('level'), [scope, setScope] = useState<'current' | 'project'>('current');
-    const [query, setQuery] = useState(''), [sorts, setSorts] = useState<{key?:string;level?:Sort;groups?:Sort}>({});
+    const [query, setQuery] = useState('');
     const [foldedGroups, setFoldedGroups] = useState(new Set<string>()), [foldedTags, setFoldedTags] = useState(new Set<string>());
     const [modal, setModal] = useState<Modal | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
     const [drag, setDrag] = useState<Gesture | null>(null), [modifier, setModifier] = useState(false);
@@ -59,11 +59,7 @@ export function TagsPanel(p: Props) {
     const clicks = useRef(new Map<string, ReturnType<typeof setTimeout>>()), description = useId();
     const latest = useRef(p); useLayoutEffect(() => { latest.current = p; });
     const locked = p.readOnly || !!p.loadError, dragEnabled = !locked && !busy && !p.saving && !p.filterEnabled;
-    const hasOrder = view === 'level' ? !!p.collection?.levelOrder?.length : !!p.collection?.ungroupedOrder?.length || !!p.collection?.groups.some(group => group.order?.length);
-    const sort: Sort = (sorts.key === p.versionKey ? sorts[view] : undefined) ?? (hasOrder ? 'manual' : 'ascending');
-    const setSort = (next:Sort) => setSorts(old => ({...(old.key===p.versionKey?old:{}),key:p.versionKey,[view]:next}));
-    const direction:1|-1 = sort==='descending'?-1:1;
-    const admitted = new Set(p.currentTagIds), allRows = useMemo(() => tagTreeRows(p.library, undefined, sort==='manual'?'manual':'name', direction,()=>0,p.collection?.levelOrder), [p.library, direction, sort, p.collection?.levelOrder]);
+    const admitted = new Set(p.currentTagIds), allRows = useMemo(() => tagTreeRows(p.library, undefined, 'manual', 1,()=>0,p.collection?.levelOrder), [p.library, p.collection?.levelOrder]);
     const tree = useMemo(() => new Map(p.library.tags.map(tag => [tag.id, {
         ancestors: tagAncestors(p.library, tag.id), descendants: descendantTagIds(p.library, tag.id),
     }])), [p.library]);
@@ -220,7 +216,7 @@ export function TagsPanel(p: Props) {
             : target.kind === 'tag-order' ? p.onReorder?.(target.view,g.id,target.anchorId,target.after,target.groupId)
             : target.kind === 'group' ? save(transferTagGroup(p.library, g.id, g.source === 'ungrouped' ? null : g.source, target.id, g.copy))
             : save(moveTagGroup(p.library, g.id, target.id, target.after ? 'after' : 'before'));
-        void operation?.then(()=>{if(target.kind==='tree'||target.kind==='tag-order'||target.kind==='group-tree')setSort('manual')}).catch(error => setError(tagErrorMessage(error)));
+        void operation?.catch(error => setError(tagErrorMessage(error)));
     }
     function row(tag: ProjectTag, members?: ReadonlySet<string>, group?: string, guide?: TagGuide, insertionId?:string|null) {
         const depth = tree.get(tag.id)!.ancestors.length, descendants = tree.get(tag.id)!.descendants, key = tagKey(tag.id, group);
@@ -232,20 +228,20 @@ export function TagsPanel(p: Props) {
         const canBegin = (time: number) => time >= suppress.current && !gesture.current;
         const hint = msg(group ? 'tags.dragGroupTag' : 'tags.dragLevelTag', { key: IS_MAC ? '⌘' : 'Ctrl', copyKey:IS_MAC?'⌘⇧':'Ctrl+Shift' });
         const target=drag?.target, insert=target?.kind==='tree'||target?.kind==='tag-order'||target?.kind==='group-tree'?target:null;
-        const line=insert&&insertionId===tag.id&&(!('groupId'in insert)||insert.groupId===(group==='ungrouped'?undefined:group))?<div className="tag-drop-line" style={{marginLeft:insert.depth*16}}/>:null;
+        const line=insert&&insertionId===tag.id&&(!('groupId'in insert)||insert.groupId===(group==='ungrouped'?undefined:group))?<div className="tag-drop-line" data-edge={insert.after?'after':'before'} style={{left:insert.depth*16}}/>:null;
         return <div key={tag.id} className={'tag-tree-entry' + (selected || inherited ? ' is-inherited-region' : '')}>
             {line&&!insert?.after&&line}
             <div className={'library-tag-row' + (!showCount ? ' library-tag-row--no-count' : '')} data-tag-id={tag.id} data-tag-depth={depth} style={{ paddingLeft: depth * 16 }}>
                 <TagTreeGuides guide={guide}/>
                 <InlineTagName row name={tag.name} enabled={!p.filterEnabled && !locked} onRename={p.onRenameTag ? name => p.onRenameTag!(tag.id, name) : undefined} canBegin={canBegin} onEditingChange={() => cancelClick(key)}>
-                    <span className="tag-row-main"><TagLibraryPill name={tag.name} selected={selected} inherited={inherited} filterEnabled={p.filterEnabled} locked={locked} parent={parent}
+                    <span className="tag-row-main"><span className="tag-fold-slot">{parent&&<FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterFoldNotice')}><button type="button" className="tag-fold-toggle" disabled={p.filterEnabled} aria-label={msg(p.filterEnabled||!!query.trim()||!foldedTags.has(key)?'tags.collapseTag':'tags.expandTag',{name:tag.name})} aria-expanded={p.filterEnabled||!!query.trim()||!foldedTags.has(key)} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();if(!p.filterEnabled&&canBegin(event.timeStamp))toggleTag(tag.id,group)}}><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={p.filterEnabled||!!query.trim()||!foldedTags.has(key)?'m2 4 4 4 4-4':'m4 2 4 4-4 4'}/></svg></button></FilterActionHint>}</span><TagLibraryPill name={tag.name} selected={selected} inherited={inherited} filterEnabled={p.filterEnabled} locked={locked} parent={parent}
                         onToggle={() => toggleTag(tag.id, group)} onSelect={() => p.onFilter(tag.id)} canBegin={canBegin} hint={hint} dragEnabled={dragEnabled} modifier={modifier}
                         buttonProps={{ onKeyDown:event=>{
                             if(locked||p.filterEnabled||!event.altKey||!['ArrowUp','ArrowDown'].includes(event.key)||!p.onReorder||!p.collection)return;
                             event.preventDefault();const view:TagOrderView=group?(group==='ungrouped'?'ungrouped':'group'):'level';
                             const siblings=tagTreeRows(p.library,members,'manual',1,()=>0,savedTagOrder(p.collection,view,group)).map(row=>row.tag).filter(item=>(item.parentId??null)===(tag.parentId??null));
                             const index=siblings.findIndex(item=>item.id===tag.id),anchor=siblings[index+(event.key==='ArrowUp'?-1:1)];
-                            if(anchor)void p.onReorder(view,tag.id,anchor.id,event.key==='ArrowDown',group==='ungrouped'?undefined:group).then(()=>setSort('manual')).catch(error=>setError(tagErrorMessage(error)));
+                            if(anchor)void p.onReorder(view,tag.id,anchor.id,event.key==='ArrowDown',group==='ungrouped'?undefined:group).catch(error=>setError(tagErrorMessage(error)));
                         },onPointerDown: event => start(event, 'tag', tag.id, group ?? null), onPointerMove: move, onPointerUp: event => finish(event), onPointerCancel: event => finish(event, false) }}
                         onRemove={group && group !== 'ungrouped' ? () => void save({ ...p.library, tags: p.library.tags.map(item => item.id === tag.id ? { ...item, groupIds: item.groupIds.filter(id => id !== group) } : item) }).catch(() => {}) : undefined}/></span>
                     {showCount && <span className="tag-count" data-action-tip={countHint} aria-label={countHint}>{count===undefined?'—':descendants.length>1?`${count}/${coverage??0}`:count}</span>}
@@ -258,7 +254,7 @@ export function TagsPanel(p: Props) {
         </div>;
     }
     function rowsFor(members?: ReadonlySet<string>, group?: string) {
-        let rows = (group&&p.collection?tagTreeRows(p.library,members,sort==='manual'?'manual':'name',direction,()=>0,savedTagOrder(p.collection,group==='ungrouped'?'ungrouped':'group',group==='ungrouped'?undefined:group)):allRows).filter(({ tag }) => !members || members.has(tag.id));
+        let rows = (group&&p.collection?tagTreeRows(p.library,members,'manual',1,()=>0,savedTagOrder(p.collection,group==='ungrouped'?'ungrouped':'group',group==='ungrouped'?undefined:group)):allRows).filter(({ tag }) => !members || members.has(tag.id));
         rows = rows.filter(({ tag }) => matches ? matches.has(tag.id) : p.filterEnabled || !tree.get(tag.id)!.ancestors.some(ancestor => (!members || members.has(ancestor.id)) && foldedTags.has(tagKey(ancestor.id, group))));
         const guides = tagTreeGuides(p.library, rows.map(row => row.tag.id), members);
         const target=drag?.target,insert=target?.kind==='tree'||target?.kind==='tag-order'||target?.kind==='group-tree'?target:null;
@@ -285,8 +281,8 @@ export function TagsPanel(p: Props) {
                     </span>
                 </InlineTagName>
             </div>
-            {!open&&target?.kind==='group-tree'&&target.groupId===group.id&&<div className="tag-drop-line" style={{marginLeft:target.depth*16}}/>}
-            {open && <div className="group-tags">{rows}{drag?.kind==='tag'&&p.onPlaceGroupTag&&<div className="group-tag-root-drop">{target?.kind==='group-tree'&&target.groupId===group.id&&target.anchorId===null&&<div className="tag-drop-line" style={{marginLeft:target.depth*16}}/>}</div>}</div>}
+            {!open&&target?.kind==='group-tree'&&target.groupId===group.id&&<div className="tag-drop-line" data-edge="after" style={{left:target.depth*16}}/>}
+            {open && <div className="group-tags">{rows}{drag?.kind==='tag'&&p.onPlaceGroupTag&&<div className="group-tag-root-drop">{target?.kind==='group-tree'&&target.groupId===group.id&&target.anchorId===null&&<div className="tag-drop-line" data-edge="after" style={{left:target.depth*16}}/>}</div>}</div>}
         </section>;
     }
     const modalGroup = modal && modal.type !== 'delete' ? groups.find(group => group.id === modal.id) : undefined;
@@ -314,9 +310,9 @@ export function TagsPanel(p: Props) {
             </div>
             {view === 'level' && <TagScope value={scope} onChange={setScope}/>}
         </div>
-        <div className={'tag-list-head'+(!showCount?' tag-list-head--no-count':'')}><button aria-label={msg('tags.sortName')} data-tip={msg(sort==='manual'?'tags.sortManual':sort==='ascending'?'tags.sortAscending':'tags.sortDescending')} aria-sort={sort==='manual'?'other':sort} onClick={()=>setSort(sort==='ascending'?'descending':sort==='descending'?'manual':'ascending')}>{msg(sort==='manual'?'tags.manualOrder':'tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d={sort==='manual'?'M3 4h10M3 8h7M3 12h4':sort==='ascending'?'M8 13V3M4 7l4-4 4 4':'M8 3v10m-4-4 4 4 4-4'}/></svg></button>{showCount&&<span className="tag-count-heading">{msg('tags.count')}</span>}<span/></div>
+        <div className={'tag-list-head'+(!showCount?' tag-list-head--no-count':'')}><FilterActionHint blocked={p.filterEnabled} hint={msg('tags.filterSortNotice')}><button aria-label={msg('tags.sortName')} data-action-tip={p.filterEnabled?undefined:msg('tags.sortNameHint')} disabled={locked||p.filterEnabled||!p.onSortName} onClick={async()=>{setBusy(true);setError('');try{await p.onSortName?.(view)}catch(error){setError(tagErrorMessage(error))}finally{setBusy(false)}}}>{msg('tags.name')}<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button></FilterActionHint>{showCount&&<span className="tag-count-heading">{msg('tags.count')}</span>}<span/></div>
         {projectCountActive&&countError&&<p role="alert" className="tag-error">{msg('tags.countFailed')} <button type="button" onClick={()=>retryCounts(value=>value+1)}>{msg('tags.retry')}</button></p>}
-        <div ref={list} className={'library-list' + (view === 'level' ? ' library-list-all' : '')} style={{'--tag-row-min-width':`${maxDepth*16+180}px`} as React.CSSProperties}>
+        <div ref={list} className={'library-list' + (view === 'level' ? ' library-list-all' : '')} style={{'--tag-row-min-width':`${maxDepth*16+194}px`} as React.CSSProperties}>
             {view === 'level' ? <>{levelRows.length?levelRows:<p className="annotation-empty tag-library-empty">{msg(query.trim()?'tags.noSearchResults':scope==='current'?'tags.noAdmitted':'tags.noTags')}</p>}{drag?.level && <div className={'tag-tree-root-drop' + (drag.target?.kind === 'tree' && drag.target.anchorId === null ? ' is-drop-target' : '')}/>}</>
                 : <>{groups.map(groupNode)}{ungrouped.size > 0 && <section className="tag-ungrouped"><div className="ungrouped-divider"><span>{msg('tags.ungrouped')}</span></div>{(p.filterEnabled || !!query.trim() || !foldedGroups.has('ungrouped')) && <div className="group-tags">{rowsFor(ungrouped, 'ungrouped')}</div>}</section>}{drag?.kind === 'group' && <div className={'root-drop' + (drag.target?.kind === 'order' && drag.target.id === null ? ' is-drop-target' : '')}/>}</>}
         </div>

@@ -3,7 +3,7 @@ import type { Transcript } from '../types';
 import {msg} from '../i18n';
 import {beginTagProbe} from '../lib/tagPerformance';
 import {placeGroupTag,type GroupTagPlacement} from '../lib/tagPlacement';
-import {dragSiblingOrder,type TagOrderView} from '../lib/tagOrdering';
+import {dragSiblingOrder,sortVersionTagsByName,type TagOrderView} from '../lib/tagOrdering';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
 import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
@@ -31,7 +31,7 @@ interface Options {
     context: string;
     transcript: Transcript | null;
     flush: () => Promise<void>;
-    publish: (transcript: Transcript, action: 'commit' | 'undo' | 'redo', historyKey?: string) => void;
+    publish: (transcript: Transcript, action: 'commit' | 'undo' | 'redo' | 'checkpoint', historyKey?: string) => void;
     undoActionKey: string | null;
     redoActionKey: string | null;
     lock: (busy: boolean) => void;
@@ -76,7 +76,7 @@ export function useProjectTags(o: Options) {
         const prompt: MergePrompt = { request, finish: accepted => { mergeRef.current = null; setMergePrompt(null); resolve(accepted); } };
         mergeRef.current = prompt; setMergePrompt(prompt);
     });
-    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope: TagTransactionScope = 'project') => {
+    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope: TagTransactionScope = 'project', undoable=true) => {
         let current = latest.current;
         if (current.readOnly || pending.current || !current.storage) throw Error('tag_write_unavailable');
         const context = current.context;
@@ -100,11 +100,11 @@ export function useProjectTags(o: Options) {
                 result = await current.storage.transact(version, (library, consumers, id) => operation(true, library, consumers, id), scope);
             }
             if (!mounted.current || latest.current.context !== context) throw Error('tag_context_changed_after_save');
-            if(result.changed===false)return result;
+            if(result.changed===false&&undoable)return result;
             const key='tag-transaction:'+crypto.randomUUID();
             const publish = () => {
-                latest.current.publish(result.transcript, 'commit',key);
-                setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));
+                latest.current.publish(result.transcript, undoable?'commit':'checkpoint',key);
+                if(undoable)setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));else setPast([]);
                 setFuture([]); setBusy(false);
             };
             if(current.storage.publish)current.storage.publish(result.project,publish);else publish();
@@ -179,6 +179,10 @@ export function useProjectTags(o: Options) {
         await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
             {...consumer,transcript:{...consumer.transcript,tagCollection:dragSiblingOrder(library,consumer.transcript.tagCollection!,view,id,anchor,after,groupId)}}:consumer)}),'current');
     },[run]);
+    const sortByName=useCallback(async(view:'level'|'groups')=>{
+        await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
+            {...consumer,transcript:{...consumer.transcript,tagCollection:sortVersionTagsByName(library,consumer.transcript.tagCollection!,view)}}:consumer)}),'current',false);
+    },[run]);
     const placeInGroup=useCallback(async(placement:GroupTagPlacement)=>{
         const source=latest.current.library?.tags.find(tag=>tag.id===placement.tagId);
         await run((merge,library,consumers,currentId)=>placeGroupTag(library,consumers,currentId,placement,merge),(source?.parentId??null)===placement.parentId?'current':'project');
@@ -206,6 +210,6 @@ export function useProjectTags(o: Options) {
         } catch (error) { current.onError(tagErrorMessage(error)); }
         finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     };
-    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent,reorder,placeInGroup, attach, canUndo, canRedo, acceptTransaction,
+    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent,reorder,sortByName,placeInGroup, attach, canUndo, canRedo, acceptTransaction,
         undo: () => history(false), redo: () => history(true), discardRedo, mergePrompt };
 }

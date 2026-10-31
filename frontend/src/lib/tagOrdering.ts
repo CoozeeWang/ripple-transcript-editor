@@ -1,4 +1,4 @@
-import {tagTreeRows,tagParentId,type TagLibrary} from './tags';
+import {tagTreeRows,tagParentId,compareTagNames,type TagLibrary} from './tags';
 import {withAncestors,type TagCollection} from './tagCollections';
 export type TagOrderView='level'|'group'|'ungrouped';
 export function orderMembers(library:TagLibrary,collection:TagCollection,view:TagOrderView,groupId?:string):string[]{
@@ -34,5 +34,14 @@ export function cleanTagOrders(library:TagLibrary,collection:TagCollection):TagC
     const next={...collection,...(collection.levelOrder?{levelOrder:collection.levelOrder.filter(id=>valid.has(id))}:{}),
         ...(collection.ungroupedOrder?{ungroupedOrder:collection.ungroupedOrder.filter(id=>valid.has(id)&&ungrouped.has(id))}:{}),
         groups:collection.groups.map(g=>{const display=new Set(withAncestors(library,g.tagIds.filter(id=>valid.has(id))));return g.order?{...g,order:g.order.filter(id=>display.has(id))}:g})};
+    return JSON.stringify(next)===JSON.stringify(collection)?collection:next;
+}
+
+/** One stored order per view: name sort replaces priorities, never keeps a second mode. */
+export function sortVersionTagsByName(library:TagLibrary,collection:TagCollection,view:'level'|'groups'):TagCollection{
+    const order=(members?:ReadonlySet<string>)=>tagTreeRows(library,members,'name').map(row=>row.tag.id);
+    const next=view==='level'?{...collection,levelOrder:order()}:{...collection,
+        groups:[...collection.groups].sort((a,b)=>compareTagNames(a.name,b.name)||a.id.localeCompare(b.id)).map(group=>({...group,order:order(new Set(withAncestors(library,group.tagIds)))})),
+        ungroupedOrder:order(new Set(orderMembers(library,collection,'ungrouped')))};
     return JSON.stringify(next)===JSON.stringify(collection)?collection:next;
 }

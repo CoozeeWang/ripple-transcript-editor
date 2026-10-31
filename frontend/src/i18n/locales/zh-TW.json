@@ -2051,12 +2051,12 @@
     "filterRemoveNotice": "關閉篩選後可移除目前稿件標籤分支",
     "filterMembershipNotice": "關閉篩選後可從此群組移除標籤",
     "undoConflict": "其他標籤操作已更新專案，無法復原這一步。",
-    "manualOrder": "手動順序",
-    "sortManual": "手動順序",
-    "sortAscending": "名稱：升冪",
-    "sortDescending": "名稱：降冪",
     "projectCount": "專案 {{count}} 個片段",
     "currentCountCoverage": "目前稿件：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段",
-    "projectCountCoverage": "專案：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段"
+    "projectCountCoverage": "專案：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段",
+    "sortNameHint": "依名稱排序；排序後建立新的復原起點",
+    "filterSortNotice": "關閉篩選後可排序標籤",
+    "expandTag": "展開標籤：{{name}}",
+    "collapseTag": "收合標籤：{{name}}"
   }
 }

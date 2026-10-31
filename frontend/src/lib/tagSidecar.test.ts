@@ -5,6 +5,7 @@ import {openProject,recordingDirectory,type RippleProject} from './projectStore'
 import {readModelEdit,saveActiveEdit,defaultMetadata,createEdit} from '../localStore';
 import {transactProjectTags,restoreProjectTagTransaction,readProjectTagCounts} from './projectTagRepository';
 import {setSegmentTag} from './tags';
+import {sortVersionTagsByName} from './tagOrdering';
 import {placeGroupTag} from './tagPlacement';
 import {applyTagBatch,tagBatchScope} from './tagBatch';
 import {changeSharedTag} from './tagCollections';
@@ -135,4 +136,13 @@ it('rolls back all compound placement effects if the final index write fails',as
  const parent=ready.project.data.tagLibrary!.tags.find(tag=>tag.name==='新根')!.id,group=ready.transcript.tagCollection!.groups[1].id,before=new Map(f.files);fail=true;
  await expect(transactProjectTags(ready.project,{...f.current,transcript:ready.transcript},(lib,rows,id)=>placeGroupTag(lib,rows,id,{tagId:'leaf',sourceGroupId:'group',groupId:group,parentId:parent,anchorId:null,after:true,copy:false}))).rejects.toThrow('synthetic compound disk failure');
  for(const[path,raw]of before)expect(f.files.get(path)).toBe(raw);expect((await openProject(f.root)).data.revision).toBe(ready.project.data.revision);
+});
+
+it('persists one replacement name order in only current metadata and reloads it without rewriting bodies or other versions',async()=>{
+ const f=fixture(),project=await migrateProjectTagStorage(f.project,f.backup.root),directory=await recordingDirectory(project,'session',project.data.interviews[0].recordings[0]),document=(await readModelEdit(directory,'sample.wav','m1','e1'))!;
+ const before=new Map(f.files),get=f.files.get.bind(f.files),bodyPaths=[...f.files.keys()].filter(p=>p.endsWith('/e1.json')||p.endsWith('/e2.json')||p.endsWith('/original.json')||p.endsWith('/recoverable-orphan.json'));
+ f.files.get=path=>{if(bodyPaths.includes(path))throw Error('body read forbidden');return get(path)};
+ const result=await transactProjectTags(project,{recordingId:'recording',modelId:'m1',editId:'e1',transcript:document.transcript},(library,consumers,id)=>({library,consumers:consumers.map(c=>c.id===id?{...c,transcript:{...c.transcript,tagCollection:sortVersionTagsByName(library,c.transcript.tagCollection!,'groups')}}:c)}),'current');
+ for(const path of bodyPaths)expect(get(path)).toBe(before.get(path));expect(get(f.folder+'/'+await sidecarName('e2.json'))).toBe(before.get(f.folder+'/'+await sidecarName('e2.json')));f.files.get=get;
+ const reopened=await openProject(f.root),dir=await recordingDirectory(reopened,'session',reopened.data.interviews[0].recordings[0]),loaded=(await readModelEdit(dir,'sample.wav','m1','e1'))!;expect(loaded.transcript.tagCollection).toEqual(result.transcript.tagCollection);expect(loaded.transcript.tagCollection!.groups[0].order).toEqual(['root','leaf']);expect(loaded.transcript.segments).toEqual(document.transcript.segments);
 });

@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {setTagPath,tagTreeRows,type TagLibrary} from './tags';
-import {dragSiblingOrder,reorderVersionTags,savedTagOrder,cleanTagOrders} from './tagOrdering';
+import {dragSiblingOrder,reorderVersionTags,savedTagOrder,cleanTagOrders,sortVersionTagsByName} from './tagOrdering';
 import {applyTagBatch} from './tagBatch';
 import {type TagCollection,validateTagCollection} from './tagCollections';
 import type {Transcript} from '../types';
@@ -9,3 +9,14 @@ it('keeps sibling order independent by view, group and saved version; name sort 
 it('requires exactly all actual same-parent siblings and does not reparent or admit',()=>{const{library,collection,id}=seed();const before=JSON.stringify(library);expect(()=>reorderVersionTags(library,collection,'level',id('Root'),[id('Alpha')])).toThrow('invalid_tag_order');expect(()=>dragSiblingOrder(library,collection,'group',id('Alpha'),id('Other'),false,'g1')).toThrow('invalid_tag_order');const next=dragSiblingOrder(library,collection,'level',id('Beta'),id('Alpha'),false);expect(next.tagIds).toBe(collection.tagIds);expect(JSON.stringify(library)).toBe(before);expect(tagTreeRows(library,undefined,'manual',1,()=>0,next.levelOrder).filter(r=>r.depth===1).map(r=>r.tag.name)).toEqual(['Beta','Alpha','Gamma']);});
 it('MCP reorder and UI reorder share exact persistence, and later membership deletion prunes stale order',()=>{const {library,collection,id}=seed();const transcript={segments:[],tagCollection:collection} as unknown as Transcript;const result=applyTagBatch(library,[{id:'v1',label:'Synthetic version',transcript}], 'v1',[{action:'reorder_tags',view:'group',parent_id:id('Root'),group_id:'g1',tag_ids:['Gamma','Beta','Alpha'].map(id)},{action:'set_group_tags',group_id:'g1',tag_ids:[id('Alpha')]}]);expect(result.consumers[0].transcript.tagCollection!.groups[0].order).toEqual([id('Root'),id('Alpha')]);expect(result.consumers[0].transcript.tagCollection!.groups[0].tagIds).toEqual([id('Alpha')]);const bad=()=>applyTagBatch(library,[{id:'v1',label:'Synthetic version',transcript}],'v1',[{action:'reorder_tags',view:'group',group_id:'g1',tag_ids:[]}]);expect(bad).toThrow('invalid_tag_order');expect(transcript.tagCollection).toBe(collection);});
 it('removes dangling display priorities without changing memberships and preserves references on a no-op',()=>{const{library,collection,id}=seed();expect(cleanTagOrders(library,collection)).toBe(collection);const next=cleanTagOrders(library,{...collection,levelOrder:[id('Alpha'),'deleted'],ungroupedOrder:[id('Alpha'),id('Other')],groups:collection.groups.map(g=>({...g,order:[id('Alpha'),'deleted']}))});expect(next.levelOrder).toEqual([id('Alpha')]);expect(next.ungroupedOrder).toEqual([id('Other')]);expect(next.groups[0].order).toEqual([id('Alpha')]);});
+
+it('name sort overwrites the one current order, sorts groups and siblings, and remains version/view independent',()=>{
+ const {library,collection,id}=seed();let current=dragSiblingOrder(library,collection,'group',id('Gamma'),id('Alpha'),false,'g1');
+ current={...current,groups:[{...current.groups[1],name:'乙'},{...current.groups[0],name:'2'}]};
+ const sorted=sortVersionTagsByName(library,current,'groups');
+ expect(sorted.groups.map(g=>g.name)).toEqual(['2','乙']);expect(tagTreeRows(library,new Set(sorted.groups[0].tagIds),'manual',1,()=>0,sorted.groups[0].order).map(r=>r.tag.name)).toEqual(['Alpha','Beta','Gamma']);
+ expect(sorted.levelOrder).toBeUndefined();expect(collection.groups[0].order).toBeUndefined();expect(sorted.tagIds).toBe(collection.tagIds);
+ const moved=dragSiblingOrder(library,sorted,'group',id('Gamma'),id('Alpha'),false,'g1');expect(moved.groups.find(g=>g.id==='g2')).toBe(sorted.groups.find(g=>g.id==='g2'));
+ expect(sortVersionTagsByName(library,moved,'groups')).toEqual(sorted);expect(sortVersionTagsByName(library,sorted,'groups')).toBe(sorted);
+ const level=sortVersionTagsByName(library,moved,'level');expect(level.groups).toBe(moved.groups);expect(level.levelOrder).toEqual(tagTreeRows(library).map(r=>r.tag.id));validateTagCollection(library,level);
+});
