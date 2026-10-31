@@ -2054,7 +2054,7 @@
     "projectCount": "專案 {{count}} 個片段",
     "currentCountCoverage": "目前稿件：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段",
     "projectCountCoverage": "專案：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段",
-    "sortNameHint": "依名稱排序；排序後建立新的復原起點",
+    "sortNameHint": "依名稱排序（無法復原）",
     "filterSortNotice": "關閉篩選後可排序標籤",
     "expandTag": "展開標籤：{{name}}",
     "collapseTag": "收合標籤：{{name}}"

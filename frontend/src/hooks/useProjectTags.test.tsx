@@ -6,6 +6,7 @@ import { useProjectTags, type TagStorage } from './useProjectTags';
 import { useTranscriptHistory } from '../useTranscriptHistory';
 import type { Transcript } from '../types';
 import type { OpenProject } from '../lib/projectStore';
+import {tagFields} from '../lib/projectTagRepository';
 import { versionTagCollection } from '../lib/tagCollections';
 import { tagPath, type TagLibrary } from '../lib/tags';
 const source = (): Transcript => ({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [], segments: [{ id: 's', speaker_id: 'v', text: 'Synthetic text', start: 0, end: 2 }] });
@@ -18,16 +19,16 @@ function setup() {
   const storage: TagStorage = {
    transact: async (current, operation) => {
     const previous = {...current.transcript,tagCollection:versionTagCollection(current.transcript,library)};
-    const result = operation(library,[{id:'current',label:'Synthetic version',transcript:previous}],'current');
+    const result = operation(library,[{id:'r:m:e',label:'Synthetic version',transcript:previous}],'r:m:e');
     await writes();setLibrary(result.library);
-    return {changed:JSON.stringify(previous)!==JSON.stringify(result.consumers[0].transcript)||JSON.stringify(library)!==JSON.stringify(result.library),project:{} as OpenProject,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[]}};
+    return {changed:JSON.stringify(previous)!==JSON.stringify(result.consumers[0].transcript)||JSON.stringify(library)!==JSON.stringify(result.library),project:{} as OpenProject,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[{id:'r:m:e',path:['synthetic.json'],before:tagFields(previous),after:tagFields(result.consumers[0].transcript)}]}};
    },
    restore: async(receipt,redo)=>{await writes();setLibrary(redo?receipt.afterLibrary:receipt.beforeLibrary);return {} as OpenProject},
   };
-  const tags=useProjectTags({library,storage,recordingId:'r',modelId:'m',editId:'e',context,transcript:value,flush,lock,readOnly,undoActionKey:history.undoActionKey,redoActionKey:history.redoActionKey,onError:errors,errorMessage:'Synthetic failure',publish:(next,action,key)=>{
-   if(action==='checkpoint')history.reset(next);else if(action==='undo')history.undo();else if(action==='redo')history.redo();else if(!history.transcript){history.reset(value);history.commit(()=>next,key)}else history.commit(()=>next,key);
+  const tags=useProjectTags({library,storage,recordingId:'r',modelId:'m',editId:'e',context,transcript:value,flush,lock,readOnly,undoActionKey:history.undoActionKey,redoActionKey:history.redoActionKey,onError:errors,errorMessage:'Synthetic failure',publish:(next,action,key,rebase)=>{
+   if(action==='rebase')history.rebase(rebase!,next);else if(action==='undo')history.undo();else if(action==='redo')history.redo();else if(!history.transcript){history.reset(value);history.commit(()=>next,key)}else history.commit(()=>next,key);
   }});
-  return {...tags,transcript:value,editText:()=>history.commit(t=>({...t,segments:t.segments.map(s=>({...s,text:'Later text'}))})),undoText:history.undo,editorCanUndo:history.canUndo,editorCanRedo:history.canRedo};
+  return {...tags,transcript:value,editText:()=>history.commit(t=>({...t,segments:t.segments.map(s=>({...s,text:'Later text'}))})),undoText:history.undo,redoText:history.redo,editorCanUndo:history.canUndo,editorCanRedo:history.canRedo};
  },{initialProps:{readOnly:false,context:'v1'}});
  return {...hook,writes,errors,flush,lock};
 }
@@ -64,12 +65,19 @@ it('does not let tag undo leap over a later text edit',async()=>{
  const h=setup();await act(()=>h.result.current.add('s','Topic'));act(()=>h.result.current.editText());expect(h.result.current.canUndo).toBe(false);act(()=>h.result.current.undoText());expect(h.result.current.canUndo).toBe(true);await act(()=>h.result.current.undo());expect(h.result.current.library.tags).toEqual([]);
 });
 
-it('name sorting establishes a durable undo boundary; subsequent drags undo/redo to the sorted baseline',async()=>{
+it('name sorting preserves earlier tag undo while later drags undo/redo against sorted priorities',async()=>{
  const h=setup();await act(()=>h.result.current.create('Root/Beta'));await act(()=>h.result.current.create('Root/Alpha'));const id=(name:string)=>h.result.current.library.tags.find(t=>t.name===name)!.id;
- await act(()=>h.result.current.reorder('level',id('Beta'),id('Alpha'),false));expect(h.result.current.canUndo).toBe(true);
- await act(()=>h.result.current.sortByName('level'));const sorted=h.result.current.collection;expect(sorted.levelOrder).toEqual([id('Root'),id('Alpha'),id('Beta')]);expect(h.result.current.canUndo).toBe(false);expect(h.result.current.canRedo).toBe(false);expect(h.result.current.editorCanUndo).toBe(false);
- await act(()=>h.result.current.reorder('level',id('Beta'),id('Alpha'),false));expect(h.result.current.canUndo).toBe(true);await act(()=>h.result.current.undo());expect(h.result.current.collection).toEqual(sorted);expect(h.result.current.canUndo).toBe(false);await act(()=>h.result.current.redo());expect(h.result.current.collection.levelOrder).toEqual([id('Root'),id('Beta'),id('Alpha')]);
- await act(()=>h.result.current.sortByName('level'));expect(h.result.current.collection).toEqual(sorted);expect(h.result.current.canUndo).toBe(false);expect(h.result.current.editorCanUndo).toBe(false);
+ await act(()=>h.result.current.reorder('level',id('Beta'),id('Alpha'),false));
+ await act(()=>h.result.current.sortByName('level'));const sorted=h.result.current.collection;expect(sorted.levelOrder).toEqual([id('Root'),id('Alpha'),id('Beta')]);expect(h.result.current.canUndo).toBe(true);expect(h.result.current.editorCanUndo).toBe(true);
+ await act(()=>h.result.current.reorder('level',id('Beta'),id('Alpha'),false));await act(()=>h.result.current.undo());expect(h.result.current.collection).toEqual(sorted);expect(h.result.current.canUndo).toBe(true);await act(()=>h.result.current.redo());expect(h.result.current.collection.levelOrder).toEqual([id('Root'),id('Beta'),id('Alpha')]);
+});
+it('body edit then sort still undoes/redoes body without changing sorted priorities',async()=>{
+ const h=setup();await act(()=>h.result.current.create('Root/Beta'));await act(()=>h.result.current.create('Root/Alpha'));act(()=>h.result.current.editText());await act(()=>h.result.current.sortByName('level'));const order=h.result.current.collection.levelOrder;
+ act(()=>h.result.current.undoText());expect(h.result.current.transcript.segments[0].text).toBe('Synthetic text');expect(h.result.current.collection.levelOrder).toEqual(order);act(()=>h.result.current.redoText());expect(h.result.current.transcript.segments[0].text).toBe('Later text');expect(h.result.current.collection.levelOrder).toEqual(order);
+});
+it('association edit then sort keeps that association undo/redo and retains sorting',async()=>{
+ const h=setup();await act(()=>h.result.current.create('Root/Beta'));await act(()=>h.result.current.create('Root/Alpha'));const alpha=h.result.current.library.tags.find(t=>t.name==='Alpha')!.id;await act(()=>h.result.current.attach('s',alpha));await act(()=>h.result.current.sortByName('level'));const order=h.result.current.collection.levelOrder;
+ await act(()=>h.result.current.undo());expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();expect(h.result.current.collection.levelOrder).toEqual(order);await act(()=>h.result.current.redo());expect(h.result.current.transcript.segments[0].tagIds).toEqual([alpha]);expect(h.result.current.collection.levelOrder).toEqual(order);
 });
 it('failed name sorting preserves the existing order and both editor/tag undo history',async()=>{
  const h=setup();await act(()=>h.result.current.create('Root/Beta'));await act(()=>h.result.current.create('Root/Alpha'));const id=(name:string)=>h.result.current.library.tags.find(t=>t.name===name)!.id;
@@ -78,8 +86,8 @@ it('failed name sorting preserves the existing order and both editor/tag undo hi
  await act(()=>h.result.current.undo());expect(h.result.current.collection.levelOrder).toBeUndefined();
 });
 
-it('sorting an already sorted result still blocks older undo snapshots that could reintroduce a previous order',async()=>{
+it('sorting an already sorted result rebases older order snapshots without removing history',async()=>{
  const h=setup();await act(()=>h.result.current.create('Root/Beta'));await act(()=>h.result.current.create('Root/Alpha'));const id=(name:string)=>h.result.current.library.tags.find(t=>t.name===name)!.id;await act(()=>h.result.current.sortByName('level'));
  await act(()=>h.result.current.reorder('level',id('Beta'),id('Alpha'),false));await act(()=>h.result.current.reorder('level',id('Alpha'),id('Beta'),false));expect(h.result.current.canUndo).toBe(true);const sorted=h.result.current.collection;
- await act(()=>h.result.current.sortByName('level'));expect(h.result.current.collection).toEqual(sorted);expect(h.result.current.canUndo).toBe(false);expect(h.result.current.editorCanUndo).toBe(false);
+ await act(()=>h.result.current.sortByName('level'));expect(h.result.current.collection).toEqual(sorted);expect(h.result.current.canUndo).toBe(true);expect(h.result.current.editorCanUndo).toBe(true);await act(()=>h.result.current.undo());expect(h.result.current.collection).toEqual(sorted);
 });

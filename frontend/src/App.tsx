@@ -147,7 +147,7 @@ function App(projectProps: ProjectEditorProps = {}) {
   // 平台检测——tooltip 与按钮文案里显示对应的快捷键（避免 Mac 用户看到 Ctrl+O）
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform);
   const folderShortcutHint = isMac ? "⌘O" : "Ctrl + O";
-  const { transcript, reset: resetHistory, commit, undo, redo, canUndo, canRedo, undoTarget, redoTarget, undoActionKey, redoActionKey } =
+  const { transcript, reset: resetHistory, rebase: rebaseHistory, commit, undo, redo, canUndo, canRedo, undoTarget, redoTarget, undoActionKey, redoActionKey } =
     useTranscriptHistory<Transcript>();
   const [metadata, setMetadataState] = useState<InterviewMetadata | null>(null);
   const [persistedContent, setPersistedContent] = useState<{ transcript: Transcript; metadata: InterviewMetadata } | null>(null);
@@ -754,11 +754,11 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const protectedReadOnly = viewingOriginal || aiLocked;
   const tagUpgradeRequired=!!projectProps.tagStorage?.requiresMigration;
   const tags=useProjectTags({library:preparedTagLibrary.library,storage:projectProps.tagStorage,recordingId:projectProps.projectRecordingId,modelId:activeModelId,editId:viewingOriginal?'original':activeModel?.activeEditId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,flush:flushPendingSave,
-    undoActionKey,redoActionKey,publish:(value,action,key)=>{
+    undoActionKey,redoActionKey,publish:(value,action,key,rebase)=>{
       // Tag undo/redo is already durable. Adopt the exact history snapshot, so autosave
       // cannot mistake a metadata-only restoration for a fresh whole-body text edit.
-      const saved=action==='commit'||action==='checkpoint'?value:action==='undo'?undoTarget:redoTarget;
-      if(action==='checkpoint')resetHistory(value);else if(action==='commit')commit(()=>value,key);else if(action==='undo')undo();else redo();
+      const saved=action==='commit'||action==='rebase'?value:action==='undo'?undoTarget:redoTarget;
+      if(action==='rebase')rebaseHistory(rebase!,value);else if(action==='commit')commit(()=>value,key);else if(action==='undo')undo();else redo();
       if(metadata&&saved)setPersistedContent({transcript:saved,metadata});setSaveStatus('saved');
     },
     lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly||tagUpgradeRequired,originalReadOnly:viewingOriginal,onError:setLoadError,errorMessage:msg('tags.saveFailed')});

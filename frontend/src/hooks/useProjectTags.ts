@@ -4,6 +4,7 @@ import {msg} from '../i18n';
 import {beginTagProbe} from '../lib/tagPerformance';
 import {placeGroupTag,type GroupTagPlacement} from '../lib/tagPlacement';
 import {dragSiblingOrder,sortVersionTagsByName,type TagOrderView} from '../lib/tagOrdering';
+import { tagOrderHistoryRebase } from '../lib/tagOrderHistory';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
 import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
@@ -31,7 +32,7 @@ interface Options {
     context: string;
     transcript: Transcript | null;
     flush: () => Promise<void>;
-    publish: (transcript: Transcript, action: 'commit' | 'undo' | 'redo' | 'checkpoint', historyKey?: string) => void;
+    publish: (transcript: Transcript, action: 'commit' | 'undo' | 'redo' | 'rebase', historyKey?: string, rebase?: (snapshot: Transcript) => Transcript) => void;
     undoActionKey: string | null;
     redoActionKey: string | null;
     lock: (busy: boolean) => void;
@@ -56,6 +57,8 @@ export function useProjectTags(o: Options) {
     const [busy, setBusy] = useState(false), [past, setPast] = useState<Entry[]>([]), [future, setFuture] = useState<Entry[]>([]);
     const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
     const latest = useRef(o), pending = useRef(false), mounted = useRef(true), mergeRef = useRef<MergePrompt | null>(null);
+    const historyEntries = useRef({ past, future });
+    useLayoutEffect(() => { historyEntries.current = { past, future }; });
     useLayoutEffect(() => { latest.current = o; });
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; mergeRef.current?.finish(false); }; }, []);
     useEffect(() => { const context = o.context; queueMicrotask(() => { if (latest.current.context === context) { setPast([]); setFuture([]); } }); }, [o.context]);
@@ -76,7 +79,8 @@ export function useProjectTags(o: Options) {
         const prompt: MergePrompt = { request, finish: accepted => { mergeRef.current = null; setMergePrompt(null); resolve(accepted); } };
         mergeRef.current = prompt; setMergePrompt(prompt);
     });
-    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope: TagTransactionScope = 'project', undoable=true) => {
+    const run = useCallback(async (operation: (merge: boolean, library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope: TagTransactionScope = 'project', orderView?: 'level' | 'groups') => {
+        const undoable = !orderView;
         let current = latest.current;
         if (current.readOnly || pending.current || !current.storage) throw Error('tag_write_unavailable');
         const context = current.context;
@@ -102,10 +106,26 @@ export function useProjectTags(o: Options) {
             if (!mounted.current || latest.current.context !== context) throw Error('tag_context_changed_after_save');
             if(result.changed===false&&undoable)return result;
             const key='tag-transaction:'+crypto.randomUUID();
+            const previous = historyEntries.current;
+            const rebase = orderView && tagOrderHistoryRebase(result.transcript.tagCollection!, orderView,
+                `${current.recordingId}:${current.modelId}:${current.editId}`, [...previous.past, ...[...previous.future].reverse()].map(entry => entry.receipt), result.receipt);
             const publish = () => {
-                latest.current.publish(result.transcript, undoable?'commit':'checkpoint',key);
-                if(undoable)setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));else setPast([]);
-                setFuture([]); setBusy(false);
+                latest.current.publish(result.transcript, undoable?'commit':'rebase', key, rebase ? rebase.snapshot : undefined);
+                if(undoable) {
+                    setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));
+                    setFuture([]);
+                } else if (rebase) {
+                    // Reconnect only the boundary changed by this known non-undoable transaction.
+                    const remap = (entries: Entry[], redo: boolean) => entries.map((entry, index) => {
+                        let receipt = rebase.receipt(entry.receipt);
+                        const expected = redo ? receipt.beforeHead : receipt.afterHead;
+                        if (index === entries.length - 1 && expected === result.receipt.beforeHead)
+                            receipt = { ...receipt, ...(redo ? { beforeHead: result.receipt.afterHead } : { afterHead: result.receipt.afterHead }) };
+                        return { ...entry, receipt };
+                    });
+                    setPast(remap(previous.past, false)); setFuture(remap(previous.future, true));
+                }
+                setBusy(false);
             };
             if(current.storage.publish)current.storage.publish(result.project,publish);else publish();
             probe?.mark('published');
@@ -181,7 +201,7 @@ export function useProjectTags(o: Options) {
     },[run]);
     const sortByName=useCallback(async(view:'level'|'groups')=>{
         await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
-            {...consumer,transcript:{...consumer.transcript,tagCollection:sortVersionTagsByName(library,consumer.transcript.tagCollection!,view)}}:consumer)}),'current',false);
+            {...consumer,transcript:{...consumer.transcript,tagCollection:sortVersionTagsByName(library,consumer.transcript.tagCollection!,view)}}:consumer)}),'current',view);
     },[run]);
     const placeInGroup=useCallback(async(placement:GroupTagPlacement)=>{
         const source=latest.current.library?.tags.find(tag=>tag.id===placement.tagId);

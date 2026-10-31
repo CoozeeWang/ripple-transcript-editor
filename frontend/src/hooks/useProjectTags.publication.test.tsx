@@ -32,8 +32,8 @@ it('renders only complete before/after catalog, group and order snapshots throug
    restore:async(receipt,redo)=>{await writes();return project(redo?receipt.afterLibrary:receipt.beforeLibrary)},
    publish:(next,publishVersion)=>flushSync(()=>{setLibrary(next.data.tagLibrary!);publishVersion()}),
   };
-  const tags=useProjectTags({library,storage,context:'synthetic',recordingId:'r',modelId:'m',editId:'e',transcript,flush:async()=>{},lock,readOnly:false,onError:errors,errorMessage:'Synthetic failure',undoActionKey:history.undoActionKey,redoActionKey:history.redoActionKey,publish:(next,action,key)=>{
-   if(action==='checkpoint')history.reset(next);else if(action==='undo')history.undo();else if(action==='redo')history.redo();else{if(!history.transcript)history.reset(seed);history.commit(()=>next,key)}
+  const tags=useProjectTags({library,storage,context:'synthetic',recordingId:'r',modelId:'m',editId:'e',transcript,flush:async()=>{},lock,readOnly:false,onError:errors,errorMessage:'Synthetic failure',undoActionKey:history.undoActionKey,redoActionKey:history.redoActionKey,publish:(next,action,key,rebase)=>{
+   if(action==='rebase')history.rebase(rebase!,next);else if(action==='undo')history.undo();else if(action==='redo')history.redo();else{if(!history.transcript)history.reset(seed);history.commit(()=>next,key)}
   }});
   useLayoutEffect(()=>{frames.push(JSON.stringify({parent:library.tags.find(t=>t.id==='c')!.parentId,groups:tags.library.tags.find(t=>t.id==='c')!.groupIds,order:tags.collection.groups.find(g=>g.id==='g2')!.order??[],association:transcript.segments[0].tagIds}))});
   return tags;

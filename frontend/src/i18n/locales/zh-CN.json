@@ -2054,7 +2054,7 @@
     "projectCount": "项目 {{count}} 个片段",
     "currentCountCoverage": "当前稿：直接标注 {{direct}} 个片段，含子孙覆盖 {{coverage}} 个片段",
     "projectCountCoverage": "项目：直接标注 {{direct}} 个片段，含子孙覆盖 {{coverage}} 个片段",
-    "sortNameHint": "按名称排序；排序后建立新的撤销起点",
+    "sortNameHint": "按名称排序（不可撤销）",
     "filterSortNotice": "关闭筛选后可排序标签",
     "expandTag": "展开标签：{{name}}",
     "collapseTag": "收起标签：{{name}}"

@@ -61,6 +61,12 @@ export function useTranscriptHistory<T>() {
     });
   }, []);
 
+  /** Apply a non-undoable field update without deleting unrelated undo/redo actions. */
+  const rebase = useCallback((updater: (snapshot: T) => T, present: T) => {
+    setHistory(current => ({ ...current, past: current.past.map(updater), present,
+      future: current.future.map(updater), lastGroupKey: null, lastCommitAt: 0 }));
+  }, []);
+
   const undo = useCallback(() => {
     setHistory((current) => {
       const previous = current.past.at(-1);
@@ -97,6 +103,7 @@ export function useTranscriptHistory<T>() {
     transcript: history.present,
     reset,
     commit,
+    rebase,
     undo,
     redo,
     canUndo: history.past.length > 0,

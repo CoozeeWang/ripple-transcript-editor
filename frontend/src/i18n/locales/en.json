@@ -2054,7 +2054,7 @@
     "projectCount": "Project: {{count}} segments",
     "currentCountCoverage": "Current transcript: {{direct}} directly tagged segments; {{coverage}} including descendants",
     "projectCountCoverage": "Project: {{direct}} directly tagged segments; {{coverage}} including descendants",
-    "sortNameHint": "Sort by name and start a new undo history",
+    "sortNameHint": "Sort by name (cannot be undone)",
     "filterSortNotice": "Turn filtering off to sort tags",
     "expandTag": "Expand tag: {{name}}",
     "collapseTag": "Collapse tag: {{name}}"
