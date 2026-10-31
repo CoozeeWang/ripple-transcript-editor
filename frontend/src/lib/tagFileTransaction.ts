@@ -43,7 +43,8 @@ async function restore(root: FileSystemDirectoryHandle, patches: readonly TagFil
     // Do not overwrite an independently changed file, even during recovery.
     for (const patch of patches) {
         const current = await readTagFile(root, patch.path);
-        if (current !== patch.before && current !== patch.after) throw Error('tag_transaction_recovery_conflict');
+        // A new native file can exist empty if interrupted between create-file and atomic close.
+        if (current !== patch.before && current !== patch.after && !(patch.before===null&&current==='')) throw Error('tag_transaction_recovery_conflict');
     }
     for (const patch of [...patches].reverse()) if (await readTagFile(root, patch.path) !== patch.before)
         await write(root, patch.path, patch.before);
@@ -67,9 +68,10 @@ export async function commitTagFileTransaction(root: FileSystemDirectoryHandle, 
     parseJournal(prepared, layout);
     if (!patches.length) return;
     for (const patch of patches) if (await readTagFile(root, patch.path) !== patch.before) throw Error('tag_transaction_concurrent_change');
-    // Keep a verified pre-change receipt in the local project, separate from public exports.
-    const backups = await root.getDirectoryHandle('.ripple-tag-backups', { create: true });
-    await write(backups, [journal.id + '.json'], prepared);
+    // The verified active journal already contains both generations and is durable
+    // before canonical writes. Undo keeps its explicit receipt; do not accumulate a
+    // second permanent copy after every tag command or text autosave. Existing
+    // historical archives are untouched; upgrade rollback checkpoints are separate.
     try {
         await write(root, [name], prepared);
         for (const patch of patches) await write(root, patch.path, patch.after);

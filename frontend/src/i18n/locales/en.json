@@ -1926,8 +1926,9 @@
   "tags": {
     "storageUpgradeRequired": "This project uses legacy tag storage. Tags are temporarily read-only.",
     "storageUpgrade": "Upgrade tag storage",
-    "storageUpgradeNotice": "Choose an empty backup folder outside the project. Ripple will back up and verify the complete project before upgrading tag storage. Older Ripple versions will no longer open this project. Text, tags and each version’s associations are preserved.",
-    "storageBackupAndUpgrade": "Choose backup and upgrade",
+    "storageUpgradeNotice": "Choose an empty folder outside the project. Ripple will back up the original project index and version manifests, record file checksums, then upgrade tag storage. Audio, manuscript bodies and old transaction history are not copied.",
+    "storageRollbackLimit": "This is an upgrade rollback backup, not a standalone project copy. It cannot restore missing audio or manuscript bodies by itself. Older Ripple versions cannot open the upgraded project. Rollback must not overwrite later edits.",
+    "storageBackupAndUpgrade": "Choose rollback backup and upgrade",
     "storageUpgrading": "Backing up and upgrading…",
     "storageBackupNotEmpty": "The backup folder is not empty. Choose an empty folder outside the project. Existing files will not be overwritten.",
     "storageBackupOutside": "The backup folder must be outside the project, not the project itself or one of its subfolders.",

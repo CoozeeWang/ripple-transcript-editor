@@ -2043,10 +2043,10 @@ function inDirectory<T>(dir: FileSystemDirectoryHandle, operation: () => Promise
 }
 /** Holds the same queue as autosave/MCP while a project tag transaction inspects version files. */
 export function withTagVersionStorage<T>(dir: FileSystemDirectoryHandle, audio: string,
-  work: (container: FileSystemDirectoryHandle | null, manifest: TranscriptManifest | null) => Promise<T>): Promise<T> {
+  work: (container: FileSystemDirectoryHandle | null, manifest: TranscriptManifest | null) => Promise<T>,options:{readOnlyManifest?:boolean}={}): Promise<T> {
   return inDirectory(dir, async () => {
     const container = await resolveTranscriptDir(dir, audio, false);
-    const raw = container ? await readManifestText(container) : null;
+    const raw = container ? await (options.readOnlyManifest?readFileText(container,MANIFEST_NAME):readManifestText(container)) : null;
     const manifest = raw ? JSON.parse(raw) as TranscriptManifest : null;
     if (manifest && !Array.isArray(manifest.models)) throw Error('open_legacy_manuscript_in_ripple_first');
     return work(container, manifest);

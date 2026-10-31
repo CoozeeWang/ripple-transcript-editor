@@ -342,7 +342,7 @@ export function ProjectWorkspace() {
       if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
       const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
       const backup=await chooseDirectory('save-project');
-      const next=await migrateProjectTagStorage(snapshot,backup);await publish(next);
+      const next=await migrateProjectTagStorage(snapshot,backup,{backupMode:'rollback'});await publish(next);
       const recording=next.data.interviews.flatMap(i=>i.recordings).find(r=>r.id===editor.recording.id);
       if(recording){setEditor({...editor,directory:await recordingDirectory(next,interview!.id,recording)});setLinkOpenSequence(value=>value+1)}
     }}

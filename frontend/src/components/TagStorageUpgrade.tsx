@@ -11,7 +11,7 @@ export function TagStorageUpgrade({onUpgrade}:{onUpgrade?:()=>Promise<void>}){
     return <><p className="annotation-empty">{msg('tags.storageUpgradeRequired')}</p>
         {onUpgrade&&<button type="button" className="button button--secondary" onClick={()=>setOpen(true)}>{msg('tags.storageUpgrade')}</button>}
         {open&&<TagModal compact title={msg('tags.storageUpgrade')} onClose={()=>{if(!busy)setOpen(false)}}>
-            <p className="settings-hint">{msg('tags.storageUpgradeNotice')}</p>
+            <p className="settings-hint">{msg('tags.storageUpgradeNotice')}</p><p className="settings-hint">{msg('tags.storageRollbackLimit')}</p>
             {error&&<p role="alert" className="tag-error">{error}</p>}
             <div className="project-actions audio-project-footer"><button type="button" data-cancel className="button button--secondary" disabled={busy} onClick={()=>setOpen(false)}>{msg('tags.cancel')}</button>
                 <button type="button" className="button button--primary" disabled={busy} onClick={()=>{setBusy(true);setError('');void onUpgrade?.().then(()=>setOpen(false),e=>{if((e as {name?:string}).name!=='AbortError'){recordProblem('save',e);setError(tagStorageUpgradeError(e))}}).finally(()=>setBusy(false))}}>{msg(busy?'tags.storageUpgrading':'tags.storageBackupAndUpgrade')}</button></div>

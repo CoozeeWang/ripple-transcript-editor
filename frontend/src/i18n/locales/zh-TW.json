@@ -1926,8 +1926,9 @@
   "tags": {
     "storageUpgradeRequired": "此專案使用舊版標籤儲存方式，標籤暫時僅供瀏覽。",
     "storageUpgrade": "升級標籤儲存",
-    "storageUpgradeNotice": "請選擇專案外的空白備份資料夾。Ripple 會完整備份並驗證專案，再升級標籤儲存。升級後舊版 Ripple 將無法開啟此專案；內文、標籤和各版本關聯保留。",
-    "storageBackupAndUpgrade": "選擇備份位置並升級",
+    "storageUpgradeNotice": "請選擇專案外的空白資料夾。Ripple 會備份原專案索引和版本清單、記錄檔案校驗值，再升級標籤儲存；不複製音訊、內文和舊交易歷史。",
+    "storageRollbackLimit": "這是升級回復備份，不是完整專案副本，不能獨立還原遺失的音訊或內文。升級後舊版 Ripple 無法開啟專案；繼續編輯後不能強制使用此備份回復。",
+    "storageBackupAndUpgrade": "選擇回復備份位置並升級",
     "storageUpgrading": "正在備份並升級…",
     "storageBackupNotEmpty": "備份資料夾不是空的。請選擇專案外的空白資料夾；現有檔案不會被覆寫。",
     "storageBackupOutside": "備份資料夾必須在專案外，不能使用專案本身或其中的子資料夾。",

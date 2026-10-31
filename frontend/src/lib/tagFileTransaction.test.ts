@@ -11,12 +11,12 @@ function setup(beforeWrite?: (path: string) => void) {
         { path: ['ripple-project.json'], before: 'original synthetic index', after: 'changed synthetic index' }];
     return { ...fs, patches };
 }
-it('commits all files with a verified local backup and removes the transient journal', async () => {
+it('commits with a verified recoverable journal and does not accumulate redundant archives', async () => {
     const fs = setup(); await commitTagFileTransaction(fs.root, fs.patches);
     expect(fs.files.get(first.join('/'))).toBe('changed synthetic version');
     expect(fs.files.get('ripple-project.json')).toBe('changed synthetic index');
     expect(fs.files.has('.ripple-tag-transaction.json')).toBe(false);
-    expect([...fs.files.keys()].some(path => path.startsWith('.ripple-tag-backups/'))).toBe(true);
+    expect([...fs.files.keys()].some(path => path.startsWith('.ripple-tag-backups/'))).toBe(false);
 });
 it('rolls back previously written versions if the project index write fails', async () => {
     let failed = false;
@@ -49,4 +49,11 @@ it('treats committed-but-not-cleaned journals as successful rather than undoing 
     fs.files.set('.ripple-tag-transaction.json', JSON.stringify({ kind: 'ripple-tag-transaction', version: 1, id: 'synthetic-id', state: 'committed', patches: fs.patches }));
     await recoverTagFileTransaction(fs.root);
     expect(fs.files.get(first.join('/'))).toBe('changed synthetic version');
+});
+it('repeated saves leave no per-operation archive growth and never delete pre-existing history',async()=>{
+ const fs=setup();fs.directories.add('.ripple-tag-backups');fs.files.set('.ripple-tag-backups/legacy.json','keep existing history');
+ let value='original synthetic index';
+ for(let i=0;i<20;i++){const next='synthetic '+i;await commitTagFileTransaction(fs.root,[{path:['ripple-project.json'],before:value,after:next}]);value=next}
+ expect([...fs.files.keys()].sort()).toEqual([first.join('/'),'ripple-project.json','.ripple-tag-backups/legacy.json'].sort());
+ expect(fs.files.get('.ripple-tag-backups/legacy.json')).toBe('keep existing history');
 });

@@ -1926,8 +1926,9 @@
   "tags": {
     "storageUpgradeRequired": "此项目使用旧版标签存储，标签暂时仅供浏览。",
     "storageUpgrade": "升级标签存储",
-    "storageUpgradeNotice": "请选择项目外的空备份文件夹。Ripple 会完整备份并校验项目，再升级标签存储。升级后旧版 Ripple 将无法打开此项目；正文、标签和各版本关联保留。",
-    "storageBackupAndUpgrade": "选择备份位置并升级",
+    "storageUpgradeNotice": "请选择项目外的空文件夹。Ripple 会备份原项目索引和版本清单、记录文件校验值，再升级标签存储；不复制音频、正文和旧事务历史。",
+    "storageRollbackLimit": "这是升级回滚备份，不是完整项目副本，不能独立恢复丢失的音频或正文。升级后旧版 Ripple 无法打开项目；继续编辑后不能强制用此备份回滚。",
+    "storageBackupAndUpgrade": "选择回滚备份位置并升级",
     "storageUpgrading": "正在备份并升级…",
     "storageBackupNotEmpty": "备份文件夹不是空的。请选择项目外的空文件夹；现有文件不会被覆盖。",
     "storageBackupOutside": "备份文件夹必须在项目外，不能使用项目本身或其中的子文件夹。",
