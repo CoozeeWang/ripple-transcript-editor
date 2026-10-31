@@ -1,11 +1,14 @@
 /** Public, in-memory test filesystem. No operating-system files or permissions. */
 export interface SyntheticTree { files: Map<string, Uint8Array>; folders: Map<string, SyntheticTree> }
 export const syntheticTree = (): SyntheticTree => ({ files:new Map(), folders:new Map() });
+const modified=new WeakMap<Uint8Array,number>();let clock=1;
+const timestamp=(bytes:Uint8Array)=>{if(!modified.has(bytes))modified.set(bytes,clock++);return modified.get(bytes)!};
 export function syntheticDirectory(tree:SyntheticTree,name:string,blockIndexWrite:()=>boolean=()=>false):FileSystemDirectoryHandle {
  const missing=()=>new DOMException('Synthetic missing entry','NotFoundError');
  const getFileHandle=async(name:string,options?:{create?:boolean})=>{
   if(!tree.files.has(name)){if(!options?.create)throw missing();tree.files.set(name,new Uint8Array());}
-  return {kind:'file',name,getFile:async()=>new File([tree.files.get(name)!.slice().buffer],name),createWritable:async()=>{
+  return {kind:'file',name,getFile:async()=>new File([tree.files.get(name)!.slice().buffer],name,{lastModified:timestamp(tree.files.get(name)!)}),
+   getMetadata:async()=>({size:tree.files.get(name)!.byteLength,modified:String(timestamp(tree.files.get(name)!))}),createWritable:async()=>{
    if(name==='ripple-project.json'&&blockIndexWrite())throw new DOMException('Synthetic index write blocked','NotAllowedError');
    const chunks:BlobPart[]=[],write=async(chunk:BlobPart)=>{chunks.push(chunk);},close=async()=>{tree.files.set(name,new Uint8Array(await new Blob(chunks).arrayBuffer()));};
    return Object.assign(new WritableStream({write,close}),{write,close,abort:async()=>{}});

@@ -1,5 +1,6 @@
 /** File System Access compatibility for Ripple's local Tauri window. */
 import { msg } from '../i18n';
+import {recordTagBridge} from './tagPerformance';
 
 type Entry = { name: string; kind: 'file' | 'directory' };
 type NativeKind = Entry['kind'];
@@ -12,7 +13,8 @@ const CHUNK_SIZE = 1024 * 1024;
 function invoke<T>(command: string, args: InvokeArgs, ...options: [] | [InvokeOptions]): Promise<T> {
   const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (name: string, args: InvokeArgs, ...options: [] | [InvokeOptions]) => Promise<T> } } }).__TAURI__;
   if (!tauri?.core) throw new Error('Native file bridge unavailable');
-  return tauri.core.invoke(command, args, ...options).catch(error => {
+  const started=performance.now();
+  return tauri.core.invoke(command, args, ...options).then(result=>{recordTagBridge(command,args,result,performance.now()-started,options[0]?.headers);return result}).catch(error => {
     if (error === 'selection_cancelled') throw new DOMException('Selection cancelled', 'AbortError');
     if (error === 'permission_required') throw new DOMException('File access needs permission', 'NotAllowedError');
     if (error === 'file_missing') throw new DOMException('Selected file is missing', 'NotFoundError');
@@ -127,6 +129,10 @@ class NativeWritable extends WritableStream<BufferSource | Blob | string> {
 
 export class NativeFileHandle extends NativeHandle {
   readonly kind = 'file';
+  /** Metadata only: tag preflight must never transfer a transcript to inspect its identity. */
+  async getMetadata(): Promise<{size:number;modified:string}> {
+    return invoke('fs_metadata', {root:this.root, parts:this.parts});
+  }
   async checkMedia(expected: string): Promise<void> {
     await invoke('fs_media_check', {root:this.root, parts:this.parts, expected});
   }

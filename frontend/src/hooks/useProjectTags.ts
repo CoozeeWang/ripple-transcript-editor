@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Transcript } from '../types';
 import {msg} from '../i18n';
+import {beginTagProbe} from '../lib/tagPerformance';
+import {dragSiblingOrder,type TagOrderView} from '../lib/tagOrdering';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
 import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
@@ -9,6 +11,9 @@ import type { OpenProject } from '../lib/projectStore';
 import { applyTagFields, tagFields } from '../lib/projectTagRepository';
 
 export interface TagStorage {
+    projectId?:string;
+    projectRevision?:number;counts?:()=>Promise<import('../lib/tagCountCache').TagCountTotals>;
+    requiresMigration?: boolean;
     transact: (current: CurrentTagVersion, operation: (library: TagLibrary, consumers: TagConsumer[], currentId: string) => ProjectTagChange, scope?: TagTransactionScope) => Promise<{
         project: OpenProject; transcript: Transcript; receipt: TagTransactionReceipt; changed?: boolean;
     }>;
@@ -58,7 +63,7 @@ export function useProjectTags(o: Options) {
         const id = `${current.recordingId}:${current.modelId}:${current.originalReadOnly ? 'original' : current.editId}`;
         const patch = receipt.versions.find(version => version.id === id);
         if (patch && JSON.stringify(tagFields(current.transcript)) !== JSON.stringify(patch.before)) throw Error('tag_view_changed_after_save');
-        const next = patch ? applyTagFields(current.transcript, patch.after) : current.transcript;
+        const next = patch ? {...applyTagFields(current.transcript, patch.after),...(patch.afterRevision?{tagStorageRevision:patch.afterRevision}:{})} : current.transcript;
         const key = 'tag-transaction:' + crypto.randomUUID(), beforeAnchor = tagHistoryAnchor(current.transcript);
         current.publish(next, 'commit', key);
         setPast(entries => [...entries, {receipt,beforeAnchor,afterAnchor:tagHistoryAnchor(next),key}].slice(-100)); setFuture([]);
@@ -72,10 +77,12 @@ export function useProjectTags(o: Options) {
         let current = latest.current;
         if (current.readOnly || pending.current || !current.storage) throw Error('tag_write_unavailable');
         const context = current.context;
+        const probe=beginTagProbe('ui-tag',undefined,current.storage.projectId);
         pending.current = true;
         try {
             // Flush the text draft before acquiring the tag editing guard.
             await current.flush();
+            probe?.mark('draftFlushed');
             current = latest.current;
             if (current.context !== context || current.readOnly || !current.transcript || !current.recordingId || !current.modelId || !current.editId || !current.storage)
                 throw Error('tag_write_unavailable');
@@ -93,13 +100,14 @@ export function useProjectTags(o: Options) {
             if(result.changed===false)return result;
             const key='tag-transaction:'+crypto.randomUUID();
             latest.current.publish(result.transcript, 'commit',key);
+            probe?.mark('published');
             setPast(entries => [...entries, { receipt: result.receipt, beforeAnchor, afterAnchor: tagHistoryAnchor(result.transcript),key }].slice(-100));
             setFuture([]);
             return result;
         } catch (error) {
             if (!(error instanceof TagMergeRequired) && (error as Error)?.message !== 'tag_operation_cancelled') latest.current.onError(tagErrorMessage(error));
             throw error;
-        } finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
+        } finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false);probe?.finish(); }
     }, []);
     const change = useCallback(async (next: TagLibrary) => {
         const local = JSON.stringify(projectTagCatalog(next)) === JSON.stringify(projectTagCatalog(latest.current.library ?? EMPTY));
@@ -151,10 +159,20 @@ export function useProjectTags(o: Options) {
             return changeSharedTag(library, id, [...prefix, name].join('/'), consumers, merge);
         }); } catch(error) { throw Error(tagErrorMessage(error), {cause:error}); }
     }, [run]);
-    const reparent = useCallback(async (id: string, parentId: string | null) => {
-        await run((merge, library, consumers) => changeSharedTag(library, id,
-            [parentId ? tagPath(library, parentId) : '', library.tags.find(tag => tag.id === id)!.name].filter(Boolean).join('/'), consumers, merge));
+    const reparent = useCallback(async (id: string, parentId: string | null,anchor?:string|null,after=true) => {
+        await run((merge, library, consumers,currentId) => {
+            const path=[parentId?tagPath(library,parentId):'',library.tags.find(tag=>tag.id===id)!.name].filter(Boolean).join('/');
+            const changed=changeSharedTag(library,id,path,consumers,merge);
+            const retainedId=changed.library.tags.some(tag=>tag.id===id)?id:changed.library.tags.find(tag=>tagPath(changed.library,tag.id).toLowerCase()===path.toLowerCase())!.id;
+            if(anchor!==undefined)changed.consumers=changed.consumers.map(consumer=>consumer.id===currentId?{...consumer,transcript:{...consumer.transcript,
+                tagCollection:dragSiblingOrder(changed.library,consumer.transcript.tagCollection!,'level',retainedId,anchor,after)}}:consumer);
+            return changed;
+        });
     }, [run]);
+    const reorder = useCallback(async(view:TagOrderView,id:string,anchor:string|null,after:boolean,groupId?:string)=>{
+        await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
+            {...consumer,transcript:{...consumer.transcript,tagCollection:dragSiblingOrder(library,consumer.transcript.tagCollection!,view,id,anchor,after,groupId)}}:consumer)}),'current');
+    },[run]);
     const removeCurrent = useCallback(async(id:string)=>{
         await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id!==currentId?consumer:
             {...consumer,transcript:removeVersionTagBranch(library,consumer.transcript,id)})}), 'current');
@@ -174,6 +192,6 @@ export function useProjectTags(o: Options) {
         } catch (error) { current.onError(tagErrorMessage(error)); }
         finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     };
-    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent, attach, canUndo, canRedo, acceptTransaction,
+    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent,reorder, attach, canUndo, canRedo, acceptTransaction,
         undo: () => history(false), redo: () => history(true), discardRedo, mergePrompt };
 }

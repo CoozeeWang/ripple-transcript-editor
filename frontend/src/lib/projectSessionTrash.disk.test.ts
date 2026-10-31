@@ -13,7 +13,7 @@ function diskDirectory(path:string):FileSystemDirectoryHandle {
  const fileHandle=async(name:string,options?:{create?:boolean})=>{
   const file=join(path,name);
   try{await stat(file);}catch(error){if(!options?.create)fileError(error);await writeFile(file,'');}
-  return {kind:'file',name,getFile:async()=>new File([new Uint8Array(await readFile(file))],name),createWritable:async()=>{
+   return {kind:'file',name,getFile:async()=>new File([new Uint8Array(await readFile(file))],name,{lastModified:(await stat(file)).mtimeMs}),createWritable:async()=>{
    const chunks:BlobPart[]=[];
    const write=async(chunk:BlobPart)=>{chunks.push(chunk);};
    const close=async()=>{await writeFile(file,new Uint8Array(await new Blob(chunks).arrayBuffer()));};
@@ -42,6 +42,8 @@ it('deletes, closes, reopens and restores real synthetic files with byte-identic
   await mkdir(join(temporary,'inputs'));const input=diskDirectory(join(temporary,'inputs'));
   const original=new Uint8Array([82,73,70,70,0,1,2,3,4,5,6,7]);await writeFile(join(temporary,'inputs','Synthetic.wav'),original);
   let project=await createProject(diskDirectory(temporary),'Synthetic project');
+  // This regression intentionally exercises pre-sidecar tags/groups and byte-preserving legacy trash.
+  project=await saveProject(project,{...project.data,schemaVersion:1});
   project=await addInterview(project,'Synthetic session');
   const session=project.data.interviews[0];
   project=await addRecordings(project,session.id,[await input.getFileHandle('Synthetic.wav')],'copy');

@@ -64,6 +64,8 @@ export interface Segment {
 }
 
 export interface Transcript {
+  /** Internal sidecar revision; never public export or persisted manuscript content. */
+  tagStorageRevision?: string;
   /** Version-owned admitted project tags and flat explicit group memberships. */
   tagCollection?: import('./lib/tagCollections').TagCollection;
   /** Local save receipts for interrupted AI batches; excluded from public exports. */

@@ -110,6 +110,8 @@ use file_transfer::Writes;
 #[derive(Serialize)]
 struct NativeEntry { name: String, kind: &'static str }
 #[derive(Serialize)]
+struct FileMetadata { size: u64, modified: String }
+#[derive(Serialize)]
 struct SelectedPath { root: String, kind: &'static str }
 
 fn grant_path(state: &Grants, root: &str, parts: &[String], write: bool) -> Result<PathBuf, String> {
@@ -250,6 +252,15 @@ fn fs_size(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) ->
     let metadata = fs::metadata(path).map_err(io_error)?;
     if !metadata.is_file() { return Err("不是普通文件".into()); }
     Ok(metadata.len())
+}
+
+#[tauri::command]
+fn fs_metadata(state: tauri::State<'_, Grants>, root: String, parts: Vec<String>) -> Result<FileMetadata, String> {
+    let metadata = fs::metadata(grant_path(&state, &root, &parts, false)?).map_err(io_error)?;
+    if !metadata.is_file() { return Err("不是普通文件".into()); }
+    let modified = metadata.modified().map_err(io_error)?.duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "file_metadata_unavailable".to_string())?.as_nanos().to_string();
+    Ok(FileMetadata { size: metadata.len(), modified })
 }
 
 #[tauri::command]
@@ -808,7 +819,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![reading_position::reading_position_read, reading_position::reading_position_write, normal_close::normal_close_ready, normal_close::finish_normal_close,segment_drag::start_segment_drag, segment_clipboard::copy_segment, segment_link_next, update_window::update_close, updates::update_status, updates::update_check, updates::update_open_releases, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
-            fs_mkdir, fs_create_file, fs_read, fs_size, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
+            fs_mkdir, fs_create_file, fs_read, fs_size, fs_metadata, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_status, connector_local_ready, connector_tunnel_stop])
         .on_menu_event(|app, event| {

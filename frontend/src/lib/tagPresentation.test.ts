@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createTagPresenter, presentSegmentTags, tagSegmentCounts } from './tagPresentation';
+import { createTagPresenter, presentSegmentTags, tagSegmentCounts,tagCoverageCounts } from './tagPresentation';
 import { countTaggedSegments, setSegmentTag, type TagLibrary } from './tags';
 import type { Transcript } from '../types';
 const library: TagLibrary = { schemaVersion: 3, groups: [], tags: [
@@ -39,8 +39,15 @@ it('ignores group-only changes for segment rendering and drops deleted/dangling 
  const deleted = presentSegmentTags({ ...library, tags: library.tags.filter(tag => tag.id !== 'child') }, transcript.segments, after);
  expect(deleted.segments.get('a')?.tags).toEqual([]);expect(deleted.segments.get('b')).toBe(before.segments.get('b'));
 });
-it('counts each segment once per ancestor and matches the filter count oracle', () => {
+it('counts exact explicit IDs, independently from hierarchical filtering', () => {
+ expect(tagSegmentCounts(library,transcript.segments).get('root')).toBe(0);
  const next = setSegmentTag(transcript, 'a', 'root', true), counts = tagSegmentCounts(library, next.segments);
  for (const tag of library.tags) expect(counts.get(tag.id)).toBe(countTaggedSegments(next, tag.id, library));expect(counts.get('root')).toBe(1);
  expect(createTagPresenter()(library, transcript.segments).segments.get('a')).not.toBe(createTagPresenter()(library, transcript.segments).segments.get('a'));
+});
+
+it('keeps direct and descendant union counts distinct when one segment has several matching labels',()=>{
+ const library:TagLibrary={schemaVersion:3,groups:[],tags:[{id:'r',name:'Root',parentId:null,groupIds:[]},{id:'a',name:'A',parentId:'r',groupIds:[]},{id:'b',name:'B',parentId:'r',groupIds:[]}]};
+ const segments=[{id:'s1',text:'Synthetic',speaker_id:'v',start:0,end:1,tagIds:['a','b']},{id:'s2',text:'Synthetic',speaker_id:'v',start:1,end:2,tagIds:['r','a']}];
+ expect(tagSegmentCounts(library,segments).get('r')).toBe(1);expect(tagCoverageCounts(library,segments).get('r')).toBe(2);expect(tagCoverageCounts(library,segments).get('a')).toBe(2);
 });

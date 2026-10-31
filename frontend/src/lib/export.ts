@@ -349,6 +349,7 @@ export function buildJsonPayload(
   const base = { ...transcript, segments } as Record<string, unknown>;
   delete base.exportSegmentNumbers;
   delete base.tagCollection;
+  delete base.tagStorageRevision;
   delete base.comparisonReviews;
   delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {

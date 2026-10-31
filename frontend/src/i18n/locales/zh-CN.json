@@ -1924,6 +1924,13 @@
     "oldLink": "这是没有永久版本身份的早期测试链接，请在 Ripple Dev 中重新复制片段以生成新链接。"
   },
   "tags": {
+    "storageUpgradeRequired": "此项目使用旧版标签存储，标签暂时仅供浏览。",
+    "storageUpgrade": "升级标签存储",
+    "storageUpgradeNotice": "请选择项目外的空备份文件夹。Ripple 会完整备份并校验项目，再升级标签存储。升级后旧版 Ripple 将无法打开此项目；正文、标签和各版本关联保留。",
+    "storageBackupAndUpgrade": "选择备份位置并升级",
+    "storageUpgrading": "正在备份并升级…",
+    "storageUpgradeFailed": "升级未完成。项目和备份已保留，请检查文件权限、可用空间和诊断记录后重试。",
+    "storageInvalid": "标签数据与稿件不一致，请保留整个项目并重新打开；不要删除标签文件或覆盖正文。",
     "title": "标签",
     "all": "分级",
     "groups": "分组",
@@ -2038,6 +2045,13 @@
     "filterDeleteNotice": "关闭筛选后可删除项目标签分支",
     "filterRemoveNotice": "关闭筛选后可移除当前稿标签分支",
     "filterMembershipNotice": "关闭筛选后可从该组移除标签",
-    "undoConflict": "其他标签操作已更新项目，不能撤销这一步。"
+    "undoConflict": "其他标签操作已更新项目，不能撤销这一步。",
+    "manualOrder": "手动顺序",
+    "sortManual": "手动顺序",
+    "sortAscending": "名称：升序",
+    "sortDescending": "名称：降序",
+    "projectCount": "项目 {{count}} 个片段",
+    "currentCountCoverage": "当前稿：直接标注 {{direct}} 个片段，含子孙覆盖 {{coverage}} 个片段",
+    "projectCountCoverage": "项目：直接标注 {{direct}} 个片段，含子孙覆盖 {{coverage}} 个片段"
   }
 }

@@ -243,6 +243,9 @@ def test_tag_tools_route_strict_batches_and_expose_safety_contract():
         await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['create_tag','assign_tags'], 'changes':[{'action':'create_tag','path':'主题/童年','ref':'child'},{'action':'assign_tags','tag_ids':['ref:child'],'segment_ids':['s1']}]})
         assert calls[-1][0] == 'tags_prepare'
         assert calls[-1][1]['changes'][0] == {'action':'create_tag','path':'主题/童年','ref':'child'}
+        await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['reorder_tags'], 'changes':[{'action':'reorder_tags','view':'group','parent_id':'root','group_id':'g','tag_ids':['b','a']}]})
+        assert calls[-1][1]['changes'][0]['view'] == 'group'
+        assert calls[-1][1]['changes'][0]['tag_ids'] == ['b','a']
         await server.call_tool('apply_tag_changes', {'task_id':'synthetic','confirmed_summary':'exact'})
         assert calls[-1] == ('tags_apply', {'task_id':'synthetic','confirmed_summary':'exact'})
         await server.call_tool('tag_changes_status', {'task_id':'synthetic'})

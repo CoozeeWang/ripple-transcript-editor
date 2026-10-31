@@ -1,10 +1,11 @@
 import type { Transcript } from '../types';
+import {cleanTagOrders,reorderVersionTags} from './tagOrdering';
 import type { ProjectTagChange, TagTransactionScope } from './projectTagRepository';
 import { admitTags, changeSharedTag, projectTagCatalog, removeVersionTagBranch, validateTagCollection, versionTagCollection, type TagConsumer } from './tagCollections';
-import { normalizeTagName, removeTagBranch, setSegmentTag, setTagPath, tagAncestors, tagPath, type TagLibrary } from './tags';
+import { normalizeTagName, removeTagBranch, setTagPath, tagAncestors, tagPath, type TagLibrary } from './tags';
 
 export const TAG_ACTIONS = ['create_tag','rename_tag','set_tag_path','move_tag','merge_tag','delete_branch','admit_tags','remove_current_branch',
-    'create_group','rename_group','dissolve_group','set_group_tags','transfer_group_tag','reorder_groups','assign_tags','unassign_tags'] as const;
+    'create_group','rename_group','dissolve_group','set_group_tags','transfer_group_tag','reorder_groups','reorder_tags','assign_tags','unassign_tags'] as const;
 export type TagAction = typeof TAG_ACTIONS[number];
 export type TagChange = { action: TagAction; [key: string]: unknown };
 const SHARED = new Set<TagAction>(['rename_tag','set_tag_path','move_tag','merge_tag','delete_branch']);
@@ -13,6 +14,7 @@ const FIELDS: Record<TagAction, string[]> = {
     delete_branch:['tag_id'], admit_tags:['tag_ids'], remove_current_branch:['tag_id'], create_group:['name','ref'], rename_group:['group_id','name'],
     dissolve_group:['group_id'], set_group_tags:['group_id','tag_ids'], transfer_group_tag:['tag_id','source_group_id','group_id','copy'],
     reorder_groups:['group_ids'], assign_tags:['segment_ids','tag_ids'], unassign_tags:['segment_ids','tag_ids'],
+    reorder_tags:['view','parent_id','group_id','tag_ids'],
 };
 function error(code: string): never { throw Error(code); }
 const text = (value: unknown, max = 1024): string => typeof value === 'string' && value.trim() && value.length <= max ? value.trim() : error('invalid_tag_change');
@@ -102,17 +104,28 @@ export function applyTagBatch(source: TagLibrary, consumers: readonly TagConsume
                 if (order.length !== groups.length || order.some(id=>!groups.some(g=>g.id===id))) error('invalid_group_order');
                 update(t=>({...t,tagCollection:{...t.tagCollection!,groups:order.map(id=>groups.find(g=>g.id===id)!)}})); break;
             }
+            case 'reorder_tags':{
+                if(!['level','group','ungrouped'].includes(String(c.view))||!Object.hasOwn(c,'parent_id'))error('invalid_tag_order');
+                const parent=c.parent_id===null?null:resolve(c.parent_id,'tag'),group=c.view==='group'?resolve(c.group_id,'group'):undefined;
+                update(t=>({...t,tagCollection:reorderVersionTags(library,t.tagCollection!,c.view as 'level'|'group'|'ungrouped',parent,ids(c.tag_ids),group)}));break;
+            }
             case 'assign_tags': case 'unassign_tags': {
                 const selected = ids(c.tag_ids), targets = list(c.segment_ids);
                 if (!selected.length || !targets.length || targets.some(id=>!current().segments.some(s=>s.id===id))) error('tag_segment_not_found');
                 associations += selected.length * targets.length; if (associations > 10000) error('tag_batch_too_large');
                 update(t=>{
-                    let next = c.action === 'assign_tags' ? {...t,tagCollection:admitTags(library,t.tagCollection!,selected)} : t;
-                    for (const segment of targets) for (const id of selected) next = setSegmentTag(next,segment,id,c.action === 'assign_tags'); return next;
+                    const next = c.action === 'assign_tags' ? {...t,tagCollection:admitTags(library,t.tagCollection!,selected)} : t;
+                    const targetIds=new Set(targets),tagIds=new Set(selected);
+                    return{...next,segments:next.segments.map(segment=>{
+                        if(!targetIds.has(segment.id))return segment;
+                        const before=segment.tagIds??[],after=c.action==='assign_tags'?[...new Set([...before,...selected])]:before.filter(id=>!tagIds.has(id));
+                        return before.length===after.length&&before.every((id,i)=>id===after[i])?segment:{...segment,tagIds:after};
+                    })};
                 }); break;
             }
         }
     }
+    rows=rows.map(row=>({...row,transcript:{...row.transcript,tagCollection:cleanTagOrders(library,row.transcript.tagCollection!)}}));
     for (const row of rows) validateTagCollection(library,row.transcript.tagCollection!,row.label);
     return {library,consumers:rows,references:{tags:Object.fromEntries(tagRefs),groups:Object.fromEntries(groupRefs)}};
 }

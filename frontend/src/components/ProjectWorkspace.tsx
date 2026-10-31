@@ -6,6 +6,8 @@ import { resolveSegmentTarget } from '../lib/segmentTarget';
 import { blocksHumanEditing } from '../lib/aiEditOwnership';
 import { ActionIcon } from './ActionIcon';
 import { restoreProjectTagTransaction, transactProjectTags } from '../lib/projectTagRepository';
+import {readProjectTagCounts} from '../lib/projectTagRepository';
+import {migrateProjectTagStorage} from '../lib/tagMigration';
 import { recordProblem } from '../lib/diagnostics';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
 import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
@@ -330,7 +332,18 @@ export function ProjectWorkspace() {
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App registerSegmentLinkReceiver={registerLinkReceiver} onOpenSegmentLink={openSegmentLink} initialSegmentTarget={linkTarget ?? undefined} initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}:${linkOpenSequence}`} projectDirectory={editor.directory}
+    onUpgradeTagStorage={async()=>{
+      if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
+      const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
+      const backup=await chooseDirectory('save-project');
+      const next=await migrateProjectTagStorage(snapshot,backup);await publish(next);
+      const recording=next.data.interviews.flatMap(i=>i.recordings).find(r=>r.id===editor.recording.id);
+      if(recording){setEditor({...editor,directory:await recordingDirectory(next,interview!.id,recording)});setLinkOpenSequence(value=>value+1)}
+    }}
     tagLibrary={project.data.tagLibrary} tagStorage={{
+      projectRevision:project.data.revision,counts:()=>readProjectTagCounts(project),
+      requiresMigration:project.data.schemaVersion!==2,
+      projectId:project.data.id,
       transact:async(version,operation,scope)=>{
         if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
         const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');

@@ -104,9 +104,9 @@ export function tagsForSegment(segment: Segment, library: TagLibrary): ProjectTa
     const ids = new Set(segmentTagIds(segment));
     return library.tags.filter(tag => ids.has(tag.id));
 }
-export function countTaggedSegments(transcript: Transcript, tagId: string, library?: TagLibrary): number {
-    const scope = new Set(library ? descendantTagIds(library, tagId) : [tagId]);
-    return transcript.segments.filter(segment => segmentTagIds(segment).some(id=>scope.has(id))).length;
+export function countTaggedSegments(transcript: Transcript, tagId: string, _library?: TagLibrary): number {
+    void _library;
+    return transcript.segments.filter(segment => segmentTagIds(segment).includes(tagId)).length;
 }
 export function setSegmentTag(transcript: Transcript, segmentId: string, tagId: string, enabled: boolean): Transcript {
     if (!identity(tagId))
@@ -257,10 +257,13 @@ export function reparentTag(source:TagLibrary,id:string,parentId:string|null):Ta
     const library=hierarchyLibrary(source);return {...library,tags:library.tags.map(tag=>tag.id===id?{...tag,parentId}:tag)};
 }
 /** Both views keep absolute tag depth; absent group ancestors never become virtual rows. */
-export function tagTreeRows(library:TagLibrary,memberIds?:ReadonlySet<string>,key:'name'|'count'='name',direction:1|-1=1,count:(id:string)=>number=()=>0):{tag:ProjectTag;depth:number;parentPath:string;includedParentId:string|null}[] {
+export function tagTreeRows(library:TagLibrary,memberIds?:ReadonlySet<string>,key:'name'|'count'|'manual'='name',direction:1|-1=1,count:(id:string)=>number=()=>0,manualOrder:readonly string[]=[]):{tag:ProjectTag;depth:number;parentPath:string;includedParentId:string|null}[] {
     const result:{tag:ProjectTag;depth:number;parentPath:string;includedParentId:string|null}[]=[];
+    const rank=new Map(manualOrder.map((id,index)=>[id,index]));
     const visit=(parentId:string|null,depth:number,rootDepth:number|null,includedParentId:string|null)=>{
-        for(const tag of sortTags(library.tags.filter(tag=>tagParentId(tag)===parentId),key,direction,count)) {
+        const siblings=library.tags.filter(tag=>tagParentId(tag)===parentId);
+        const ordered=key==='manual'?siblings.sort((a,b)=>(rank.get(a.id)??Infinity)-(rank.get(b.id)??Infinity)||compareTagNames(a.name,b.name)||a.id.localeCompare(b.id)):sortTags(siblings,key,direction,count);
+        for(const tag of ordered) {
             const included=!memberIds||memberIds.has(tag.id),base=included?(rootDepth??depth):rootDepth;
             if(included)result.push({tag,depth,parentPath:tagAncestors(library,tag.id).reverse().map(tag=>tag.name).join('/'),includedParentId});
             visit(tag.id,depth+1,base,included?tag.id:includedParentId);

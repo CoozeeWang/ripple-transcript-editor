@@ -23,6 +23,8 @@ export interface ConnectorReference {
 }
 
 export interface ConnectorDocument {
+  /** Tag-only snapshots validate document identity without serializing its word arrays. */
+  tagBodyRevision?: string;
   target?: ProjectTarget;
   background?: boolean;
   continuations?: ContinuationStore;

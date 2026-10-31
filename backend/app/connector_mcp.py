@@ -67,7 +67,7 @@ class Mark(BaseModel):
 
 
 
-TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "assign_tags", "unassign_tags"]
+TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "reorder_tags", "assign_tags", "unassign_tags"]
 
 class TagChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -84,6 +84,7 @@ class TagChange(BaseModel):
     segment_ids: list[str] | None = Field(default=None, max_length=2000)
     copy_membership: bool | None = Field(default=None, alias="copy")
     ref: str | None = Field(default=None, max_length=80, pattern=r"^[a-zA-Z0-9-]+$")
+    view: Literal["level", "group", "ungrouped"] | None = None
 
 
 def create_server(url: str, credential_file: Path):
@@ -369,7 +370,9 @@ def register_tools(mcp, call):
         """Read tag tree, flat groups and paged segment tag IDs for an exact current-project version, without text/word arrays.
 
         Resolve IDs with list_project_interviews; ask if the version is unspecified. Returns tag_snapshot for changes.
-        Counts always refer to the selected version; project scope lists shared definitions, not cross-version results.
+        Counts refer to the selected version in current scope; project scope sums independent saved versions.
+        count is direct explicit tag-ID hits; coverage_count is the per-version segment union of this tag and descendants.
+        Groups and paged segment assignments always belong to the selected version.
         """
         return await call("tags_read", {"interview_id": interview_id, "recording_id": recording_id,
             "version_id": version_id, "scope": scope, "cursor": cursor, "limit": limit})
@@ -388,6 +391,8 @@ def register_tools(mcp, call):
         set_group_tags uses group_id/tag_ids (explicit only, no automatic child membership).
         transfer_group_tag uses tag_id/source_group_id/group_id/copy; null source adds from ungrouped.
         reorder_groups uses the full group_ids order. assign_tags/unassign_tags use segment_ids/tag_ids.
+        reorder_tags uses view (level/group/ungrouped), parent_id (null=root), full sibling tag_ids,
+        and group_id for group view. Orders belong only to this exact version/view/group and never change hierarchy.
         Only supplied operation fields are accepted. New tag/group refs are batch-local; saved stable IDs are returned.
         Original versions reject writes. Batch failure leaves all tag and manuscript data unchanged.
         """

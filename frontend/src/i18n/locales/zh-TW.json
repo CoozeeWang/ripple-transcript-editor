@@ -1924,6 +1924,13 @@
     "oldLink": "這是沒有永久版本身分的早期測試連結，請在 Ripple Dev 中重新複製片段以產生新連結。"
   },
   "tags": {
+    "storageUpgradeRequired": "此專案使用舊版標籤儲存方式，標籤暫時僅供瀏覽。",
+    "storageUpgrade": "升級標籤儲存",
+    "storageUpgradeNotice": "請選擇專案外的空白備份資料夾。Ripple 會完整備份並驗證專案，再升級標籤儲存。升級後舊版 Ripple 將無法開啟此專案；內文、標籤和各版本關聯保留。",
+    "storageBackupAndUpgrade": "選擇備份位置並升級",
+    "storageUpgrading": "正在備份並升級…",
+    "storageUpgradeFailed": "升級未完成。專案和備份已保留，請檢查檔案權限、可用空間和診斷紀錄後重試。",
+    "storageInvalid": "標籤資料與稿件不一致，請保留整個專案並重新開啟；請勿刪除標籤檔案或覆寫內文。",
     "title": "標籤",
     "all": "分級",
     "groups": "分組",
@@ -2038,6 +2045,13 @@
     "filterDeleteNotice": "關閉篩選後可刪除專案標籤分支",
     "filterRemoveNotice": "關閉篩選後可移除目前稿件標籤分支",
     "filterMembershipNotice": "關閉篩選後可從此群組移除標籤",
-    "undoConflict": "其他標籤操作已更新專案，無法復原這一步。"
+    "undoConflict": "其他標籤操作已更新專案，無法復原這一步。",
+    "manualOrder": "手動順序",
+    "sortManual": "手動順序",
+    "sortAscending": "名稱：升冪",
+    "sortDescending": "名稱：降冪",
+    "projectCount": "專案 {{count}} 個片段",
+    "currentCountCoverage": "目前稿件：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段",
+    "projectCountCoverage": "專案：直接標註 {{direct}} 個片段，含子孫覆蓋 {{coverage}} 個片段"
   }
 }

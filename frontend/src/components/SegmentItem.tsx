@@ -1,4 +1,5 @@
 import {TagInput} from './TagInput';
+import {recordTagCardRender} from '../lib/tagPerformance';
 import {TagPill} from './TagPill';
 import {TagAddButton} from './TagAddButton';
 import type {ProjectTag} from '../lib/tags';
@@ -73,6 +74,7 @@ export interface SegmentItemProps {
 }
 
 export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
+  recordTagCardRender();
   useInterfaceLanguage();
   const [tagInput,setTagInput]=useState(false);
   const {

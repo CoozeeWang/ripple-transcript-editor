@@ -22,7 +22,7 @@ import { connectorReferences, connectorVersions } from "./lib/connectorVersions"
 import {useProjectTags} from './hooks/useProjectTags';
 import {TagsPanel} from './components/TagsPanel';
 import {hierarchyLibrary,hierarchyTagFilter,emptyTagLibrary,filteredTagSegments,matchesTagFilter,tagHistoryAnchor,descendantTagIds,type TagLibrary} from './lib/tags';
-import { createTagPresenter, tagSegmentCounts } from './lib/tagPresentation';
+import { createTagPresenter, tagSegmentCounts,tagCoverageCounts } from './lib/tagPresentation';
 import { TagCandidatesContext, TagWritingContext } from './lib/tagCandidates';
 import { TagMergeDialog } from './components/TagMergeDialog';
 import type { OpenProject } from './lib/projectStore';
@@ -62,6 +62,7 @@ import type {
   TranscriptManifest,
 } from "./types";
 import { useTranscriptHistory } from "./useTranscriptHistory";
+import {TagStorageUpgrade} from "./components/TagStorageUpgrade";
 import { useDismissable } from "./useDismissable";
 import { useFindReplace } from "./hooks/useFindReplace";
 import { useShortcuts } from "./hooks/useShortcuts";
@@ -114,6 +115,7 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 // 快退/快进步长默认值（秒），可被偏好设置覆盖；键盘左右键与右侧 ± 按钮共用。
 
 export interface ProjectEditorProps {
+  onUpgradeTagStorage?:()=>Promise<void>;
   tagLibrary?:TagLibrary;
   tagStorage?:import('./hooks/useProjectTags').TagStorage;
   initialSegmentTarget?: SegmentTarget;
@@ -750,16 +752,19 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     editLockedRef.current = () => tagLibrarySaving.current || connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
   });
   const protectedReadOnly = viewingOriginal || aiLocked;
+  const tagUpgradeRequired=!!projectProps.tagStorage?.requiresMigration;
   const tags=useProjectTags({library:preparedTagLibrary.library,storage:projectProps.tagStorage,recordingId:projectProps.projectRecordingId,modelId:activeModelId,editId:viewingOriginal?'original':activeModel?.activeEditId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,flush:flushPendingSave,
     undoActionKey,redoActionKey,publish:(value,action,key)=>{if(action==='commit'){commit(()=>value,key);if(metadata)setPersistedContent({transcript:value,metadata})}else if(action==='undo')undo();else redo();setSaveStatus('saved')},
-    lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly,originalReadOnly:viewingOriginal,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+    lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly||tagUpgradeRequired,originalReadOnly:viewingOriginal,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
   const presentTags = useMemo(() => createTagPresenter(), []);
   const segmentTagView = presentTags(tags.library, transcript?.segments ?? []);
   const tagCounts = useMemo(() => tagSegmentCounts({ schemaVersion: 3, tags: segmentTagView.available, groups: [] }, transcript?.segments ?? []), [segmentTagView.available, transcript?.segments]);
+  const tagCoverage = useMemo(()=>tagCoverageCounts(tags.library,transcript?.segments??[]),[tags.library,transcript?.segments]);
+  const currentTagCoverage=useCallback((id:string)=>tagCoverage.get(id)??0,[tagCoverage]);
   const currentTagCount = useCallback((id: string) => tagCounts.get(id) ?? 0, [tagCounts]);
   useLayoutEffect(() => { tagLibrarySaving.current = tags.busy; }, [tags.busy]);
   const dropTagToSegment = async (tagId:string,segmentId:string) => {
-    if(protectedReadOnly || tags.busy || !tags.library.tags.some(tag=>tag.id===tagId)) return;
+    if(protectedReadOnly || tagUpgradeRequired || tags.busy || !tags.library.tags.some(tag=>tag.id===tagId)) return;
     flushEditorDrafts();
     if(!latestExport.current.transcript?.segments.some(segment=>segment.id===segmentId && !segment.tagIds?.includes(tagId)))return;
     await tags.attach(segmentId,tagId);
@@ -958,7 +963,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const [tagDropSegment,setTagDropSegment]=useState<string|null>(null);
   const tagEntries = useRef(new Map<string, () => void>());
   const registerTagEntry = useCallback((id: string, open: (() => void) | null) => { if (open) tagEntries.current.set(id,open); else tagEntries.current.delete(id); }, []);
-  const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tags.busy && projectProps.tagStorage) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tags.busy,projectProps.tagStorage]);
+  const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tagUpgradeRequired && !tags.busy && projectProps.tagStorage) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tagUpgradeRequired,tags.busy,projectProps.tagStorage]);
   useShortcuts({
     addTag: openActiveTagEntry, nativeTagShortcut: nativeDesktopAvailable(), tagWriteDisabled: tags.busy || protectedReadOnly,
     visibleSegmentIds,
@@ -1432,7 +1437,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                     {msg('App.m0048')}</button>
                   {!selectedAudio && <p className="empty-transcript__hint">{msg('App.m0049')}</p>}
             </section>
-          )) : <div className="segment-list"><TagWritingContext.Provider value={tags.busy}><TagCandidatesContext.Provider value={segmentTagView.available}>
+          )) : <div className="segment-list"><TagWritingContext.Provider value={tags.busy||tagUpgradeRequired}><TagCandidatesContext.Provider value={segmentTagView.available}>
             {renderedRows.map(({segment,deleted,before}) => deleted ? (
               <article className="comparison-deleted-segment" key={`deleted:${segment.id}`}>
                 <span>{transcript.timeAligned === false ? msg('App.m0050') : msg('App.m0051', { v0: formatTime(segment.start) })}</span><del>{segment.text}</del>
@@ -1451,7 +1456,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 tagDropTarget={tagDropSegment===segment.id}
                 tagPaths={segmentTagView.segments.get(segment.id)!.paths}
                 onAddTagId={tags.attach}
-                tagRenameEnabled={segmentTagView.segments.get(segment.id)!.tags.length > 0 && !tagFilterEnabled && !protectedReadOnly}
+                tagRenameEnabled={segmentTagView.segments.get(segment.id)!.tags.length > 0 && !tagFilterEnabled && !protectedReadOnly && !tagUpgradeRequired}
+                tagWriteDisabled={tagUpgradeRequired}
                 onRenameTag={projectProps.tagStorage?tags.renamePath:undefined}
                 onAddTag={projectProps.tagStorage?tags.add:undefined}
                 registerTagEntry={registerTagEntry}
@@ -1496,7 +1502,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.collection.tagIds.length}
-          tagsPanel={projectProps.tagStorage?<TagsPanel library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCount={currentTagCount} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/>:undefined}
+          tagsPanel={projectProps.tagStorage?<>{tagUpgradeRequired&&<TagStorageUpgrade onUpgrade={projectProps.onUpgradeTagStorage?async()=>{await beforeChangeRef.current();await projectProps.onUpgradeTagStorage!()}:undefined}/>}<TagsPanel loadProjectCounts={projectProps.tagStorage?.counts} projectRevision={projectProps.tagStorage?.projectRevision} versionKey={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} collection={tags.collection} onReorder={tags.reorder} library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tagUpgradeRequired||tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCoverage={currentTagCoverage} currentCount={currentTagCount} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/></>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly||tags.busy}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}

@@ -6,8 +6,8 @@ import {
 } from './tags';
 
 /** Definitions live in the project; these explicit memberships belong to one saved version. */
-export interface VersionTagGroup { id: string; name: string; tagIds: string[] }
-export interface TagCollection { schemaVersion: 1; tagIds: string[]; groups: VersionTagGroup[] }
+export interface VersionTagGroup { id: string; name: string; tagIds: string[]; order?:string[] }
+export interface TagCollection { schemaVersion: 1; tagIds: string[]; groups: VersionTagGroup[]; levelOrder?:string[];ungroupedOrder?:string[] }
 export interface TagConsumer { id: string; label: string; transcript: Transcript }
 const key = (name: string) => normalizeTagName(name).toLowerCase();
 const unique = (ids: readonly string[]) => [...new Set(ids)];
@@ -37,13 +37,15 @@ export function projectTagCatalog(source: TagLibrary): TagLibrary {
 export function isTagCollection(value: unknown): value is TagCollection {
     if (!value || typeof value !== 'object') return false;
     const c = value as TagCollection;
+    const order=(ids:unknown)=>ids===undefined||Array.isArray(ids)&&ids.every(identity)&&unique(ids).length===ids.length;
     return c.schemaVersion === 1 && Array.isArray(c.tagIds) && c.tagIds.every(identity)
+        && order(c.levelOrder)&&order(c.ungroupedOrder)
         && unique(c.tagIds).length === c.tagIds.length && Array.isArray(c.groups)
         && new Set(c.groups.map(group => group?.id)).size === c.groups.length
         && c.groups.every(group => group && identity(group.id) && typeof group.name === 'string'
             && !!normalizeTagName(group.name) && group.name.length <= 120
             && Array.isArray(group.tagIds) && group.tagIds.every(id => identity(id) && c.tagIds.includes(id))
-            && unique(group.tagIds).length === group.tagIds.length);
+            && unique(group.tagIds).length === group.tagIds.length&&order(group.order)&&(!group.order||group.order.every(id=>group.tagIds.includes(id))));
 }
 
 export function withAncestors(library: TagLibrary, ids: readonly string[]): string[] {
@@ -101,7 +103,8 @@ export function collectionLibrary(catalog: TagLibrary, collection: TagCollection
 
 export function collectionFromLibrary(library: TagLibrary, before: TagCollection, consumer = ''): TagCollection {
     const groups = library.groups.map(group => ({ id: group.id, name: group.name,
-        tagIds: library.tags.filter(tag => tag.groupIds.includes(group.id)).map(tag => tag.id) }));
+        tagIds: library.tags.filter(tag => tag.groupIds.includes(group.id)).map(tag => tag.id),
+        ...(before.groups.find(old=>old.id===group.id)?.order?{order:before.groups.find(old=>old.id===group.id)!.order!.filter(id=>library.tags.some(tag=>tag.id===id&&tag.groupIds.includes(group.id)))}:{}) }));
     const admitted = admitTags(library, before, groups.flatMap(group => group.tagIds), consumer);
     return { ...admitted, groups };
 }
@@ -112,7 +115,7 @@ export function removeVersionTagBranch(library: TagLibrary, transcript: Transcri
     const removed = new Set(descendantTagIds(library, id).filter(id => before.tagIds.includes(id)));
     if (!removed.size) return transcript;
     const collection: TagCollection = { ...before, tagIds: before.tagIds.filter(id => !removed.has(id)),
-        groups: before.groups.map(group => ({ ...group, tagIds: group.tagIds.filter(id => !removed.has(id)) })) };
+        groups: before.groups.map(group => ({ ...group, tagIds: group.tagIds.filter(id => !removed.has(id)),...(group.order?{order:group.order.filter(id=>!removed.has(id))}:{}) })) };
     validateTagCollection(library, collection);
     return { ...transcript, tagCollection: collection,
         segments: transcript.segments.map(segment => segment.tagIds?.some(id => removed.has(id))
@@ -148,10 +151,15 @@ export function changeSharedTag(source: TagLibrary, id: string, raw: string, con
         const previous = versionTagCollection(consumer.transcript, source);
         const mapIds = (ids: readonly string[]) => unique(ids.map(id => remap.get(id) ?? id));
         const collection: TagCollection = { ...previous, tagIds: withAncestors(next, mapIds(previous.tagIds)),
-            groups: previous.groups.map(group => ({ ...group, tagIds: mapIds(group.tagIds) })) };
+            ...(previous.levelOrder?{levelOrder:mapIds(previous.levelOrder)}:{}),...(previous.ungroupedOrder?{ungroupedOrder:mapIds(previous.ungroupedOrder)}:{}),
+            groups: previous.groups.map(group => ({ ...group, tagIds: mapIds(group.tagIds),...(group.order?{order:mapIds(group.order)}:{}) })) };
         validateTagCollection(next, collection, consumer.label);
         return { ...consumer, transcript: { ...consumer.transcript, tagCollection: collection,
-            segments: consumer.transcript.segments.map(segment => segment.tagIds ? ({ ...segment, tagIds: mapIds(segmentTagIds(segment)) }) : segment) } };
+            segments: consumer.transcript.segments.map(segment => {
+                if(!segment.tagIds)return segment;
+                const ids=mapIds(segmentTagIds(segment));
+                return ids.length===segment.tagIds.length&&ids.every((id,i)=>id===segment.tagIds![i])?segment:{...segment,tagIds:ids};
+            }) } };
     });
     if (remap.size && !merge) throw new TagMergeRequired(id, remap.get(id)!, raw, remap.size);
     return { library: next, consumers: mapped, remap };

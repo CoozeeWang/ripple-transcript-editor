@@ -5,7 +5,7 @@ import {readModelEdit,saveActiveEdit} from '../localStore';
 import {applyTagFields,restoreProjectTagTransaction,type TagTransactionReceipt} from './projectTagRepository';
 const target={interview_id:'session-b',recording_id:'recording-session-b',version_id:'m1:e1'};
 async function fixture(){
- const f=await projectConnectorFixture();let receipt:TagTransactionReceipt|undefined;
+ const f=await projectConnectorFixture(true);let receipt:TagTransactionReceipt|undefined;
  const accept=vi.fn(async(r:TagTransactionReceipt)=>{receipt=r;const patch=r.versions.find(p=>p.id==='recording-session-a:m1:e1');if(patch)f.current={...f.current,transcript:applyTagFields(f.current.transcript,patch.after)};return true});
  const connector=()=>new ProjectAIConnector({...f.active,acceptTagTransaction:accept},()=>({project:()=>f.project,active:()=>({interview_id:'session-a',recording_id:'recording-session-a',version_id:'m1:e1',directory:f.dirA}),publishTagProject:async p=>{f.project=p}}));
  return{...f,f,connector,accept,get receipt(){return receipt}};

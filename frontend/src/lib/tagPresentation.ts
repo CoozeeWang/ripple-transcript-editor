@@ -44,13 +44,18 @@ export function presentSegmentTags(library: TagLibrary, segments: readonly Segme
     return { available, segments: rows };
 }
 
-/** One segment contributes once to each direct tag/ancestor, even if several descendants match. */
+/** Counts reflect explicit IDs only. Hierarchical filter inheritance is deliberately separate. */
 export function tagSegmentCounts(library: TagLibrary, segments: readonly Segment[]): Map<string, number> {
-    const scopes = new Map(library.tags.map(tag => [tag.id, [tag.id, ...tagAncestors(library, tag.id).map(parent => parent.id)]]));
     const result = new Map(library.tags.map(tag => [tag.id, 0]));
     for (const segment of segments) {
-        const hit = new Set(segmentTagIds(segment).flatMap(id => scopes.get(id) ?? []));
-        for (const id of hit) result.set(id, result.get(id)! + 1);
+        for (const id of new Set(segmentTagIds(segment))) if(result.has(id))result.set(id, result.get(id)! + 1);
     }
     return result;
+}
+
+/** Coverage is a separate union, not the direct count: one segment contributes at most once. */
+export function tagCoverageCounts(library:TagLibrary,segments:readonly Segment[]):Map<string,number>{
+ const ancestors=new Map(library.tags.map(tag=>[tag.id,[tag.id,...tagAncestors(library,tag.id).map(parent=>parent.id)]]));
+ const result=new Map(library.tags.map(tag=>[tag.id,0]));
+ for(const segment of segments){const hits=new Set(segmentTagIds(segment).flatMap(id=>ancestors.get(id)??[]));for(const id of hits)result.set(id,result.get(id)!+1)}return result;
 }
