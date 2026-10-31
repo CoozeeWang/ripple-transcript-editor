@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import channels from "../desktop/segment-link-config.json" with { type: "json" };
 
 export default defineConfig({
+  resolve: {alias:process.env.VITE_RIPPLE_RELEASE_TEST==='1'?[{find:/^react-dom\/client$/,replacement:'react-dom/profiling'}]:[]},
   plugins: [react(), { name: 'segment-channel-manifest', generateBundle() {
     this.emitFile({type:'asset',fileName:'segment-link-channel.json',source:JSON.stringify({channel:process.env.VITE_RIPPLE_RELEASE_TEST === '1' ? 'release-test' : 'production',...channels.production})+'\n'});
   } }],

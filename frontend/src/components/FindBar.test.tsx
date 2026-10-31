@@ -22,7 +22,7 @@ it('matches navigation hints to Enter and Shift+Enter', () => {
  const {props}=setup(); const input=screen.getByRole('textbox',{name:'查找'});
  fireEvent.keyDown(input,{key:'Enter'}); fireEvent.keyDown(input,{key:'Enter',shiftKey:true});
  expect(props.findNext).toHaveBeenCalledOnce(); expect(props.findPrev).toHaveBeenCalledOnce();
- expect(screen.getByRole('button',{name:'下一个'}).title).toBe('下一个（Enter）');
+ expect(screen.getByRole('button',{name:'下一个'}).getAttribute('data-tip')).toBe('下一个（Enter）');
  expect(screen.getByRole('status').textContent).toContain('匹配项：2');
 });
 it('returns to the opener when the focused search bar closes', () => {

@@ -52,3 +52,6 @@ it('adds to the selected segment from All, keeps drafts scoped to their target a
  ui.rerender(<AnnotationPanel {...props} currentSegment={undefined} currentSegmentId=''/>);
  expect(ui.queryByRole('textbox')).toBeNull();
 });
+it('keeps collapsed rail to one expand control and uses the same SVG frame for all three tabs',()=>{
+ const props:AnnotationPanelProps={transcript:null,annotationView:'selected',setAnnotationView:vi.fn(),panelTab:'annotation',setPanelTab:vi.fn(),currentSegment:undefined,currentSegmentId:'',hiddenSpeakerIds:new Set(),annotationListRef:{current:null},collapsed:true,setCollapsed:vi.fn(),highlightGroups:[],highlightCount:0,setSelectedSegmentId:vi.fn(),seekTo:vi.fn(),updateAnnotation:vi.fn(),deleteAnnotation:vi.fn(),addAnnotation:vi.fn(),onJumpToHighlight:vi.fn(),onRemoveHighlight:vi.fn()};const h=render(<AnnotationPanel {...props}/>);expect(h.container.querySelectorAll('.annotation-rail svg')).toHaveLength(1);expect(h.getAllByRole('button')).toHaveLength(1);h.rerender(<AnnotationPanel {...props} collapsed={false} tagsPanel={<div>Synthetic tags</div>} tagCount={2}/>);const icons=h.container.querySelectorAll('.panel-tab-icon');expect(icons).toHaveLength(3);expect([...icons].every(e=>e.getAttribute('width')==='20'&&e.getAttribute('height')==='20')).toBe(true);expect(icons[0].querySelectorAll('path')).toHaveLength(2);
+});

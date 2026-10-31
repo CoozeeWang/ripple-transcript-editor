@@ -1,0 +1,19 @@
+:root {
+  --tooltip-font: 400 12px/1.4 var(--font-sans);
+  --tooltip-radius: 7px;
+  --tooltip-padding: 6px 9px;
+  --tooltip-control-bg: #2b2f36;
+  --tooltip-control-text: #fff;
+  --tooltip-action-bg: var(--color-surface-warm);
+  --tooltip-action-text: var(--color-text-2);
+  --tooltip-shadow: 0 3px 12px rgb(0 0 0 / 12%);
+}
+.ripple-tooltip {
+  position: fixed; inset: auto; z-index: 80; margin: 0; box-sizing: border-box;
+  width: max-content; max-width: min(260px, calc(100vw - 16px)); max-height: min(320px, calc(100dvh - 16px));
+  overflow: auto; overscroll-behavior: contain; padding: var(--tooltip-padding); border: 1px solid transparent;
+  border-radius: var(--tooltip-radius); box-shadow: var(--tooltip-shadow); font: var(--tooltip-font);
+  white-space: pre-line; text-wrap: pretty; overflow-wrap: anywhere; text-align: left; pointer-events: auto;
+}
+.ripple-tooltip--control { background: var(--tooltip-control-bg); color: var(--tooltip-control-text); }
+.ripple-tooltip--action { background: var(--tooltip-action-bg); color: var(--tooltip-action-text); border-color: var(--color-border); }

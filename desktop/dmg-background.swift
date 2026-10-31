@@ -22,15 +22,15 @@ NSColor(calibratedRed: 0.965, green: 0.961, blue: 0.941, alpha: 1).setFill()
 NSRect(x: 0, y: 0, width: width, height: height).fill()
 
 let arrow = NSBezierPath()
-arrow.lineWidth = 5
+arrow.lineWidth = 2.5
 arrow.lineCapStyle = .round
 arrow.lineJoinStyle = .round
-arrow.move(to: NSPoint(x: 270, y: 210))
-arrow.line(to: NSPoint(x: 390, y: 210))
-arrow.move(to: NSPoint(x: 372, y: 227))
-arrow.line(to: NSPoint(x: 390, y: 210))
-arrow.line(to: NSPoint(x: 372, y: 193))
-NSColor(calibratedRed: 0.125, green: 0.333, blue: 0.376, alpha: 1).setStroke()
+arrow.move(to: NSPoint(x: 294, y: 210))
+arrow.line(to: NSPoint(x: 366, y: 210))
+arrow.move(to: NSPoint(x: 355, y: 220))
+arrow.line(to: NSPoint(x: 366, y: 210))
+arrow.line(to: NSPoint(x: 355, y: 200))
+NSColor(calibratedRed: 0.125, green: 0.333, blue: 0.376, alpha: 0.65).setStroke()
 arrow.stroke()
 
 NSGraphicsContext.current?.flushGraphics()

@@ -1,6 +1,7 @@
 import { installNativeMenuLanguage } from './nativeMenu';
 import { msg } from '../i18n';
 import { installDesktopFilePickers, nativeDesktopAvailable } from './desktopFs';
+import { prepareNormalClose } from './normalClose';
 
 // Development uses Vite's same-origin API proxy; release uses the bundled service.
 const API_ROOT = import.meta.env.DEV ? '' : (import.meta.env.VITE_RIPPLE_RELEASE_TEST === '1' ? 'http://127.0.0.1:18713' : 'http://127.0.0.1:18701');
@@ -8,6 +9,7 @@ const API_ROOT = import.meta.env.DEV ? '' : (import.meta.env.VITE_RIPPLE_RELEASE
 let removeMenuLanguage: (() => void) | undefined;
 let removeOpenProjectMenu: (() => void) | undefined;
 let removeRecentProjectMenu: (() => void) | undefined;
+let removeNormalClose: (() => void) | undefined;
 
 function apiUrl(url: string): string {
   return url.startsWith('/api/') ? `${API_ROOT}${url}` : url;
@@ -32,13 +34,19 @@ export async function installDesktopRuntime(): Promise<void> {
   removeMenuLanguage?.();
   removeOpenProjectMenu?.();
   removeRecentProjectMenu?.();
+  removeNormalClose?.();
   const tauriEvents = (window as unknown as { __TAURI__: { event?: { listen: (name: string, callback: (event: {payload:string}) => void) => Promise<() => void> } } }).__TAURI__.event;
   removeOpenProjectMenu = tauriEvents ? await tauriEvents.listen('ripple-open-project', () => window.dispatchEvent(new Event('ripple-open-project'))) : undefined;
   removeRecentProjectMenu = tauriEvents ? await tauriEvents.listen('ripple-open-recent-project', event => window.dispatchEvent(new CustomEvent('ripple-open-recent-project', { detail: event.payload }))) : undefined;
+  removeNormalClose = tauriEvents ? await tauriEvents.listen('ripple-normal-close', () => {
+    void prepareNormalClose().then(() => invoke('finish_normal_close', { allow: true }), () => invoke('finish_normal_close', { allow: false }));
+  }) : undefined;
+  if (tauriEvents) await invoke('normal_close_ready');
   removeMenuLanguage = installNativeMenuLanguage(invoke);
   if (import.meta.hot) import.meta.hot.dispose(() => removeMenuLanguage?.());
   if (import.meta.hot) import.meta.hot.dispose(() => removeOpenProjectMenu?.());
   if (import.meta.hot) import.meta.hot.dispose(() => removeRecentProjectMenu?.());
+  if (import.meta.hot) import.meta.hot.dispose(() => removeNormalClose?.());
   for (let attempt = 0; attempt < 100; attempt++) {
     if (await invoke('backend_ready')) return;
     await new Promise(resolve => setTimeout(resolve, 100));

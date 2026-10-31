@@ -49,7 +49,7 @@ export function SpeakerColorPicker({name,color,onChange}:{name:string;color:stri
   const close=()=>{setOpen(false);setAdding(false);setManaging(false);setError("");};
   const choose=(next:string,index:number)=>{onChange(next,index);close();trigger.current?.focus();};
   return <span className="speaker-color-action-wrap" ref={root} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();close();trigger.current?.focus();}}}>
-    <button ref={trigger} type="button" className="speaker-action speaker-color-action" aria-label={msg('SpeakerColorPicker.m0991', { v0: name })} title={msg('SpeakerColorPicker.m0992')} aria-expanded={open} onClick={()=>{if(open)close();else {setCustom(readSpeakerPresets());setOpen(true);}}}>
+    <button ref={trigger} type="button" className="speaker-action speaker-color-action" aria-label={msg('SpeakerColorPicker.m0991', { v0: name })} data-tip={msg('SpeakerColorPicker.m0992')} aria-expanded={open} onClick={()=>{if(open)close();else {setCustom(readSpeakerPresets());setOpen(true);}}}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1.4-3.4 1.5 1.5 0 0 1 1.1-2.6H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z" />
         <circle cx="7.5" cy="10" r=".8" /><circle cx="11" cy="7" r=".8" /><circle cx="15.5" cy="8" r=".8" />
@@ -58,19 +58,19 @@ export function SpeakerColorPicker({name,color,onChange}:{name:string;color:stri
     {open && createPortal(<div ref={popup} style={position} className="speaker-preset-palette" role="group" aria-label={msg('SpeakerColorPicker.m0993', { v0: name })}>
       <div className="speaker-palette-heading">{msg('SpeakerColorPicker.m0994')}</div>
       <div className="speaker-palette-grid" role="group" aria-label={msg('SpeakerColorPicker.m0995')}>
-      {SPEAKER_PALETTE.map((preset,index)=><button className="speaker-palette-swatch" key={preset} type="button" title={speakerColorNames()[index]} aria-label={speakerColorNames()[index]} aria-pressed={color.toLowerCase()===preset.toLowerCase()}
+      {SPEAKER_PALETTE.map((preset,index)=><button className="speaker-palette-swatch" key={preset} type="button" data-tip={speakerColorNames()[index]} aria-label={speakerColorNames()[index]} aria-pressed={color.toLowerCase()===preset.toLowerCase()}
         style={{background:preset}} onClick={()=>choose(preset,index)} />)}
       </div>
       <div className="speaker-palette-heading speaker-palette-custom-heading"><span>{msg('SpeakerColorPicker.m0996')}</span>
         {(custom.length>0||managing) && <button type="button" className="speaker-palette-text" onClick={()=>{setManaging(!managing);setAdding(false);setError("");}}>{managing?msg('SpeakerColorPicker.m0997'):msg('SpeakerColorPicker.m0998')}</button>}
       </div>
       <div className="speaker-palette-grid" role="group" aria-label={msg('SpeakerColorPicker.m0999')}>
-        {custom.map(preset=><button className={`speaker-palette-swatch${managing?" is-removing":""}`} key={preset} type="button" title={managing?msg('SpeakerColorPicker.m1000', { v0: preset }):preset} aria-label={managing?msg('SpeakerColorPicker.m1001', { v0: preset }):msg('SpeakerColorPicker.m1002', { v0: preset })} aria-pressed={!managing&&color.toUpperCase()===preset}
+        {custom.map(preset=><button className={`speaker-palette-swatch${managing?" is-removing":""}`} key={preset} type="button" data-tip={managing?msg('SpeakerColorPicker.m1000', { v0: preset }):preset} aria-label={managing?msg('SpeakerColorPicker.m1001', { v0: preset }):msg('SpeakerColorPicker.m1002', { v0: preset })} aria-pressed={!managing&&color.toUpperCase()===preset}
           style={{background:preset}} onClick={()=>{
             if(!managing){choose(preset,Math.max(0,SPEAKER_PALETTE.indexOf(preset)));return;}
             try {saveSpeakerPresets(readSpeakerPresets().filter(c=>c!==preset));setError("");} catch {setError(msg('SpeakerColorPicker.m1003'));}
           }}>{managing&&<span aria-hidden="true">×</span>}</button>)}
-        {!managing && <button type="button" className="speaker-palette-add" title={msg('SpeakerColorPicker.m1004')} aria-label={msg('SpeakerColorPicker.m1005')} aria-expanded={adding} onClick={()=>{setAdding(!adding);setDraft(color);setError("");}}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>}
+        {!managing && <button type="button" className="speaker-palette-add" data-tip={msg('SpeakerColorPicker.m1004')} aria-label={msg('SpeakerColorPicker.m1005')} aria-expanded={adding} onClick={()=>{setAdding(!adding);setDraft(color);setError("");}}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>}
       </div>
       {adding && <div className="speaker-palette-editor">
         <div className="speaker-palette-fields"><input type="color" aria-label={msg('SpeakerColorPicker.m1006')} value={validSpeakerColor(draft)?draft:color} onChange={event=>{setDraft(event.target.value);setError("");}}/>

@@ -1,4 +1,8 @@
 import { msg } from '../i18n';
+import {hasTagStorage,initializeTagStorage,seedImportedTagStorage,hydrateTagDocument,writeTagDocument,sidecarName,TAG_STORAGE_MARKER,refreshCopiedTagStamps} from './tagSidecar';
+import {readTagFile} from './tagFileTransaction';
+import { isTagLibrary, type TagLibrary } from './tags';
+import { recoverTagFileTransaction } from './tagFileTransaction';
 import { validOriginalGroupId, withOriginalGroups } from './originalGroups';
 import { readRecoverableManifest } from './manifestRecovery';
 import { isContinuationTask } from './continuationJournal';
@@ -37,9 +41,17 @@ export interface ProjectSessionTrashItem {
   materialTrash?: ProjectTrashItem[];
 }
 export interface RippleProject {
-  kind: 'ripple-project'; schemaVersion: 1; id: string; title: string; description: string;
+  /** Optional backwards-compatible project-wide definitions. */
+  tagLibrary?: TagLibrary;
+  kind: 'ripple-project'; schemaVersion: 1 | 2; id: string; title: string; description: string;
   revision: number; interviews: ProjectInterview[]; trash?: ProjectTrashItem[];
+  tagHead?: string;
+  tagRequests?: Record<string, TagRequestReceipt>;
   sessionTrash?: ProjectSessionTrashItem[];
+}
+export interface TagRequestReceipt {
+  signature: string; client: string; recording: string; model: string; version: string;
+  count: number; savedAt: string; references: {tags:Record<string,string>;groups:Record<string,string>}; undone?: boolean;
 }
 export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject; finderIconWarning?: boolean }
 const INDEX = 'ripple-project.json';
@@ -50,8 +62,18 @@ const notFound = (error: unknown) => (error as { name?: string }).name === 'NotF
 export function parseProject(raw: string): RippleProject {
   let p: RippleProject;
   try { p = JSON.parse(raw) as RippleProject; } catch { throw new Error(msg('projectStore.m1382')); }
-  if (p?.kind !== 'ripple-project' || p.schemaVersion !== 1 || !id(p.id) || typeof p.title !== 'string' || !p.title.trim()
+  if (p?.kind !== 'ripple-project' || ![1,2].includes(p.schemaVersion) || !id(p.id) || typeof p.title !== 'string' || !p.title.trim()
       || typeof p.description !== 'string' || !Number.isSafeInteger(p.revision) || p.revision < 0 || !Array.isArray(p.interviews)) throw new Error(msg('projectStore.m1383'));
+  if (p.tagLibrary !== undefined && !isTagLibrary(p.tagLibrary)) throw new Error(msg('projectStore.m1383'));
+  if (p.tagHead !== undefined && !id(p.tagHead)) throw new Error(msg('projectStore.m1383'));
+  if (p.tagRequests !== undefined && (!p.tagRequests || typeof p.tagRequests !== 'object' || Array.isArray(p.tagRequests)
+    || Object.entries(p.tagRequests).length > 100 || Object.entries(p.tagRequests).some(([key,r]) => !id(key) || !r
+      || !/^[a-f0-9]{64}$/.test(r.signature) || typeof r.client !== 'string' || !r.client || r.client.length>80
+      || ![r.recording,r.model,r.version].every(id) || !Number.isInteger(r.count) || r.count<1 || r.count>64
+      || !Number.isFinite(Date.parse(r.savedAt)) || !r.references || ['tags','groups'].some(kind => {
+        const values=r.references[kind as 'tags'|'groups'];return !values || typeof values!=='object' || Array.isArray(values)
+          || Object.entries(values).some(([key,value])=>!id(key)||!id(value));
+      }) || r.undone!==undefined&&typeof r.undone!=='boolean'))) throw new Error(msg('projectStore.m1383'));
   const identifiers = new Set<string>();
   for (const interview of p.interviews) {
     if (!interview || !id(interview.id) || identifiers.has(interview.id) || typeof interview.title !== 'string' || !interview.title.trim() || !Array.isArray(interview.recordings)) throw new Error(msg('projectStore.m1384'));
@@ -108,13 +130,14 @@ export function parseProject(raw: string): RippleProject {
 export const projectTrashCount = (project: OpenProject): number =>
   (project.data.trash?.length ?? 0) + (project.data.sessionTrash?.length ?? 0);
 async function readText(dir: FileSystemDirectoryHandle, name: string): Promise<string | null> {
-  try { return await (await (await dir.getFileHandle(name)).getFile()).text(); }
+  try { return await hydrateTagDocument(dir,name,await (await (await dir.getFileHandle(name)).getFile()).text()); }
   catch (error) { if (notFound(error)) return null; throw error; }
 }
 // The editor and project management use the same read-only recovery policy.
 const readManuscriptIndex = (directory: FileSystemDirectoryHandle) =>
   readRecoverableManifest({ read: name => readText(directory, name) });
 async function writeText(dir: FileSystemDirectoryHandle, name: string, text: string) {
+  if(name.endsWith('.json')&&await hasTagStorage(dir)&&await writeTagDocument(dir,name,JSON.parse(text)))return;
   const handle = await dir.getFileHandle(name, { create: true });
   const stream = await handle.createWritable();
   try { await stream.write(text); await stream.close(); }
@@ -136,7 +159,18 @@ export async function openProject(directory: FileSystemDirectoryHandle): Promise
   const raw = await readText(directory, INDEX);
   if (raw === null) throw new Error(msg('projectStore.m1393'));
   // Do not silently open an older backup: it could hide newly created interviews.
-  const data = parseProject(raw);
+  const initial = parseProject(raw);
+  return withProjectLock(initial.id, async()=>{
+    // Opening another window must never recover a transaction still in progress.
+    await recoverTagFileTransaction(directory);
+    const next=await readOpenProjectUnlocked(directory);if(next.data.id!==initial.id)throw Error(msg('projectStore.m1396'));return next;
+  });
+}
+/** Call only while holding this project's lock. */
+async function readOpenProjectUnlocked(directory: FileSystemDirectoryHandle): Promise<OpenProject> {
+  const raw=await readText(directory,INDEX);
+  if(raw===null)throw Error(msg('projectStore.m1393'));
+  const data=parseProject(raw);
   const finderIconWarning = !await decorateNativeProject(directory);
   return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
 }
@@ -149,12 +183,14 @@ export async function acquireProjectEditor(projectId: string): Promise<() => voi
     }).catch(reject);
   });
 }
-async function locked<T>(projectId: string, work: () => Promise<T>): Promise<T> {
-  if (typeof navigator !== 'undefined' && navigator.locks) return navigator.locks.request(`ripple-project:${projectId}`, work);
+export async function withProjectLock<T>(projectId: string, work: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.locks) return navigator.locks.request(`ripple-project:${projectId}`, {}, work);
   return work();
 }
+const locked = withProjectLock;
 export async function saveProject(project: OpenProject, next: RippleProject): Promise<OpenProject> {
   return locked(project.data.id, async () => {
+    await recoverTagFileTransaction(project.directory);
     const original = await readText(project.directory, INDEX);
     if (original === null) throw new Error(msg('projectStore.m1395'));
     const current = parseProject(original);
@@ -178,7 +214,7 @@ export async function createProject(parent: FileSystemDirectoryHandle, title: st
   try { await parent.getDirectoryHandle(folder); throw new Error(msg('projectStore.m1398')); }
   catch (error) { if (!notFound(error)) throw error; }
   const directory = await parent.getDirectoryHandle(folder, { create: true });
-  const data: RippleProject = { kind: 'ripple-project', schemaVersion: 1, id: crypto.randomUUID(), title: name, description: '', revision: 0, interviews: [] };
+  const data: RippleProject = { kind: 'ripple-project', schemaVersion: 2, id: crypto.randomUUID(), title: name, description: '', revision: 0, interviews: [] };
   await writeText(directory, INDEX, JSON.stringify(data, null, 2));
   const finderIconWarning = !await decorateNativeProject(directory);
   return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
@@ -353,6 +389,7 @@ export async function recordingDirectory(project: OpenProject, interviewId: stri
   };
   return {
     kind: 'directory', name: `${project.data.id}-${recording.id}`,
+    storeIdentity: `ripple:${project.data.id}:${interviewId}:${recording.id}`,
     getFileHandle: (name: string, options?: FileSystemGetFileOptions) => {
       if (name === recording.file) {
         if (options?.create) throw new Error(msg('projectStore.m1409'));
@@ -360,8 +397,14 @@ export async function recordingDirectory(project: OpenProject, interviewId: stri
       }
       return directory.getFileHandle(name, options);
     },
-    getDirectoryHandle: (name: string, options?: FileSystemGetDirectoryOptions) => directory.getDirectoryHandle(
-      name === `${stemOf(recording.file)}.transcript` && recording.manuscriptDirectory ? recording.manuscriptDirectory : name, options),
+    getDirectoryHandle: async (name: string, options?: FileSystemGetDirectoryOptions) => {
+      const container=await directory.getDirectoryHandle(name === `${stemOf(recording.file)}.transcript` && recording.manuscriptDirectory ? recording.manuscriptDirectory : name, options);
+      if(project.data.schemaVersion===2&&name.endsWith('.transcript')){
+        if(options?.create)await initializeTagStorage(container);
+        else if(!await hasTagStorage(container))throw Error('tag_metadata_missing');
+      }
+      return container;
+    },
     removeEntry: async (name: string, options?: FileSystemRemoveOptions) => {
       if (name === recording.file || name === 'media') throw new Error(msg('projectStore.m1410'));
       return directory.removeEntry(name, options);
@@ -400,6 +443,7 @@ async function copyTree(source: FileSystemDirectoryHandle, target: FileSystemDir
       if (await mediaFingerprint(await destination.getFile()) !== await mediaFingerprint(file) || await mediaFingerprint(await (handle as FileSystemFileHandle).getFile()) !== await mediaFingerprint(file)) throw new Error(msg('projectStore.m1412'));
     }
   }
+  await refreshCopiedTagStamps(target);
 }
 /** Only manuscript-owned AI state travels with a portable project, never device configuration. */
 async function copyManuscriptWork(source: FileSystemDirectoryHandle, target: FileSystemDirectoryHandle, projectId: string, projectTitle: string) {
@@ -437,7 +481,8 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
   // Prevent an active editor in another window from changing manuscripts during the copy.
   const release = await acquireProjectEditor(project.data.id);
   try { return await locked(project.data.id, async () => {
-    const source = await openProject(project.directory);
+    await recoverTagFileTransaction(project.directory);
+    const source = await readOpenProjectUnlocked(project.directory);
     if (source.data.revision !== project.data.revision) throw new Error(msg('projectStore.m1413'));
     if (project.directory.resolve && await project.directory.resolve(parent) !== null) throw new Error(msg('projectStore.m1414'));
     const created = await createProject(parent, title);
@@ -467,11 +512,16 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
           const files=new Set(manifest.models.flatMap(m=>[...(m.original?[m.original]:[]),...m.edits.map(e=>e.file)]));
           for(const file of files){
             if(!safeName(file))throw new Error(msg('projectStore.m1418'));
-            const text=await readText(manuscripts,file);
+            const text=await readTagFile(manuscripts,[file]);
             if(text===null)throw new Error(msg('projectStore.m1419', { v0: file }));
             await writeText(target,file,text);
+            if(source.data.schemaVersion===2){
+              const metadataName=await sidecarName(file),metadata=await readTagFile(manuscripts,[metadataName]);
+              if(metadata===null)throw Error('tag_metadata_missing');await writeText(target,metadataName,metadata);
+            }
           }
           await writeText(target,'manifest.json',raw);
+          if(source.data.schemaVersion===2){await writeText(target,TAG_STORAGE_MARKER,JSON.stringify({schemaVersion:1}));await refreshCopiedTagStamps(target)}
           await copyManuscriptWork(manuscripts, target, created.data.id, title.trim());
         }
         if (recording.storage === 'none') continue;
@@ -485,7 +535,7 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
         if (await mediaFingerprint(await (await media.getFileHandle(recording.file)).getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1421'));
       }
     }
-    const finalSource = await openProject(project.directory);
+    const finalSource = await readOpenProjectUnlocked(project.directory);
     if (finalSource.data.revision !== source.data.revision) throw new Error(msg('projectStore.m1422'));
     const data: RippleProject = { ...source.data, id: created.data.id, title: title.trim(), revision: 0, trash: [], sessionTrash: [] };
     await writeText(created.directory, INDEX, JSON.stringify(data, null, 2));
@@ -589,6 +639,7 @@ export async function importExistingManuscript(project: OpenProject, interviewId
     if (await readManuscriptIndex(source.directory) !== source.manifestText || await readManuscriptIndex(staged) !== source.manifestText) throw new Error(msg('projectStore.m1437'));
     const manifest = { ...source.manifest, audio: recording.file };
     await writeText(staged, 'manifest.json', JSON.stringify(manifest, null, 2));
+    if(project.data.schemaVersion===2)await seedImportedTagStorage(staged,project.data.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
     const active = manifest.models.find(m => m.id === manifest.activeModelId)!;
     const activeFile = active.edits.find(e => e.id === active.activeEditId)!;
     const data = JSON.parse((await readText(staged, activeFile.file))!);
@@ -784,6 +835,11 @@ export async function reassignManuscript(project: OpenProject, interviewId: stri
     const emptyDirectory = await directory.getDirectoryHandle(emptyName, { create: true });
     if (keptModels.length) await copyTree(manuscript, emptyDirectory);
     await writeText(emptyDirectory, 'manifest.json', JSON.stringify({ ...sourceManifest, models: keptModels, activeModelId: keptModels.some((m: { id: string }) => m.id === sourceManifest.activeModelId) ? sourceManifest.activeModelId : keptModels[0]?.id ?? '' }));
+    if(project.data.schemaVersion===2){
+      const library=project.data.tagLibrary??{schemaVersion:3 as const,tags:[],groups:[]};
+      await seedImportedTagStorage(emptyDirectory,library);
+      await seedImportedTagStorage(await directory.getDirectoryHandle(stagedName),library);
+    }
     const detachedId = crypto.randomUUID();
     const destination: ProjectRecording = target ? { ...target, manuscriptDirectory: stagedName } : {
       id: detachedId, name: `${source.name} · 转录稿`, file: `${detachedId}.wav`, storage: 'none', fingerprint: '', manuscriptDirectory: stagedName,

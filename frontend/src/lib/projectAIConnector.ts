@@ -2,6 +2,7 @@ import { AIConnector, type ConnectorDocument, type ConnectorHost } from './aiCon
 import { AIEditOwnership, editTargetKey, ownsEditing } from './aiEditOwnership';
 import { ProjectConnectorHosts, type ProjectConnectorAccess } from './projectConnectorHost';
 import type { ContinuationProgress } from './incrementalContinuation';
+import { ProjectTagTasks } from './projectTagTasks';
 
 type Bound = Awaited<ReturnType<ProjectConnectorHosts['bind']>>;
 interface Owner { controller: AIConnector; host: ConnectorHost; bound?: Bound }
@@ -17,6 +18,7 @@ export class ProjectAIConnector {
   private markIds = new Set<string>();
   private progress = new Map<Owner, ContinuationProgress[]>();
   readonly editing: AIEditOwnership;
+  private tagTasks: ProjectTagTasks;
   private clients = new Map<string, string>();
   private access: () => ProjectConnectorAccess | undefined;
   constructor(host: ConnectorHost, access: () => ProjectConnectorAccess | undefined) {
@@ -24,6 +26,7 @@ export class ProjectAIConnector {
     this.editing = new AIEditOwnership(tasks => host.editingActivity?.(tasks));
     const guarded = this.guard(host);
     this.hosts = new ProjectConnectorHosts(access, guarded);
+    this.tagTasks = new ProjectTagTasks(this.hosts,guarded,access,this.editing);
     this.legacy = { host: guarded, controller: new AIConnector({ ...guarded, continuationProgress: tasks => {
       this.progress.set(this.legacy, tasks); this.notify(host);
     } }) };
@@ -100,6 +103,7 @@ export class ProjectAIConnector {
     return { project_id: directory.project_id, project: directory.project, tasks: results };
   }
   async handle(operation: string, args: Record<string, unknown>, client = 'local'): Promise<Record<string, unknown>> {
+    if(operation.startsWith('tags_'))return this.tagTasks.handle(operation,args,client);
     if (operation === 'dismiss_editing') {
       if (client !== 'window') throw Error('window_action_required');
       this.editing.dismiss(String(args.task_id));
@@ -107,6 +111,7 @@ export class ProjectAIConnector {
     }
     if (operation === 'end_editing') {
       const id = String(args.task_id);
+      if(this.tagTasks.has(id))return this.tagTasks.cancel(id,client);
       if (client !== 'window' && this.clients.get(id) !== client) throw Error('editing_task_belongs_to_another_client');
       this.editing.end(id);
       const owner = this.tasks.get(id);

@@ -14,6 +14,7 @@ import { isHighlightShortcut, mergeHighlights, newHighlightId } from "../lib/hig
  *  transcript 核心、选中/活跃片段、隐藏说话人、textarea 引用等共享状态
  *  通过回调注入解耦（与 useFolder/useVersions 同一模式）。 */
 export interface UseEditorDeps {
+  visibleSegmentIds?:ReadonlySet<string>;
   transcript: Transcript | null;
   mutateTranscript: (
     updater: (current: Transcript) => Transcript,
@@ -469,7 +470,9 @@ export function useEditor(deps: UseEditorDeps) {
       event.preventDefault();
       const index = transcript?.segments.findIndex((segment) => segment.id === segmentId) ?? -1;
       const delta = event.key === "ArrowUp" ? -1 : 1;
-      const next = transcript?.segments[index + delta];
+      let nextIndex=index+delta;
+      while(transcript?.segments[nextIndex]&&deps.visibleSegmentIds&&!deps.visibleSegmentIds.has(transcript.segments[nextIndex].id))nextIndex+=delta;
+      const next = transcript?.segments[nextIndex];
       if (!next) return;
       setSelectedSegmentId(next.id);
       window.requestAnimationFrame(() => {

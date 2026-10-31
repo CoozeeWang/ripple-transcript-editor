@@ -1,9 +1,10 @@
+import {pendingWriteControl} from '../lib/pendingWriteControl';
 import { ActionIcon } from './ActionIcon';
 import { LanguageControl } from './LanguageControl';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { ProjectIcon } from './ProjectIcon';
 import { exportFormats, type ExportFormat } from '../lib/export';
-import { useEffect, type ChangeEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { AudioFileEntry } from "../localStore";
 import { IS_MAC, keys } from "../lib/format";
@@ -17,6 +18,7 @@ export interface TopbarProps {
   projectLabel?: string;
   onReturnToProjects?: () => void;
   navigationDisabled?: boolean;
+  transactionPending?: boolean;
   // 品牌/文件
   audioFilename: string;
   // 文件夹
@@ -45,6 +47,10 @@ export interface TopbarProps {
   setExportMenuOpen: Dispatch<SetStateAction<boolean>>;
   exportMenuRef: RefObject<HTMLDivElement | null>;
   exportAs: (format: ExportFormat) => void;
+  exportScope?:'full'|'visible';
+  setExportScope?:(scope:'full'|'visible')=>void;
+  fullCount?:number;
+  visibleCount?:number;
   subtitlesAvailable?: boolean;
   exportProjectFiles?: () => void;
   handleSave: () => void;
@@ -85,7 +91,7 @@ export function Topbar(props: TopbarProps) {
     if (!exportMenuOpen) return;
     const previous = document.activeElement;
     const menu = exportMenuRef.current?.querySelector<HTMLElement>('[role="menu"]');
-    menu?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    menu?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')?.focus();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected &&
           (document.activeElement === document.body || menu?.contains(document.activeElement))) previous.focus();
@@ -98,9 +104,9 @@ export function Topbar(props: TopbarProps) {
     <header className={`topbar${props.projectMode ? " topbar--project" : ""}`}>
       <div className="topbar-identity">
       <Brand className="brand" type={props.onReturnToProjects ? "button" : undefined}
-        onClick={props.onReturnToProjects} disabled={props.onReturnToProjects ? props.navigationDisabled : undefined}
+        onClick={props.onReturnToProjects} {...pendingWriteControl(props.onReturnToProjects ? props.navigationDisabled : undefined,!!props.onReturnToProjects&&props.transactionPending)}
         aria-label={props.onReturnToProjects ? msg('Topbar.m1031') : undefined}
-        title={props.onReturnToProjects ? msg('Topbar.m1032') : undefined}>
+        data-tip={props.onReturnToProjects ? msg('Topbar.m1032') : undefined}>
         <img className="brand-mark" src="/ripple-icon.svg?v=transparent-2" alt="Ripple" width={80} height={80} />
         <div>
           <p className="product-name">Ripple</p>
@@ -109,9 +115,9 @@ export function Topbar(props: TopbarProps) {
       </Brand>
 
       {props.onReturnToProjects && <button type="button" className="topbar-project"
-        onClick={props.onReturnToProjects} disabled={props.navigationDisabled}
+        onClick={props.onReturnToProjects} {...pendingWriteControl(props.navigationDisabled,props.transactionPending)}
         aria-label={props.projectLabel ? msg('Topbar.m1033', { v0: props.projectLabel }) : msg('Topbar.m1034')}
-        title={props.projectLabel ? msg('Topbar.m1035', { v0: props.projectLabel }) : msg('Topbar.m1036')}>
+        data-tip={props.projectLabel ? msg('Topbar.m1035', { v0: props.projectLabel }) : msg('Topbar.m1036')}>
         <ProjectIcon kind="project" />
         <span>{props.projectLabel || msg('Topbar.m1037')}</span>
       </button>}
@@ -284,7 +290,7 @@ export function Topbar(props: TopbarProps) {
           <button
             type="button"
             onClick={performUndo}
-            disabled={!canUndo}
+            {...pendingWriteControl(!canUndo,props.transactionPending)}
             data-tip={msg('Topbar.m1052', { v0: keys("Z") })}
             aria-label={msg('Topbar.m1053')}
           >
@@ -307,7 +313,7 @@ export function Topbar(props: TopbarProps) {
           <button
             type="button"
             onClick={performRedo}
-            disabled={!canRedo}
+            {...pendingWriteControl(!canRedo,props.transactionPending)}
             data-tip={msg('Topbar.m1054', { v0: keys("Z", true) })}
             aria-label={msg('Topbar.m1055')}
           >
@@ -370,35 +376,18 @@ export function Topbar(props: TopbarProps) {
             <ActionIcon kind="export"/>
           </button>
           {exportMenuOpen && (
-            <ul className="menu-list" role="menu" aria-label={msg('Topbar.m1059')} onKeyDown={event => {
+            <ul className="menu-list transcript-export-menu" role="menu" aria-label={msg('Topbar.m1059')} onKeyDown={event => {
               if (event.nativeEvent.isComposing || event.keyCode === 229) return;
               if (event.key === 'Tab') { setExportMenuOpen(false); return; }
               if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
               event.preventDefault(); event.stopPropagation();
-              const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+              const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)'));
               if (!items.length) return;
               const index = items.indexOf(document.activeElement as HTMLButtonElement);
               const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
               items[next].focus();
             }}>
-              {exportFormats().map(([label, format]) => (
-                <li key={format}>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    tabIndex={-1}
-                    disabled={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable}
-                    title={(format === 'srt' || format === 'vtt') && !props.subtitlesAvailable ? msg('Topbar.m1060') : undefined}
-                    onClick={() => {
-                      setExportMenuOpen(false);
-                      void exportAs(format);
-                    }}
-                  >
-                    {label}
-                  </button>
-                </li>
-              ))}
-              {props.exportProjectFiles && <li><button type="button" role="menuitem" tabIndex={-1} onClick={() => { setExportMenuOpen(false); props.exportProjectFiles?.(); }}>{msg('Topbar.m1061')}</button></li>}
+              <ExportChoices scope={props.exportScope} onScope={props.setExportScope} visibleCount={props.visibleCount??0} subtitlesAvailable={!!props.subtitlesAvailable} onExport={format=>{setExportMenuOpen(false);void exportAs(format)}} onProject={props.exportProjectFiles?()=>{setExportMenuOpen(false);props.exportProjectFiles?.()}:undefined}/>
             </ul>
           )}
         </div>
@@ -439,4 +428,22 @@ export function Topbar(props: TopbarProps) {
       </div>
     </header>
   );
+}
+
+/** The second step replaces the scope menu rather than appending formats below it. */
+function ExportChoices({ scope, onScope, visibleCount, subtitlesAvailable, onExport, onProject }: {
+  scope?: 'full'|'visible'; onScope?: (scope:'full'|'visible')=>void; visibleCount:number;
+  subtitlesAvailable:boolean; onExport:(format:ExportFormat)=>void; onProject?:()=>void;
+}) {
+  const [step,setStep]=useState<'scope'|'formats'>(onScope?'scope':'formats'), first=useRef<HTMLButtonElement>(null), previousStep=useRef(step);
+  useLayoutEffect(()=>{if(previousStep.current!==step)first.current?.focus();previousStep.current=step},[step]);
+  if(step==='scope')return <>
+    <li><button ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>{onScope?.('full');setStep('formats')}}>{msg('tags.exportFull')}</button></li>
+    <li><button type="button" role="menuitem" tabIndex={-1} disabled={!visibleCount} onClick={()=>{if(visibleCount){onScope?.('visible');setStep('formats')}}}>{msg('tags.exportVisible',{count:visibleCount})}</button></li>
+  </>;
+  return <>
+    {onScope&&<li className="export-step-heading"><button className="export-step-back" ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>setStep('scope')}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m10 3-5 5 5 5"/></svg>{msg('tags.exportBack')}</button><span className="export-step-scope">{msg(scope==='visible'?'tags.exportVisibleScope':'tags.full',{count:visibleCount})}</span></li>}
+    {exportFormats().map(([label,format])=><li key={format}><button type="button" role="menuitem" tabIndex={-1} disabled={scope==='visible'&&!visibleCount||(format==='srt'||format==='vtt')&&!subtitlesAvailable} data-action-tip={(format==='srt'||format==='vtt')&&!subtitlesAvailable?msg('Topbar.m1060'):undefined} onClick={()=>onExport(format)}>{label}</button></li>)}
+    {onProject&&<><li className="menu-divider export-other-divider" role="separator" aria-hidden="true"/><li><button type="button" role="menuitem" tabIndex={-1} onClick={onProject}>{msg('tags.exportOther')}</button></li></>}
+  </>;
 }

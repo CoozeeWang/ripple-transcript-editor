@@ -30,7 +30,7 @@ export function LanguageControl({welcome=false}:{welcome?:boolean}) {
       }
     }}>
     <button ref={trigger} type="button" className={welcome?'language-control--welcome':'icon-button'} aria-label={msg('language.label')}
-      title={msg('language.label')} aria-haspopup="menu" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(!open)}>
+      data-tip={msg('language.label')} aria-haspopup="menu" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(!open)}>
       <ActionIcon kind="language"/>
     </button>
     {open&&<div ref={menu} id={id} popover="manual" role="menu" className="language-menu" aria-label={msg('language.label')}

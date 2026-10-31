@@ -1,9 +1,11 @@
+import { TooltipHost } from "./components/TooltipHost";
 import { UpdateWindow } from "./components/UpdateWindow";
 import { isDesktopUpdateWindow } from "./lib/desktopUpdates";
 import { normalizeInterfaceLanguage, setInterfaceLanguage } from "./i18n";
 import { installFileDropGuard } from "./lib/fileDropGuard";
 import { installRuntimeDiagnostics } from "./lib/diagnostics";
-import { StrictMode } from "react";
+import { StrictMode,Profiler } from "react";
+import {recordTagReactCommit} from './lib/tagPerformance';
 import { createRoot } from "react-dom/client";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { AIConnectorProvider } from './components/AIConnectorProvider';
@@ -23,7 +25,7 @@ const root = createRoot(document.getElementById("root")!);
 if (isDesktopUpdateWindow()) {
   document.documentElement.classList.add('desktop-update-document');
   const language=(window as unknown as {__RIPPLE_UPDATE_WINDOW__:{language:string}}).__RIPPLE_UPDATE_WINDOW__.language;
-  void setInterfaceLanguage(normalizeInterfaceLanguage(language)).then(()=>root.render(<StrictMode><UpdateWindow /></StrictMode>));
+  void setInterfaceLanguage(normalizeInterfaceLanguage(language)).then(()=>root.render(<StrictMode><UpdateWindow /><TooltipHost /></StrictMode>));
 } else void installDesktopRuntime().then(() => root.render(
-  <StrictMode><AIConnectorProvider><ProjectWorkspace /></AIConnectorProvider></StrictMode>,
+  <StrictMode><Profiler id="workspace" onRender={recordTagReactCommit}><AIConnectorProvider><ProjectWorkspace /><TooltipHost /></AIConnectorProvider></Profiler></StrictMode>,
 )).catch(error => root.render(<main style={{ padding: 32 }} role="alert">{String(error)}</main>));

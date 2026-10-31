@@ -1,0 +1,12 @@
+import { TAG_TREE_STEP } from '../lib/tagEdgeGeometry';
+import type { TagGuide } from '../lib/tagTreeGuides';
+/** One rounded elbow per edge; dots denote only absent ancestor levels. */
+export function TagTreeGuides({ guide, step = TAG_TREE_STEP, origin = 4 }: { guide?: TagGuide; step?: number; origin?: number }) {
+    if (!guide?.depth) return null;
+    const left = (guide.parentDepth ?? 0) * step + origin, end = guide.depth * step - 4;
+    const horizontalStart = Math.min(left + 4, end);
+    return <span className="tag-tree-guides" aria-hidden="true">
+        <span data-guide-parent={guide.parentId ?? ''} data-guide-fallback={left} className={'tag-tree-elbow' + (guide.parentDepth === null ? ' is-independent' : '')} style={{ left, width: Math.max(0, end - left) }}/>
+        {Array.from({ length: guide.missing }, (_, index) => <span key={index} className="tag-tree-missing" style={{ left: horizontalStart + (end - horizontalStart) * (index + .5) / guide.missing }}/>) }
+    </span>;
+}

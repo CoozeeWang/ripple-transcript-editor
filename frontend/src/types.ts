@@ -48,6 +48,8 @@ export interface Highlight {
 }
 
 export interface Segment {
+  /** Project tag IDs; this version owns its independent associations. */
+  tagIds?: string[];
   id: string;
   speaker_id: string;
   start: number;
@@ -62,6 +64,10 @@ export interface Segment {
 }
 
 export interface Transcript {
+  /** Internal sidecar revision; never public export or persisted manuscript content. */
+  tagStorageRevision?: string;
+  /** Version-owned admitted project tags and flat explicit group memberships. */
+  tagCollection?: import('./lib/tagCollections').TagCollection;
   /** Local save receipts for interrupted AI batches; excluded from public exports. */
   aiContinuationReceipts?: Record<string, ContinuationReceipt>;
   timeAligned?: boolean;

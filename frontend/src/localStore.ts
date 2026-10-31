@@ -1,4 +1,7 @@
 import { importedManuscriptName } from './lib/transcriptLabels';
+import {hydrateTagDocument, writeTagDocument,isTagStorageFile,hasTagStorage,rewriteTagDocuments} from './lib/tagSidecar';
+import {readTagFile} from './lib/tagFileTransaction';
+import {recoverTagFileTransaction} from './lib/tagFileTransaction';
 import { hasVisibleOriginal, withOriginalGroups } from './lib/originalGroups';
 import { stampContinuationReceipt } from './lib/continuationBatch';
 import type { ContinuationTask } from './lib/incrementalContinuation';
@@ -541,10 +544,12 @@ async function hasRootV2Manifest(dir: FileSystemDirectoryHandle): Promise<boolea
 
 async function readFileText(dir: FileSystemDirectoryHandle, name: string): Promise<string | null> {
   try {
+    if(await hasTagStorage(dir))await recoverTagFileTransaction(dir,'document');
     const fh = await (dir as unknown as {
       getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
     }).getFileHandle(name);
-    return await (await fh.getFile()).text();
+    const raw=await(await fh.getFile()).text();
+    return hydrateTagDocument(dir,name,raw);
   } catch (error) {
     if ((error as { name?: string }).name !== "NotFoundError") throw error;
     return null;
@@ -558,6 +563,7 @@ async function readManifestText(dir:FileSystemDirectoryHandle):Promise<string|nu
   return readRecoverableManifest(manifestIO(dir));
 }
 async function writeFileJson(dir: FileSystemDirectoryHandle, name: string, obj: unknown): Promise<void> {
+  if(await writeTagDocument(dir,name,obj))return;
   const text=JSON.stringify(obj,null,2);
   if(name===MANIFEST_NAME)await writeRecoverableManifest(manifestIO(dir),text);
   else await writeFileText(dir,name,text);
@@ -918,7 +924,7 @@ async function readManifestUnlocked(
   }
   if(tDir){
     const entries=(tDir as unknown as {entries:()=>AsyncIterable<[string,{kind:string}]>}).entries();
-    for await(const [file,handle] of entries)if(handle.kind==="file" && /\.(json|crswap|bak)$/.test(file))
+    for await(const [file,handle] of entries)if(handle.kind==="file" && /\.(json|crswap|bak)$/.test(file)&&!isTagStorageFile(file))
       throw new Error(msg('localStore.m1484'));
   }
   const migrated = await migrateLegacy(dir, stemOf(name), name);
@@ -1268,6 +1274,13 @@ async function saveActiveEditUnlocked(
   const edit = model?.edits.find((e) => e.id === editId);
   if (model?.designatedOriginal) throw new Error(msg('localStore.m1503'));
   if (!edit) throw new Error(msg('localStore.m1504'));
+  if(manifest&&model&&await hasTagStorage(tDir)){
+    const updated=new Date().toISOString();
+    const next={...manifest,interviewDetails:pickInterviewDetails(data.metadata),sharedSpeakers:data.transcript.speakers,sharedSpeakerModelId:modelId,
+      models:manifest.models.map(m=>m.id===modelId?{...m,edits:m.edits.map(e=>e.id===editId?{...e,updated_at:updated}:e)}:m)};
+    await writeTagDocument(tDir,edit.file,{...data,metadata:{...data.metadata,title:manifest.title??data.metadata.title},updated_at:updated},[
+      {path:[MANIFEST_NAME],before:await readTagFile(tDir,[MANIFEST_NAME]),after:JSON.stringify(next,null,2)}]);return;
+  }
   await writeFileJson(tDir, edit.file, { ...data, metadata: { ...data.metadata, title: manifest?.title ?? data.metadata.title }, updated_at: new Date().toISOString() });
   if (manifest && model && edit) {
     const newEdits = model.edits.map((e) =>
@@ -1344,6 +1357,12 @@ async function syncTranscriptNames(
     file.set(file.target);
   }
   const written = new Set<string>();
+  if(await hasTagStorage(dir)){
+    await rewriteTagDocuments(dir,files.map(file=>{
+      const data=JSON.parse(snapshots.get(file.old)!);if(data.metadata)data.metadata={...data.metadata,title};
+      return{old:file.old,target:file.target,document:data};
+    }),next);return next;
+  }
   try {
     for (const file of files) {
       const data = JSON.parse(snapshots.get(file.old)!);
@@ -2010,14 +2029,28 @@ async function renameAudioUnlocked(
 
 // One queue per directory handle prevents stale manifest writes inside this app session.
 const directoryWrites = new WeakMap<FileSystemDirectoryHandle, Promise<unknown>>();
+const namedDirectoryWrites = new Map<string, Promise<unknown>>();
 function inDirectory<T>(dir: FileSystemDirectoryHandle, operation: () => Promise<T>): Promise<T> {
-  const previous = directoryWrites.get(dir) ?? Promise.resolve();
+  const identity = (dir as FileSystemDirectoryHandle & { storeIdentity?: string }).storeIdentity;
+  const previous = (identity ? namedDirectoryWrites.get(identity) : directoryWrites.get(dir)) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(operation);
-  directoryWrites.set(dir, next);
+  if (identity) namedDirectoryWrites.set(identity, next); else directoryWrites.set(dir, next);
   void next.finally(() => {
-    if (directoryWrites.get(dir) === next) directoryWrites.delete(dir);
+    if (identity) { if (namedDirectoryWrites.get(identity) === next) namedDirectoryWrites.delete(identity); }
+    else if (directoryWrites.get(dir) === next) directoryWrites.delete(dir);
   }).catch(() => {});
   return next;
+}
+/** Holds the same queue as autosave/MCP while a project tag transaction inspects version files. */
+export function withTagVersionStorage<T>(dir: FileSystemDirectoryHandle, audio: string,
+  work: (container: FileSystemDirectoryHandle | null, manifest: TranscriptManifest | null) => Promise<T>,options:{readOnlyManifest?:boolean}={}): Promise<T> {
+  return inDirectory(dir, async () => {
+    const container = await resolveTranscriptDir(dir, audio, false);
+    const raw = container ? await (options.readOnlyManifest?readFileText(container,MANIFEST_NAME):readManifestText(container)) : null;
+    const manifest = raw ? JSON.parse(raw) as TranscriptManifest : null;
+    if (manifest && !Array.isArray(manifest.models)) throw Error('open_legacy_manuscript_in_ripple_first');
+    return work(container, manifest);
+  });
 }
 export const readManifest: typeof readManifestUnlocked = (...args) => inDirectory(args[0], () => readManifestUnlocked(...args));
 /** Project discovery must not migrate unopened manuscripts as a side effect. */
@@ -2088,6 +2121,11 @@ export function saveConnectorVersion(dir: FileSystemDirectoryHandle, audio: stri
     const before = await readFileText(container, edit.file);
     if (before === null) throw Error('target_version_unavailable');
     const updated = new Date().toISOString();
+    if(await hasTagStorage(container)){
+      await writeTagDocument(container,edit.file,{...data,transcript,updated_at:updated},[
+        {path:[MANIFEST_NAME],before:await readTagFile(container,[MANIFEST_NAME]),after:JSON.stringify({...manifest,models:manifest.models.map(m=>m.id===model.id?{...m,edits:m.edits.map(e=>e.id===edit.id?{...e,updated_at:updated}:e)}:m)},null,2)}],true);
+      return{version:options.version,transcript};
+    }
     try {
       const serialized = JSON.stringify({ ...data, transcript, updated_at: updated }, null, 2);
       await writeFileText(container, edit.file, serialized);

@@ -120,7 +120,7 @@ export function NamingModal(props: NamingModalProps) {
         )}
         {error && <p className="naming-modal__error" role="alert">{uiMessage(error)}</p>}
         <div className="modal-actions">
-          <button type="button" onClick={() => void confirmNaming(draft)} disabled={busy}>
+          <button type="button" className="button--primary" onClick={() => void confirmNaming(draft)} disabled={busy}>
             {busy ? msg('Dialogs.m0479') : msg('Dialogs.m0480')}
           </button>
           <button

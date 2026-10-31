@@ -42,7 +42,7 @@ export function TranscriptHeader(props: TranscriptHeaderProps) {
               value={metadata?.title ?? ""}
               placeholder={msg('TranscriptHeader.m1068')}
               ariaLabel={msg('TranscriptHeader.m1069')}
-              display={(value) => <span className="transcript-title-text" title={value}>{value}</span>}
+              display={(value) => <span className="transcript-title-text" data-action-tip={value}>{value}</span>}
               onCommit={(next) => void patchMetadata({ title: next.trim() || msg('TranscriptHeader.m1070') })}
             />}
 

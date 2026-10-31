@@ -143,7 +143,7 @@ describe("renderMarkdown / renderTxt", () => {
   it("markdown 含标题和说话人", () => {
     const md = renderMarkdown(model);
     expect(md).toContain("# 标题");
-    expect(md).toContain("**王远** [00:00:00]：你好");
+    expect(md).toContain("**王远** [00:00:00] (1)：你好");
   });
 
   it.each(["第一段\n第二段", "第一段\r\n第二段", "第一段<br>第二段", "第一段<BR />第二段"])("exports real Markdown paragraphs for %s", text => {
@@ -156,7 +156,7 @@ describe("renderMarkdown / renderTxt", () => {
   it("txt 含标题和说话人", () => {
     const txt = renderTxt(model);
     expect(txt).toContain("标题");
-    expect(txt).toContain("王远 [00:00:00]\n你好");
+    expect(txt).toContain("王远 [00:00:00] (1)\n你好");
   });
 });
 
@@ -211,7 +211,7 @@ it('does not export invented zero timestamps for untimed manuscripts',()=>{
  const t={timeAligned:false,audio:{filename:'',duration:0},speakers:[{id:'s',name:'说话人'}],segments:[{id:'a',speaker_id:'s',text:'原话',start:0,end:0}]};
  const model=buildExportModel(t,null);
  expect(renderTxt(model)).not.toContain('[00:00]');
- expect(renderMarkdown(model)).toContain('**说话人**：原话');
+ expect(renderMarkdown(model)).toContain('**说话人** (1)：原话');
  expect(buildJsonPayload(t,undefined).timeAligned).toBe(false);
 });
 
@@ -275,7 +275,7 @@ it.each([
     const document = new JSDOM(xml, { contentType: 'application/xml' }).window.document;
     const paragraphs = [...document.getElementsByTagName('w:p')].map(p => [...p.getElementsByTagName('w:r')].map(r => [...r.children].map(c => c.tagName === 'w:br' ? '\n' : c.tagName === 'w:t' ? c.textContent : '').join('')).join(''));
     expect(paragraphs.slice(0, 7)).toEqual([model.title, ...fields]);
-    expect(paragraphs.slice(7)).toEqual(['Synthetic speaker [00:00:00]', 'Synthetic body']);
+    expect(paragraphs.slice(7)).toEqual(['Synthetic speaker [00:00:00] (1)', 'Synthetic body']);
     const pdf = new JSDOM(renderPdfHtml(model)).window.document;
     expect(pdf.querySelector('h1')?.textContent).toBe(model.title);
     expect([...pdf.querySelectorAll('table.meta tr')].map(row => [...row.children].map(cell => cell.textContent).join('：').replace('：', language === 'en' ? ': ' : '：'))).toEqual(fields);

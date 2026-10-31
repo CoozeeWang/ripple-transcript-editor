@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { writeEditorText } from "../lib/paragraphEditor";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SegmentItem, type SegmentItemProps } from "./SegmentItem";
@@ -146,7 +147,7 @@ it('exports body on modifier drag while preserving ordinary selection drags and 
     audioRef={{current:null}} textareaRefs={{current:new Map()}} editingRef={{current:false}}
     setSelectedSegmentId={noop} seekTo={noop} recordEditorCursor={noop} addSpeaker={noop}
     updateSegment={noop} removeSegment={remove} splitSegment={noop} mergeWithNext={noop}
-    handleEditorKeydown={noop} dragSegment={drag} copySegment={noop}/>);
+    handleEditorKeydown={noop} dragSegment={drag} copySegment={noop} tags={[{id:'topic',name:'Synthetic tag',parentId:null,groupIds:[]}]}/>);
   const article=ui.container.querySelector('article')!;
   const body=ui.getByLabelText('00:00–00:01 的文字');
   const transfer={setData:vi.fn()};
@@ -155,6 +156,7 @@ it('exports body on modifier drag while preserving ordinary selection drags and 
   fireEvent.pointerMove(article);fireEvent.keyDown(window,{key:'Control',ctrlKey:true});expect(article.draggable).toBe(true);
   expect(ui.container.querySelector('.segment-transfer-surface')?.getAttribute('draggable')).toBe('true');
   fireEvent.dragStart(body,{dataTransfer:transfer});expect(drag).toHaveBeenCalledExactlyOnceWith('synthetic',transfer);
+  fireEvent.dragStart(ui.container.querySelector('.tag-pill')!,{dataTransfer:transfer});expect(drag).toHaveBeenCalledTimes(1);
   const deletion=ui.getByRole('button',{name:'删除'});
   fireEvent.click(deletion,{ctrlKey:true});expect(remove).not.toHaveBeenCalled();
   fireEvent.dragStart(deletion,{dataTransfer:transfer});expect(drag).toHaveBeenCalledTimes(1);
@@ -178,4 +180,13 @@ it('cancels the DOM provider and keeps the native session selected until it comp
  expect(native).toHaveBeenCalledExactlyOnceWith('synthetic');expect(dom).not.toHaveBeenCalled();
  fireEvent.keyUp(window,{key:'Meta'});fireEvent.blur(window);expect(article.draggable).toBe(true);
  await act(async()=>{finish();});expect(article.draggable).toBe(false);
+});
+
+it('uses the registered tag command and button for one input, keeps drafts and restores the body caret',async()=>{
+ const noop=()=>{},onAddTag=vi.fn(async()=>{}),updateSegment=vi.fn(),commands=new Map<string,()=>void>();
+ const registerTagEntry=(id:string,open:(()=>void)|null)=>{if(open)commands.set(id,open);else commands.delete(id)};
+ const props:SegmentItemProps={segment:{id:'tag-command',text:'Synthetic body',speaker_id:'s',start:0,end:1},index:0,totalSegments:1,speakers:[{id:'s',name:'Synthetic speaker'}],effectiveSelectedSegmentId:'tag-command',isPlaying:false,currentTime:0,findQuery:'',audioUrl:'',viewingOriginal:false,audioRef:{current:null},textareaRefs:{current:new Map()},editingRef:{current:false},setSelectedSegmentId:noop,seekTo:noop,recordEditorCursor:vi.fn(),addSpeaker:noop,updateSegment,removeSegment:noop,splitSegment:noop,mergeWithNext:noop,handleEditorKeydown:noop,onAddTag,registerTagEntry};
+ const ui=render(<SegmentItem {...props}/>);const body=props.textareaRefs.current.get('tag-command')!;body.focus();writeEditorText(body,'Synthetic pending body');fireEvent.input(body);body.setSelectionRange(4,4);
+ await act(async()=>commands.get('tag-command')!());const input=ui.getByRole('combobox',{name:'输入标签'});expect(document.activeElement).toBe(input);fireEvent.change(input,{target:{value:'Uncommitted'}});act(()=>commands.get('tag-command')!());expect(ui.getByRole('combobox',{name:'输入标签'})).toBe(input);expect((input as HTMLInputElement).value).toBe('Uncommitted');fireEvent.keyDown(input,{key:'Escape'});expect(ui.queryByRole('combobox',{name:'输入标签'})).toBeNull();expect(document.activeElement).toBe(body);expect(body.selectionStart).toBe(4);expect(body.value).toBe('Synthetic pending body');expect(updateSegment.mock.calls[0]?.[1].text).toBe('Synthetic pending body');expect(onAddTag).not.toHaveBeenCalled();
+ fireEvent.click(ui.getByRole('button',{name:'添加标签'}));fireEvent.change(ui.getByRole('combobox',{name:'输入标签'}),{target:{value:'Topic'}});await act(async()=>fireEvent.keyDown(ui.getByRole('combobox',{name:'输入标签'}),{key:'Enter'}));expect(onAddTag).toHaveBeenCalledExactlyOnceWith('tag-command','Topic');expect(ui.queryByRole('combobox',{name:'输入标签'})).toBeNull();ui.rerender(<SegmentItem {...props} tagWriteDisabled/>);act(()=>commands.get('tag-command')!());expect(ui.queryByRole('combobox',{name:'输入标签'})).toBeNull();ui.unmount();expect(commands.size).toBe(0);
 });

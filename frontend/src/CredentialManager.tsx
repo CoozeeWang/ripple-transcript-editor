@@ -65,7 +65,7 @@ export function FieldInput({
           type="button"
           className="cred-eye"
           aria-label={visible ? msg('CredentialManager.m0058') : msg('CredentialManager.m0059')}
-          title={visible ? msg('CredentialManager.m0060') : msg('CredentialManager.m0061')}
+          data-tip={visible ? msg('CredentialManager.m0060') : msg('CredentialManager.m0061')}
           onClick={onToggle}
         >
           {visible ? <EyeOpen /> : <EyeClosed />}
@@ -405,7 +405,7 @@ function ProfileCard({
           )}
         </span>
         {profile.is_default ? (
-          <span className="tag tag--active" title={msg('CredentialManager.m0089', { v0: actionName })}>{msg('CredentialManager.m0090')}</span>
+          <span className="tag tag--active" data-action-tip={msg('CredentialManager.m0089', { v0: actionName })}>{msg('CredentialManager.m0090')}</span>
         ) : null}
       </div>
       <p className="cred-profile__summary">{providerName}{profile.public_values?.model ? ` · ${profile.public_values.model}` : ""}{experimental ? msg('CredentialManager.m0091') : ""}</p>
@@ -433,7 +433,7 @@ function ProfileCard({
                 className="cred-btn cred-btn--default"
                 disabled={busy}
                 onClick={onSetDefault}
-                title={msg('CredentialManager.m0095', { v0: actionName })}
+                data-action-tip={msg('CredentialManager.m0095', { v0: actionName })}
               >
                 {msg('CredentialManager.m0096')}</button>
             ) : null}

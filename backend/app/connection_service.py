@@ -56,7 +56,7 @@ OPERATIONS = frozenset(
         "marks_status",
         "cancel_marks",
     )
-)
+) | frozenset({"tags_read", "tags_prepare", "tags_apply", "tags_status", "tags_cancel"})
 
 
 def digest(value):

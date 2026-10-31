@@ -1,5 +1,7 @@
 import { readConnectorRules, writeConnectorRules, readContinuationTasks, writeContinuationTask,
-  readConnectorManifest, readModelEdit, readModelOriginal, saveConnectorVersion } from '../localStore';
+  readConnectorManifest, readModelEdit, readModelOriginal, saveConnectorVersion,withTagVersionStorage } from '../localStore';
+import {readTagFile} from './tagFileTransaction';
+import {parseTagSidecar,sidecarName,sidecarTranscript,verifyTagSource} from './tagSidecar';
 import { parseProject, recordingDirectory, type OpenProject, type ProjectRecording } from './projectStore';
 import { connectorReferences, connectorVersions } from './connectorVersions';
 import type { ConnectorDocument, ConnectorHost, ConnectorVersion } from './aiConnector';
@@ -12,6 +14,7 @@ export interface ProjectTarget {
   recording_id: string; recording: string; version_id: string; version: string;
 }
 export interface ProjectConnectorAccess {
+  publishTagProject?: (project:OpenProject, publishVersion?:()=>void) => Promise<void>;
   onSaved?: (target: ProjectTarget) => void;
   project: () => OpenProject | null;
   active: () => { interview_id: string; recording_id: string; version_id: string | null;
@@ -164,7 +167,20 @@ export class ProjectConnectorHosts {
         return { saved: true, version: version!.name, version_id: version!.edit_id, target: target(), ...counts, background: true, undo_available: false };
       },
     };
-    return { host, target, isActive, tasks: async () => {
+    return { host, target, isActive, tagsCurrent:async():Promise<ConnectorDocument>=>{
+      const fresh=await this.project();if(fresh.data.schemaVersion!==2)return current();
+      const selectedVersion=version;if(!selectedVersion)throw Error('target_version_unavailable');
+      await check();
+      return withTagVersionStorage(entry.directory,entry.recording.file,async(container,manifest)=>{
+        const model=manifest?.models.find(m=>m.id===selectedVersion.model_id);
+        const file=selectedVersion.kind==='original'?(model?.designatedOriginal?(model.edits.find(e=>e.id===(model.designatedOriginalEditId??model.activeEditId))??model.edits[0])?.file??model.original:model?.original):model?.edits.find(e=>e.id===selectedVersion.edit_id)?.file;
+        if(!file||!container)throw Error('target_version_unavailable');
+        const raw=await readTagFile(container,[await sidecarName(file)]);if(raw===null)throw Error('tag_metadata_missing');
+        const metadata=parseTagSidecar(raw,file);metadata.body=await verifyTagSource(container,metadata);await check();
+        return{identity,target:target(),background:!isActive(),editable:selectedVersion.kind==='edit',transcript:sidecarTranscript(metadata),
+          tagBodyRevision:metadata.body.hash,title:entry.recording.name,label:selectedVersion.name,version:selectedVersion,names:[],references:async()=>[]};
+      });
+    }, tasks: async () => {
       await check(); return readContinuationTasks(entry.directory, entry.recording.file, count => this.activeHost.continuationWarning?.(identity, count));
     }, setVersion: (next: ConnectorVersion) => { version = next; } };
   }

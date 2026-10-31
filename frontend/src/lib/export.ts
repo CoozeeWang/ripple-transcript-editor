@@ -1,9 +1,19 @@
+import {filteredTagSegments,type TagFilter} from './tags';
 import { msg, interfaceLanguage } from '../i18n';
 import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
 import { sanitizeForFilename } from "../localStore";
 import { showPdfPrintPreview } from './pdfPrint';
 import { nativeDesktopAvailable, saveNativeBlob } from './desktopFs';
+
+
+/** Export-only ordinal map, never saved back to a manuscript. */
+export type ExportSelection = Transcript & { exportSegmentNumbers?: Record<string,number> };
+export function selectExportScope(source:Transcript,scope:'full'|'visible',hidden:ReadonlySet<string>,tagId:TagFilter):ExportSelection {
+ const segments=scope==='full'?source.segments:filteredTagSegments(source,hidden,tagId);
+ if(!segments.length)throw new Error(msg('tags.empty'));
+ return {...source,segments,exportSegmentNumbers:Object.fromEntries(source.segments.map((segment,index)=>[segment.id,index+1]))};
+}
 
 // 导出（Markdown / TXT / Word / PDF / JSON）的格式化逻辑。
 // 除 downloadBlob 外全部是无副作用的纯函数，独立成模块以便单元测试。
@@ -49,6 +59,7 @@ interface ExportSegment {
   speakerName: string;
   speakerColor: string;
   timestamp: string;
+  sourceNumber?: number;
   text: string;
   annotations: ExportAnnotation[];
 }
@@ -85,10 +96,11 @@ export function buildExportModel(
     topics: (metadata?.topics ?? []).join("、") || "—",
     notes: metadata?.notes?.trim() || "",
     audioFile: transcript.audio?.filename || "—",
-    segments: transcript.segments.map((seg) => {
+    segments: transcript.segments.map((seg,index) => {
       const sp = transcript.speakers.find((s) => s.id === seg.speaker_id);
       return {
         speakerName: sp?.name || msg('export.m1308'),
+        sourceNumber: (transcript as ExportSelection).exportSegmentNumbers?.[seg.id] ?? index+1,
         speakerColor: speakerColorFor(seg.speaker_id, transcript.speakers),
         timestamp: transcript.timeAligned === false ? "" : formatClock(seg.start),
         text: seg.text || "",
@@ -121,7 +133,7 @@ export function renderMarkdown(m: ExportModel): string {
   lines.push("", "---", "");
   for (const seg of m.segments) {
     const body = markdownText(seg.text.replace(/<br\s*\/?>/gi, "\n")).replace(/\n+/g, "\n\n");
-    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]` : ""}：${body}`);
+    lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}：${body}`);
     for (const a of seg.annotations) {
       // Separate the quote from the body, and keep every note line inside it.
       lines.push("", msg('export.m1315', { v0: markdownText(a.date), v1: markdownText(a.text).replace(/\n/g, "\n> ") }));
@@ -141,7 +153,7 @@ export function renderTxt(m: ExportModel): string {
   if (m.notes) lines.push(msg('export.m1321', { v0: m.notes }));
   lines.push("", "========", "");
   for (const seg of m.segments) {
-    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]` : ""}`, seg.text);
+    lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}`, seg.text);
     for (const a of seg.annotations) {
       lines.push(msg('export.m1322', { v0: a.date, v1: a.text }));
     }
@@ -185,7 +197,7 @@ export function renderPdfHtml(m: ExportModel): string {
         .join("");
       return `<div class="seg"><span class="sp" style="color:${seg.speakerColor}">${escapeHtml(
         seg.speakerName,
-      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]` : ""}</span><div class="body">${escapeHtml(
+      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : ""}</span><div class="body">${escapeHtml(
         seg.text,
       )}</div></div>${anns}`;
     })
@@ -264,7 +276,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
 
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
-    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]` : "", color: "999999" });
+    const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : "", color: "999999" });
     const bodyRuns = seg.text.split(/\r?\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined }));
 
     paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
@@ -326,12 +338,18 @@ export function buildJsonPayload(
   const segments = transcript.segments.map((segment) => {
     const copy = { ...segment };
     delete copy.highlights;
+    delete copy.tagIds;
+    const number=(transcript as ExportSelection).exportSegmentNumbers?.[segment.id];
+    if(number)Object.assign(copy,{sourceSegmentNumber:number});
     if(copy.words)copy.words=copy.words.map(word=>{
       const clean={...word};delete clean.origins;delete clean.timing;return clean;
     });
     return copy;
   });
   const base = { ...transcript, segments } as Record<string, unknown>;
+  delete base.exportSegmentNumbers;
+  delete base.tagCollection;
+  delete base.tagStorageRevision;
   delete base.comparisonReviews;
   delete base.aiContinuationReceipts;
   if (engine && engine !== "imported") {
@@ -376,7 +394,7 @@ export function canExportSubtitles(t: Transcript) {
 export function renderSubtitles(t: Transcript, format: 'srt' | 'vtt') {
   if (!canExportSubtitles(t)) throw new Error(msg('export.m1335'));
   const time = (seconds: number) => { const ms = Math.round(seconds * 1000); return `${formatClock(Math.floor(ms / 1000))}${format === 'srt' ? ',' : '.'}${String(ms % 1000).padStart(3, '0')}`; };
-  return (format === 'vtt' ? 'WEBVTT\n\n' : '') + t.segments.map((s, i) => `${i + 1}\n${time(s.start)} --> ${time(s.end)}\n${s.text.replace(/\r?\n\s*\r?\n/g, '\n')}`).join('\n\n') + '\n';
+  return (format === 'vtt' ? 'WEBVTT\n\n' : '') + t.segments.map((s, i) => `${(t as ExportSelection).exportSegmentNumbers?.[s.id]??i+1}\n${time(s.start)} --> ${time(s.end)}\n${s.text.replace(/\r?\n\s*\r?\n/g, '\n')}`).join('\n\n') + '\n';
 }
 export async function transcriptBlob(format: Exclude<ExportFormat, 'pdf'>, t: Transcript, metadata: InterviewMetadata | null, engine?: string): Promise<Blob> {
   const model = buildExportModel(t, metadata);

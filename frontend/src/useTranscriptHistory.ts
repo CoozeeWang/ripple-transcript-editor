@@ -4,6 +4,8 @@ interface HistoryState<T> {
   past: T[];
   present: T | null;
   future: T[];
+  pastActions: (string | null)[];
+  futureActions: (string | null)[];
   lastGroupKey: string | null;
   lastCommitAt: number;
 }
@@ -15,6 +17,8 @@ export function useTranscriptHistory<T>() {
     past: [],
     present: null,
     future: [],
+    pastActions: [],
+    futureActions: [],
     lastGroupKey: null,
     lastCommitAt: 0,
   });
@@ -24,6 +28,8 @@ export function useTranscriptHistory<T>() {
       past: [],
       present: value,
       future: [],
+      pastActions: [],
+      futureActions: [],
       lastGroupKey: null,
       lastCommitAt: 0,
     });
@@ -47,10 +53,18 @@ export function useTranscriptHistory<T>() {
           : [...current.past, current.present].slice(-MAX_HISTORY_LENGTH),
         present: next,
         future: [],
+        pastActions: canGroup ? current.pastActions : [...current.pastActions, groupKey ?? null].slice(-MAX_HISTORY_LENGTH),
+        futureActions: [],
         lastGroupKey: groupKey ?? null,
         lastCommitAt: now,
       };
     });
+  }, []);
+
+  /** Apply a non-undoable field update without deleting unrelated undo/redo actions. */
+  const rebase = useCallback((updater: (snapshot: T) => T, present: T) => {
+    setHistory(current => ({ ...current, past: current.past.map(updater), present,
+      future: current.future.map(updater), lastGroupKey: null, lastCommitAt: 0 }));
   }, []);
 
   const undo = useCallback(() => {
@@ -61,6 +75,8 @@ export function useTranscriptHistory<T>() {
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future],
+        pastActions: current.pastActions.slice(0, -1),
+        futureActions: [current.pastActions.at(-1) ?? null, ...current.futureActions],
         lastGroupKey: null,
         lastCommitAt: 0,
       };
@@ -75,6 +91,8 @@ export function useTranscriptHistory<T>() {
         past: [...current.past, current.present].slice(-MAX_HISTORY_LENGTH),
         present: next,
         future: current.future.slice(1),
+        pastActions: [...current.pastActions, current.futureActions[0] ?? null].slice(-MAX_HISTORY_LENGTH),
+        futureActions: current.futureActions.slice(1),
         lastGroupKey: null,
         lastCommitAt: 0,
       };
@@ -85,9 +103,14 @@ export function useTranscriptHistory<T>() {
     transcript: history.present,
     reset,
     commit,
+    rebase,
     undo,
     redo,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
+    undoTarget: history.past.at(-1) ?? null,
+    redoTarget: history.future[0] ?? null,
+    undoActionKey: history.pastActions.at(-1) ?? null,
+    redoActionKey: history.futureActions[0] ?? null,
   };
 }

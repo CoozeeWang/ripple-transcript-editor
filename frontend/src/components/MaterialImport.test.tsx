@@ -55,7 +55,7 @@ it('shows transcript preview in a separate read-only dialog and restores the lis
   expect(screen.getByRole('dialog').textContent).toContain('仅在预览中展示正文');
   fireEvent.click(screen.getByRole('button', { name: '关闭预览' }));
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByRole('button', { name: '忽略材料 访谈.txt' }).getAttribute('title')).toContain('原文件不受影响');
+  expect(screen.getByRole('button', { name: '忽略材料 访谈.txt' }).getAttribute('data-action-tip')).toContain('原文件不受影响');
 });
 
 it('selects multiple transcripts directly from disk for one audio and ignores only the audio when requested', async () => {

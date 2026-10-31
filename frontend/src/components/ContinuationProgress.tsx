@@ -31,7 +31,7 @@ export function ContinuationProgress({tasks,error,onAction,onDismissError,embedd
     {(!embedded || task && (task.state==='paused' || task.staged>0 || task.held_batches>0)) && <div className="continuation-progress-row">
       {!embedded&&<><strong className="continuation-progress-title">{msg('continuation.title')}</strong>
       {task&&<>
-        <span className="continuation-progress-version" title={task.project_target ? `${task.project_target.interview} · ${task.project_target.recording} · ${task.version}` : task.version}>{task.project_target ? `${task.project_target.recording} · ${task.version}` : task.version}</span>
+        <span className="continuation-progress-version" data-action-tip={task.project_target ? `${task.project_target.interview} · ${task.project_target.recording} · ${task.version}` : task.version}>{task.project_target ? `${task.project_target.recording} · ${task.version}` : task.version}</span>
         <span className="continuation-progress-data" role="status" aria-live="polite">
           {task.batch_number!==undefined&&task.state!=='completed'&&<span>{msg('continuation.batch',{batch:task.batch_number})}</span>}
           {task.saved_batches!==undefined&&task.state==='completed'&&<span>{msg('continuation.batchesSaved',{count:task.saved_batches})}</span>}

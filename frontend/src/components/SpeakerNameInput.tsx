@@ -22,7 +22,7 @@ export function SpeakerNameInput({value, readOnly, label, onCommit}:{value:strin
     return()=>{remove();clearTimeout(timer.current);window.removeEventListener('te:flush-drafts',handler);};
   },[]);
   const schedule=()=>{clearTimeout(timer.current);if(!composing.current)timer.current=setTimeout(flush,300);};
-  return <input value={draft} aria-label={label} title={draft} readOnly={readOnly}
+  return <input value={draft} aria-label={label} data-action-tip={draft} readOnly={readOnly}
     onChange={event=>{latest.current=event.target.value;setDraft(latest.current);window.dispatchEvent(new Event("te:draft-dirty"));schedule();}}
     onCompositionStart={()=>{composing.current=true;clearTimeout(timer.current);}}
     onCompositionEnd={()=>{composing.current=false;schedule();}}

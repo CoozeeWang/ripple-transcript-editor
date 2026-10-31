@@ -8,7 +8,7 @@ export function TranscribeAudioButton({ onClick, disabledReason }: {
 }) {
   useInterfaceLanguage();
   const description = useId();
-  return <span className="transcription-control" data-tip={disabledReason || msg('transcriptionAction.transcribe')}
+  return <span className="transcription-control" data-tip={disabledReason ? undefined : msg('transcriptionAction.transcribe')} data-action-tip={disabledReason}
     tabIndex={disabledReason ? 0 : undefined} role={disabledReason ? 'group' : undefined}
     aria-label={disabledReason || undefined}>
     <button type="button" className="button button--secondary button--icon transcribe-audio-button"

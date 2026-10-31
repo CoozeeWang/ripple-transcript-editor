@@ -117,7 +117,7 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     key_file.write_text('synthetic-not-real-credential-' * 3)
     server = create_server('http://127.0.0.1:18701', key_file)
     tools = asyncio.run(server.list_tools())
-    assert len(tools) == 22
+    assert len(tools) == 27
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
@@ -193,8 +193,9 @@ def test_structural_continuation_schema_and_backward_compatible_default(tmp_path
 
 
 def test_capabilities_reports_server_catalogue_without_claiming_client_visibility_or_writing():
-    from app.connector_mcp import register_tools
     from mcp.server import MCPServer
+
+    from app.connector_mcp import register_tools
 
     calls = []
 
@@ -220,3 +221,41 @@ def test_capabilities_reports_server_catalogue_without_claiming_client_visibilit
         await server.call_tool("set_interview_rules", {"snapshot":"synthetic", "rules":[]})
         assert calls[-1][1]["confirmed_for_future_tasks"] is False
     asyncio.run(run())
+
+
+def test_tag_tools_route_strict_batches_and_expose_safety_contract():
+    from mcp.server import MCPServer
+    from pydantic import ValidationError
+
+    from app.connection_service import OPERATIONS
+    from app.connector_mcp import TagChange, register_tools
+    calls = []
+    async def call(operation, arguments):
+        calls.append((operation, arguments))
+        return {"saved": False, "synthetic": True}
+    server = register_tools(MCPServer("Synthetic"), call)
+    async def run():
+        tools = {tool.name: tool for tool in await server.list_tools()}
+        assert set(tools) >= {"read_project_tags", "prepare_tag_changes", "apply_tag_changes", "tag_changes_status", "cancel_tag_changes"}
+        assert tools['apply_tag_changes'].annotations.destructive_hint
+        await server.call_tool('read_project_tags', {'interview_id':'a','recording_id':'b','version_id':'m1:e1'})
+        assert calls[-1] == ('tags_read', {'interview_id':'a','recording_id':'b','version_id':'m1:e1','scope':'current','cursor':'0','limit':100})
+        await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['create_tag','assign_tags'], 'changes':[{'action':'create_tag','path':'主题/童年','ref':'child'},{'action':'assign_tags','tag_ids':['ref:child'],'segment_ids':['s1']}]})
+        assert calls[-1][0] == 'tags_prepare'
+        assert calls[-1][1]['changes'][0] == {'action':'create_tag','path':'主题/童年','ref':'child'}
+        await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['reorder_tags'], 'changes':[{'action':'reorder_tags','view':'group','parent_id':'root','group_id':'g','tag_ids':['b','a']}]})
+        assert calls[-1][1]['changes'][0]['view'] == 'group'
+        assert calls[-1][1]['changes'][0]['tag_ids'] == ['b','a']
+        assert TagChange(action='place_group_tag',tag_id='a',source_group_id='source',group_id='target',parent_id='parent',anchor_id=None,after=True,copy=False).model_dump(by_alias=True)['copy'] is False
+        await server.call_tool('apply_tag_changes', {'task_id':'synthetic','confirmed_summary':'exact'})
+        assert calls[-1] == ('tags_apply', {'task_id':'synthetic','confirmed_summary':'exact'})
+        await server.call_tool('tag_changes_status', {'task_id':'synthetic'})
+        assert calls[-1][0] == 'tags_status'
+        await server.call_tool('cancel_tag_changes', {'task_id':'synthetic'})
+        assert calls[-1][0] == 'tags_cancel'
+    asyncio.run(run())
+    assert {'tags_read','tags_prepare','tags_apply','tags_status','tags_cancel'} <= OPERATIONS
+    with pytest.raises(ValidationError):
+        TagChange(action='assign_tags', tag_ids=['x'], segment_ids=['s'], text='not allowed')
+    with pytest.raises(ValidationError):
+        TagChange(action='delete_file')

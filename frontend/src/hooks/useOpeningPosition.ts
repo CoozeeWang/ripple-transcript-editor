@@ -1,4 +1,3 @@
-import { useResizeReadingPosition } from "./useResizeReadingPosition";
 import { useLayoutEffect } from "react";
 import { RESTORE_EDIT_POSITION_KEY } from "../lib/editPosition";
 import { loadBooleanPreference } from "../lib/preferences";
@@ -9,7 +8,6 @@ export function useOpeningPosition(
   panelRef: { current: HTMLElement | null },
   ready: boolean,
 ) {
-  useResizeReadingPosition(panelRef,request,ready);
   useLayoutEffect(() => {
     if (!request || !ready) return;
     const frame = requestAnimationFrame(() => {

@@ -19,3 +19,7 @@ it('exposes matching selection and defaults to cancellation or reselection',()=>
  const ui=render(<MatchDialog {...props}/>);expect(document.activeElement).toBe(screen.getByRole('button',{name:'取消'}));expect(screen.getByRole('button',{name:'甲.wav'}).getAttribute('aria-pressed')).toBe('true');ui.unmount();
  render(<MatchDialog {...props} prompt={{...props.prompt,warning:'时长不匹配'}}/>);expect(document.activeElement).toBe(screen.getByRole('button',{name:'重新选择'}));expect(screen.getByRole('alert').textContent).toBe('时长不匹配');
 });
+
+it('uses the shared primary-button role for naming confirmation without changing input focus or cancel semantics',()=>{
+ const cancel=vi.fn(),confirm=vi.fn();render(<NamingModal value="Synthetic copy" error={null} setError={vi.fn()} busy={false} repairs={[]} setRepairs={vi.fn()} modalRef={createRef()} setOpen={cancel} confirmNaming={confirm}/>);const input=screen.getByRole('textbox',{name:'版本名称'});expect(document.activeElement).toBe(input);expect(screen.getByRole('button',{name:'确认'}).classList.contains('button--primary')).toBe(true);fireEvent.click(screen.getByRole('button',{name:'取消'}));expect(confirm).not.toHaveBeenCalled();expect(cancel).toHaveBeenCalledWith(false);
+});

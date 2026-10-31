@@ -1297,3 +1297,32 @@ it('follows the persisted UUID when audio reassociation also renumbers the model
  const result=await resolveSegmentTarget(moved,{project:p.data.id,recording:recording.id,model:'m1',version:'e1',segment:'segment',identity});
  expect(result.recording.id).toBe(targetRecording.id);expect(result.model).toBe('m2');
 });
+
+it('persists project tag definitions through save/reopen and refuses stale writers', async () => {
+  const { p } = await fixture();
+  const library = { schemaVersion: 1 as const, tags: [{ id: 'synthetic-tag', name: 'Synthetic topic', groupIds: ['synthetic-group'] }], groups: [{ id: 'synthetic-group', name: 'Synthetic group', parentId: null }] };
+  const saved = await saveProject(p, { ...p.data, tagLibrary: library });
+  expect((await openProject(p.directory)).data.tagLibrary).toEqual(library);
+  expect(saved.data.revision).toBe(p.data.revision + 1);
+  await expect(saveProject(p, { ...p.data, tagLibrary: { ...library, tags: [] } })).rejects.toThrow();
+  expect((await openProject(p.directory)).data.tagLibrary).toEqual(library);
+});
+
+it('rejects malformed tag updates before writing the index or its verified backup', async () => {
+  const { p } = await fixture();
+  const before = await (await (await p.directory.getFileHandle('ripple-project.json')).getFile()).text();
+  await expect(saveProject(p, { ...p.data, tagLibrary: { schemaVersion: 1, tags: [{ id: 'synthetic-tag', name: 'Topic', groupIds: ['missing'] }], groups: [] } })).rejects.toThrow();
+  expect(await (await (await p.directory.getFileHandle('ripple-project.json')).getFile()).text()).toBe(before);
+});
+
+it('copies a version-owned collection, then keeps later tag assignment changes independent',async()=>{
+ const {p,interview,recording}=await fixture(),view=await recordingDirectory(p,interview.id,recording);
+ const tagCollection={schemaVersion:1 as const,tagIds:['tag-root','tag-child'],groups:[{id:'local-group',name:'Synthetic group',tagIds:['tag-child']}]};
+ const transcript={audio:{filename:recording.file,duration:2},speakers:[],tagCollection,segments:[{id:'s1',speaker_id:'a',text:'Synthetic source',start:0,end:2,tagIds:['tag-child']}]};
+ const first=await createModel(view,recording.file,{engine:'synthetic',transcript,original:{...transcript,tagCollection:undefined,segments:transcript.segments.map(segment=>({...segment,tagIds:undefined}))}});
+ const copy=await createEdit(view,recording.file,first.model.id,{srcEditId:first.model.activeEditId,label:'Synthetic independent copy',setActive:false});
+ expect(copy.edited.transcript.tagCollection).toEqual(tagCollection);
+ await saveActiveEdit(view,recording.file,copy.model.id,copy.edit.id,{...copy.edited,transcript:{...copy.edited.transcript,segments:copy.edited.transcript.segments.map(segment=>({...segment,tagIds:[]}))}});
+ const originalVersion=await readModelEdit(view,recording.file,first.model.id,first.model.activeEditId),original=await readModelOriginal(view,recording.file,first.model.id);
+ expect(originalVersion?.transcript.segments[0].tagIds).toEqual(['tag-child']);expect(original?.transcript.segments[0].tagIds).toBeUndefined();expect(originalVersion?.transcript.tagCollection).toEqual(tagCollection);
+});

@@ -8,7 +8,7 @@ export function CopyProblem({ problem, operation, iconOnly = false }: { problem?
   const [status, setStatus] = useTransientState<'idle' | 'copied' | 'missing' | 'error'>('idle', 'idle', value => value === 'copied' ? SUCCESS_FEEDBACK_MS : null);
   const copied = status === 'copied';
   const needsAction = status === 'missing' || status === 'error';
-  return <span className="diagnostic-copy"><button type="button" className={`cred-btn${iconOnly ? " diagnostic-icon" : ""}`} aria-label={msg(copied ? 'CopyProblem.m0381' : 'CopyProblem.m0378')} title={msg('CopyProblem.m0379')} onClick={async () => {
+  return <span className="diagnostic-copy"><button type="button" className={`cred-btn${iconOnly ? " diagnostic-icon" : ""}`} aria-label={msg(copied ? 'CopyProblem.m0381' : 'CopyProblem.m0378')} data-tip={msg('CopyProblem.m0379')} onClick={async () => {
     const entry = problem ?? readProblems().filter(p => !operation || p.operation === operation).at(-1);
     setStatus('idle');
     if (!entry) { setStatus('missing'); return; }

@@ -329,7 +329,7 @@ export function SpeakerPanel(props: SpeakerPanelProps) {
           type="button"
           className="speaker-add speaker-add--minor"
           onClick={normalizeEnglishSpeakerTemplates}
-          data-tip={msg('SpeakerPanel.m1027')}
+          data-action-tip={msg('SpeakerPanel.m1027')}
         >
           {msg('SpeakerPanel.m1028')}</button>
       ) : null}

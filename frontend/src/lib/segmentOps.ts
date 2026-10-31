@@ -1,3 +1,4 @@
+import { segmentTagIds } from "./tags";
 import { sliceTimestampWords } from "./timestampSlices";
 import type { Segment, Word } from "../types";
 import { alignTimestampWords, reanchorCharacters, reanchorRanges, timeForCharacter } from "./transcriptOps";
@@ -73,6 +74,7 @@ export function mergeSegmentWithNext(
         text: mergedText,
         highlights: reanchorRanges([...(current.highlights ?? []), ...(next.highlights ?? []).map(h => ({ ...h, start: h.start + current.text.length, end: h.end + current.text.length }))], current.text + next.text, mergedText),
         annotations: [...(current.annotations ?? []), ...(next.annotations ?? [])],
+        ...(current.tagIds || next.tagIds ? { tagIds: [...new Set([...segmentTagIds(current), ...segmentTagIds(next)])] } : {}),
         // 分别保留两侧的绝对时间戳与中间音频间隔；换行不占用有效时间窗。
         words: mergeWords(current, next, mergedText),
       };
@@ -119,8 +121,8 @@ export function splitSegmentAt(
   return segments.flatMap((item) =>
     item.id === segmentId
       ? [
-          { ...item, ...(item.start === item.end ? { splitFrom: item.splitFrom ?? item.id } : {}), mergedFrom: undefined, end: splitTime, text: firstText, words: firstWords, highlights: sliceHighlights(0, firstText.length) },
-          { ...item, ...(item.start === item.end ? { splitFrom: item.splitFrom ?? item.id } : {}), mergedFrom: undefined, id: newSegmentId, start: splitTime, text: secondText, words: secondWords, highlights: sliceHighlights(secondOffset, text.length) },
+          { ...item, ...(item.tagIds ? { tagIds: segmentTagIds(item) } : {}), ...(item.start === item.end ? { splitFrom: item.splitFrom ?? item.id } : {}), mergedFrom: undefined, end: splitTime, text: firstText, words: firstWords, highlights: sliceHighlights(0, firstText.length) },
+          { ...item, ...(item.tagIds ? { tagIds: segmentTagIds(item) } : {}), ...(item.start === item.end ? { splitFrom: item.splitFrom ?? item.id } : {}), mergedFrom: undefined, id: newSegmentId, start: splitTime, text: secondText, words: secondWords, highlights: sliceHighlights(secondOffset, text.length) },
         ]
       : [item],
   );

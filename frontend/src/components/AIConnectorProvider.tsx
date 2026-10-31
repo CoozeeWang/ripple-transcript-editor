@@ -22,6 +22,10 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
     if (binding.current?.token === token) { binding.current = null; setContext(''); }
   }, []);
   const host: ConnectorHost = {
+    acceptTagTransaction: receipt => {
+      if (!binding.current?.host.acceptTagTransaction) return false;
+      return binding.current.host.acceptTagTransaction(receipt);
+    },
     current: async () => {
       if (!binding.current) throw Error('no_editable_interview');
       const current=await binding.current.host.current();
@@ -37,6 +41,7 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
     },
   };
   const project: ProjectConnectorAccess = {
+    publishTagProject: async next => { await (binding.current?.project ?? retainedProject.current)?.publishTagProject?.(next); },
     project: () => (binding.current?.project ?? retainedProject.current)?.project() ?? null,
     active: () => binding.current?.project?.active() ?? { interview_id: '', recording_id: '', version_id: null, directory: null },
     onSaved: target => binding.current?.project?.onSaved?.(target),

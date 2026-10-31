@@ -151,7 +151,7 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
         <span className="export-disclosure-spacer"/>
         <label><input className="ripple-checkbox" type="checkbox" disabled={busy} checked={selected.has(entry.id)} onChange={event => toggle([entry.id], event.target.checked)}/><ProjectIcon kind="document"/><span className="export-entry-name">{name}</span></label>
         <div className="export-entry-options">
-          <select aria-label={msg('ProjectExportDialog.m0736', { v0: entry.name })} title={untimed ? msg('ProjectExportDialog.m0737') : msg('ProjectExportDialog.m0738')} value={entryFormat(entry)} disabled={busy} onChange={e => setFormats(old => ({ ...old, [entry.id]: e.target.value as ExportFormat }))}>
+          <select aria-label={msg('ProjectExportDialog.m0736', { v0: entry.name })} data-tip={untimed ? undefined : msg('ProjectExportDialog.m0738')} data-action-tip={untimed ? msg('ProjectExportDialog.m0737') : undefined} value={entryFormat(entry)} disabled={busy} onChange={e => setFormats(old => ({ ...old, [entry.id]: e.target.value as ExportFormat }))}>
             {exportFormats().filter(([,format])=>format !== 'pdf').map(([label, value]) => <option key={value} value={value} disabled={untimed && (value === 'srt' || value === 'vtt')}>{label}</option>)}
           </select>
         </div>
