@@ -4,9 +4,11 @@ import {ConnectorContext} from '../hooks/connectorContext';
 import {cleanup, render, screen} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
 import {AIConnectorProvider} from './AIConnectorProvider';
+import type {ProjectConnectorAccess} from '../lib/projectConnectorHost';
 import type {AIEditActivity} from '../lib/aiEditOwnership';
+const observed = vi.hoisted(()=>({project:null as ProjectConnectorAccess|null,context:''}));
 const runtime = vi.hoisted(() => ({ activities: [] as AIEditActivity[], tasks: [], taskError: '', taskActionError: '', dismissTaskError: vi.fn(), recoveryWarning: '', recoveryProjectIds: ['synthetic-A'], taskAction: vi.fn() }));
-vi.mock('../hooks/useAIConnector', () => ({useAIConnectorRuntime: () => runtime}));
+vi.mock('../hooks/useAIConnector', () => ({useAIConnectorRuntime: (_host:unknown,context:string,project:ProjectConnectorAccess) => {observed.project=project;observed.context=context;return runtime;}}));
 afterEach(() => { cleanup(); runtime.activities=[]; runtime.taskError=''; runtime.taskActionError=''; runtime.recoveryWarning=''; vi.clearAllMocks(); });
 const task: AIEditActivity={task_id:'synthetic',client:'chatgpt',key:'synthetic',version:'Synthetic version',version_id:'v1',kind:'incremental',processed:3,touched:0,state:'completed',saved:3,total:3,inFlight:0};
 it.each(['Project page','Welcome page'])('hides completed results outside the editor on %s without dismissing tasks', (page) => {
@@ -65,4 +67,21 @@ it('retains background action failures without leaking the target editor control
   const ui=render(<AIConnectorProvider><main>Project</main></AIConnectorProvider>);
   expect(ui.container.querySelector('.continuation-progress-error')).toBeNull();
   expect(runtime.taskActionError).toBe('synthetic_end_failure');expect(runtime.taskAction).not.toHaveBeenCalled();
+});
+
+it('registers the project page before any editor opens, follows project changes, and clears welcome access',()=>{
+ const projectA={data:{id:'synthetic-A'}} as ReturnType<ProjectConnectorAccess['project']>;
+ const projectB={data:{id:'synthetic-B'}} as ReturnType<ProjectConnectorAccess['project']>;
+ function Workspace({project}:{project:ReturnType<ProjectConnectorAccess['project']>}){
+  const {registerProject,reportProject}=useContext(ConnectorContext)!;
+  useLayoutEffect(()=>registerProject?.({}, {project:()=>project,active:()=>({interview_id:'',recording_id:'',version_id:null,directory:null})}),[registerProject,project]);
+  useLayoutEffect(()=>reportProject?.(project?.data.id??''),[reportProject,project]);
+  return <main>Synthetic workspace</main>;
+ }
+ const ui=render(<AIConnectorProvider><Workspace project={projectA}/></AIConnectorProvider>);
+ expect(observed.project?.project()).toBe(projectA);expect(observed.context).toBe('project:synthetic-A');
+ ui.rerender(<AIConnectorProvider><Workspace project={projectB}/></AIConnectorProvider>);
+ expect(observed.project?.project()).toBe(projectB);expect(observed.context).toBe('project:synthetic-B');
+ ui.rerender(<AIConnectorProvider><Workspace project={null}/></AIConnectorProvider>);
+ expect(observed.project?.project()).toBeNull();expect(observed.context).toBe('');
 });

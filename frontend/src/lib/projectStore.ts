@@ -201,7 +201,7 @@ const locked = withProjectLock;
 export async function saveProject(project: OpenProject, next: RippleProject): Promise<OpenProject> {
   return locked(project.data.id, () => saveProjectUnlocked(project,next));
 }
-async function saveProjectUnlocked(project:OpenProject,next:RippleProject):Promise<OpenProject> {
+async function saveProjectUnlocked(project:OpenProject,next:RippleProject,check?:()=>void):Promise<OpenProject> {
     await recoverTagFileTransaction(project.directory);
     const original = await readText(project.directory, INDEX);
     if (original === null) throw new Error(msg('projectStore.m1395'));
@@ -212,13 +212,36 @@ async function saveProjectUnlocked(project:OpenProject,next:RippleProject):Promi
     assertTagNameChange(current.tagLibrary??{schemaVersion:3,tags:[],groups:[]},updated.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
     const text = JSON.stringify(updated, null, 2);
     parseProject(text);
+    check?.();
     await writeText(project.directory, `${INDEX}.bak`, original);
+    check?.();
     try { await writeText(project.directory, INDEX, text); }
     catch (error) {
       try { await writeText(project.directory, INDEX, original); } catch { /* Verified backup is retained. */ }
       throw error;
     }
     return { directory: project.directory, data: updated };
+}
+/** Compare the observed display name under the same lock used by ordinary project saves. */
+export async function renameProjectMetadata(project: OpenProject, request: import('./projectRename').RenameRequest, check: () => void): Promise<{project:OpenProject;changed:boolean}> {
+  return locked(project.data.id, async () => {
+    check();
+    const raw = await readText(project.directory, INDEX);
+    if (raw === null) throw Error('no_open_project');
+    const data = parseProject(raw);
+    if (data.id !== request.project_id) throw Error('rename_project_changed');
+    const session = data.interviews.find(item => item.id === request.interview_id);
+    const recording = session?.recordings.find(item => item.id === request.recording_id);
+    if (request.target_type !== 'project' && !session || request.target_type === 'audio' && (!recording || recording.storage === 'none')) throw Error('target_not_in_current_project');
+    const oldName = request.target_type === 'project' ? data.title : request.target_type === 'session' ? session!.title : recording!.name;
+    const fresh = {...project,data};
+    if (oldName === request.new_name) return {project:fresh,changed:false};
+    if (oldName !== request.expected_name) throw Error('rename_name_changed_read_again');
+    const next = request.target_type === 'project' ? {...data,title:request.new_name} : {...data,interviews:data.interviews.map(item => item.id !== request.interview_id ? item : request.target_type === 'session'
+      ? {...item,title:request.new_name} : {...item,recordings:item.recordings.map(audio => audio.id === request.recording_id ? {...audio,name:request.new_name} : audio)})};
+    check();
+    return {project:await saveProjectUnlocked(fresh,next,check),changed:true};
+  });
 }
 export async function createProject(parent: FileSystemDirectoryHandle, title: string): Promise<OpenProject> {
   const name = title.trim();

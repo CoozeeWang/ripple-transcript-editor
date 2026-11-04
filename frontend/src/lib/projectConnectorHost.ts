@@ -14,6 +14,9 @@ export interface ProjectTarget {
   recording_id: string; recording: string; version_id: string; version: string;
 }
 export interface ProjectConnectorAccess {
+  assertRenameReady?: () => void;
+  beginRename?: () => (() => void);
+  onRenamed?: (request: import('./projectRename').RenameRequest) => void;
   publishTagProject?: (project:OpenProject, publishVersion?:()=>void) => Promise<void>;
   onSaved?: (target: ProjectTarget) => void;
   project: () => OpenProject | null;

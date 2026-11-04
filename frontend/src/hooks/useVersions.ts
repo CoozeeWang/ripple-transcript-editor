@@ -405,6 +405,10 @@ export function useVersions(deps: UseVersionsDeps) {
     };
 
   return {
+    acceptRenamedVersion: (versionId:string,name:string) => {
+      const [modelId,editId]=versionId.split(':');
+      setModels(previous=>previous.map(model=>model.id!==modelId?model:editId==='original'?{...model,label:name}:{...model,edits:model.edits.map(edit=>edit.id===editId?{...edit,label:name}:edit)}));
+    },
     renameVersion,
     createAIEdit,
     versionBusy,

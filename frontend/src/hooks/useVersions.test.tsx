@@ -320,3 +320,15 @@ it('renames only the original display label, preserving selection and manuscript
  expect(ui.result.current.activeModel?.edits).toEqual(MANIFEST.models[0].edits);
  expect(deps.reset).not.toHaveBeenCalled();
 });
+
+it('adopts a plugin rename without reloading unsaved text, moving selection or writing content',()=>{
+ const deps=hookDeps();const ui=renderHook(()=>useVersions(deps));
+ act(()=>ui.result.current.applyManifest(fake.manifest));
+ const model=ui.result.current.activeModelId,edit=ui.result.current.activeEditKey;
+ const before=JSON.stringify([...fake.files]);
+ act(()=>ui.result.current.acceptRenamedVersion('m1:e1','Synthetic renamed version'));
+ expect(ui.result.current.models[0].edits[0].label).toBe('Synthetic renamed version');
+ expect(ui.result.current.activeModelId).toBe(model);expect(ui.result.current.activeEditKey).toBe(edit);
+ expect(deps.reset).not.toHaveBeenCalled();expect(deps.setMetadata).not.toHaveBeenCalled();
+ expect(JSON.stringify([...fake.files])).toBe(before);
+});
