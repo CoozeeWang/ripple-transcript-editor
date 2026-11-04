@@ -1,4 +1,5 @@
-import { useContext, useId, useLayoutEffect, useRef, useState } from 'react';
+import {isSharedTagRestriction,showSharedTagRestriction} from '../lib/sharedTagGuard';
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { TagCandidatesContext } from '../lib/tagCandidates';
 import { createPortal } from 'react-dom';
 import { tagErrorMessage } from '../lib/tagErrors';
@@ -14,13 +15,22 @@ export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assi
     assignedIds?: readonly string[];
 }) {
     const candidates = useContext(TagCandidatesContext), availableTags = suppliedTags ?? candidates;
-    const [value, setValue] = useState(''),[submitting,setSubmitting]=useState(false),[focused,setFocused]=useState(true), [error, setError] = useState(''), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), pending=useRef(false),restoreCommit=useRef(false), id = useId();
+    const [value, setValue] = useState(''),[submitting,setSubmitting]=useState(false),[focused,setFocused]=useState(true), [error, setError] = useState(''), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), pending=useRef(false),restoreCommit=useRef(false), restoreFocus=useRef(true), id = useId();
+    const reportError=(error:unknown)=>{if(isSharedTagRestriction(error)){setError('');showSharedTagRestriction(input.current,error);}else setError(tagErrorMessage(error));};
     const submit=(name:string,id?:string)=>{
         if(pending.current||disabled)return;
-        try {const result=id?onCommit(name,id):onCommit(name);if(result&&typeof result.then==='function'){pending.current=true;setSubmitting(true);void result.then(()=>{if(libraryMode){setValue('');setActive(-1);restoreCommit.current=true}},error=>setError(tagErrorMessage(error))).finally(()=>{pending.current=false;setSubmitting(false)})}}
-        catch(error){setError(tagErrorMessage(error))}
+        restoreFocus.current=true;
+        try {const result=id?onCommit(name,id):onCommit(name);if(result&&typeof result.then==='function'){pending.current=true;setSubmitting(true);void result.then(()=>{if(libraryMode){setValue('');setActive(-1);restoreCommit.current=true}},error=>reportError(error)).finally(()=>{pending.current=false;setSubmitting(false)})}}
+        catch(error){reportError(error)}
     };
-    useLayoutEffect(()=>{if(!submitting&&(error||restoreCommit.current)){restoreCommit.current=false;input.current?.focus()}},[error,submitting]);
+    useLayoutEffect(()=>{if(!submitting&&(error||restoreCommit.current)){restoreCommit.current=false;if(!libraryMode || restoreFocus.current&&(document.activeElement===document.body || document.activeElement===input.current))input.current?.focus({preventScroll:true})}},[error,submitting,libraryMode]);
+    useEffect(()=>{
+        if(!libraryMode)return;
+        const leave=(event:Event)=>{if(pending.current&&event.target!==input.current)restoreFocus.current=false};
+        const key=(event:KeyboardEvent)=>{if(pending.current&&['Tab','Escape'].includes(event.key))restoreFocus.current=false};
+        document.addEventListener('pointerdown',leave,true);document.addEventListener('click',leave,true);document.addEventListener('focusin',leave,true);document.addEventListener('wheel',leave,{passive:true,capture:true});document.addEventListener('keydown',key,true);
+        return()=>{document.removeEventListener('pointerdown',leave,true);document.removeEventListener('click',leave,true);document.removeEventListener('focusin',leave,true);document.removeEventListener('wheel',leave,true);document.removeEventListener('keydown',key,true)};
+    },[libraryMode]);
     const cancel=(reason:'escape'|'blur')=>{if(libraryMode){setValue('');setActive(-1);setError('')}onCancel(reason)};
     const suggestions = !focused?[]:value.trim() ? suggestTags(availableTags, value, assignedIds)
         : sortTags(availableTags.filter(tag => !assignedIds.includes(tag.id)), 'name', 1, () => 0), selected = suggestions[active];
@@ -46,7 +56,7 @@ export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assi
         const path = tagPath({ schemaVersion: 3, tags: [...availableTags], groups: [] }, tag.id);
         return path.slice(0, path.lastIndexOf('/') + 1);
     };
-    return <span className={libraryMode?'tag-library-create-entry':'tag-entry'} onClick={e => e.stopPropagation()}><input ref={input} disabled={submitting||disabled} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg(libraryMode?'tags.newTag':'tags.input')} placeholder={libraryMode?msg('tags.newTag'):undefined} value={value} maxLength={1024} onChange={e => { setValue(e.target.value); setError(''); setActive(-1); }} onFocus={()=>setFocused(true)} onBlur={() => {setFocused(false);if(!pending.current)cancel('blur')}} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
+    return <span className={libraryMode?'tag-library-create-entry':'tag-entry'} onClick={e => e.stopPropagation()}><input ref={input} disabled={submitting||disabled} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={suggestions.length ? id : undefined} aria-activedescendant={selected ? `${id}-${selected.id}` : undefined} aria-label={msg(libraryMode?'tags.newTag':'tags.input')} placeholder={libraryMode?msg('tags.newTag'):undefined} value={value} maxLength={1024} onChange={e => { setValue(e.target.value); setError(''); setActive(-1); }} onFocus={()=>setFocused(true)} onBlur={() => {setFocused(false);if(!pending.current)cancel('blur')}} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
             e.stopPropagation();
             if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229)
                 return;
@@ -72,5 +82,5 @@ export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assi
                 }
                 submit(name);
             }
-        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/><small className="tag-suggestion-path">{parentPath(tag)}</small></div>)}</div>, document.body)}{error && <span role="alert">{error}</span>}</span>;
+        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/><small className="tag-suggestion-path">{parentPath(tag)}</small></div>)}</div>, document.body)}{error && <span id={`${id}-error`} className="tag-error" role="alert">{error}</span>}</span>;
 }

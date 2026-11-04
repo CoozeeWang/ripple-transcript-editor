@@ -12,7 +12,9 @@ export interface TagGroup {
     parentId: string | null;
 }
 export interface TagLibrary {
-    schemaVersion: 1 | 2 | 3;
+    schemaVersion: 1 | 2 | 3 | 4;
+    /** Sole active project-wide sibling priority; older collection orders are legacy data. */
+    treeOrder?: string[];
     tags: ProjectTag[];
     groups: TagGroup[];
     /** Immutable fallback for versions saved before groups became version-owned. */
@@ -22,14 +24,29 @@ export const emptyTagLibrary = (): TagLibrary => ({ schemaVersion: 1, tags: [], 
 const identity = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(value);
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 export const normalizeTagName = (name: string): string => name.trim().normalize('NFC');
+/** Read legacy duplicates intact; writes may resolve them but may never introduce new identities under a duplicate name. */
+export function assertTagNameChange(before:TagLibrary,after:TagLibrary):void {
+    const groups=(library:TagLibrary)=>{const result=new Map<string,Set<string>>();for(const tag of library.tags){const key=normalizeTagName(tag.name).toLowerCase();const ids=result.get(key)??new Set<string>();ids.add(tag.id);result.set(key,ids);}return result;};
+    const old=groups(before);
+    for(const [name,ids] of groups(after))if(ids.size>1&&[...ids].some(id=>!old.get(name)?.has(id)))throw new TagTreeError('name_conflict',after.tags.find(tag=>normalizeTagName(tag.name).toLowerCase()===name)!.name);
+}
+
+export function resolveTagInput(library:TagLibrary,raw:string):{library:TagLibrary;tag:ProjectTag} {
+    if(!raw.includes('/')) {
+        const found=library.tags.filter(tag=>normalizeTagName(tag.name).toLowerCase()===normalizeTagName(raw).toLowerCase());
+        if(found.length===1)return {library,tag:found[0]};
+        if(found.length>1)throw new TagTreeError('path_conflict',raw);
+    }
+    return setTagPath(library,raw);
+}
 const validName = (name: unknown): name is string => typeof name === 'string' && !!normalizeTagName(name) && name.length <= 120 && !Array.from(name).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 /** Optional extension: absence means an empty library, never a write-on-open migration. */
 export function isTagLibrary(value: unknown): value is TagLibrary {
-    if (!record(value) || ![1,2,3].includes(value.schemaVersion as number) || !Array.isArray(value.tags) || !Array.isArray(value.groups))
+    if (!record(value) || ![1,2,3,4].includes(value.schemaVersion as number) || !Array.isArray(value.tags) || !Array.isArray(value.groups))
         return false;
     if (value.legacyGroups !== undefined) {
         const legacy = value.legacyGroups;
-        if (value.schemaVersion !== 3 || !record(legacy) || !Array.isArray(legacy.groups) || !Array.isArray(legacy.memberships)
+        if (![3,4].includes(Number(value.schemaVersion)) || !record(legacy) || !Array.isArray(legacy.groups) || !Array.isArray(legacy.memberships)
             || !isTagLibrary({ schemaVersion: 1, tags: [], groups: legacy.groups })
             || legacy.memberships.some(item => !record(item) || !identity(item.tagId) || !Array.isArray(item.groupIds)
                 || item.groupIds.some(id => typeof id !== 'string' || !(legacy.groups as TagGroup[]).some(group => group.id === id)))) return false;
@@ -56,18 +73,20 @@ export function isTagLibrary(value: unknown): value is TagLibrary {
             return false;
         const name = normalizeTagName(tag.name).toLowerCase();
         if (value.schemaVersion !== 1 && (tag.name.includes('/') || (tag.parentId !== null && !identity(tag.parentId)))) return false;
-        if (value.schemaVersion !== 3 && names.has(name))
+        if (Number(value.schemaVersion) < 3 && names.has(name))
             return false;
         ids.add(tag.id);
         names.add(name);
     }
+    if (value.schemaVersion === 4 && (!Array.isArray(value.treeOrder) || value.treeOrder.some(id => typeof id !== 'string' || !ids.has(id)) || new Set(value.treeOrder).size !== value.treeOrder.length)) return false;
+    if (value.schemaVersion !== 4 && value.treeOrder !== undefined) return false;
     if (value.schemaVersion !== 1) {
         const parents = new Map(value.tags.map(tag => [(tag as ProjectTag).id, (tag as ProjectTag).parentId ?? null]));
         for (const id of parents.keys()) {
             const seen = new Set<string>(); let next: string | null = id;
             while (next !== null) { if (seen.has(next) || !parents.has(next)) return false; seen.add(next); next = parents.get(next)!; }
         }
-        if (value.schemaVersion === 3) {
+        if (Number(value.schemaVersion) >= 3) {
             const paths = new Set<string>();
             for (const tag of value.tags as ProjectTag[]) {
                 const path = tagPath(value as unknown as TagLibrary, tag.id).split('/').map(part => normalizeTagName(part).toLowerCase()).join('/');
@@ -181,7 +200,7 @@ export function tagHistoryAnchor(transcript:Transcript|null):string {
 }
 
 export class TagTreeError extends Error {
-    constructor(public code: 'invalid_path'|'path_conflict'|'cycle'|'invalid_tree', public value='') { super(code); this.name='TagTreeError'; }
+    constructor(public code: 'invalid_path'|'path_conflict'|'name_conflict'|'cycle'|'invalid_tree', public value='') { super(code); this.name='TagTreeError'; }
 }
 export const tagParentId = (tag: ProjectTag): string|null => tag.parentId ?? null;
 export function hierarchyLibrary(library: TagLibrary): TagLibrary {
@@ -230,7 +249,7 @@ export function setTagPath(source:TagLibrary,raw:string,targetId?:string):{libra
     if(targetId&&!target)throw new TagTreeError('invalid_tree');
     let parentId:string|null=null,last:ProjectTag|undefined;
     for(let index=0;index<parts.length;index++) {
-        const name=parts[index],leaf=index===parts.length-1,existing=tags.find(tag=>normalizeTagName(tag.name).toLowerCase()===name.toLowerCase()&&(library.schemaVersion!==3||tagParentId(tag)===parentId));
+        const name=parts[index],leaf=index===parts.length-1,existing=tags.find(tag=>normalizeTagName(tag.name).toLowerCase()===name.toLowerCase()&&(library.schemaVersion<3||tagParentId(tag)===parentId));
         if(leaf&&target) {
             if(existing&&existing.id!==target.id)throw new TagTreeError('path_conflict',name);
             if(parentId===target.id || (parentId&&descendantTagIds(library,target.id).includes(parentId)))throw new TagTreeError('cycle');
@@ -242,14 +261,16 @@ export function setTagPath(source:TagLibrary,raw:string,targetId?:string):{libra
         parentId=last.id;
     }
     const result={...library,tags};if(!isTagLibrary(result))throw new TagTreeError('invalid_tree');
+    assertTagNameChange(library,result);
     return {library:result,tag:last!};
 }
 export function renameTagLeaf(source:TagLibrary,id:string,raw:string):TagLibrary {
     if(raw.includes('/'))throw new TagTreeError('invalid_path',raw);
     const library=hierarchyLibrary(source),tag=library.tags.find(tag=>tag.id===id),name=normalizeTagName(raw);
     if(!tag||!validName(name))throw new TagTreeError('invalid_path',raw);
-    if(library.tags.some(other=>other.id!==id&&normalizeTagName(other.name).toLowerCase()===name.toLowerCase()&&(library.schemaVersion!==3||tagParentId(other)===tagParentId(tag))))throw new TagTreeError('path_conflict',name);
-    return {...library,tags:library.tags.map(tag=>tag.id===id?{...tag,name}:tag)};
+    if(library.tags.some(other=>other.id!==id&&normalizeTagName(other.name).toLowerCase()===name.toLowerCase()&&(library.schemaVersion<3||tagParentId(other)===tagParentId(tag))))throw new TagTreeError('path_conflict',name);
+    const result={...library,tags:library.tags.map(tag=>tag.id===id?{...tag,name}:tag)};
+    assertTagNameChange(library,result);return result;
 }
 export function reparentTag(source:TagLibrary,id:string,parentId:string|null):TagLibrary {
     const tag=source.tags.find(tag=>tag.id===id);
@@ -273,8 +294,8 @@ export function tagTreeRows(library:TagLibrary,memberIds?:ReadonlySet<string>,ke
 /** Delete the entity only, lifting children; descendants and their associations survive. */
 export function removeTagNode(source:TagLibrary,id:string):TagLibrary {
     const library=hierarchyLibrary(source),tag=library.tags.find(tag=>tag.id===id);if(!tag)return source;
-    const next={...library,tags:library.tags.filter(tag=>tag.id!==id).map(child=>tagParentId(child)===id?{...child,parentId:tagParentId(tag)}:child)};
-    if(next.schemaVersion===3) {
+    const next={...library,tags:library.tags.filter(tag=>tag.id!==id).map(child=>tagParentId(child)===id?{...child,parentId:tagParentId(tag)}:child),...(library.treeOrder?{treeOrder:library.treeOrder.filter(value=>value!==id)}:{})};
+    if(next.schemaVersion>=3) {
         const paths=new Set<string>();
         for(const tag of next.tags){const path=tagPath(next,tag.id),key=path.split('/').map(part=>normalizeTagName(part).toLowerCase()).join('/');if(paths.has(key))throw new TagTreeError('path_conflict',path);paths.add(key)}
     }
@@ -284,5 +305,5 @@ export function removeTagNode(source:TagLibrary,id:string):TagLibrary {
 export function removeTagBranch(source:TagLibrary,id:string):TagLibrary {
     if(!source.tags.some(tag=>tag.id===id))return source;
     const library=hierarchyLibrary(source),removed=new Set(descendantTagIds(library,id));
-    return {...library,tags:library.tags.filter(tag=>!removed.has(tag.id))};
+    return {...library,tags:library.tags.filter(tag=>!removed.has(tag.id)),...(library.treeOrder?{treeOrder:library.treeOrder.filter(id=>!removed.has(id))}:{})};
 }

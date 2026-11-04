@@ -155,7 +155,7 @@ it.each(['current', 'additions'] as TagTransactionScope[])('keeps original prote
     for (const [path, value] of before) expect(fs.files.get(path)).toBe(value);
 });
 
-it('continues to inspect other consumers for shared edits and reject cross-version name conflicts', async () => {
+it('continues to inspect other consumers and requires confirmation for a cross-version true-name merge', async () => {
     const fs = fixture(), added = await transactProjectTags(fs.project, fs.current, addPath, 'additions');
     const otherPath = setTagPath(added.project.data.tagLibrary!, '别的主题/童年');
     const library = otherPath.library, index = { ...added.project.data, tagLibrary: library };
@@ -165,7 +165,7 @@ it('continues to inspect other consumers for shared edits and reject cross-versi
     fs.files.set(fs.root + '/e2.json', JSON.stringify(other));
     const before = new Map(fs.files), leaf = added.transcript.segments[0].tagIds![0];
     await expect(transactProjectTags({ ...added.project, data: index }, { ...fs.current, transcript: added.transcript },
-        (catalog, consumers) => changeSharedTag(catalog, leaf, '经历/求学/童年', consumers))).rejects.toThrow('tag_collection_name_conflict');
+        (catalog, consumers) => changeSharedTag(catalog, leaf, '经历/求学/童年', consumers))).rejects.toMatchObject({name:'TagMergeRequired',targetId:otherPath.tag.id});
     expect(fs.files).toEqual(before);
 });
 

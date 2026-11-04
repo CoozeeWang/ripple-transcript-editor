@@ -1,6 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { msg } from '../i18n';
 import { normalizeTagName } from '../lib/tags';
+import {isSharedTagRestriction} from '../lib/sharedTagGuard';
+import { isTagOperationCancelled } from '../lib/tagErrors';
 
 /** Edits an existing project entity; cancellation never creates or merges a tag. */
 export function InlineTagName({ name, enabled, onRename, children, canBegin, onEditingChange, focusable = false, maxLength = 120, label, row = false }: {
@@ -15,7 +17,8 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
     onEditingChange?: (editing: boolean) => void;
     focusable?: boolean;
 }) {
-    const [editing, setEditing] = useState(false), [draft, setDraft] = useState(name), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+    const [editing, setEditing] = useState(false), [draft, setDraft] = useState(name), [feedback, setFeedback] = useState<{message:string;kind:'error'|'status'}|null>(null), [busy, setBusy] = useState(false);
+    const feedbackId = useId();
     const root = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), composing = useRef(false), pending = useRef(false), restore = useRef(false), dragUntil = useRef(0);
     const returnContainer=useRef<HTMLElement|null>(null);
     useLayoutEffect(() => {
@@ -25,14 +28,14 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
             (root.current?.querySelector<HTMLElement>('button') ?? (root.current?.tabIndex === 0 ? root.current : root.current?.closest<HTMLElement>('.tag-pill')))?.focus({ preventScroll: true });
         }
     }, [editing]);
-    useLayoutEffect(() => { if (error && !busy) input.current?.focus(); }, [error, busy]);
+    useLayoutEffect(() => { if (feedback && !busy) input.current?.focus(); }, [feedback, busy]);
     useEffect(() => {
         if (enabled || !editing || pending.current) return;
         let cancelled = false;
-        queueMicrotask(() => { if (!cancelled && !pending.current) { setEditing(false); setError(''); onEditingChange?.(false); } });
+        queueMicrotask(() => { if (!cancelled && !pending.current) { setEditing(false); setFeedback(null); onEditingChange?.(false); } });
         return () => { cancelled = true; };
     }, [enabled, editing, onEditingChange]);
-    const finish = (focus: boolean) => { restore.current = focus; setEditing(false); setError(''); onEditingChange?.(false);
+    const finish = (focus: boolean) => { restore.current = focus; setEditing(false); setFeedback(null); onEditingChange?.(false);
         // A confirmed merge can replace the edited stable ID and unmount this editor.
         // Restore within its original segment/list only if normal focus restoration had no target.
         if(focus&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{
@@ -41,7 +44,7 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
             if(container?.isConnected)container.querySelector<HTMLElement>('.tag-name-edit[tabindex="0"], .library-filter, button:not(:disabled)')?.focus({preventScroll:true});
         });
     };
-    const begin = () => { returnContainer.current=root.current?.closest<HTMLElement>('.segment,.library-list')??null;setDraft(name); setError(''); setEditing(true); onEditingChange?.(true); };
+    const begin = () => { returnContainer.current=root.current?.closest<HTMLElement>('.segment,.library-list')??null;setDraft(name); setFeedback(null); setEditing(true); onEditingChange?.(true); };
     return <span ref={root} role={focusable && enabled && onRename && !editing ? 'button' : undefined} tabIndex={focusable && enabled && onRename && !editing ? 0 : undefined} className={'tag-name-edit' + (row ? ' tag-name-edit--row' : '') + (editing ? ' is-editing' : focusable && enabled ? ' is-trigger' : '')}
         onKeyDown={event => { if (!editing && event.key === 'F2' && enabled && onRename && canBegin?.(event.timeStamp) !== false) { event.preventDefault(); event.stopPropagation(); begin(); } }}
         onDragStart={() => { dragUntil.current = performance.now() + 500; }} onDragEnd={() => { dragUntil.current = performance.now() + 500; }}
@@ -49,7 +52,7 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
             if (!enabled || !onRename || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || performance.now() < dragUntil.current || canBegin?.(event.timeStamp) === false) return;
             event.preventDefault(); event.stopPropagation(); begin();
         }}>
-        {editing ? <><input ref={input} value={draft} maxLength={maxLength} size={Math.min(24, Math.max(4, draft.length + 1))} aria-label={label??msg('tags.renameTag')} disabled={busy} onChange={event => { setDraft(event.target.value); setError(''); }}
+        {editing ? <><input ref={input} value={draft} maxLength={maxLength} size={Math.min(24, Math.max(4, draft.length + 1))} aria-label={label??msg('tags.renameTag')} aria-describedby={feedback?feedbackId:undefined} aria-invalid={feedback?.kind==='error'||undefined} disabled={busy} onChange={event => { setDraft(event.target.value); setFeedback(null); }}
             onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
             onBlur={() => { if (!pending.current) finish(false); }} onKeyDown={event => {
                 event.stopPropagation();
@@ -57,11 +60,11 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
                 if (event.key === 'Escape') { event.preventDefault(); finish(true); }
                 if (event.key === 'Enter' && enabled) {
                     event.preventDefault(); const next = normalizeTagName(draft);
-                    if (!next || Array.from(next).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) { setError(msg('tags.invalidName')); return; }
+                    if (!next || Array.from(next).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) { setFeedback({message:msg('tags.invalidName'),kind:'error'}); return; }
                     if (next === name) { finish(true); return; }
                     pending.current = true; setBusy(true);
-                    void onRename!(next).then(() => finish(true), error => setError(error instanceof Error ? error.message : msg('tags.saveFailed'))).finally(() => { pending.current = false; setBusy(false); });
+                    void onRename!(next).then(() => finish(true), error => setFeedback({message:error instanceof Error ? error.message : msg('tags.saveFailed'),kind:isTagOperationCancelled(error)||isSharedTagRestriction(error)?'status':'error'})).finally(() => { pending.current = false; setBusy(false); });
                 }
-            }}/>{error && <span role="alert" className="tag-name-error">{error}</span>}</> : children}
+            }}/>{feedback && <span id={feedbackId} role={feedback.kind==='error'?'alert':'status'} className={'tag-name-feedback '+(feedback.kind==='error'?'tag-name-error':'tag-name-status')}>{feedback.message}</span>}</> : children}
     </span>;
 }

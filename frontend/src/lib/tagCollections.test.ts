@@ -16,8 +16,11 @@ function fixture() {
 }
 
 describe('project catalog and version admission', () => {
-    it('allows repeated leaves across full paths and reuses an exact case-insensitive path', () => {
-        const a = setTagPath(empty(), '甲/A/1'), b = setTagPath(a.library, '乙/1');
+    it('rejects new repeated names but reads legacy duplicates and reuses an exact path', () => {
+        const a = setTagPath(empty(), '甲/A/1');
+        expect(()=>setTagPath(a.library,'乙/1')).toThrow('name_conflict');
+        const b = setTagPath(a.library, '乙/Legacy one');
+        b.tag.name='1'; // Explicit legacy duplicate fixture, never created by a current write.
         expect(isTagLibrary(b.library)).toBe(true);
         const again = setTagPath(b.library, '甲/a/1');
         expect(again.tag.id).toBe(a.tag.id);
@@ -86,20 +89,19 @@ describe('shared rename, movement and explicit subtree merge preflight', () => {
         expect(result.consumers[1].transcript.segments[0].tagIds).toEqual([b]);
         expect(result.consumers[1].transcript.tagCollection?.tagIds).not.toContain(a);
     });
-    it('blocks an entire shared edit on a consumer-only leaf conflict, including new ancestors', () => {
+    it('proposes a leaf collision merge and still blocks conflicting new ancestors', () => {
         const { library, a, b } = fixture(), c = admitTags(library, collection(), [a, b]);
         const original = JSON.stringify(library);
         try {
             changeSharedTag(library, a, '甲/教育/创业', [{ id: 'v', label: '冲突稿', transcript: transcript([a], c) }]);
             expect.fail('must reject');
         } catch (error) {
-            expect(error).toBeInstanceOf(TagCollectionConflict);
-            expect((error as TagCollectionConflict).consumer).toBe('冲突稿');
-            expect((error as TagCollectionConflict).paths).toEqual(expect.arrayContaining(['甲/教育/创业', '乙/工作/创业']));
+            expect(error).toBeInstanceOf(TagMergeRequired);
+            expect((error as TagMergeRequired).targetId).toBe(b);
         }
         expect(JSON.stringify(library)).toBe(original);
         expect(() => changeSharedTag(library, a, '创业/童年', [{ id: 'v', label: '冲突稿', transcript: transcript([a], c) }]))
-            .toThrow(TagCollectionConflict);
+            .toThrow('name_conflict');
     });
     it('requires explicit merge and remaps every consumer reference without adding assignments', () => {
         const initial = fixture(), { a, b } = initial; let library = initial.library;
@@ -120,7 +122,7 @@ describe('shared rename, movement and explicit subtree merge preflight', () => {
     });
     it('preflights descendant overlaps as well as parent overlap and rejects cycles', () => {
         let library = setTagPath(empty(), '来源/孩子').library;
-        library = setTagPath(library, '目标/孩子').library;
+        const legacy=setTagPath(library,'目标/旧孩子');legacy.tag.name='孩子';library=legacy.library; // Imported legacy duplicate.
         const source = library.tags.find(tag => tag.name === '来源')!;
         const child = library.tags.find(tag => tag.parentId === source.id)!;
         const targetChild = library.tags.find(tag => tag.name === '孩子' && tag.id !== child.id)!;

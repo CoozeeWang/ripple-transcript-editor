@@ -47,31 +47,31 @@ async function fixture() {
 }
 
 it('preserves body undo and redo across name sorting, without changing sorted priorities',async()=>{
-    const h=await fixture();act(()=>h.result.current.edit());await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.collection.levelOrder;
-    act(()=>h.result.current.history.undo());expect(h.result.current.transcript.segments[0].text).toBe('Original synthetic text');expect(h.result.current.tags.collection.levelOrder).toEqual(order);h.consistent();
-    act(()=>h.result.current.history.redo());expect(h.result.current.transcript.segments[0].text).toBe('Changed synthetic text');expect(h.result.current.tags.collection.levelOrder).toEqual(order);h.consistent();
+    const h=await fixture();act(()=>h.result.current.edit());await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.library.treeOrder;
+    act(()=>h.result.current.history.undo());expect(h.result.current.transcript.segments[0].text).toBe('Original synthetic text');expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();
+    act(()=>h.result.current.history.redo());expect(h.result.current.transcript.segments[0].text).toBe('Changed synthetic text');expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();
 });
 it('preserves durable association undo/redo and exact sidecar revisions after sorting',async()=>{
-    const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.collection.levelOrder;h.consistent();
-    await act(()=>h.result.current.tags.undo());expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();expect(h.result.current.tags.collection.levelOrder).toEqual(order);h.consistent();
-    await act(()=>h.result.current.tags.redo());expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha']);expect(h.result.current.tags.collection.levelOrder).toEqual(order);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+    const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.library.treeOrder;h.consistent();
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();
+    await act(()=>h.result.current.tags.redo());expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha']);expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
-it('preserves pre-sort compound membership/hierarchy undo while sorted group and sibling positions stay',async()=>{
-    const h=await fixture();await act(()=>h.result.current.tags.placeInGroup({tagId:'beta',sourceGroupId:'z',groupId:'a',parentId:'other',anchorId:null,after:true,copy:false}));
-    await act(()=>h.result.current.tags.sortByName('groups'));expect(h.result.current.tags.collection.groups.map(g=>g.id)).toEqual(['a','z']);
-    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.tags.find(t=>t.id==='beta')?.parentId).toBe('root');expect(h.result.current.tags.collection.groups.find(g=>g.id==='z')?.tagIds).toEqual(['beta']);expect(h.result.current.tags.collection.groups.map(g=>g.id)).toEqual(['a','z']);h.consistent();
-    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.tags.find(t=>t.id==='beta')?.parentId).toBe('other');expect(h.result.current.tags.collection.groups.find(g=>g.id==='a')?.tagIds).toContain('beta');h.consistent();expect(h.errors).not.toHaveBeenCalled();
+it('preserves hierarchy undo and legacy group bytes while shared sorting remains',async()=>{
+ const h=await fixture();const groups=h.read().collection.groups;await act(()=>h.result.current.tags.reparent('beta','other'));
+ await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.library.treeOrder;
+ await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.tags.find(t=>t.id==='beta')?.parentId).toBe('root');expect(h.read().collection.groups).toEqual(groups);h.consistent();
+ await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.tags.find(t=>t.id==='beta')?.parentId).toBe('other');expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
 it('normal drag after sorting undoes/redoes to the sorted baseline, including save/reopen metadata',async()=>{
-    const h=await fixture();await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.collection.levelOrder;
-    await act(()=>h.result.current.tags.reorder('level','beta','alpha',false));expect(h.result.current.tags.collection.levelOrder).not.toEqual(order);
-    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.collection.levelOrder).toEqual(order);h.consistent();
-    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.collection.levelOrder).toEqual(h.read().collection.levelOrder);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+    const h=await fixture();await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.library.treeOrder;
+    await act(()=>h.result.current.tags.reorder('level','beta','alpha',false));expect(h.result.current.tags.library.treeOrder).not.toEqual(order);
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();
+    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.treeOrder).toEqual(h.result.current.project.data.tagLibrary?.treeOrder);h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
 it('keeps redo available when sorting after an association undo',async()=>{
     const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.canRedo).toBe(true);
     await act(()=>h.result.current.tags.sortByName('level'));expect(h.result.current.tags.canRedo).toBe(true);
-    await act(()=>h.result.current.tags.redo());expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha']);h.consistent();await act(()=>h.result.current.tags.undo());h.consistent();expect(h.errors).not.toHaveBeenCalled();
+    await act(()=>h.result.current.tags.redo());expect(h.errors.mock.calls).toEqual([]);expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha']);h.consistent();await act(()=>h.result.current.tags.undo());h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
 it('failed sorting retains both histories and durable tag undo without touching body bytes',async()=>{
     const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));act(()=>h.result.current.edit());const before=new Map(h.files);
@@ -80,24 +80,24 @@ it('failed sorting retains both histories and durable tag undo without touching 
 });
 
 it('keeps the complete mixed body/tag undo chain and redoes it with one persistent sorted order',async()=>{
-    const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));await act(()=>h.result.current.tags.attach('s','beta'));act(()=>h.result.current.edit());await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.collection.levelOrder;
+    const h=await fixture();await act(()=>h.result.current.tags.attach('s','alpha'));await act(()=>h.result.current.tags.attach('s','beta'));act(()=>h.result.current.edit());await act(()=>h.result.current.tags.sortByName('level'));const order=h.result.current.tags.library.treeOrder;
     act(()=>h.result.current.history.undo());await act(()=>h.result.current.tags.undo());expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha']);h.consistent();
     await act(()=>h.result.current.tags.undo());expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();h.consistent();
-    await act(()=>h.result.current.tags.redo());await act(()=>h.result.current.tags.redo());act(()=>h.result.current.history.redo());expect(h.result.current.transcript.segments[0].text).toBe('Changed synthetic text');expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha','beta']);expect(h.result.current.tags.collection.levelOrder).toEqual(order);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+    await act(()=>h.result.current.tags.redo());await act(()=>h.result.current.tags.redo());act(()=>h.result.current.history.redo());expect(h.result.current.transcript.segments[0].text).toBe('Changed synthetic text');expect(h.result.current.transcript.segments[0].tagIds).toEqual(['alpha','beta']);expect(h.result.current.tags.library.treeOrder).toEqual(order);h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
 
 it('undoes/redoes pre-sort tag creation without dangling order IDs or losing other tags',async()=>{
     const h=await fixture();let created='';await act(async()=>{created=await h.result.current.tags.create('New synthetic tag')});await act(()=>h.result.current.tags.sortByName('level'));
-    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.tags.some(t=>t.id===created)).toBe(false);expect(h.result.current.tags.collection.levelOrder).not.toContain(created);h.consistent();
-    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.tags.some(t=>t.id===created)).toBe(true);expect(h.result.current.tags.collection.levelOrder).toContain(created);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.tags.some(t=>t.id===created)).toBe(false);expect(h.result.current.tags.library.treeOrder).not.toContain(created);h.consistent();
+    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.tags.some(t=>t.id===created)).toBe(true);expect(h.result.current.tags.library.treeOrder).toContain(created);h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
 
 it('keeps the exact present revision through no-op sort and earlier drag undo/redo',async()=>{
     const h=await fixture();await act(()=>h.result.current.tags.sortByName('level'));
     await act(()=>h.result.current.tags.reorder('level','beta','alpha',false));await act(()=>h.result.current.tags.reorder('level','alpha','beta',false));
-    const sorted=h.result.current.tags.collection.levelOrder;await act(()=>h.result.current.tags.sortByName('level'));h.consistent();
-    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.collection.levelOrder).toEqual(sorted);h.consistent();
-    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.collection.levelOrder).toEqual(sorted);h.consistent();expect(h.errors).not.toHaveBeenCalled();
+    const sorted=h.result.current.tags.library.treeOrder;await act(()=>h.result.current.tags.sortByName('level'));h.consistent();
+    await act(()=>h.result.current.tags.undo());expect(h.result.current.tags.library.treeOrder).toEqual(sorted);h.consistent();
+    await act(()=>h.result.current.tags.redo());expect(h.result.current.tags.library.treeOrder).toEqual(sorted);h.consistent();expect(h.errors).not.toHaveBeenCalled();
 });
 
 it('the shared attach transaction copies only the target, deduplicates, and persists undo/redo without source changes',async()=>{

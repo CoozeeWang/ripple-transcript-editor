@@ -6,7 +6,7 @@ import {readModelEdit,saveActiveEdit,defaultMetadata,createEdit} from '../localS
 import {transactProjectTags,restoreProjectTagTransaction,readProjectTagCounts} from './projectTagRepository';
 import {setSegmentTag} from './tags';
 import {sortVersionTagsByName} from './tagOrdering';
-import {placeGroupTag} from './tagPlacement';
+import {dragProjectTree} from './projectTreeOrder';
 import {applyTagBatch,tagBatchScope} from './tagBatch';
 import {changeSharedTag} from './tagCollections';
 import {parseTagSidecar,sidecarName,TAG_STORAGE_MARKER} from './tagSidecar';
@@ -29,6 +29,29 @@ function fixture(fail?:(path:string)=>void){
 async function migrated(fail?:(path:string)=>void){const f=fixture(fail),project=await migrateProjectTagStorage(f.project,f.backup.root),directory=await recordingDirectory(project,'session',project.data.interviews[0].recordings[0]);
  const document=(await readModelEdit(directory,'sample.wav','m1','e1'))!;
  return{...f,project,directory,document,current:{recordingId:'recording',modelId:'m1',editId:'e1',transcript:document.transcript}}}
+it('commits mixed tag changes atomically while retaining all legacy groups and manuscript bytes',async()=>{
+ const f=await migrated(),body=f.files.get(f.folder+'/e1.json'),groups=structuredClone(f.current.transcript.tagCollection!.groups);
+ const changes=[{action:'create_tag' as const,path:'Synthetic topic/Child',ref:'tag'},{action:'assign_tags' as const,segment_ids:['s1','s2'],tag_ids:['ref:tag']}];
+ const next=await transactProjectTags(f.project,f.current,(library,rows,id)=>applyTagBatch(library,rows,id,changes),tagBatchScope(changes));
+ expect(next.transcript.tagCollection!.groups).toEqual(groups);expect(next.transcript.segments.every(segment=>segment.tagIds?.length)).toBe(true);expect(f.files.get(f.folder+'/e1.json')).toBe(body);
+ const before=new Map(f.files);await expect(transactProjectTags(next.project,{...f.current,transcript:next.transcript},(library,rows,id)=>applyTagBatch(library,rows,id,[...changes,{action:'assign_tags',segment_ids:['missing'],tag_ids:['ref:tag']}]),'additions')).rejects.toThrow();expect(f.files).toEqual(before);
+});
+it('shares one project order with metadata-only undo and redo while legacy groups and version files stay untouched',async()=>{
+ const f=await migrated();const prep=await transactProjectTags(f.project,f.current,(library,rows,id)=>applyTagBatch(library,rows,id,[{action:'create_tag',path:'主题/Alpha',ref:'new'}]),'additions');
+ const id=prep.project.data.tagLibrary!.tags.find(tag=>tag.name==='Alpha')!.id,before=new Map(f.files);
+ const next=await transactProjectTags(prep.project,{...f.current,transcript:prep.transcript},(library,consumers)=>({library:dragProjectTree(library,id,'leaf',false),consumers}),'order');
+ expect(next.receipt.versions).toEqual([]);expect(next.project.data.tagLibrary!.treeOrder).toEqual(['root',id,'leaf']);
+ for(const[path,raw]of before)if(path.startsWith(f.folder+'/'))expect(f.files.get(path)).toBe(raw);
+ const undo=await restoreProjectTagTransaction(next.project,next.receipt,false);expect(undo.data.tagLibrary!.treeOrder).toEqual(prep.project.data.tagLibrary!.treeOrder);
+ const redo=await restoreProjectTagTransaction(undo,next.receipt,true);expect(redo.data.tagLibrary!.treeOrder).toEqual(next.project.data.tagLibrary!.treeOrder);
+ for(const[path,raw]of before)if(path.startsWith(f.folder+'/'))expect(f.files.get(path)).toBe(raw);
+});
+it('rolls back a failed shared-order index write without touching version metadata or bodies',async()=>{
+ let fail=false;const f=await migrated(path=>{if(fail&&path==='ripple-project.json'){fail=false;throw Error('synthetic index failure')}});
+ const before=new Map(f.files);fail=true;
+ await expect(transactProjectTags(f.project,f.current,(library,consumers)=>({library:{...library,treeOrder:[...library.treeOrder!].reverse()},consumers}),'order')).rejects.toThrow();
+ for(const[path,raw]of before)expect(f.files.get(path)).toBe(raw);
+});
 it('explicitly backs up every file and migrates metadata without changing any manuscript bytes; repeated migration is a no-op',async()=>{
  const f=fixture(),before=new Map(f.files),project=await migrateProjectTagStorage(f.project,f.backup.root);
  expect(project.data.schemaVersion).toBe(2);expect((await openProject(f.root)).data.schemaVersion).toBe(2);
@@ -88,15 +111,6 @@ it('never migrates simply by opening a legacy project and rejects stale bodies a
  const next=await transactProjectTags(f.project,{...f.current,transcript:reopened.transcript},(library,consumers,id)=>({library,consumers:consumers.map(c=>c.id===id?{...c,transcript:setSegmentTag(c.transcript,'s2','leaf',true)}:c)}),'current');
  expect(next.transcript.segments[1].tagIds).toEqual(['leaf']);
 });
-it('an atomic mixed batch reuses entities, updates groups once and cannot leak partial changes on a later invalid action',async()=>{
- const f=await migrated(),body=f.files.get(f.folder+'/e1.json'),changes=[{action:'create_tag' as const,path:'新主题/新子项',ref:'tag'},
-  {action:'create_group' as const,name:'New group',ref:'group'},{action:'assign_tags' as const,segment_ids:['s1','s2'],tag_ids:['ref:tag']},
-  {action:'set_group_tags' as const,group_id:'ref:group',tag_ids:['ref:tag']}];
- const result=await transactProjectTags(f.project,f.current,(library,consumers,id)=>applyTagBatch(library,consumers,id,changes),tagBatchScope(changes));
- expect(result.transcript.segments.every(s=>s.tagIds?.length)).toBe(true);expect(result.transcript.tagCollection!.groups).toHaveLength(2);expect(f.files.get(f.folder+'/e1.json')).toBe(body);
- const before=new Map(f.files);await expect(transactProjectTags(result.project,{...f.current,transcript:result.transcript},(library,consumers,id)=>applyTagBatch(library,consumers,id,[...changes,{action:'assign_tags',segment_ids:['missing'],tag_ids:['ref:tag']}]),'additions')).rejects.toThrow();
- expect(f.files).toEqual(before);
-});
 
 it('counts direct IDs across independent versions, reuses a hot cache and incrementally publishes committed changes and undo',async()=>{
  const f=await migrated(),get=f.files.get.bind(f.files),bodyPaths=['e1.json','e2.json','original.json','recoverable-orphan.json'].map(name=>f.folder+'/'+name);
@@ -116,26 +130,6 @@ it('recomputes cached coverage on a shared move and merge while exact-ID direct 
  const after=await readProjectTagCounts(moved.project);expect(after.get('root')).toBe(0);expect(after.coverage.get('root')).toBe(0);expect(after.get('leaf')).toBe(3);
  const merged=await transactProjectTags(moved.project,{...f.current,transcript:moved.transcript},(library,consumers)=>changeSharedTag(library,'leaf','主题',consumers,true));
  const combined=await readProjectTagCounts(merged.project);expect(combined.has('leaf')).toBe(false);expect(combined.get('root')).toBe(3);expect(combined.coverage.get('root')).toBe(3);
-});
-
-it('commits a compound group placement in one metadata transaction and one undo/redo without touching bodies',async()=>{
- const f=await migrated(),prep=[{action:'create_tag' as const,path:'新根',ref:'root'},{action:'create_group' as const,name:'Synthetic destination',ref:'group'}];
- const ready=await transactProjectTags(f.project,f.current,(lib,rows,id)=>applyTagBatch(lib,rows,id,prep),'additions');
- const parent=ready.project.data.tagLibrary!.tags.find(tag=>tag.name==='新根')!.id,group=ready.transcript.tagCollection!.groups[1].id,before=new Map(f.files);
- const next=await transactProjectTags(ready.project,{...f.current,transcript:ready.transcript},(lib,rows,id)=>placeGroupTag(lib,rows,id,{tagId:'leaf',sourceGroupId:'group',groupId:group,parentId:parent,anchorId:null,after:true,copy:false}));
- expect(next.transcript.tagCollection!.groups[0].tagIds).toEqual([]);expect(next.transcript.tagCollection!.groups[1].tagIds).toEqual(['leaf']);expect(next.project.data.tagLibrary!.tags.find(tag=>tag.id==='leaf')!.parentId).toBe(parent);
- expect(parseTagSidecar(f.files.get(f.folder+'/'+await sidecarName('e2.json'))!).collection.groups[0].tagIds).toEqual(['leaf']);
- for(const file of ['e1.json','e2.json','original.json'])expect(f.files.get(f.folder+'/'+file)).toBe(before.get(f.folder+'/'+file));
- const undone=await restoreProjectTagTransaction(next.project,next.receipt,false);expect(undone.data.tagLibrary!.tags.find(tag=>tag.id==='leaf')!.parentId).toBe('root');expect(parseTagSidecar(f.files.get(f.folder+'/'+await sidecarName('e1.json'))!).collection.groups[0].tagIds).toEqual(['leaf']);
- const redone=await restoreProjectTagTransaction(undone,next.receipt,true);expect(redone.data.tagLibrary!.tags.find(tag=>tag.id==='leaf')!.parentId).toBe(parent);
-});
-
-it('rolls back all compound placement effects if the final index write fails',async()=>{
- let fail=false;const f=await migrated(path=>{if(fail&&path==='ripple-project.json'){fail=false;throw Error('synthetic compound disk failure')}});
- const ready=await transactProjectTags(f.project,f.current,(lib,rows,id)=>applyTagBatch(lib,rows,id,[{action:'create_tag',path:'新根'},{action:'create_group',name:'Synthetic destination'}]),'additions');
- const parent=ready.project.data.tagLibrary!.tags.find(tag=>tag.name==='新根')!.id,group=ready.transcript.tagCollection!.groups[1].id,before=new Map(f.files);fail=true;
- await expect(transactProjectTags(ready.project,{...f.current,transcript:ready.transcript},(lib,rows,id)=>placeGroupTag(lib,rows,id,{tagId:'leaf',sourceGroupId:'group',groupId:group,parentId:parent,anchorId:null,after:true,copy:false}))).rejects.toThrow('synthetic compound disk failure');
- for(const[path,raw]of before)expect(f.files.get(path)).toBe(raw);expect((await openProject(f.root)).data.revision).toBe(ready.project.data.revision);
 });
 
 it('persists one replacement name order in only current metadata and reloads it without rewriting bodies or other versions',async()=>{

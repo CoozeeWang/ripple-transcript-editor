@@ -4,14 +4,17 @@ import { stemOf, withTagVersionStorage } from '../localStore';
 import { parseProject, recordingDirectory, withProjectLock, type OpenProject, type ProjectInterview, type ProjectRecording, type TagRequestReceipt } from './projectStore';
 import { commitTagFileTransaction, recoverTagFileTransaction, readTagFile, type TagFilePatch } from './tagFileTransaction';
 import { projectTagCatalog, validateTagCollection, versionTagCollection, type TagConsumer } from './tagCollections';
-import type { TagLibrary } from './tags';
+import { assertTagNameChange, type TagLibrary } from './tags';
 import {beginTagProbe} from './tagPerformance';
 import {cleanTagOrders} from './tagOrdering';
+import {initializeProjectTreeOrder,planProjectTreeOrder,type TreeOrderPlan} from './projectTreeOrder';
+import {assertTagBackupDestination,writeTagUpgradeCheckpoint} from './tagUpgradeBackup';
+import {sha256} from './tagSidecar';
 import {sidecarName,parseTagSidecar,sidecarTranscript,verifyTagSource,tagFields as fieldsOf, type TagSidecar} from './tagSidecar';
 
 export interface CurrentTagVersion { recordingId: string; modelId: string; editId: string; transcript: Transcript }
 /** Current-version changes cannot modify shared definitions; additions may only append entities. */
-export type TagTransactionScope = 'project' | 'current' | 'additions';
+export type TagTransactionScope = 'project' | 'current' | 'additions' | 'order';
 interface StoredConsumer extends TagConsumer { path: string[]; raw: string; readOnly: boolean; metadata?:TagSidecar }
 export interface TagFields { collection: Transcript['tagCollection']; segments: [string, string[] | undefined][] }
 export interface TagTransactionReceipt {
@@ -25,7 +28,9 @@ export interface ProjectTagChange {
     consumers: TagConsumer[];
 }
 export const tagFields = fieldsOf;
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+// JSON field insertion order is not a semantic change (migration and catalog projection differ).
+const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])) : value;
+const same = (a: unknown, b: unknown) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 const safe = (name: string) => !!name && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !Array.from(name).some(char=>char.charCodeAt(0)<32);
 
 export function recordingSources(project: OpenProject, include: (session: ProjectInterview, recording: ProjectRecording) => boolean = () => true): { session: ProjectInterview; recording: ProjectRecording }[] {
@@ -89,7 +94,7 @@ async function withConsumers<T>(project: OpenProject, current: CurrentTagVersion
                 }
             }
             return next(index + 1);
-        });
+        },{readOnlyManifest:true});
     }
     return next(0);
 }
@@ -150,6 +155,7 @@ export async function transactProjectTags(project: OpenProject, current: Current
             const computed = await operation(library, consumers, currentId);
             request?.assert();
             const nextLibrary = projectTagCatalog(computed.library);
+            assertTagNameChange(library,nextLibrary);
             const result={...computed,consumers:computed.consumers.map(consumer=>{
                 if(!consumer.transcript.tagCollection)return consumer;
                 const collection=cleanTagOrders(nextLibrary,consumer.transcript.tagCollection);
@@ -157,6 +163,7 @@ export async function transactProjectTags(project: OpenProject, current: Current
             })};
             // The fast path is an explicit capability, never a heuristic that can skip a shared edit's preflight.
             if (scope === 'current' && !same(library, nextLibrary)) throw Error('tag_transaction_scope_violation');
+            if(scope==='order' && (library.schemaVersion!==4 || nextLibrary.schemaVersion!==4 || !same({...library,treeOrder:nextLibrary.treeOrder},nextLibrary) || result.consumers.some((row,index)=>!same(tagFields(row.transcript),tagFields(stored[index].transcript)))))throw Error('tag_transaction_scope_violation');
             if (scope === 'additions') {
                 const retained = { ...nextLibrary, tags: nextLibrary.tags.filter(tag => library.tags.some(old => old.id === tag.id)) };
                 if (!same(library, retained)) throw Error('tag_transaction_scope_violation');
@@ -234,5 +241,37 @@ export async function readProjectTagCounts(project:OpenProject,currentId?:string
         const library=projectTagCatalog(data.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
         return withConsumers({...project,data},null,async consumers=>{for(const consumer of consumers)validateTagCollection(library,consumer.transcript.tagCollection!,consumer.label);return storeProjectTagCounts(project.directory,index,
             consumers.map(consumer=>({id:consumer.id,path:consumer.path,fields:tagFields(consumer.transcript)})),library,currentId)});
+    });
+}
+
+/** Upgrade inspection reads metadata only and never changes the project on open. */
+export async function readProjectTreeOrderPlan(project:OpenProject):Promise<TreeOrderPlan & {projectRevision:number}>{
+    return withProjectLock(project.data.id,async()=>{
+        const raw=await readTagFile(project.directory,['ripple-project.json']);if(!raw)throw Error('project_changed');
+        const data=parseProject(raw);if(data.id!==project.data.id||data.revision!==project.data.revision)throw Error('project_changed');
+        return withConsumers({...project,data},null,async rows=>({...planProjectTreeOrder(projectTagCatalog(data.tagLibrary??{schemaVersion:3,tags:[],groups:[]}),rows),projectRevision:data.revision}));
+    });
+}
+/** Only the fresh index changes. Legacy per-version groups/orders remain byte-for-byte recoverable. */
+export async function upgradeProjectTreeOrder(project:OpenProject,backup:FileSystemDirectoryHandle,options:{orderBaseline?:string;expectedRevision?:number;assertCanCommit?:()=>Promise<void>}={}):Promise<OpenProject>{
+    return withProjectLock(project.data.id,async()=>{
+        await recoverTagFileTransaction(project.directory);
+        const index=await readTagFile(project.directory,['ripple-project.json']);if(!index)throw Error('project_changed');
+        const data=parseProject(index);if(data.id!==project.data.id||data.revision!==project.data.revision||options.expectedRevision!==undefined&&data.revision!==options.expectedRevision)throw Error('project_changed');
+        if(data.tagLibrary?.schemaVersion===4)return{...project,data};
+        if(data.schemaVersion!==2)throw Error('tag_storage_migration_required');
+        return withConsumers({...project,data},null,async rows=>{
+            const library=initializeProjectTreeOrder(projectTagCatalog(data.tagLibrary??{schemaVersion:3,tags:[],groups:[]}),rows,options.orderBaseline);
+            await assertTagBackupDestination(project.directory,backup);
+            const next={...data,tagLibrary:library,tagHead:crypto.randomUUID(),revision:data.revision+1};
+            const patches=[{path:['ripple-project.json'],before:index,after:JSON.stringify(next,null,2)}];
+            const unchanged=new Map<string,string>();
+            for(const row of rows){unchanged.set(row.path.join('/'),await sha256(row.raw));if(row.metadata)unchanged.set([...row.path.slice(0,-1),row.metadata.file].join('/'),row.metadata.body.hash)}
+            await writeTagUpgradeCheckpoint(project.directory,backup,data.id,patches,new Map([['ripple-project.json',index]]),unchanged);
+            for(const row of rows)if(await readTagFile(project.directory,row.path)!==row.raw)throw Error('tag_migration_source_changed');
+            if(await readTagFile(project.directory,['ripple-project.json'])!==index)throw Error('tag_migration_source_changed');
+            await options.assertCanCommit?.();await commitTagFileTransaction(project.directory,patches);
+            return{...project,data:next};
+        });
     });
 }

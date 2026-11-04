@@ -1,6 +1,6 @@
 import type { Transcript } from '../types';
 import {
-    descendantTagIds, hierarchyLibrary, isTagLibrary, normalizeTagName, segmentTagIds,
+    assertTagNameChange, descendantTagIds, hierarchyLibrary, isTagLibrary, normalizeTagName, segmentTagIds,
     setTagPath, splitTagPath, tagAncestors, tagParentId, tagPath, TagTreeError,
     type ProjectTag, type TagLibrary,
 } from './tags';
@@ -28,9 +28,9 @@ export class TagMergeRequired extends Error {
 /** Safe, read-only upgrade. A caller persists this only with an explicit transaction. */
 export function projectTagCatalog(source: TagLibrary): TagLibrary {
     const library = hierarchyLibrary(source);
-    const legacyGroups = library.legacyGroups ?? (library.schemaVersion !== 3 && library.groups.length ? { groups: library.groups,
+    const legacyGroups = library.legacyGroups ?? (library.schemaVersion < 3 && library.groups.length ? { groups: library.groups,
         memberships: library.tags.filter(tag => tag.groupIds.length).map(tag => ({ tagId: tag.id, groupIds: tag.groupIds })) } : undefined);
-    const catalog: TagLibrary = { schemaVersion: 3, tags: library.tags.map(tag => ({ ...tag, groupIds: [] })), groups: [], ...(legacyGroups ? { legacyGroups } : {}) };
+    const catalog: TagLibrary = { schemaVersion: library.schemaVersion===4?4:3, ...(library.schemaVersion===4?{treeOrder:[...library.treeOrder!]}:{}), tags: library.tags.map(tag => ({ ...tag, groupIds: [] })), groups: [], ...(legacyGroups ? { legacyGroups } : {}) };
     if (!isTagLibrary(catalog)) throw new TagTreeError('invalid_tree');
     return catalog;
 }
@@ -136,6 +136,16 @@ export function changeSharedTag(source: TagLibrary, id: string, raw: string, con
     const parentId = prepared.tag?.id ?? null;
     if (parentId && descendantTagIds(library, id).includes(parentId)) throw new TagTreeError('cycle');
     const subtree = new Set(descendantTagIds(library, id)), remap = new Map<string, string>();
+    // A full path cannot bypass a true-name collision in an affected version.
+    // Resolve a unique existing identity before validating the renamed collection,
+    // so leaf-only and full-path input reach the same explicit merge proposal.
+    const name = parts.at(-1)!;
+    const exact = library.tags.find(tag => !subtree.has(tag.id) && tagParentId(tag) === parentId && key(tag.name) === key(name));
+    const sameNames = exact ? [] : library.tags.filter(tag => !subtree.has(tag.id) && key(tag.name) === key(name));
+    if (sameNames.length) {
+        if (sameNames.length === 1) return changeSharedTag(source, id, tagPath(library, sameNames[0].id), consumers, merge);
+        throw new TagTreeError('path_conflict',name);
+    }
     const tags = prepared.library.tags.filter(tag => !subtree.has(tag.id)).map(tag => ({ ...tag }));
     const visit = (tag: ProjectTag, parentId: string | null, name: string) => {
         const match = tags.find(other => tagParentId(other) === parentId && key(other.name) === key(name));
@@ -148,8 +158,11 @@ export function changeSharedTag(source: TagLibrary, id: string, raw: string, con
     const legacyGroups = library.legacyGroups ? { ...library.legacyGroups,
         memberships: [...new Set(library.legacyGroups.memberships.map(item => remap.get(item.tagId) ?? item.tagId))].map(tagId => ({ tagId,
             groupIds: unique(library.legacyGroups!.memberships.filter(item => (remap.get(item.tagId) ?? item.tagId) === tagId).flatMap(item => item.groupIds)) })) } : undefined;
-    const next: TagLibrary = { schemaVersion: 3, tags, groups: [], ...(legacyGroups ? { legacyGroups } : {}) };
+    const ranks=new Set(library.treeOrder??[]);
+    const treeOrder=library.treeOrder&&unique(library.treeOrder.flatMap(id=>remap.has(id)&&ranks.has(remap.get(id)!)?[]:[remap.get(id)??id]));
+    const next: TagLibrary = { schemaVersion: library.schemaVersion===4?4:3, ...(treeOrder?{treeOrder}:{}), tags, groups: [], ...(legacyGroups ? { legacyGroups } : {}) };
     if (!isTagLibrary(next)) throw new TagTreeError('invalid_tree');
+    assertTagNameChange(library,next);
     const mapped = consumers.map(consumer => {
         const previous = versionTagCollection(consumer.transcript, source);
         const mapIds = (ids: readonly string[]) => unique(ids.map(id => remap.get(id) ?? id));

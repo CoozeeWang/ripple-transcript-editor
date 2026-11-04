@@ -14,6 +14,16 @@ async function prepare(c:ProjectAIConnector,changes:Record<string,unknown>[],sco
  const read=await c.handle('tags_read',t,client);return c.handle('tags_prepare',{tag_snapshot:read.tag_snapshot,scope,allowed_actions:[...new Set(changes.map(c=>c.action))],changes},client);
 }
 const create=[{action:'create_tag',path:'经历/求学/小学',ref:'school'},{action:'assign_tags',segment_ids:['s1'],tag_ids:['ref:school']}];
+it('requires project scope for the one shared order and rejects retired group operations before writes',async()=>{
+ const x=await fixture(),c=x.connector();const made=await prepare(c,[{action:'create_tag',path:'Root/Zeta'},{action:'create_tag',path:'Root/Alpha'}]);await c.handle('tags_apply',{task_id:made.task_id,confirmed_summary:made.summary});
+ const read=await c.handle('tags_read',{...target,scope:'project'}),tags=read.tags as {id:string;name:string}[],id=(name:string)=>tags.find(tag=>tag.name===name)!.id;
+ expect(read).not.toHaveProperty('groups');expect(read).not.toHaveProperty('display_order');expect(read.contract_version).toBe(2);
+ const change=[{action:'reorder_tags',parent_id:id('Root'),tag_ids:[id('Zeta'),id('Alpha')]}];
+ await expect(prepare(c,change)).rejects.toThrow('project_tag_scope_required');
+ const order=await prepare(c,change,'project');await c.handle('tags_apply',{task_id:order.task_id,confirmed_summary:order.summary});
+ expect(x.f.project!.data.tagLibrary!.treeOrder).toEqual([id('Root'),id('Zeta'),id('Alpha')]);
+ const before=x.f.project!.data.revision;await expect(prepare(c,[{action:'create_group',name:'Legacy'}],'project')).rejects.toThrow('unsupported_tag_operation');expect(x.f.project!.data.revision).toBe(before);
+});
 describe('exact-version tag MCP transaction integration',()=>{
  it('previews without writes then saves once to background B, preserves A and body, and resolves after reconnect',async()=>{
   const x=await fixture(),c=x.connector(),before=await readModelEdit(x.dirB,'session-b.wav','m1','e1'),a=structuredClone(x.f.current.transcript);

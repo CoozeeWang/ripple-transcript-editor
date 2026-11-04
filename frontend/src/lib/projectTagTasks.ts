@@ -4,7 +4,7 @@ import { AIEditOwnership } from './aiEditOwnership';
 import { ProjectConnectorHosts, type ProjectConnectorAccess } from './projectConnectorHost';
 import { applyTagBatch, tagBatchScope, validateTagChanges, TAG_ACTIONS, type TagChange } from './tagBatch';
 import { transactProjectTags, TagRequestAlreadySaved } from './projectTagRepository';
-import { projectTagCatalog, versionTagCollection, TagCollectionConflict, TagMergeRequired } from './tagCollections';
+import { projectTagCatalog, versionTagCollection, withAncestors, TagCollectionConflict, TagMergeRequired } from './tagCollections';
 import { tagPath, tagTreeRows, TagTreeError } from './tags';
 import { tagSegmentCounts,tagCoverageCounts } from './tagPresentation';
 import type { OpenProject, TagRequestReceipt } from './projectStore';
@@ -63,21 +63,21 @@ export class ProjectTagTasks {
             if(!Number.isInteger(cursor)||cursor<0||cursor>context.doc.transcript.segments.length||!Number.isInteger(limit)||limit<1||limit>200)error('invalid_tag_page');
             const id=crypto.randomUUID(),snapshot={id,target,projectId:context.project.data.id,fingerprint:await tagSignature(context),client};
             if(this.snapshots.size>=32)this.snapshots.delete(this.snapshots.keys().next().value!);this.snapshots.set(id,snapshot);
-            const counts=scope==='project'&&context.project.data.schemaVersion===2?await readProjectTagCounts(context.project):tagSegmentCounts(library,context.doc.transcript.segments),members=scope==='project'?undefined:new Set(collection.tagIds);
+            const counts=scope==='project'&&context.project.data.schemaVersion===2?await readProjectTagCounts(context.project):tagSegmentCounts(library,context.doc.transcript.segments),members=scope==='project'?undefined:new Set(withAncestors(library,[...new Set(context.doc.transcript.segments.flatMap(segment=>segment.tagIds??[]))].filter(id=>library.tags.some(tag=>tag.id===id))));
             const coverage=scope==='project'&&'coverage'in counts?counts.coverage as Map<string,number>:tagCoverageCounts(library,context.doc.transcript.segments);
-            return{tag_snapshot:id,target:context.bound.target(),editable:context.project.data.schemaVersion===2&&context.doc.editable!==false,storage_upgrade_required:context.project.data.schemaVersion!==2,scope,allowed_actions:TAG_ACTIONS,
-                tags:tagTreeRows(library,members).map(({tag,depth})=>({id:tag.id,name:tag.name,parent_id:tag.parentId??null,path:tagPath(library,tag.id),depth,count:counts.get(tag.id)??0,coverage_count:coverage.get(tag.id)??0,admitted:collection.tagIds.includes(tag.id)})),
-                groups:collection.groups,display_order:{level:collection.levelOrder??[],ungrouped:collection.ungroupedOrder??[]},segments:context.doc.transcript.segments.slice(cursor,cursor+limit).map(s=>({id:s.id,tag_ids:s.tagIds??[]})),
+            return{tag_snapshot:id,target:context.bound.target(),editable:context.project.data.schemaVersion===2&&library.schemaVersion===4&&context.doc.editable!==false,storage_upgrade_required:context.project.data.schemaVersion!==2||library.schemaVersion!==4,scope,allowed_actions:TAG_ACTIONS,
+                tags:tagTreeRows(library,members,'manual',1,()=>0,library.schemaVersion===4?library.treeOrder:collection.levelOrder).map(({tag,depth})=>({id:tag.id,name:tag.name,parent_id:tag.parentId??null,path:tagPath(library,tag.id),depth,count:counts.get(tag.id)??0,coverage_count:coverage.get(tag.id)??0,admitted:collection.tagIds.includes(tag.id)})),
+                contract_version:2,tree_order:library.treeOrder??collection.levelOrder??[],segments:context.doc.transcript.segments.slice(cursor,cursor+limit).map(s=>({id:s.id,tag_ids:s.tagIds??[]})),
                 next_cursor:cursor+limit<context.doc.transcript.segments.length?String(cursor+limit):null,
-                instruction:'Counts include only explicit matching tag IDs, without descendant aggregation: current scope uses this version and project scope sums all saved versions independently. Display orders are version-local and group orders are independent. Assignments are version-local. Read-only originals cannot be changed. Shared rename/move/merge/delete require explicit project scope; a parent query includes descendants but assigning a parent assigns only that ID.'};
+                instruction:'Counts include only explicit matching tag IDs, without descendant aggregation: current scope uses this version and project scope sums all saved versions independently. One project-wide hierarchy and sibling order is shared by both scopes. Current scope shows explicitly used tags and their structural ancestors. Groups are unsupported; legacy group data is retained only for recovery. Assignments are version-local. Read-only originals cannot be changed. Shared rename/move/merge/delete require explicit project scope; a parent query includes descendants but assigning a parent assigns only that ID.'};
         }
         if(operation==='tags_prepare'){
             const snapshot=this.snapshots.get(String(a.tag_snapshot));if(!snapshot)error('tag_snapshot_expired_read_again');
             if(snapshot!.client!==client)error('editing_task_belongs_to_another_client');
             const context=await this.validate(snapshot!);if(context.doc.editable===false||context.doc.version.kind==='original')error('select_editable_version_in_ripple');
-            if(context.project.data.schemaVersion!==2)error('tag_storage_migration_required');
+            if(context.project.data.schemaVersion!==2||context.project.data.tagLibrary?.schemaVersion!==4)error('tag_storage_migration_required');
             const changes=validateTagChanges(a.changes,a.allowed_actions),scope=String(a.scope??'');if(!['current','project'].includes(scope))error('explicit_tag_scope_required');
-            if(tagBatchScope(changes)==='project'&&scope!=='project')error('project_tag_scope_required');
+            if(['project','order'].includes(tagBatchScope(changes))&&scope!=='project')error('project_tag_scope_required');
             if(this.tasks.size>=64)error('too_many_tag_tasks_restart_connection');
             const library=projectTagCatalog(context.project.data.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
             try{applyTagBatch(library,[{id:'preview',label:context.doc.label,transcript:context.doc.transcript}],'preview',changes)}catch(error){return{ready:false,saved:false,...details(error)}}
@@ -109,7 +109,7 @@ export class ProjectTagTasks {
                 // A shared change must first flush the active editor, even when its precise target is another version.
                 if((task!.scope==='project'||(await this.hosts.bind(task!.snapshot.target.interview_id,task!.snapshot.target.recording_id,task!.snapshot.target.version_id)).isActive())&&this.access()?.active().version_id)await this.active.current();
                 const context=await this.validate(task!.snapshot);this.assert(task!);
-                let references={tags:{} as Record<string,string>,groups:{} as Record<string,string>};
+                let references={tags:{} as Record<string,string>};
                 const result=await transactProjectTags(context.project,{recordingId:context.doc.target!.recording_id,modelId:context.doc.version.model_id,editId:context.doc.version.edit_id,transcript:context.doc.transcript},
                     (library,consumers,currentId)=>{this.assert(task!);const result=applyTagBatch(library,consumers,currentId,task!.changes);references=result.references;return result},tagBatchScope(task!.changes),{
                         id,signature:task!.signature,client,assert:()=>this.assert(task!),receipt:()=>({signature:task!.signature,client,recording:context.doc.target!.recording_id,model:context.doc.version.model_id,version:context.doc.version.edit_id,
