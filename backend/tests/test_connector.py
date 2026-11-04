@@ -218,6 +218,8 @@ def test_capabilities_reports_server_catalogue_without_claiming_client_visibilit
         assert calls[-1][1]["previous_task_id"] == "old"
         await server.call_tool("continuation_status", {"task_id":"old"})
         assert calls[-1][1]["include_history_details"] is False
+        await server.call_tool("continuation_status", {"task_id":"old", "batch_id":"synthetic-batch"})
+        assert calls[-1] == ("status", {"task_id":"old", "include_history_details":False, "batch_id":"synthetic-batch"})
         await server.call_tool("set_interview_rules", {"snapshot":"synthetic", "rules":[]})
         assert calls[-1][1]["confirmed_for_future_tasks"] is False
     asyncio.run(run())
@@ -243,10 +245,15 @@ def test_tag_tools_route_strict_batches_and_expose_safety_contract():
         await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['create_tag','assign_tags'], 'changes':[{'action':'create_tag','path':'主题/童年','ref':'child'},{'action':'assign_tags','tag_ids':['ref:child'],'segment_ids':['s1']}]})
         assert calls[-1][0] == 'tags_prepare'
         assert calls[-1][1]['changes'][0] == {'action':'create_tag','path':'主题/童年','ref':'child'}
-        await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'current','allowed_actions':['reorder_tags'], 'changes':[{'action':'reorder_tags','view':'group','parent_id':'root','group_id':'g','tag_ids':['b','a']}]})
-        assert calls[-1][1]['changes'][0]['view'] == 'group'
+        await server.call_tool('prepare_tag_changes', {'tag_snapshot':'synthetic','scope':'project','allowed_actions':['reorder_tags'], 'changes':[{'action':'reorder_tags','view':'level','parent_id':'root','tag_ids':['b','a']}]})
+        assert calls[-1][1]['changes'][0]['view'] == 'level'
         assert calls[-1][1]['changes'][0]['tag_ids'] == ['b','a']
-        assert TagChange(action='place_group_tag',tag_id='a',source_group_id='source',group_id='target',parent_id='parent',anchor_id=None,after=True,copy=False).model_dump(by_alias=True)['copy'] is False
+        for action in ('create_group','rename_group','dissolve_group','set_group_tags','transfer_group_tag','reorder_groups','place_group_tag'):
+            with pytest.raises(ValidationError, match='unsupported_tag_operation'):
+                TagChange(action=action)
+            assert action not in TagChange.model_json_schema()['properties']['action']['enum']
+        with pytest.raises(ValidationError, match='unsupported_tag_operation'):
+            TagChange(action='reorder_tags',view='group',group_id='g',parent_id=None,tag_ids=['a'])
         await server.call_tool('apply_tag_changes', {'task_id':'synthetic','confirmed_summary':'exact'})
         assert calls[-1] == ('tags_apply', {'task_id':'synthetic','confirmed_summary':'exact'})
         await server.call_tool('tag_changes_status', {'task_id':'synthetic'})
@@ -259,3 +266,14 @@ def test_tag_tools_route_strict_batches_and_expose_safety_contract():
         TagChange(action='assign_tags', tag_ids=['x'], segment_ids=['s'], text='not allowed')
     with pytest.raises(ValidationError):
         TagChange(action='delete_file')
+
+def test_editing_phase_handoff_schema_is_explicit(tmp_path):
+    from app.connector_mcp import create_server
+    key = tmp_path / 'synthetic.key'
+    key.write_text('x' * 48)
+    server = create_server('http://127.0.0.1:18702', key)
+    tools = asyncio.run(server.list_tools())
+    prepare = next(t for t in tools if t.name == 'prepare_continuation')
+    cancel = next(t for t in tools if t.name == 'cancel_continuation')
+    assert {'phase', 'proofreading_required', 'previous_task_id'} <= prepare.input_schema['properties'].keys()
+    assert {'initiator', 'reason', 'next_phase'} <= cancel.input_schema['properties'].keys()

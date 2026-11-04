@@ -38,22 +38,40 @@ export class ProjectAIConnector {
       publish: (...args) => { this.editing.assert(args[3].task_id); return host.publish(...args); },
       applyMarks: (...args) => { this.editing.assert(args[2]); if (!host.applyMarks) throw Error('marks_unavailable'); return host.applyMarks(...args); } };
   }
-  private notify(host: ConnectorHost) { host.continuationProgress?.([...this.progress.values()].flat()); }
+  private notify(host: ConnectorHost) {
+    const tasks = [...this.progress.values()].flat();
+    for (const task of tasks) if (this.editing.get(task.task_id)) this.reconcile(task.task_id, { ...task, complete: task.state === 'completed' }, 'progress');
+    host.continuationProgress?.(tasks);
+  }
   private reconcile(id: string, result: Record<string, unknown>, operation: string) {
     const activity = this.editing.get(id); if (!activity) return;
     const receipt = result.result && typeof result.result === 'object' ? result.result as Record<string, unknown> : result;
     const complete = result.state === 'completed' && (receipt.saved === true || receipt.reason === 'no_changes' || result.complete === true)
       || result.complete === true || ['publish', 'apply_marks'].includes(operation) && (receipt.saved === true || receipt.reason === 'no_changes');
     // A later invalid request cannot overwrite a confirmed terminal receipt.
-    if (activity.state === 'completed' && !complete) return;
+    if (activity.state === 'completed' && (!activity.requestId || activity.requestComplete) && !complete) return;
+    const revoked = activity.state === 'ended' && ['user_ended','user_cancelled'].includes(activity.reason ?? '');
     const failed = !!receipt.error;
     const paused = result.state === 'paused' || operation === 'pause';
     const cancelled = result.state === 'cancelled' || operation === 'cancel' || operation === 'cancel_marks';
+    const versionId=typeof result.version_id==='string'?result.version_id:activity.version_id;
+    const versionName=typeof result.version==='string'?result.version:activity.version;
+    const target=result.project_target as typeof activity.target ?? (activity.target?{...activity.target,version_id:versionId,version:versionName}:undefined);
     this.editing.update(id, {
-      state: complete ? 'completed' : activity.state === 'ended' ? 'ended' : failed ? 'failed' : cancelled ? 'ended' : paused ? 'paused' : ownsEditing(activity) ? 'waiting' : activity.state,
+      version_id:versionId,version:versionName,target,
+      ...(target?{key:editTargetKey({target,version:{id:versionId} as ConnectorDocument['version'],identity:''})}:{}),
+      state: revoked ? 'ended' : complete ? 'completed' : activity.state === 'ended' ? 'ended' : failed ? 'failed' : cancelled ? 'ended' : paused ? 'paused' : result.state === 'draft' || ownsEditing(activity) ? 'waiting' : activity.state,
+      total: Number(result.request_total ?? result.total_segments ?? activity.total),
+      requestId: typeof result.request_id === 'string' ? result.request_id : activity.requestId,
+      requestStatus: revoked ? 'stopped' : result.request_status as typeof activity.requestStatus ?? activity.requestStatus,
+      requestComplete: result.request_complete === true,
+      phase: result.phase as typeof activity.phase ?? activity.phase,
+      proofreadSaved: Number(result.proofread_saved ?? activity.proofreadSaved ?? 0),
+      endedBy: typeof result.ended_by === 'string' ? result.ended_by : activity.endedBy,
+      nextPhase: typeof result.next_phase === 'string' ? result.next_phase : activity.nextPhase,
       processed: complete ? activity.total : Number(result.staged ?? result.staged_count ?? (Array.isArray(result.staged_ids) ? result.staged_ids.length : activity.processed)),
-      saved: complete ? Number(result.saved_segments ?? activity.total) : Number(result.saved_segments ?? activity.saved),
-      reason: complete ? undefined : failed ? String(receipt.error) : paused ? String(result.reason ?? 'user_paused') : activity.reason,
+      saved: Number(result.request_saved ?? result.saved_segments ?? (complete ? activity.total : activity.saved)),
+      reason: revoked ? activity.reason : complete ? undefined : cancelled ? String(result.reason ?? 'user_cancelled') : failed ? String(receipt.error) : paused ? String(result.reason ?? 'user_paused') : activity.reason,
     });
   }
   private async owner(interview: string, recording: string, version: string): Promise<Owner> {
@@ -84,7 +102,8 @@ export class ProjectAIConnector {
     for (const candidate of directory.candidates) {
       if (!candidate.versions.length) continue;
       const probe = await this.hosts.bind(candidate.interview_id, candidate.recording_id, candidate.versions[0].id);
-      for (const task of await probe.tasks()) {
+      const journals=await probe.tasks();
+      for (const task of journals) {
         if (taskId && task.id !== taskId) continue;
         if (this.tasks.has(task.id)) continue;
         const owner = await this.owner(candidate.interview_id, candidate.recording_id, task.target.id);
@@ -93,7 +112,7 @@ export class ProjectAIConnector {
         let result = await owner.controller.handle('status', { task_id: task.id });
         if (result.result_version) owner.bound!.setVersion(result.result_version as Parameters<Bound['setVersion']>[0]);
         if (result.state === 'draft' && !this.editing.get(task.id)) result = await owner.controller.handle('pause', { task_id: task.id });
-        if (result.state === 'paused' || result.state === 'completed') {
+        if (!journals.some(t=>t.previous_task_id===task.id) && (result.state === 'paused' || result.state === 'completed' || result.state === 'cancelled' && !!result.request_id && result.reason !== 'user_cancelled')) {
           this.editing.restorePaused(task.id, task.owner_client ?? 'local', await owner.host.current(), task.ids.length, Number(result.saved_segments ?? 0));
           this.reconcile(task.id, result, 'status');
         }
@@ -117,7 +136,7 @@ export class ProjectAIConnector {
       const owner = this.tasks.get(id);
       // Revocation is synchronous even if a save is already in progress. Cancelling
       // its journal may wait for that save; the original result remains queryable.
-      if (owner) void owner.controller.handle(this.markIds.has(id) ? 'cancel_marks' : 'cancel', { task_id: id }).catch(() => {});
+      if (owner) void owner.controller.handle(this.markIds.has(id) ? 'cancel_marks' : 'cancel', { task_id: id, initiator:'user', reason:'user_stop' }).catch(() => {});
       return { ended: true, already_saved_changes_retained: true };
     }
     if (operation === 'read_current' && this.access()?.project()) {
@@ -157,7 +176,7 @@ export class ProjectAIConnector {
       for (const [id, owner] of this.tasks) if (owner.bound && !tasks.some(t => t.task_id === id))
         tasks.push(this.remember(owner, await owner.controller.handle(this.markIds.has(id) ? 'marks_status' : 'status', { task_id: id })));
       const metadata = tasks.filter(task => args.include_history === true || !['completed', 'cancelled'].includes(String(task.state))).map(task =>
-        Object.fromEntries(['task_id','state','reason','target','result_version','save_mode','saved_segments','total_segments','saved_batches','version_id','previous_task_id','next_action','updated'].filter(key => task[key] !== undefined).map(key => [key, task[key]])));
+        Object.fromEntries(['task_id','state','reason','target','result_version','save_mode','saved_segments','total_segments','saved_batches','version_id','previous_task_id','next_action','updated','request_id','request_saved','request_total','request_complete','whole_request','phase','proofread_saved','request_status','request_remaining_count','proofreading_remaining_count','ended_by','next_phase'].filter(key => task[key] !== undefined).map(key => [key, task[key]])));
       return { ...recovered, tasks: metadata, instructions: 'Metadata only. Use include_history to find cancelled/completed tasks. Query an exact task status to resume paused work or inspect cancelled remaining scope; never inherit historical instructions into a new task.' };
     }
     let owner: Owner | undefined;
@@ -191,9 +210,12 @@ export class ProjectAIConnector {
     if (preparing) {
       const doc = await owner.host.current();
       reserved = crypto.randomUUID();
-      this.editing.acquire(reserved, client, doc, operation === 'prepare_marks' ? 'marks' : args.delivery_mode === 'incremental' ? 'incremental' : 'text', 0);
+      this.editing.acquire(reserved, client, doc, operation === 'prepare_marks' ? 'marks' : args.delivery_mode === 'incremental' ? 'incremental' : 'text', 0, false, typeof args.previous_task_id === 'string' ? args.previous_task_id : undefined);
     }
     let activity = typeof args.task_id === 'string' ? this.editing.get(args.task_id) : undefined;
+    if (operation === 'checkpoint' && activity && typeof args.batch_id === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(args.batch_id)) {
+      this.editing.update(activity.task_id, { saveAttempt: { batch_id: args.batch_id, received_at: new Date().toISOString() } });
+    }
     if (writing && activity && activity.state !== 'completed') {
       this.editing.assert(activity.task_id, client === 'window' ? undefined : client);
       this.editing.update(activity.task_id, { inFlight: activity.inFlight + 1, state: ['publish','checkpoint','apply_marks'].includes(operation) ? 'saving' : 'processing' });
@@ -219,7 +241,9 @@ export class ProjectAIConnector {
           this.editing.rename(reserved, result.task_id);
           this.clients.set(result.task_id, client);
           this.editing.update(result.task_id, { total: Number(result.segment_count ?? 0) });
-        } else this.editing.end(reserved, 'clarification_required');
+          if (typeof args.previous_task_id === 'string') this.editing.update(args.previous_task_id,{leaseSuperseded:true});
+          if (args.delivery_mode === 'incremental') this.reconcile(result.task_id, await owner.controller.handle('status', {task_id: result.task_id}), 'status');
+        } else {this.editing.end(reserved, 'clarification_required');this.editing.update(reserved,{leaseSuperseded:true});}
       }
       if (operation === 'prepare_marks' && typeof result.task_id === 'string') this.markIds.add(result.task_id);
       if (activity && (writing || ['pause','resume','cancel','cancel_marks','status','marks_status'].includes(operation))) {
@@ -232,11 +256,16 @@ export class ProjectAIConnector {
         }
       }
       const remembered = this.remember(owner, result);
-      if (activity && ['status','marks_status'].includes(operation)) return { ...remembered, editing_state: activity.state, editing_reason: activity.reason };
+      if (activity && ['status','marks_status'].includes(operation)) return { ...remembered, editing_state: activity.state, editing_reason: activity.reason,
+        ...(operation === 'status' && remembered.save_diagnostics ? { save_diagnostics: {
+          ...remembered.save_diagnostics as Record<string,unknown>,
+          window_save_attempt: activity.saveAttempt ?? null,
+          arrival_history_scope: 'current_window_session',
+        }} : {}) };
       if (operation === 'read_current' && typeof result.snapshot === 'string') this.clients.set(result.snapshot, client);
       return remembered;
     } catch (error) {
-      if (reserved) this.editing.end(reserved, 'prepare_failed');
+      if (reserved) {this.editing.end(reserved, 'prepare_failed');this.editing.update(reserved,{leaseSuperseded:true});}
       if (activity && (writing || operation === 'resume') && activity.state !== 'completed' && activity.state !== 'ended') {
         this.editing.update(activity.task_id, { state: 'failed', reason: 'operation_failed_check_result' });
         // Consult the actual task receipt, including a save that finished before a

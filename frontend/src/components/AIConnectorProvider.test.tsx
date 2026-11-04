@@ -17,10 +17,10 @@ it.each(['Project page','Welcome page'])('hides completed results outside the ed
  expect(runtime.activities).toEqual([task]);
  expect(runtime.taskAction).not.toHaveBeenCalled();
 });
-it('keeps live background tasks visible and hides them upon completion', () => {
+it('keeps live background tasks running without showing a global editor status bar', () => {
  runtime.activities=[{...task,state:'waiting'}];
  const ui=render(<AIConnectorProvider><main>Project</main></AIConnectorProvider>);
- expect(ui.container.querySelector('.ai-editing-region')).not.toBeNull();
+ expect(ui.container.querySelector('.ai-editing-region')).toBeNull();
  runtime.activities=[task];
  ui.rerender(<AIConnectorProvider><main>Project</main></AIConnectorProvider>);
  expect(ui.container.querySelector('.ai-editing-region')).toBeNull();
@@ -59,10 +59,10 @@ it('scopes recovery warnings to their project without deleting recovery state', 
   expect(runtime.taskAction).not.toHaveBeenCalled();
 });
 
-it('keeps a failed background task action actionable outside the editor', () => {
+it('retains background action failures without leaking the target editor controls onto the project page', () => {
   runtime.activities=[{...task,state:'paused'}];
   runtime.taskActionError='synthetic_end_failure';
   const ui=render(<AIConnectorProvider><main>Project</main></AIConnectorProvider>);
-  expect(ui.container.querySelector('.continuation-progress-error')).not.toBeNull();
-  expect(screen.getByRole('button',{name:'刷新进度'})).toBeTruthy();
+  expect(ui.container.querySelector('.continuation-progress-error')).toBeNull();
+  expect(runtime.taskActionError).toBe('synthetic_end_failure');expect(runtime.taskAction).not.toHaveBeenCalled();
 });

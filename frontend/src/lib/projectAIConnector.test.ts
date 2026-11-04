@@ -1,3 +1,4 @@
+import {blocksHumanEditing} from './aiEditOwnership';
 import { recordingDirectory, savePortableProject } from './projectStore';
 import { syntheticDirectory } from '../testUtils/syntheticDirectory';
 import { describe, expect, it, vi } from 'vitest';
@@ -240,7 +241,7 @@ it('exposes metadata across clients but never historical instructions by default
   const task=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s1',end_id:'s1',rules:['Synthetic private task rule'],save_mode:'current_version',delivery_mode:'incremental'},'chatgpt');
   expect(JSON.stringify(await c.handle('project_tasks',{},'workbuddy'))).not.toContain('Synthetic private task rule');
   await expect(c.handle('status',{task_id:task.task_id},'workbuddy')).rejects.toThrow('editing_task_belongs_to_another_client');
-  await c.handle('cancel',{task_id:task.task_id},'chatgpt');
+  await c.handle('cancel',{task_id:task.task_id,reason:'user_stop',initiator:'user'},'chatgpt');
   const fresh=f.connector();
   expect((await fresh.handle('project_tasks',{},'workbuddy')).tasks).toEqual([]);
   expect(JSON.stringify(await fresh.handle('project_tasks',{include_history:true},'workbuddy'))).not.toContain('Synthetic private task rule');
@@ -251,4 +252,16 @@ it('exposes metadata across clients but never historical instructions by default
   const selected=await fresh.handle('read_project',target,'workbuddy');
   expect(await fresh.handle('prepare',{snapshot:selected.snapshot,start_id:'s1',end_id:'s1',rules:['New explicit rule'],save_mode:'current_version',delivery_mode:'incremental',previous_task_id:task.task_id},'workbuddy')).toMatchObject({segment_count:1});
   expect(await fresh.handle('stage',{task_id:task.task_id,changes:[changedB]},'chatgpt')).toMatchObject({state:'cancelled',saved:false});
+});
+it('keeps a request protected across completed rounds and explicit proofreading handoffs, including reconnect',async()=>{
+ const f=await fixture(),c=f.connector();const read=await readB(c);
+ const p=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s1',rules:['Synthetic'],save_mode:'current_version',delivery_mode:'incremental',proofreading_required:true});
+ const batch=await c.handle('batch',{task_id:p.task_id});await c.handle('checkpoint',{task_id:p.task_id,batch_id:batch.batch_id,confirmed_summary:p.summary,unchanged_ids:['s1','s2']});
+ expect(blocksHumanEditing(c.editing.get(String(p.task_id))!)).toBe(true);
+ const nextRead=await readB(c);const proof=await c.handle('prepare',{snapshot:nextRead.snapshot,start_id:'s1',rules:['Synthetic proof'],save_mode:'current_version',delivery_mode:'incremental',previous_task_id:p.task_id,phase:'proofreading'});
+ expect(c.editing.get(String(p.task_id))?.leaseSuperseded).toBe(true);
+ expect(blocksHumanEditing(c.editing.get(String(proof.task_id))!)).toBe(true);
+ await c.handle('cancel',{task_id:proof.task_id,initiator:'ai',reason:'phase_transition',next_phase:'proofreading'});
+ const fresh=f.connector();await fresh.handle('project_tasks',{include_history:true});expect(blocksHumanEditing(fresh.editing.get(String(proof.task_id))!)).toBe(true);
+ await fresh.handle('end_editing',{task_id:proof.task_id},'window');expect(blocksHumanEditing(fresh.editing.get(String(proof.task_id))!)).toBe(false);
 });

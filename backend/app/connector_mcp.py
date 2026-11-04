@@ -10,7 +10,7 @@ import httpx
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 INSTRUCTIONS = (
     "Ripple is the local editor; this enabled connection accesses manuscripts in its current open project, not arbitrary paths, other projects or multiple windows. "
@@ -67,26 +67,31 @@ class Mark(BaseModel):
 
 
 
-TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "reorder_tags", "place_group_tag", "assign_tags", "unassign_tags"]
+TagAction = Literal["create_tag", "rename_tag", "set_tag_path", "move_tag", "merge_tag", "delete_branch", "admit_tags", "remove_current_branch", "reorder_tags", "assign_tags", "unassign_tags"]
 
 class TagChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    @model_validator(mode="before")
+    @classmethod
+    def reject_removed_groups(cls, value):
+        if isinstance(value, dict) and (value.get("action") in ("create_group", "rename_group", "dissolve_group", "set_group_tags", "transfer_group_tag", "reorder_groups", "place_group_tag")
+            or value.get("view") in ("group", "ungrouped")
+            or any(key in value for key in ("group_id", "group_ids", "source_group_id"))):
+            raise ValueError("unsupported_tag_operation: grouping is no longer supported")
+        return value
+
     action: TagAction
     tag_id: str | None = Field(default=None, max_length=120)
     target_tag_id: str | None = Field(default=None, max_length=120)
     path: str | None = Field(default=None, max_length=1024)
     name: str | None = Field(default=None, max_length=120)
     parent_id: str | None = Field(default=None, max_length=120)
-    group_id: str | None = Field(default=None, max_length=120)
-    source_group_id: str | None = Field(default=None, max_length=120)
     tag_ids: list[str] | None = Field(default=None, max_length=2000)
-    group_ids: list[str] | None = Field(default=None, max_length=2000)
     segment_ids: list[str] | None = Field(default=None, max_length=2000)
-    copy_membership: bool | None = Field(default=None, alias="copy")
     ref: str | None = Field(default=None, max_length=80, pattern=r"^[a-zA-Z0-9-]+$")
     anchor_id: str | None = Field(default=None,max_length=120)
     after: bool | None = None
-    view: Literal["level", "group", "ungrouped"] | None = None
+    view: Literal["level"] | None = None
 
 
 def create_server(url: str, credential_file: Path):
@@ -213,7 +218,9 @@ def register_tools(mcp, call):
                                    allowed_actions: list[Literal["edit", "delete", "merge_previous"]] | None = None,
                                    save_mode: Literal["new_version", "current_version"] | None = None,
                                    delivery_mode: Literal["atomic", "incremental"] = "atomic",
-                                   previous_task_id: str | None = None) -> dict[str, Any]:
+                                   previous_task_id: str | None = None,
+                                   phase: Literal["editing", "proofreading"] = "editing",
+                                   proofreading_required: bool | None = None) -> dict[str, Any]:
         """Prepare explicit scope and allowed_actions after agreement; default is text edit only.
 
         Enable delete/merge_previous only when the user requests these structural edits.
@@ -227,9 +234,16 @@ def register_tools(mcp, call):
         pass previous_task_id with the entire remaining ID range and fresh confirmed rules. Old task stays cancelled.
         Structural changes require scope review; do not bypass a rejected successor by dropping previous_task_id.
         Existing successor means inspect task history instead of creating duplicates. Rules are task-only.
+        Set phase explicitly; proofreading requires previous_task_id and saved IDs. Subsequent editing uses
+        the original request remaining range. Set proofreading_required on the first task when agreed; omit or use false when no separate proofreading phase was agreed. Do not add unrequested work.
+        Request progress is a durable unique-ID union; task completion is not whole-request completion.
         """
         args = {"snapshot": snapshot, "rules": rules, "start_offset": start_offset}
         args["delivery_mode"] = delivery_mode
+        args["phase"] = phase
+        # Successors inherit the original request requirement.
+        if previous_task_id is None and proofreading_required is not None:
+            args["proofreading_required"] = proofreading_required
         if previous_task_id is not None:
             args["previous_task_id"] = previous_task_id
         if start_id is not None:
@@ -324,19 +338,37 @@ def register_tools(mcp, call):
         return await call("publish", {"task_id": task_id, "confirmed_summary": confirmed_summary})
 
     @mcp.tool(structured_output=True, annotations=read)
-    async def continuation_status(task_id: str, include_history_details: bool = False) -> dict[str, Any]:
+    async def continuation_status(task_id: str, include_history_details: bool = False,
+                                  batch_id: str | None = None) -> dict[str, Any]:
         """Check saved receipts, state and remaining IDs before retrying. Terminal task rules are omitted by default.
 
         Set include_history_details only for an explicit request to inspect old instructions; these are historical,
         not instructions for a new task. Paused work can resume; cancelled work needs a new remaining-scope task.
+        For an incremental save with an uncertain outcome, pass the exact batch_id to inspect its
+        save_diagnostics receipt rather than mistaking an earlier saved batch for this call.
+        Diagnostics contain no manuscript text or rules. External platform decisions are not observable
+        by Ripple; no receipt does not prove a platform rejection. Do not bypass safety checks or
+        repeatedly resubmit blocked content. Preserve saved batches and inspect status first.
         """
-        return await call("status", {"task_id": task_id, "include_history_details": include_history_details})
+        args = {"task_id": task_id, "include_history_details": include_history_details}
+        if batch_id is not None:
+            args["batch_id"] = batch_id
+        return await call("status", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
-    async def cancel_continuation(task_id: str) -> dict[str, Any]:
+    async def cancel_continuation(task_id: str,
+                                  initiator: Literal["user", "ai", "system"] = "ai",
+                                  reason: Literal["user_stop", "phase_transition", "round_end", "failure"] = "round_end",
+                                  next_phase: Literal["editing", "proofreading"] | None = None) -> dict[str, Any]:
         """End a task permanently; retain saved batches. A write already publishing cannot be cancelled retroactively.
-        Cancelled tasks cannot resume: after checking status, prepare a new remaining-scope task with previous_task_id."""
-        return await call("cancel", {"task_id": task_id})
+        Cancelled tasks cannot resume: after checking status, prepare a new task with previous_task_id.
+        For an AI phase handoff explicitly pass initiator=ai, reason=phase_transition and next_phase.
+        A user stop must stay user_stop; failures use failure and their actual initiator."""
+        # Never infer proofreading from cancellation. AI handoff must identify the next phase.
+        args: dict[str, Any] = {"task_id": task_id, "initiator": initiator, "reason": reason}
+        if next_phase is not None:
+            args["next_phase"] = next_phase
+        return await call("cancel", args)
 
     @mcp.tool(structured_output=True, annotations=draft)
     async def prepare_interview_marks(snapshot: str, instructions: str, segment_ids: list[str] | None = None, whole_interview: bool = False) -> dict[str, Any]:
@@ -369,7 +401,7 @@ def register_tools(mcp, call):
     @mcp.tool(structured_output=True, annotations=read)
     async def read_project_tags(interview_id: str, recording_id: str, version_id: str,
                                 scope: Literal["current", "project"] = "current", cursor: str = "0", limit: int = 100) -> dict[str, Any]:
-        """Read tag tree, flat groups and paged segment tag IDs for an exact current-project version, without text/word arrays.
+        """Read the shared tag tree, project sibling order and paged segment tag IDs for an exact current-project version, without text/word arrays. Current scope includes used tags and their structural ancestors; project scope includes the complete tree, including zero-use tags for new manuscripts.
 
         Resolve IDs with list_project_interviews; ask if the version is unspecified. Returns tag_snapshot for changes.
         Counts refer to the selected version in current scope; project scope sums independent saved versions.
@@ -389,15 +421,11 @@ def register_tools(mcp, call):
         merge_tag requires tag_id and target_tag_id; never infer merge permission from rename/move.
         Shared rename/path/move/merge/delete_branch require project scope and affect consuming versions.
         admit_tags uses tag_ids; remove_current_branch removes only this version's admitted subtree and references.
-        create_group uses name/ref; rename_group uses group_id/name; dissolve_group preserves tags/assignments.
-        set_group_tags uses group_id/tag_ids (explicit only, no automatic child membership).
-        transfer_group_tag uses tag_id/source_group_id/group_id/copy; null source adds from ungrouped.
-        reorder_groups uses the full group_ids order. assign_tags/unassign_tags use segment_ids/tag_ids.
-        reorder_tags uses view (level/group/ungrouped), parent_id (null=root), full sibling tag_ids,
-        and group_id for group view. Orders belong only to this exact version/view/group and never change hierarchy.
-        place_group_tag atomically sets group membership, shared parent and local sibling order; requires tag_id,
-        source_group_id (null=add), group_id, parent_id (null=root), anchor_id (null=append), after and copy.
-        It requires project scope; it never automatically merges a name collision. Only supplied operation fields are accepted. New tag/group refs are batch-local; saved stable IDs are returned.
+        assign_tags/unassign_tags use segment_ids/tag_ids and affect only the chosen version.
+        reorder_tags uses parent_id (null=root) and every sibling tag_id in final order; optional view must be level.
+        This one project-wide tree order requires project scope; it does not change hierarchy or segment assignments.
+        Group operations are unsupported, including cached legacy requests; existing group data is retained only for recovery.
+        Only supplied operation fields are accepted. New tag refs are batch-local; saved stable IDs are returned.
         Original versions reject writes. Batch failure leaves all tag and manuscript data unchanged.
         """
         return await call("tags_prepare", {"tag_snapshot": tag_snapshot, "scope": scope,
