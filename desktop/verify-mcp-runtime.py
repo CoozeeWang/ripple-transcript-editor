@@ -24,6 +24,8 @@ EXPECTED_TOOLS = {
     "read_project_tags", "prepare_tag_changes", "apply_tag_changes", "tag_changes_status", "cancel_tag_changes",
     "set_interview_rules",
     "list_project_interviews",
+    "list_project_sessions",
+    "rename_project_item",
     "read_project_interview",
     "list_project_continuations",
     "read_current_interview",

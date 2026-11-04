@@ -6,6 +6,7 @@ import type { useAIConnectorRuntime } from './useAIConnector';
 export type ConnectorState = ReturnType<typeof useAIConnectorRuntime>;
 export const ConnectorContext = createContext<{
   state: ConnectorState;
+  registerProject?: (token: object, project: ProjectConnectorAccess) => () => void;
   reportProject?: (id: string) => void;
   register: (token: object, host: ConnectorHost, context: string, project?: ProjectConnectorAccess) => void;
   unregister: (token: object) => void;

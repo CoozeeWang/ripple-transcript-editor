@@ -1,10 +1,11 @@
 import { useId } from 'react';
-import { msg } from '../i18n';
+import { msg, useInterfaceLanguage } from '../i18n';
 import type { TagMergeRequired } from '../lib/tagCollections';
 import { TagModal } from './TagModal';
 
 /** A shared identity collision is never resolved implicitly by a text editor or a drag. */
 export function TagMergeDialog({ request, onChoose }: { request: TagMergeRequired; onChoose: (accepted: boolean) => void }) {
+    useInterfaceLanguage();
     const description = useId();
     return <TagModal compact title={msg('tags.mergeTitle')} descriptionId={description} onClose={() => onChoose(false)}>
         <p className="trash-material-name">{request.path}</p>

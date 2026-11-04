@@ -4,7 +4,7 @@ import { TagCandidatesContext } from '../lib/tagCandidates';
 import { createPortal } from 'react-dom';
 import { tagErrorMessage } from '../lib/tagErrors';
 import { TagPill } from './TagPill';
-import { msg } from '../i18n';
+import { msg, useInterfaceLanguage, uiMessage } from '../i18n';
 import { tagPath, normalizeTagName, sortTags, suggestTags, type ProjectTag } from '../lib/tags';
 export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assignedIds = [], libraryMode = false, disabled = false }: {
     libraryMode?:boolean;
@@ -14,6 +14,7 @@ export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assi
     availableTags?: readonly ProjectTag[];
     assignedIds?: readonly string[];
 }) {
+    useInterfaceLanguage();
     const candidates = useContext(TagCandidatesContext), availableTags = suppliedTags ?? candidates;
     const [value, setValue] = useState(''),[submitting,setSubmitting]=useState(false),[focused,setFocused]=useState(true), [error, setError] = useState(''), [active, setActive] = useState(-1), input = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null), composing = useRef(false), pending=useRef(false),restoreCommit=useRef(false), restoreFocus=useRef(true), id = useId();
     const reportError=(error:unknown)=>{if(isSharedTagRestriction(error)){setError('');showSharedTagRestriction(input.current,error);}else setError(tagErrorMessage(error));};
@@ -82,5 +83,5 @@ export function TagInput({ onCommit, onCancel, availableTags: suppliedTags, assi
                 }
                 submit(name);
             }
-        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/><small className="tag-suggestion-path">{parentPath(tag)}</small></div>)}</div>, document.body)}{error && <span id={`${id}-error`} className="tag-error" role="alert">{error}</span>}</span>;
+        }}/>{suggestions.length > 0 && createPortal(<div ref={popup} id={id} className="tag-suggestions" role="listbox" aria-label={msg('tags.suggestions')} onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={e => e.preventDefault()} onClick={e => e.stopPropagation()}>{suggestions.map((tag, index) => <div id={`${id}-${tag.id}`} key={tag.id} role="option" aria-selected={active === index} onPointerMove={() => setActive(index)} onClick={() => { if (!composing.current) submit(tag.name,tag.id); }}><TagPill name={tag.name}/><small className="tag-suggestion-path">{parentPath(tag)}</small></div>)}</div>, document.body)}{error && <span id={`${id}-error`} className="tag-error" role="alert">{uiMessage(error)}</span>}</span>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { msg } from '../i18n';
+import { msg, useInterfaceLanguage } from '../i18n';
 import { desktopUpdates, desktopUpdatesAvailable, type DesktopUpdateInfo } from '../lib/desktopUpdates';
 
 function failure(error: unknown) {
@@ -9,6 +9,7 @@ function failure(error: unknown) {
     : code === 'update_check_failed' ? 'desktopUpdate.checkFailed' : 'desktopUpdate.failed');
 }
 export function UpdateSettings({autoCheck=false,onClose}:{autoCheck?:boolean;onClose?:()=>void}) {
+    useInterfaceLanguage();
   const [info,setInfo] = useState<DesktopUpdateInfo|null>(null);
   const [error,setError] = useState('');
   const [working,setWorking] = useState(false);

@@ -482,6 +482,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   const {
     models,
+    acceptRenamedVersion,
     activeModelId,
     activeModel,
     activeEditKey,
@@ -753,6 +754,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   }, hasLoadedTranscript ? `${aiContext}:${hasLoadedTranscript}:${versionBusy}` : '', projectProps.connectorProject ? {
     project: projectProps.connectorProject,
     publishTagProject: projectProps.publishTagProject,
+    assertRenameReady: () => { if(versionBusy || namingOpen || !!deletePrompt)throw Error('version_busy_retry'); },
+    onRenamed: request => {
+      if(request.target_type==='transcript' && request.project_id===projectProps.connectorProject?.()?.data.id && request.interview_id===projectProps.projectInterviewId && request.recording_id===projectProps.projectRecordingId)acceptRenamedVersion(request.version_id!,request.new_name);
+    },
     onSaved: target => { setProcessStatus('done'); setProcessMessage(msg('connector.backgroundSaved', { recording: target.recording, version: target.version })); },
     active: () => ({ interview_id: projectProps.projectInterviewId ?? '', recording_id: projectProps.projectRecordingId ?? '',
       directory: dirHandleRef.current, version_id: activeModelId
@@ -1461,7 +1466,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           {tagFilter&&visibleSegments.length===0&&<p className="annotation-empty">{msg('tags.empty')}</p>}
           {transcript.segments.length === 0 && !comparison.baseline?.segments.length ? (transcribing || activeStatus === "error" ? null : (
             <section className="empty-transcript">
-              <p className="section-label">READY</p>
+              <p className="section-label">{msg('App.ready')}</p>
               <h2>{msg('App.m0047')}</h2>
                   <button
                     type="button"

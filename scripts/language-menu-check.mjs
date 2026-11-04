@@ -37,21 +37,26 @@ try {
   for (const variant of ['welcome', 'project', 'editor']) {
     const control = page.getByTestId(variant).locator('.language-control');
     const trigger=control.locator('button[aria-haspopup="menu"]');
-    for (const language of ['zh-CN','en']) {
+    for (const language of ['zh-CN','zh-TW','en']) {
       await trigger.click();
-      const option=control.getByRole('menuitemradio',{name:language==='en'?'English':'简体中文'});
+      const option=control.getByRole('menuitemradio',{name:language==='en'?'English':language==='zh-TW'?'繁體中文（台灣）':'简体中文'});
       const style=await option.evaluate(element=>({font:getComputedStyle(element).fontSize,weight:getComputedStyle(element).fontWeight}));
       if(Math.abs(parseFloat(style.font)-13.76)>.5||style.weight!=='400')throw new Error(`${variant}: menu typography`);
       await option.click();
       if(await trigger.getAttribute('aria-expanded')!=='false')throw new Error('Menu did not close');
       await trigger.press('ArrowDown');
-      const selected=control.getByRole('menuitemradio',{name:language==='en'?'English':'简体中文'});
+      const selected=control.getByRole('menuitemradio',{name:language==='en'?'English':language==='zh-TW'?'繁體中文（台灣）':'简体中文'});
       if(await selected.getAttribute('aria-checked')!=='true')throw new Error('Language not selected');
+      await page.setViewportSize({width:540,height:400});
+      await page.waitForTimeout(50);
+      const bounds=await control.getByRole('menu').boundingBox();
+      if(!bounds||bounds.x<0||bounds.y<0||bounds.x+bounds.width>540||bounds.y+bounds.height>400)throw new Error('Open language menu escaped resized viewport');
       await selected.press('Escape');
       if(await trigger.evaluate(element=>getComputedStyle(element).outlineStyle)!=='solid')throw new Error('Keyboard focus not visible');
+      await page.setViewportSize({width:1280,height:720});
     }
   }
-  console.log('Language selector: three variants, both languages, app-menu typography, single-click selection and keyboard focus passed. Desktop visuals are checked separately.');
+  console.log('Language selector: three variants, three languages, app-menu typography, single-click selection and keyboard focus passed. Desktop visuals are checked separately.');
 } finally {
   await browser?.close();
   await vite?.close();

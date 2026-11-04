@@ -36,7 +36,7 @@ The desktop **File → Recent Projects** submenu opens projects already listed o
 
 ## MCP connection
 
-The personal desktop MCP connection lets external AI clients read a precisely selected version in the current project, including an unopened manuscript, and save edits in Ripple. Specify the manuscript and exact version; AI asks when the version is missing. Background saves leave the open editor unchanged; edits to the active manuscript can open normal source/result comparison. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
+The personal desktop MCP connection lets external AI clients read a precisely selected version in the current project, including an unopened manuscript, and save edits in Ripple. Specify the manuscript and exact version; AI asks when the version is missing. Background saves leave the open editor unchanged; edits to the active manuscript can open normal source/result comparison. The connection can also rename the current project, sessions, audio titles and explicitly selected transcript version labels without changing their content or physical files. It also adds annotations and highlights to the current editable version, preserving human marks and text; AI-created annotations have a distinct label. The current tunnel setup is tested with ChatGPT. Choose ChatGPT, Claude Desktop or WorkBuddy in settings. Personal ChatGPT tunnels and local client exports are described in [Local AI connections](docs/LOCAL_AI_CONNECTIONS.md).
 
 ## AI-assisted editing
 
@@ -89,7 +89,7 @@ Open <http://localhost:5173>. The frontend proxies `/api` requests to the backen
 
 ## Privacy
 
-Real audio, transcripts, `.env`, and API keys must not be committed. The `interviews/` directory and common audio formats are ignored by Git. Audio is sent to ElevenLabs only when the user explicitly starts a transcription.
+Real audio, transcripts, `.env`, and API keys must not be committed. The `interviews/` directory and common audio formats are ignored by Git. Audio is sent to the selected transcription provider only when the user explicitly starts a transcription.
 
 
 ### Session, recording, and version names
@@ -98,7 +98,7 @@ Projects, sessions, recordings, manuscripts, and editable versions have distinct
 
 ## Code health and acceptance
 
-See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance. As of 2026-10-20, Mac internal build b83 has been accepted by the maintainer; Windows packaging/installed acceptance and the new manual release-download flow still need installed-app checks. This is not a public release announcement. See [verification boundaries](docs/README.md#验证状态与发布前待验).
+See [product documentation](docs/README.md) for the current development and acceptance boundaries. Automated checks are separate from desktop acceptance. Acceptance applies to the specific build and scenarios checked by the maintainer; later source changes do not inherit that acceptance. Windows installed acceptance and the manual release-download flow require separate installed-app checks. This is not a public release announcement. See [verification boundaries](docs/README.md#验证状态与发布前待验).
 
 For contributors, [development workflow](docs/WORKFLOW.md) defines branches, checks, review and delivery. [Ripple Stylebook](docs/STYLEBOOK.md) records current interface rules; read the relevant sections when changing visible behavior. Private planning and acceptance records remain outside this public source repository.
 

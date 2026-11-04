@@ -117,7 +117,7 @@ def test_mcp_discovery_exposes_structured_tools_and_safe_write_annotations(tmp_p
     key_file.write_text('synthetic-not-real-credential-' * 3)
     server = create_server('http://127.0.0.1:18701', key_file)
     tools = asyncio.run(server.list_tools())
-    assert len(tools) == 27
+    assert len(tools) == 29
     publish = next(tool for tool in tools if tool.name == 'publish_continuation')
     assert publish.output_schema is not None
     assert publish.annotations.idempotent_hint
@@ -277,3 +277,33 @@ def test_editing_phase_handoff_schema_is_explicit(tmp_path):
     cancel = next(t for t in tools if t.name == 'cancel_continuation')
     assert {'phase', 'proofreading_required', 'previous_task_id'} <= prepare.input_schema['properties'].keys()
     assert {'initiator', 'reason', 'next_phase'} <= cancel.input_schema['properties'].keys()
+
+
+def test_rename_tools_use_exact_targets_and_metadata_only_contract():
+    from mcp.server import MCPServer
+
+    from app.connection_service import OPERATIONS
+    from app.connector import Call
+    from app.connector_mcp import register_tools
+    calls = []
+    async def call(operation, arguments):
+        calls.append((operation, arguments))
+        return {"saved": True}
+    server = register_tools(MCPServer("Synthetic rename"), call)
+    async def run():
+        tools = {tool.name: tool for tool in await server.list_tools()}
+        assert tools['list_project_sessions'].annotations.read_only_hint
+        rename = tools['rename_project_item']
+        assert rename.annotations.destructive_hint and rename.annotations.idempotent_hint
+        assert not rename.annotations.read_only_hint
+        assert {'target_type','project_id','expected_name','new_name'} <= set(rename.input_schema['required'])
+        await server.call_tool('list_project_sessions', {})
+        assert calls[-1] == ('project_sessions', {})
+        args = {'target_type':'transcript','project_id':'synthetic','interview_id':'session-a',
+                'recording_id':'audio-a','version_id':'m1:original','expected_name':'Synthetic original','new_name':'合成原稿'}
+        await server.call_tool('rename_project_item', args)
+        assert calls[-1] == ('rename_project_item', args)
+        for operation in ('rename_project_item','project_sessions'):
+            assert operation in OPERATIONS
+            assert Call(request_id='synthetic-request',operation=operation,arguments={}).operation == operation
+    asyncio.run(run())

@@ -42,6 +42,8 @@ SCOPE = "interview"
 OPERATIONS = frozenset(
     (
         "set_rules",
+        "project_sessions",
+        "rename_project_item",
         "read_current",
         "read_page",
         "read_examples",

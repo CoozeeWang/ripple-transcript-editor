@@ -2,18 +2,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {readCatalog,messageSignature} from './i18n-catalog.mjs';
 const require = createRequire(new URL('../frontend/package.json', import.meta.url));
 const ts = require('typescript');
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = p => JSON.parse(fs.readFileSync(path.join(root,p),'utf8'));
-const zh = read('frontend/src/i18n/locales/zh-CN.json'), en = read('frontend/src/i18n/locales/en.json');
-const tw = read('frontend/src/i18n/locales/zh-TW.json');
-const exceptions=read('docs/i18n/source-exceptions.json');
 const failures=[];
+const catalogs=['zh-CN','en','zh-TW'].map(locale=>{
+ const {catalog,failures:invalid}=readCatalog(fs.readFileSync(path.join(root,`frontend/src/i18n/locales/${locale}.json`),'utf8'),locale);
+ failures.push(...invalid);return catalog;
+});
+if(failures.length){console.error(failures.join('\n'));process.exit(1);}
+const [zh,en,tw]=catalogs;
+const exceptions=read('docs/i18n/source-exceptions.json');
 for(const [group,values]of Object.entries(zh))for(const [key,value]of Object.entries(values)){
  const target=en[group]?.[key], traditional=tw[group]?.[key];
- const parameters=s=>[...new Set(s.match(/{{\w+}}/g)||[])].sort().join(',');
- if(!target||!traditional||parameters(value)!==parameters(target)||parameters(value)!==parameters(traditional))failures.push(`Missing text or mismatched parameters: ${group}.${key}`);
+ if(!target||!traditional||messageSignature(value)!==messageSignature(target)||messageSignature(value)!==messageSignature(traditional))failures.push(`Missing text or mismatched parameters/rich links: ${group}.${key}`);
 }
 for(const [locale,catalog] of Object.entries({en,'zh-TW':tw})) for(const [group,entries] of Object.entries(catalog)) for(const key of Object.keys(entries)) {
  if(!Object.hasOwn(zh[group]??{},key)) failures.push(`Extra key in ${locale}: ${group}.${key}`);

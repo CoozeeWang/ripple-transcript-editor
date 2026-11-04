@@ -1,3 +1,4 @@
+import { renameProjectItem } from './projectRename';
 import { AIConnector, type ConnectorDocument, type ConnectorHost } from './aiConnector';
 import { AIEditOwnership, editTargetKey, ownsEditing } from './aiEditOwnership';
 import { ProjectConnectorHosts, type ProjectConnectorAccess } from './projectConnectorHost';
@@ -11,6 +12,7 @@ const instruction = 'Ask the user for the exact version when not already specifi
 /** Snapshot/task IDs route independently; reading B never retargets a task for A. */
 export class ProjectAIConnector {
   private hosts: ProjectConnectorHosts;
+  private renameInFlight = false;
   private legacy: Owner;
   private owners = new Map<string, Owner>();
   private snapshots = new Map<string, Owner>();
@@ -122,6 +124,21 @@ export class ProjectAIConnector {
     return { project_id: directory.project_id, project: directory.project, tasks: results };
   }
   async handle(operation: string, args: Record<string, unknown>, client = 'local'): Promise<Record<string, unknown>> {
+    if (this.renameInFlight && !['project_sessions','project_directory','read_project','status','tasks','project_tasks','tags_read','tags_status','marks_status'].includes(operation)) throw Error('rename_in_progress');
+    if (operation === 'project_sessions') {
+      const project = await this.hosts.project();
+      return {project_id:project.data.id,project:project.data.title,sessions:project.data.interviews.map(item=>({interview_id:item.id,name:item.title}))};
+    }
+    if (operation === 'rename_project_item') {
+      this.renameInFlight = true;
+      try {
+        const result=await renameProjectItem(this.hosts,this.access,this.editing,args);
+        // New reads bind current names; existing snapshot/task identities remain intact.
+        this.owners.clear();
+        return result;
+      }
+      finally { this.renameInFlight = false; }
+    }
     if(operation.startsWith('tags_'))return this.tagTasks.handle(operation,args,client);
     if (operation === 'dismiss_editing') {
       if (client !== 'window') throw Error('window_action_required');

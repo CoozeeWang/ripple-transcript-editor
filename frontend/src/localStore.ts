@@ -1,3 +1,4 @@
+import { connectorVersions } from './lib/connectorVersions';
 import {audioIdentity} from './lib/audioIdentity';
 import {readLegacyPreparation,type LegacyAudioPreparation} from './lib/legacyAudioPreparation';
 import { importedManuscriptName } from './lib/transcriptLabels';
@@ -1432,6 +1433,7 @@ async function renameModelLabelUnlocked(
   name: string,
   modelId: string,
   label: string,
+  check?: () => void,
 ): Promise<TranscriptManifest> {
   const tDir = await resolveTranscriptDir(dir, name, false);
   if (!tDir) throw new Error(msg('localStore.m1515'));
@@ -1439,13 +1441,14 @@ async function renameModelLabelUnlocked(
   if (!manifest) throw new Error(msg('localStore.m1516'));
   const models = manifest.models.map((m) => (m.id === modelId ? { ...m, label: label || undefined } : m));
   const newManifest: TranscriptManifest = { ...manifest, models };
+  check?.();
   await writeFileJson(tDir, MANIFEST_NAME, newManifest);
   return newManifest;
 }
 
 /** Rename a version without changing the shared interview title. */
 async function renameEditLabelUnlocked(
-  dir: FileSystemDirectoryHandle, name: string, modelId: string, editId: string, label: string,
+  dir: FileSystemDirectoryHandle, name: string, modelId: string, editId: string, label: string, check?: () => void,
 ): Promise<TranscriptManifest> {
   const manifest = await readManifestUnlocked(dir, name);
   const tDir = await resolveTranscriptDir(dir, name, false);
@@ -1456,6 +1459,7 @@ async function renameEditLabelUnlocked(
     ...m, edits: m.edits.map(e => e.id === editId ? { ...e, label: label.trim() } : e),
   }) };
   if (manifest.models.some(m => m.edits.some(e => !(m.id === modelId && e.id === editId) && sanitizeForFilename(e.label ?? defaultEditLabel(m.edits.indexOf(e))).toLocaleLowerCase() === sanitizeForFilename(label.trim()).toLocaleLowerCase()))) throw new Error(msg('localStore.m1519'));
+  check?.();
   // Labels are display data. Stable internal filenames need not be rewritten
   // when a user renames one version; exports derive names from the label.
   await writeFileJson(tDir, MANIFEST_NAME, next);
@@ -2263,4 +2267,26 @@ export async function ensureVersionLinkIdentity(dir: FileSystemDirectoryHandle, 
 export async function transcriptionRecoveryState(dir:FileSystemDirectoryHandle,audio:string):Promise<'none'|'running'|'completed'|'failed'|'unknown'>{
  const marker=await readTranscriptionMarker(dir,audio);if(!marker)return 'none';
  try{const r=await fetch(`/api/transcribe/jobs/${encodeURIComponent(marker.jobId)}`,{signal:AbortSignal.timeout(5000)});if(!r.ok)return 'unknown';const d=await r.json();return ['running','completed','failed'].includes(d.state)?d.state:'unknown'}catch{return 'unknown'}
+}
+
+/** Rename only the selected visible version label, preserving every manuscript file. */
+export function renameConnectorVersionLabel(dir:FileSystemDirectoryHandle,audio:string,versionId:string,expected:string,name:string,check:()=>void):Promise<boolean>{
+  return inDirectory(dir,async()=>{
+    check();
+    const manifest=await readManifestUnlocked(dir,audio);
+    const version=connectorVersions(manifest?.models??[]).find(item=>item.id===versionId);
+    if(!version)throw Error('target_version_unavailable');
+    const rawName=version.kind==='original'?manifest!.models.find(model=>model.id===version.model_id)?.label:version.name;
+    if(rawName===name)return false;
+    if(version.name!==expected)throw Error('rename_name_changed_read_again');
+    requireVersionName(name);
+    if(connectorVersions(manifest!.models).some(item=>{
+      const label=item.kind==='original'?manifest!.models.find(model=>model.id===item.model_id)?.label??item.name:item.name;
+      return item.id!==versionId&&sanitizeForFilename(label).toLocaleLowerCase()===sanitizeForFilename(name).toLocaleLowerCase();
+    }))throw Error(msg('localStore.m1519'));
+    check();
+    if(version.kind==='original')await renameModelLabelUnlocked(dir,audio,version.model_id,name,check);
+    else await renameEditLabelUnlocked(dir,audio,version.model_id,version.edit_id,name,check);
+    return true;
+  });
 }

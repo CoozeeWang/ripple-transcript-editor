@@ -9,6 +9,11 @@ import { ContinuationProgress } from './ContinuationProgress';
 export function AIConnectorProvider({ children }: { children: ReactNode }) {
   const binding = useRef<{ token: object; host: ConnectorHost; project?: ProjectConnectorAccess } | null>(null);
   const retainedProject = useRef<ProjectConnectorAccess | undefined>(undefined);
+  const workspace = useRef<{token:object;access:ProjectConnectorAccess}|null>(null);
+  const registerProject = useCallback((token:object,access:ProjectConnectorAccess) => {
+    workspace.current={token,access};
+    return ()=>{if(workspace.current?.token===token)workspace.current=null;};
+  },[]);
   const [context, setContext] = useState('');
   const [visibleProject, setVisibleProject] = useState<string | null>(null);
   const reportProject = useCallback((id: string) => setVisibleProject(id), []);
@@ -39,15 +44,19 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
       return binding.current.host.applyMarks(...args);
     },
   };
+  const projectAccess = () => workspace.current?.access ?? binding.current?.project ?? retainedProject.current;
   const project: ProjectConnectorAccess = {
-    publishTagProject: async next => { await (binding.current?.project ?? retainedProject.current)?.publishTagProject?.(next); },
-    project: () => (binding.current?.project ?? retainedProject.current)?.project() ?? null,
+    assertRenameReady: () => {projectAccess()?.assertRenameReady?.();binding.current?.project?.assertRenameReady?.();},
+    beginRename: () => projectAccess()?.beginRename?.() ?? (()=>{}),
+    onRenamed: request => binding.current?.project?.onRenamed?.(request),
+    publishTagProject: async next => { await projectAccess()?.publishTagProject?.(next); },
+    project: () => projectAccess()?.project() ?? null,
     active: () => binding.current?.project?.active() ?? { interview_id: '', recording_id: '', version_id: null, directory: null },
     onSaved: target => binding.current?.project?.onSaved?.(target),
   };
-  const state = useAIConnectorRuntime(host, context, project);
+  const state = useAIConnectorRuntime(host, context || (visibleProject ? `project:${visibleProject}` : ''), project);
   const globalError = visibleProject === null || state.recoveryProjectIds.includes(visibleProject) ? state.recoveryWarning : '';
-  return <ConnectorContext.Provider value={{ state, register, unregister, reportProject }}>
+  return <ConnectorContext.Provider value={{ state, register, unregister, reportProject, registerProject }}>
     {!context && globalError && <div className="ai-editing-global"><ContinuationProgress embedded tasks={[]} error={globalError} onAction={(operation,id)=>state.taskAction(operation,id,true)} onDismissError={state.dismissTaskError}/></div>}
     {children}
   </ConnectorContext.Provider>;

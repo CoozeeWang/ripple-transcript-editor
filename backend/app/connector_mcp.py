@@ -165,6 +165,32 @@ def register_tools(mcp, call):
         return await call("project_directory", {"query": query, "cursor": cursor, "limit": limit})
 
     @mcp.tool(structured_output=True, annotations=read)
+    async def list_project_sessions() -> dict[str, Any]:
+        """List the current project and all sessions, including empty sessions, with stable IDs and names only."""
+        return await call("project_sessions", {})
+
+    @mcp.tool(structured_output=True, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False))
+    async def rename_project_item(target_type: Literal["project", "session", "audio", "transcript"],
+                                  project_id: str, expected_name: str, new_name: str,
+                                  interview_id: str | None = None, recording_id: str | None = None,
+                                  version_id: str | None = None) -> dict[str, Any]:
+        """Rename one explicitly requested display name in the currently open project.
+
+        Resolve project/session IDs with list_project_sessions and audio/exact transcript version IDs
+        with list_project_interviews. Never infer an unspecified version or choose among duplicate names.
+        Supply the exact observed expected_name; stale names fail without writing. Sessions are project-page
+        interview groups, not transcript segments. Original transcript labels may be renamed, but their
+        content remains read-only. No file, folder, ID, audio, text, timing or original association changes.
+        Audio and session names follow existing uniqueness rules. An affected AI task must finish first.
+        If a response is lost, re-read the names before retrying; an already matching new name is a no-op.
+        """
+        args = {"target_type": target_type, "project_id": project_id,
+                "expected_name": expected_name, "new_name": new_name}
+        args.update({key: value for key, value in {"interview_id": interview_id,
+                     "recording_id": recording_id, "version_id": version_id}.items() if value is not None})
+        return await call("rename_project_item", args)
+
+    @mcp.tool(structured_output=True, annotations=read)
     async def read_project_interview(interview_id: str | None = None, recording_id: str | None = None,
                                      version_id: str | None = None) -> dict[str, Any]:
         """Read an explicitly selected current-project version without opening it in Ripple.

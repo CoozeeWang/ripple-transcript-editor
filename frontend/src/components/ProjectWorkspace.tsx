@@ -175,6 +175,17 @@ export function ProjectWorkspace() {
     // Recents are ancillary. They must not split a durable catalog/editor snapshot.
     void updateRecent(next);
   };
+  const registerConnectorProject=aiConnector?.registerProject;
+  useLayoutEffect(()=>registerConnectorProject?.({}, {
+    project:()=>current.current,
+    active:()=>({interview_id:'',recording_id:'',version_id:null,directory:null}),
+    publishTagProject:async next=>{if(current.current?.data.id===next.data.id)publishTags(next);},
+    beginRename:()=>{
+      if(busyRef.current)throw Error('project_busy_retry');
+      busyRef.current=true;setBusy(true);setQuietSaving(true);
+      return ()=>{busyRef.current=false;setBusy(false);setQuietSaving(false);};
+    },
+  }));
   const run = async (work: () => Promise<void>, progress = true) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -383,7 +394,7 @@ export function ProjectWorkspace() {
     }}
     connectorProject={() => current.current} publishTagProject={async(next,publishVersion)=>{if(current.current?.data.id===next.data.id)publishTags(next,publishVersion)}} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
     originalAudio={interview?.recordings.find(item=>item.id===editor.recording.id) ?? editor.recording}
-    projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
+    projectLabel={project.data.title} interviewTitle={interview?.title ?? editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onAudioDuration={async seconds => {
       const snapshot = current.current;
       if (!snapshot || snapshot.data.id !== project.data.id) return;
