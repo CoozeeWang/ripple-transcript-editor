@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { msg } from '../i18n';
+import { msg, useInterfaceLanguage } from '../i18n';
 import type { TagLibrary } from '../lib/tags';
 import { TagInput } from './TagInput';
 
@@ -8,6 +8,7 @@ export function TagLibraryInput({ library, query, onQuery, readOnly, onCreate }:
     library: TagLibrary; query: string; onQuery: (query: string) => void; readOnly: boolean;
     onCreate?: (name: string, id?: string) => Promise<void>;
 }) {
+    useInterfaceLanguage();
     const [mode,setMode]=useState<'search'|'create'>('search'),[creating,setCreating]=useState(false);
     const search=useRef<HTMLInputElement>(null),previous=useRef(mode);
     useLayoutEffect(()=>{if(previous.current!==mode&&mode==='search')search.current?.focus();previous.current=mode},[mode]);

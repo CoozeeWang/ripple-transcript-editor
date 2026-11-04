@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { msg } from '../i18n';
+import { msg, useInterfaceLanguage, uiMessage } from '../i18n';
 import { normalizeTagName } from '../lib/tags';
 import {isSharedTagRestriction} from '../lib/sharedTagGuard';
 import { isTagOperationCancelled } from '../lib/tagErrors';
@@ -17,6 +17,7 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
     onEditingChange?: (editing: boolean) => void;
     focusable?: boolean;
 }) {
+    useInterfaceLanguage();
     const [editing, setEditing] = useState(false), [draft, setDraft] = useState(name), [feedback, setFeedback] = useState<{message:string;kind:'error'|'status'}|null>(null), [busy, setBusy] = useState(false);
     const feedbackId = useId();
     const root = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), composing = useRef(false), pending = useRef(false), restore = useRef(false), dragUntil = useRef(0);
@@ -65,6 +66,6 @@ export function InlineTagName({ name, enabled, onRename, children, canBegin, onE
                     pending.current = true; setBusy(true);
                     void onRename!(next).then(() => finish(true), error => setFeedback({message:error instanceof Error ? error.message : msg('tags.saveFailed'),kind:isTagOperationCancelled(error)||isSharedTagRestriction(error)?'status':'error'})).finally(() => { pending.current = false; setBusy(false); });
                 }
-            }}/>{feedback && <span id={feedbackId} role={feedback.kind==='error'?'alert':'status'} className={'tag-name-feedback '+(feedback.kind==='error'?'tag-name-error':'tag-name-status')}>{feedback.message}</span>}</> : children}
+            }}/>{feedback && <span id={feedbackId} role={feedback.kind==='error'?'alert':'status'} className={'tag-name-feedback '+(feedback.kind==='error'?'tag-name-error':'tag-name-status')}>{uiMessage(feedback.message)}</span>}</> : children}
     </span>;
 }

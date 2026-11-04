@@ -1466,7 +1466,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           {tagFilter&&visibleSegments.length===0&&<p className="annotation-empty">{msg('tags.empty')}</p>}
           {transcript.segments.length === 0 && !comparison.baseline?.segments.length ? (transcribing || activeStatus === "error" ? null : (
             <section className="empty-transcript">
-              <p className="section-label">READY</p>
+              <p className="section-label">{msg('App.ready')}</p>
               <h2>{msg('App.m0047')}</h2>
                   <button
                     type="button"

@@ -2,7 +2,7 @@ import {pendingWriteControl} from '../lib/pendingWriteControl';
 import { useContext, useState } from 'react';
 import { blockTagWrite, isTagWriting, TagWritingContext } from '../lib/tagCandidates';
 import { showActionHint } from '../lib/actionHint';
-import { msg } from '../i18n';
+import { msg, useInterfaceLanguage } from '../i18n';
 import { InlineTagName } from './InlineTagName';
 import {SegmentTagDragContext} from '../hooks/useSegmentTagDrag';
 import {IS_MAC} from '../lib/format';
@@ -14,6 +14,7 @@ export function TagPill({ name, fullPath, onRemove, removeLabel, disabled: suppl
     renameEnabled?: boolean; onRename?: (name: string) => Promise<void>;
     dragSource?: {segmentId:string;tagId:string};dragReady?:boolean;
 }) {
+    useInterfaceLanguage();
     const writing = useContext(TagWritingContext), pending = typeof writing==='boolean'&&writing, disabled = pending || suppliedDisabled;
     const drag=useContext(SegmentTagDragContext),draggable=!!dragSource&&!!drag?.enabled()&&!disabled&&!copyBlockedByFilter;
     const [editing,setEditing]=useState(false);

@@ -1,6 +1,6 @@
 import {useEffect,useLayoutEffect,useRef,useState,type ButtonHTMLAttributes} from 'react';
 import {InlineTagName} from './InlineTagName';
-import {msg} from '../i18n';
+import {msg, useInterfaceLanguage} from '../i18n';
 import {FilterActionHint} from './FilterActionHint';
 export function TagLibraryPill({name,selected,inherited,filterEnabled,locked,parent,onToggle,onSelect,onRename,onRemove,canBegin,buttonProps,hint,dragEnabled=false,modifier=false}: {
  hint?:string;dragEnabled?:boolean;modifier?:boolean;
@@ -8,6 +8,7 @@ export function TagLibraryPill({name,selected,inherited,filterEnabled,locked,par
  onToggle:()=>void;onSelect:()=>void;onRename?:(name:string)=>Promise<void>;onRemove?:()=>void;canBegin:(time:number)=>boolean;
  buttonProps:ButtonHTMLAttributes<HTMLButtonElement>;
 }){
+    useInterfaceLanguage();
  const [editing,setEditing]=useState(false),timer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const text=useRef<HTMLSpanElement>(null),[clipped,setClipped]=useState(false);
  useLayoutEffect(()=>{const element=text.current;if(!element)return;const sync=()=>setClipped(element.scrollHeight>element.clientHeight+1||element.scrollWidth>element.clientWidth+1);sync();const observer=new ResizeObserver(sync);observer.observe(element);return()=>observer.disconnect()},[name,editing]);
