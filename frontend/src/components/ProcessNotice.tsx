@@ -1,4 +1,5 @@
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
+import type { Problem } from "../lib/diagnostics";
 import { CopyProblem } from "./CopyProblem";
 import { formatTime } from "../lib/format";
 import type { ProcessStatus } from "../hooks/useVersions";
@@ -6,6 +7,7 @@ import type { ProcessStatus } from "../hooks/useVersions";
 /** 转录进度/错误提示条：转写中显示进度条，失败显示原因与操作按钮。 */
 export interface ProcessNoticeProps {
   text: string;
+  problem?: Problem;
   card?: boolean;
   compact?: boolean;
   engine?: string;
@@ -40,7 +42,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
     const running = status === "transcribing";
     const percent = Math.max(0, Math.min(100, Math.round((ratio ?? 0) * 100)));
     const stage = phase === "uploading" ? msg('ProcessNotice.m0634') : phase === "sending" ? msg('ProcessNotice.m0635') : phase === "saving" ? msg('ProcessNotice.m0636') : msg('ProcessNotice.m0637');
-    return <section className={`transcription-card${props.compact ? " transcription-card--compact" : ""}${running ? "" : " transcription-card--error"}`} aria-label={running ? msg('ProcessNotice.m0638') : msg('ProcessNotice.m0639')}>
+    return <section className={`transcription-card${props.compact ? " transcription-card--compact" : ""}${running ? "" : " transcription-card--error"}`} tabIndex={props.compact && !running ? 0 : undefined} aria-label={running ? msg('ProcessNotice.m0638') : msg('ProcessNotice.m0639')}>
       <div className="transcription-card-heading">
         {running && <span className="transcription-signal" aria-hidden="true"><i/><i/><i/><i/><i/></span>}
         <div><h2>{running ? msg('ProcessNotice.m0640') : msg('ProcessNotice.m0641')}</h2>
@@ -67,7 +69,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
         <div className="transcription-card-actions">
           {running ? <button type="button" disabled={phase === "saving"} onClick={cancelTranscription}>{msg('ProcessNotice.m0652')}</button> : <>
             <button type="button" onClick={()=>setTranscriptionDialogOpen(true)}>{msg('ProcessNotice.m0653')}</button>
-            <CopyProblem operation="transcription" />{props.onDismiss&&<button type="button" onClick={props.onDismiss}>{msg('notice.dismiss')}</button>}
+            <CopyProblem problem={props.problem} />{props.onDismiss&&<button type="button" onClick={props.onDismiss}>{msg('notice.dismiss')}</button>}
           </>}
         </div>
       </div>
@@ -101,7 +103,7 @@ export function ProcessNotice(props: ProcessNoticeProps) {
           <>
             <button type="button" onClick={() => setTranscriptionDialogOpen(true)}>
               {msg('ProcessNotice.m0655')}</button>
-            <CopyProblem operation="transcription" />{props.onDismiss&&<button type="button" onClick={props.onDismiss}>{msg('notice.dismiss')}</button>}
+            <CopyProblem problem={props.problem} />{props.onDismiss&&<button type="button" onClick={props.onDismiss}>{msg('notice.dismiss')}</button>}
           </>
         )}
       </div>

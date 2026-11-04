@@ -2,7 +2,8 @@
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {ProcessNotice} from './ProcessNotice';
-afterEach(cleanup);
+import {msg,setInterfaceLanguage} from '../i18n';
+afterEach(async()=>{cleanup();await setInterfaceLanguage('zh-CN')});
 const props={card:true,text:'测试进度',status:'transcribing' as const,phase:'processing',ratio:1,engine:'测试引擎',elapsed:20,hint:'',raw:'',cancelTranscription:vi.fn(),setTranscriptionDialogOpen:vi.fn(),setSaveToast:vi.fn()};
 it('recognition shows a timer without fabricated completion progress',()=>{
  render(<ProcessNotice {...props}/>);
@@ -36,4 +37,17 @@ it('phase-only upload has no fabricated percentage and remains incomplete until 
  expect(screen.getByText('上传音频').className).toContain('is-complete');
  expect(screen.getByText('转录音频').getAttribute('aria-current')).toBe('step');
  expect(screen.queryByRole('progressbar')).toBeNull();
+});
+
+it.each(['zh-CN','zh-TW','en'] as const)('keeps compact error content ordered and keyboard-scrollable with all actions (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ const dismiss=vi.fn();
+ const ui=render(<ProcessNotice {...props} compact status="error" text="Synthetic failure" hint="Synthetic next step" engine={'Synthetic engine '.repeat(30)} onDismiss={dismiss}/>);
+ const region=screen.getByRole('region',{name:msg('ProcessNotice.m0639')});
+ expect(region.tabIndex).toBe(0);
+ expect([...region.children].map(e=>e.className||e.getAttribute('role'))).toEqual(['transcription-card-heading','alert','transcription-card-details','transcription-card-footer']);
+ expect(screen.getByRole('alert').textContent).toBe('Synthetic failureSynthetic next step');
+ const actions=ui.container.querySelectorAll('.transcription-card-actions button');expect(actions).toHaveLength(3);
+ fireEvent.click(screen.getByRole('button',{name:msg('notice.dismiss')}));expect(dismiss).toHaveBeenCalledOnce();
+ ui.rerender(<ProcessNotice {...props} compact/>);expect(screen.getByRole('region',{name:msg('ProcessNotice.m0638')}).hasAttribute('tabindex')).toBe(false);
 });

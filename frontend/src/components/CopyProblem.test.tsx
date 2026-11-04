@@ -7,7 +7,7 @@ import { recordProblem } from '../lib/diagnostics';
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); });
 function clipboard() {
-  const writeText = vi.fn(async () => {});
+  const writeText = vi.fn<(text:string)=>Promise<void>>(async () => {});
   Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText}});
   vi.useFakeTimers();
   return writeText;
@@ -79,11 +79,21 @@ it('keeps icon mode compact with an accessible name and an in-place check', asyn
 
 it('preserves the error-card dismiss action after copying', async () => {
   clipboard();
-  recordProblem('transcription');
+  const problem=recordProblem('transcription');
   const dismiss = vi.fn();
-  render(<ProcessNotice card status="error" text="Synthetic failure" phase="processing" ratio={0} hint="" raw="" onDismiss={dismiss} cancelTranscription={vi.fn()} setTranscriptionDialogOpen={vi.fn()} setSaveToast={vi.fn()} />);
+  render(<ProcessNotice problem={problem} card status="error" text="Synthetic failure" phase="processing" ratio={0} hint="" raw="" onDismiss={dismiss} cancelTranscription={vi.fn()} setTranscriptionDialogOpen={vi.fn()} setSaveToast={vi.fn()} />);
   await copy();
   expect(screen.getAllByRole('button')).toHaveLength(3);
   fireEvent.click(screen.getByRole('button', {name: '关闭提示'}));
   expect(dismiss).toHaveBeenCalledOnce();
+});
+
+it('never copies an older unrelated event for a notice without an explicit receipt',async()=>{
+ const write=clipboard();recordProblem('save',Error('old synthetic failure'));
+ render(<CopyProblem operation="save"/>);await copy();expect(write).not.toHaveBeenCalled();
+});
+it('keeps a displayed event bound when another operation fails before copying',async()=>{
+ const write=clipboard(),problem=recordProblem('open',Error('ENOENT'));
+ render(<CopyProblem problem={problem}/>);recordProblem('save',Error('ENOSPC'));
+ await copy();expect(write.mock.calls[0][0]).toContain(problem.id);
 });
