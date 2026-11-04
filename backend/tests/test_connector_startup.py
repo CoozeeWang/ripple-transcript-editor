@@ -78,8 +78,9 @@ def test_packaged_mcp_initializes_pth_before_importing_dependencies(tmp_path):
 
 
 def test_upgrade_rebinds_bundle_without_downloads_or_key_rotation(tmp_path):
-    from app.connector_setup import save_setup
     import shutil
+
+    from app.connector_setup import save_setup
     downloaded = tmp_path / 'Synthetic Downloads'
     downloaded.mkdir()
     client = downloaded / 'tunnel-client'
@@ -107,8 +108,9 @@ def test_upgrade_rebinds_bundle_without_downloads_or_key_rotation(tmp_path):
 
 
 def test_failed_config_publish_keeps_previous_complete_file(tmp_path, monkeypatch):
-    from app import connector_setup
     from pathlib import Path
+
+    from app import connector_setup
     target = tmp_path / 'setup.json'
     target.write_text('{"synthetic":"previous"}')
     original = Path.replace

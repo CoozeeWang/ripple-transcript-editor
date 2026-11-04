@@ -2,17 +2,17 @@
 
 No output secrets. This does not create accounts, tunnels or keys, or download binaries.
 """
+import hashlib
 import json
 import os
 import shlex
-import sys
-import hashlib
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
-from .bundled_runtime import bundled_python
 from .atomic_files import atomic_write_text
+from .bundled_runtime import bundled_python
 
 
 class SetupError(ValueError):
