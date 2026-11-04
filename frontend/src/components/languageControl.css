@@ -2,7 +2,7 @@
 .language-control--welcome {display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;box-sizing:border-box;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-accent);cursor:pointer;}
 .language-control svg {width:20px;height:20px;pointer-events:none;}
 .language-control button:hover {border-color:var(--color-border-active);background:var(--color-surface-warm);}
-.language-control button:focus-visible {outline:2px solid var(--color-focus);outline-offset:2px;}
+.language-control button:focus-visible {outline:1px solid var(--color-focus);outline-offset:2px;}
 .language-menu {position:fixed;inset:auto;margin:0;padding:6px;min-width:150px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);box-shadow:0 8px 24px #0002;z-index:70;}
 .language-menu button {display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:0;border-radius:5px;background:transparent;color:var(--color-text);text-align:left;font:400 .86rem/1.4 var(--font-sans);cursor:pointer;}
 .language-menu button span {width:14px;flex-shrink:0;}

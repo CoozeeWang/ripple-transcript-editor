@@ -38,8 +38,8 @@ export function MoveRecordingsDialog({ source, sessions, count, names, busy, err
       {error && <p className="recording-move-feedback form-error" role="alert">{error}</p>}
     </div>
     <div className="project-actions audio-project-footer">
-      <button className="cred-btn" data-dialog-initial-focus disabled={busy} onClick={onCancel}>{msg('recordingMove.cancel')}</button>
-      <button className="cred-btn" disabled={busy || !sessions.some(session => session.id === target && session.id !== source.id)}
+      <button className="button button--secondary" data-dialog-initial-focus disabled={busy} onClick={onCancel}>{msg('recordingMove.cancel')}</button>
+      <button className="button button--primary" disabled={busy || !sessions.some(session => session.id === target && session.id !== source.id)}
         onClick={() => onConfirm(target)}>{msg('recordingMove.confirm')}</button>
     </div>
   </dialog>, document.body);

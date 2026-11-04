@@ -16,6 +16,8 @@ import { useAIConnector } from "./hooks/useAIConnector";
 import { applyAISuggestions } from "./lib/aiVersionEdits";
 import { applyContinuationBatch,checkContinuationGuard } from './lib/continuationBatch';
 import { AIEditingNotice } from './components/AIEditingNotice';
+import {effectiveExportMarks,type ExportMarkOptions} from './lib/exportOptions';
+import {showActionHint} from './lib/actionHint';
 import { assertEditorReadyForAI } from './lib/editorDrafts';
 import {ContinuationProgress} from './components/ContinuationProgress';
 import { connectorReferences, connectorVersions } from "./lib/connectorVersions";
@@ -24,7 +26,8 @@ import {useSegmentTagDrag,SegmentTagDragContext} from './hooks/useSegmentTagDrag
 import {TagsPanel} from './components/TagsPanel';
 import {hierarchyLibrary,hierarchyTagFilter,emptyTagLibrary,filteredTagSegments,matchesTagFilter,tagHistoryAnchor,descendantTagIds,type TagLibrary} from './lib/tags';
 import { createTagPresenter, tagSegmentCounts,tagCoverageCounts } from './lib/tagPresentation';
-import { TagCandidatesContext, TagWritingContext } from './lib/tagCandidates';
+import { segmentPlaybackTime } from './lib/playbackPresentation';
+import { TagCandidatesContext, TagWritingContext, useTagWritingGuard } from './lib/tagCandidates';
 import { TagMergeDialog } from './components/TagMergeDialog';
 import type { OpenProject } from './lib/projectStore';
 import { msg, uiMessage, useInterfaceLanguage } from './i18n';
@@ -36,6 +39,7 @@ import { useVersionComparison } from "./hooks/useVersionComparison";
 import { comparisonRows } from "./lib/comparisonSegments";
 import { useOpeningPosition } from "./hooks/useOpeningPosition";
 import { useReadingPosition } from './hooks/useReadingPosition';
+import { useTagFilterReadingPosition } from './hooks/useTagFilterReadingPosition';
 import { registerNormalClose } from './lib/normalClose';
 import { useSpeakerFilterReadingPosition } from './hooks/useSpeakerFilterReadingPosition';
 import { SegmentMergeDialog } from './components/SegmentMergeDialog';
@@ -88,7 +92,7 @@ import {
   stemOf,
   saveSelectedProviderId,
 } from "./localStore";
-import { canExportSubtitles, selectExportScope, type ExportFormat, exportTranscript } from "./lib/export";
+import { selectExportScope, type ExportFormat, exportTranscript } from "./lib/export";
 import {
   ANNOTATION_PANEL_COLLAPSED_KEY,
   SPEAKER_PANEL_COLLAPSED_KEY,
@@ -116,7 +120,8 @@ type SaveStatus = "loading" | "unsaved" | "saving" | "saved" | "error";
 // 快退/快进步长默认值（秒），可被偏好设置覆盖；键盘左右键与右侧 ± 按钮共用。
 
 export interface ProjectEditorProps {
-  onUpgradeTagStorage?:()=>Promise<void>;
+  onUpgradeTagStorage?:(options?:{orderBaseline?:string;expectedRevision?:number})=>Promise<void>;
+  onInspectTagOrder?:()=>Promise<import('./lib/projectTreeOrder').TreeOrderPlan&{projectRevision:number}>;
   tagLibrary?:TagLibrary;
   tagStorage?:import('./hooks/useProjectTags').TagStorage;
   initialSegmentTarget?: SegmentTarget;
@@ -135,6 +140,7 @@ export interface ProjectEditorProps {
   saveRecordingDraft?: (draft: { metadata: InterviewMetadata; speakers: Speaker[] }) => Promise<void>;
   onPatchInterview?: (patch: Partial<InterviewMetadata>) => Promise<void>;
   recordingLabel?: string;
+  originalAudio?: import("./lib/originalAudioInfo").OriginalAudioInfo;
   onAudioDuration?: (seconds: number) => Promise<void>;
   onRenameInterview?: (title: string) => Promise<void>;
   onReturnToProjects?: () => void;
@@ -173,7 +179,9 @@ function App(projectProps: ProjectEditorProps = {}) {
   // 导入时自动修补过的项目（缺说话人名单、缺段落编号等），在命名弹窗里告知用户。
   const [importRepairs, setImportRepairs] = useState<string[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("loading");
-  const [loadError, setLoadError] = useState("");
+  const [loadFailure,setLoadFailure]=useState<{text:string;problem?:Problem}>({text:""});
+  const loadError=loadFailure.text;
+  const setLoadError=useCallback((text:string,problem?:Problem)=>setLoadFailure({text,problem}),[]);
   const [activeSegmentId, setActiveSegmentId] = useState("");
   const [selectedSegmentId, setSelectedSegmentId] = useState("");
   const [openingPosition, setOpeningPosition] = useState<{ id: string } | null>(null);
@@ -254,7 +262,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     catch(error){return {library:source,error:tagErrorMessage(error)}}
   },[projectProps.tagLibrary]);
   const [selectedTagFilters,setTagFilters]=useState<string[]>([]);
-  const [tagFilterEnabled,setTagFilterEnabled]=useState(true);
+  const [tagFilterEnabled,setTagFilterEnabled]=useState(false);
   const [tagFilterMode,setTagFilterMode]=useState<'and'|'or'>('and');
   const selectedTagIds=useMemo(()=>selectedTagFilters.filter(id=>preparedTagLibrary.library.tags.some(tag=>tag.id===id)),[selectedTagFilters,preparedTagLibrary.library]);
   useEffect(()=>{let current=true;const valid=new Set(preparedTagLibrary.library.tags.map(tag=>tag.id));queueMicrotask(()=>{if(current)setTagFilters(selected=>{const ids=selected.filter(id=>valid.has(id));return ids.length===selected.length?selected:ids})});return()=>{current=false}},[preparedTagLibrary.library]);
@@ -290,6 +298,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   // 编辑的提交入口：undo/redo 历史分组 + 标记未保存。usePlayback 依赖它，
   // 故放在 useFolder 之前定义。
   const tagContentEditPending=useRef(false);
+  const aiActionBlockRef = useRef<() => string | null>(() => null);
+  const blockedUserAction = (message:string) => showActionHint(document.activeElement instanceof HTMLElement ? document.activeElement : document.body,message,'restriction');
   const editLockedRef = useRef<() => boolean>(() => false);
   const mutateTranscript = useCallback(
     (updater: (current: Transcript) => Transcript, groupKey?: string) => {
@@ -428,8 +438,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       initialLoadRef.current = false;
     },
     onLoadError: (message, fatal) => {
-      recordProblem("open", new Error(message));
-      setLoadError(message);
+      setLoadError(message,recordProblem("open", new Error(message)));
       if (fatal) setSaveStatus("error");
     },
     onClearError: () => setLoadError(""),
@@ -469,7 +478,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     if (!projectProps.projectDirectory || projectOpened.current) return;
     projectOpened.current = true;
     void applyFolderHandle(projectProps.projectDirectory).catch(error => setLoadError(error instanceof Error ? error.message : msg('App.m0009')));
-  }, [projectProps.projectDirectory, applyFolderHandle]);
+  }, [projectProps.projectDirectory, applyFolderHandle, setLoadError]);
 
   const {
     models,
@@ -522,7 +531,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     version: readingVersion,
     project: readingProjectId, recording: projectProps.projectRecordingId,
   } : null, [dirHandle, selectedAudio, activeModelId, readingVersion, readingProjectId, projectProps.projectRecordingId]);
-  const persistReadingPosition = useReadingPosition(readingScope, transcriptPanelRef, hasLoadedTranscript && saveStatus !== 'loading', transcript?.segments ?? [], !!projectProps.initialSegmentTarget);
+  const filterReadingPosition = useTagFilterReadingPosition(transcriptPanelRef, readingScope ?? `${selectedAudio}:${activeEditKey}:${viewingOriginal}`, hasLoadedTranscript && saveStatus !== 'loading', !!tagFilter, transcript?.segments ?? [], visibleSegments);
+  const persistReadingPosition = useReadingPosition(readingScope, transcriptPanelRef, hasLoadedTranscript && saveStatus !== 'loading', transcript?.segments ?? [], !!projectProps.initialSegmentTarget, filterReadingPosition.intent);
   useEffect(() => {
     const toggle = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.code === "KeyY" && !event.isComposing && !event.repeat &&
@@ -548,6 +558,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     transcribeElapsed,
     transcribeHint,
     transcribeRaw,
+    transcribeProblem,
     startTranscription,
     cancelTranscription,
   } = useTranscription({
@@ -619,6 +630,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     handleSave,
     flushPendingSave,
   } = usePersistence({
+    manualSaveBlocked:()=>aiActionBlockRef.current(),onManualSaveBlocked:blockedUserAction,
     persistedContent,
     dirHandleRef,
     initialLoadRef,
@@ -636,13 +648,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
 
 
-  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); await persistReadingPosition(); }; }, [flushPendingSave, persistReadingPosition]);
+  useLayoutEffect(() => { beforeChangeRef.current = async () => { if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy')); await flushPendingSave(); await persistReadingPosition(); }; }, [flushPendingSave, persistReadingPosition, setLoadError]);
   useLayoutEffect(() => registerNormalClose(async () => {
     try {
       if (tagLibrarySaving.current) throw Error(msg('ProjectWorkspace.openProjectBusy'));
       await flushPendingSave(); await persistReadingPosition();
     } catch (error) { setLoadError(error instanceof Error ? error.message : msg('tags.saveFailed')); throw error; }
-  }), [flushPendingSave, persistReadingPosition]);
+  }), [flushPendingSave, persistReadingPosition, setLoadError]);
 
   const aiContext = `${selectedAudio}:${activeEditKey}:${viewingOriginal}`;
   const [aiIdentity, setAIIdentity] = useState('0');
@@ -752,10 +764,14 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   useLayoutEffect(() => {
     editLockedRef.current = () => tagLibrarySaving.current || connector.targetLocked(aiVersionId, projectProps.projectRecordingId, projectProps.projectInterviewId, projectProps.connectorProject?.()?.data.id, String(connectorContext.current.generation));
   });
+  const matchingAI = connector.activities.filter(task=>task.version_id===aiVersionId && (!task.target || task.target.project_id===projectProps.connectorProject?.()?.data.id && task.target.recording_id===projectProps.projectRecordingId && task.target.interview_id===projectProps.projectInterviewId));
+  const aiActionHint=aiLocked ? msg(matchingAI.some(task=>task.state==='ended'&&task.inFlight>0&&['user_ended','user_cancelled'].includes(task.reason??''))?'aiEditing.confirmingSave':'aiEditing.stopBeforeAction') : null;
+  useLayoutEffect(()=>{aiActionBlockRef.current=()=>connector.targetLocked(aiVersionId,projectProps.projectRecordingId,projectProps.projectInterviewId,projectProps.connectorProject?.()?.data.id,String(connectorContext.current.generation)) ? aiActionHint??msg('aiEditing.stopBeforeAction') : null;});
   const protectedReadOnly = viewingOriginal || aiLocked;
   const tagUpgradeRequired=!!projectProps.tagStorage?.requiresMigration;
   const tags=useProjectTags({library:preparedTagLibrary.library,storage:projectProps.tagStorage,recordingId:projectProps.projectRecordingId,modelId:activeModelId,editId:viewingOriginal?'original':activeModel?.activeEditId,context:`${selectedAudio}:${activeEditKey}:${viewingOriginal}`,transcript,flush:flushPendingSave,
     undoActionKey,redoActionKey,publish:(value,action,key,rebase)=>{
+      filterReadingPosition.preserve(false);
       // Tag undo/redo is already durable. Adopt the exact history snapshot, so autosave
       // cannot mistake a metadata-only restoration for a fresh whole-body text edit.
       const saved=action==='commit'||action==='rebase'?value:action==='undo'?undoTarget:redoTarget;
@@ -763,10 +779,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if(metadata&&saved)setPersistedContent({transcript:saved,metadata});setSaveStatus('saved');
     },
     lock:busy=>{tagLibrarySaving.current=busy},readOnly:protectedReadOnly||tagUpgradeRequired,originalReadOnly:viewingOriginal,onError:setLoadError,errorMessage:msg('tags.saveFailed')});
+  const tagWritingGuard = useTagWritingGuard(tags.busy);
   const presentTags = useMemo(() => createTagPresenter(), []);
   const segmentTagView = presentTags(tags.library, transcript?.segments ?? []);
   const tagCounts = useMemo(() => tagSegmentCounts({ schemaVersion: 3, tags: segmentTagView.available, groups: [] }, transcript?.segments ?? []), [segmentTagView.available, transcript?.segments]);
   const tagCoverage = useMemo(()=>tagCoverageCounts(tags.library,transcript?.segments??[]),[tags.library,transcript?.segments]);
+  const currentUsedTagIds=useMemo(()=>[...tagCounts].filter(([,count])=>count>0).map(([id])=>id),[tagCounts]);
   const currentTagCoverage=useCallback((id:string)=>tagCoverage.get(id)??0,[tagCoverage]);
   const currentTagCount = useCallback((id: string) => tagCounts.get(id) ?? 0, [tagCounts]);
   const [tagDropSegment,setTagDropSegment]=useState<string|null>(null);
@@ -841,8 +859,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     toggleHideSpeaker,
     confirmMerge,
     addSpeaker,
-    hasEnglishSpeakerTemplate,
-    normalizeEnglishSpeakerTemplates,
     deleteSpeaker,
     addAnnotation,
     updateAnnotation,
@@ -882,6 +898,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       setSegmentMergePrompt(null);
       setHiddenSpeakerIds(new Set());
       setTagFilters([]);
+      setTagFilterEnabled(false);
+      setTagFilterMode('and');
       setActiveSegmentId("");
       setSelectedSegmentId("");
       setOpeningPosition(null);
@@ -933,7 +951,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       if (!cancelled) setTransferIdentity({context:transferContext,identity});
     }).catch(()=>{if(!cancelled)setLoadError(msg('segmentTransfer.identityFailed'));});
     return ()=>{cancelled=true;};
-  },[aiLocked,dirHandleRef,selectedAudio,activeModel,transferVersion,transferContext,saveStatus,projectProps.projectRecordingId]);
+  },[aiLocked,dirHandleRef,selectedAudio,activeModel,transferVersion,transferContext,saveStatus,projectProps.projectRecordingId,setLoadError]);
 
   const transferSnapshot = (id: string) => {
     if (isEditorComposing()) throw Error(msg('segmentTransfer.failed'));
@@ -976,6 +994,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const registerTagEntry = useCallback((id: string, open: (() => void) | null) => { if (open) tagEntries.current.set(id,open); else tagEntries.current.delete(id); }, []);
   const openActiveTagEntry = useCallback((id: string) => { if (!protectedReadOnly && !tagUpgradeRequired && !tags.busy && projectProps.tagStorage) tagEntries.current.get(id)?.(); }, [protectedReadOnly,tagUpgradeRequired,tags.busy,projectProps.tagStorage]);
   useShortcuts({
+    exportBlocked:()=>aiActionBlockRef.current(),onBlockedAction:blockedUserAction,
     addTag: openActiveTagEntry, nativeTagShortcut: nativeDesktopAvailable(), tagWriteDisabled: protectedReadOnly || tagUpgradeRequired,
     visibleSegmentIds,
     copySegment,
@@ -1113,12 +1132,13 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
 
 
-  const exportAs = (format: ExportFormat) => {
+  const exportAs = (format: ExportFormat,options?:ExportMarkOptions) => {
+    const blocked=aiActionBlockRef.current();if(blocked){blockedUserAction(blocked);return;}
     flushEditorDrafts();
     const current = latestExport.current;
     if (!current.transcript) return;
     let selection:Transcript;try{selection=selectExportScope(current.transcript,exportScope,hiddenSpeakerIds,tagFilter)}catch(error){setLoadError(error instanceof Error?error.message:msg('tags.empty'));return}
-    void exportTranscript(format, selection, current.metadata, activeModel?.engine, viewingOriginal ? (activeModel?.sourceKind === "import" && !activeModel?.designatedOriginal ? msg('App.m0012') : msg('App.m0013')) : (activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))))
+    void exportTranscript(format, selection, current.metadata, activeModel?.engine, viewingOriginal ? (activeModel?.sourceKind === "import" && !activeModel?.designatedOriginal ? msg('App.m0012') : msg('App.m0013')) : (activeModel?.edits.find(e => e.id === activeModel.activeEditId)?.label ?? defaultEditLabel(Math.max(0, activeModel?.edits.findIndex(e => e.id === activeModel.activeEditId) ?? 0))),{options:effectiveExportMarks(format,options),library:tags.library})
       .catch(error => { recordProblem("export", error); setLoadError(error instanceof Error ? error.message : msg('App.m0014')); });
   };
 
@@ -1218,7 +1238,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
     if (projectProps.onReturnToProjects) return <>{projectNav}{loadError && <p className="welcome-error" role="alert">{uiMessage(loadError)}</p>}{settingsModal}</>;
     return (
       <>{projectNav}<LoadingScreen
-        loadError={loadError}
+        loadError={loadError} problem={loadFailure.problem}
         folderShortcutHint={folderShortcutHint}
         handleOpenFolder={handleOpenFolder}
         recentMenuRef={recentMenuRef}
@@ -1242,7 +1262,12 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
   // 转录中的文案随阶段和时间变化，直接算出来，不进 state（避免 effect 里 setState）。
   // 正在转录的是别的文件时，文案改成「谁在后台跑」，秒数照旧在走。
-  const hasAIEditingNotice = visibleAIActivities(connector.activities).length > 0 || Boolean(connector.taskError);
+  const currentAIActivities=connector.activities.filter(task=>task.target
+    ?task.target.project_id===projectProps.connectorProject?.()?.data.id&&task.target.interview_id===projectProps.projectInterviewId&&task.target.recording_id===projectProps.projectRecordingId&&task.version_id===aiVersionId
+    :!projectProps.projectRecordingId&&task.version_id===aiVersionId&&task.key===JSON.stringify([aiIdentity,aiVersionId]));
+  const currentAITasks=connector.tasks.filter(task=>task.project_target?task.project_target.project_id===projectProps.connectorProject?.()?.data.id&&task.project_target.interview_id===projectProps.projectInterviewId&&task.project_target.recording_id===projectProps.projectRecordingId&&task.version_id===aiVersionId:!projectProps.projectRecordingId&&task.is_current&&task.version_id===aiVersionId);
+  const currentAIError=connector.taskError&&(currentAIActivities.length||!connector.activities.length||connector.taskError===connector.recoveryWarning)?connector.taskError:'';
+  const hasAIEditingNotice = visibleAIActivities(currentAIActivities).length > 0 || Boolean(currentAIError);
   const processNoticeText = !transcribeJob
     ? processMessage
     : !transcribeIsCurrent
@@ -1258,7 +1283,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   const transcriptionNotice = (transcribing || activeStatus === "error") && <ProcessNotice card compact={transcript.segments.length > 0} onDismiss={()=>{setProcessStatus("ready");setProcessMessage("");}}
             text={processNoticeText} status={activeStatus} phase={transcribePhase} ratio={transcribeRatio}
             engine={transcribeJob?.engine ?? activeProviderName} elapsed={transcribeElapsed}
-            hint={transcribeHint} raw={transcribeRaw} cancelTranscription={cancelTranscription}
+            hint={transcribeHint} raw={transcribeRaw} problem={transcribeProblem} cancelTranscription={cancelTranscription}
             setTranscriptionDialogOpen={setTranscriptionDialogOpen} setSaveToast={setSaveToast} />;
 
   return (
@@ -1310,8 +1335,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         exportMenuRef={exportMenuRef}
         exportAs={exportAs}
         exportScope={exportScope} setExportScope={setExportScope} fullCount={transcript?.segments.length??0} visibleCount={visibleSegments.length}
-        subtitlesAvailable={Boolean(transcript && canExportSubtitles(transcript))}
         exportProjectFiles={projectProps.onExportProjectFiles ? () => void returnToProjects(true) : undefined}
+        aiActionHint={aiActionHint}
         handleSave={handleSave}
         openSettings={openSettings}
       /></div>
@@ -1335,10 +1360,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           replaceAll={replaceAll}
         />
       )}
-        <AIEditingNotice activities={connector.activities} isCurrent={task => task.target
-          ? task.target.project_id === projectProps.connectorProject?.()?.data.id && task.target.interview_id === projectProps.projectInterviewId && task.target.recording_id === projectProps.projectRecordingId && task.target.version_id === aiVersionId
-          : task.version_id === aiVersionId} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
-          {(connector.taskError || connector.tasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={connector.tasks} error={connector.taskError} onAction={connector.taskAction} onDismissError={connector.dismissTaskError}/>}
+        <AIEditingNotice activities={currentAIActivities} isCurrent={()=>true} onInspect={id=>connector.taskAction('status',id)} onDismiss={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('dismiss_editing', id); transcriptPanelRef.current?.focus(); }} onEnd={async id => { if (processStatus === 'done') setProcessMessage(''); await connector.taskAction('end_editing', id); transcriptPanelRef.current?.focus(); }}>
+          {(currentAIError || currentAITasks.some(task => task.state !== 'completed' && task.state !== 'cancelled')) && <ContinuationProgress embedded tasks={currentAITasks} error={currentAIError} onAction={connector.taskAction} onDismissError={connector.dismissTaskError}/>}
         </AIEditingNotice>
       {!hasAIEditingNotice && processNoticeText && activeStatus !== "ready" && !transcribing && activeStatus !== "error" && (
         <ProcessNotice
@@ -1355,7 +1378,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
         />
       )}
 
-      {loadError && <LoadErrorNotice text={loadError} problem={transferFailure?.text === loadError ? transferFailure.problem : undefined} onDismiss={()=>setLoadError('')}/>}
+      {loadError && <LoadErrorNotice text={loadError} problem={transferFailure?.text === loadError ? transferFailure.problem : loadFailure.problem} onDismiss={()=>setLoadError('')}/>}
 
       <div
         inert={renaming || saveStatus === "loading" || versionBusy}
@@ -1381,8 +1404,6 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           setMergePrompt={setMergePrompt}
           deleteSpeaker={deleteSpeaker}
           addSpeaker={addSpeaker}
-          hasEnglishSpeakerTemplate={hasEnglishSpeakerTemplate}
-          normalizeEnglishSpeakerTemplates={normalizeEnglishSpeakerTemplates}
         />}
       <main className="transcript-column">
         <div className="transcript-header-fixed">
@@ -1424,8 +1445,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
           }}
           forkFromOriginal={forkFromOriginal}
         />
-        {!preparingTranscript && transcriptionNotice}
+        {!preparingTranscript && activeStatus !== "error" && transcriptionNotice}
         </div>
+
+        {!preparingTranscript && activeStatus === "error" && transcriptionNotice}
 
         <section className="transcript-panel" data-tag-drop-scroll ref={transcriptPanelRef} tabIndex={-1} aria-label={msg('App.m0045')}>
           {followingPaused && isPlaying && (
@@ -1449,7 +1472,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                     {msg('App.m0048')}</button>
                   {!selectedAudio && <p className="empty-transcript__hint">{msg('App.m0049')}</p>}
             </section>
-          )) : <div className="segment-list"><SegmentTagDragContext.Provider value={segmentTagDrag}><TagWritingContext.Provider value={tags.busy}><TagCandidatesContext.Provider value={segmentTagView.available}>
+          )) : <div className="segment-list" data-tag-writing={tags.busy} aria-busy={tags.busy}><SegmentTagDragContext.Provider value={segmentTagDrag}><TagWritingContext.Provider value={tagWritingGuard}><TagCandidatesContext.Provider value={segmentTagView.available}>
             {renderedRows.map(({segment,deleted,before}) => deleted ? (
               <article className="comparison-deleted-segment" key={`deleted:${segment.id}`}>
                 <span>{transcript.timeAligned === false ? msg('App.m0050') : msg('App.m0051', { v0: formatTime(segment.start) })}</span><del>{segment.text}</del>
@@ -1468,9 +1491,10 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 tagDropTarget={tagDropSegment===segment.id}
                 tagPaths={segmentTagView.segments.get(segment.id)!.paths}
                 onAddTagId={tags.attach}
-                tagRenameEnabled={segmentTagView.segments.get(segment.id)!.tags.length > 0 && !tagFilterEnabled && !protectedReadOnly && !tagUpgradeRequired}
+                tagRenameEnabled={segmentTagView.segments.get(segment.id)!.tags.length > 0 && !protectedReadOnly && !tagUpgradeRequired}
+                tagCopyBlockedByFilter={tagFilterEnabled}
                 tagWriteDisabled={tagUpgradeRequired}
-                onRenameTag={projectProps.tagStorage?tags.renamePath:undefined}
+                onRenameTag={projectProps.tagStorage?(id,name)=>tags.replace(segment.id,id,name):undefined}
                 onAddTag={projectProps.tagStorage?tags.add:undefined}
                 registerTagEntry={registerTagEntry}
                 onRemoveTag={tags.remove}
@@ -1487,7 +1511,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
                 speakers={transcript.speakers}
                 effectiveSelectedSegmentId={effectiveSelectedSegmentId === segment.id ? segment.id : ""}
                 isPlaying={isPlaying}
-                currentTime={currentTime}
+                currentTime={segmentPlaybackTime(segment,currentTime,isPlaying)}
                 findQuery={protectedReadOnly ? findQuery : ""}
                 audioUrl={audioUrl}
                 viewingOriginal={protectedReadOnly}
@@ -1514,7 +1538,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
 
         {!preparingTranscript && <AnnotationPanel
           tagCount={tags.collection.tagIds.length}
-          tagsPanel={projectProps.tagStorage?<>{tagUpgradeRequired&&<TagStorageUpgrade onUpgrade={projectProps.onUpgradeTagStorage?async()=>{await beforeChangeRef.current();await projectProps.onUpgradeTagStorage!()}:undefined}/>}<TagsPanel countVersionId={`${projectProps.projectRecordingId}:${activeModelId}:${viewingOriginal?'original':activeModel?.activeEditId}`} onPlaceGroupTag={tags.placeInGroup} loadProjectCounts={projectProps.tagStorage?.counts} projectRevision={projectProps.tagStorage?.projectRevision} versionKey={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} collection={tags.collection} onSortName={tags.sortByName} onReorder={tags.reorder} library={tags.library} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={async(name,id)=>{await tags.create(name,id)}} onRenameTag={tags.rename} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tagUpgradeRequired} saving={tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(tagFilterEnabled)setTagFilters(current=>id?(current.includes(id)?current.filter(value=>value!==id):[...current,id]):[]);transcriptPanelRef.current?.scrollTo(0,0)}} currentCoverage={currentTagCoverage} currentCount={currentTagCount} currentTagIds={tags.collection.tagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/></>:undefined}
+          tagsPanel={projectProps.tagStorage?<>{tagUpgradeRequired&&<TagStorageUpgrade onInspect={projectProps.onInspectTagOrder} onUpgrade={projectProps.onUpgradeTagStorage?async options=>{await beforeChangeRef.current();await projectProps.onUpgradeTagStorage!(options)}:undefined}/>}<TagsPanel countVersionId={`${projectProps.projectRecordingId}:${activeModelId}:${viewingOriginal?'original':activeModel?.activeEditId}`} loadProjectCounts={projectProps.tagStorage?.counts} projectRevision={projectProps.tagStorage?.projectRevision} versionKey={`${selectedAudio}:${activeEditKey}:${viewingOriginal}`} collection={tags.collection} onSortName={tags.sortByName} onReorder={tags.reorder} library={tags.library} sharedStructureHint={projectProps.tagStorage?.structureBlocked?.()} loadError={preparedTagLibrary.error||tags.error} onChange={tags.change} onCreateTag={tags.create} onRenameTag={tags.renamePath} onTagDropTarget={setTagDropSegment} onDropTagToSegment={dropTagToSegment} readOnly={protectedReadOnly||tagUpgradeRequired} saving={tags.busy} filter={selectedTagIds} filterMode={tagFilterMode} onFilterModeChange={setTagFilterMode} filterEnabled={tagFilterEnabled} onFilterEnabledChange={enabled=>{if(!enabled)filterReadingPosition.preserve();setTagFilterEnabled(enabled);setTagFilterMode('and');if(!enabled)setTagFilters([])}} onFilter={id=>{if(!tagFilterEnabled)return;const next=id?(selectedTagIds.includes(id)?selectedTagIds.filter(value=>value!==id):[...selectedTagIds,id]):[];const exiting=!!tagFilter&&!next.length;if(exiting)filterReadingPosition.preserve();setTagFilters(next);if(!exiting)transcriptPanelRef.current?.scrollTo(0,0)}} currentCoverage={currentTagCoverage} currentCount={currentTagCount} currentTagIds={currentUsedTagIds} onReparentTag={tags.reparent} onRemoveCurrent={async id=>{const removed=new Set(descendantTagIds(tags.library,id));await tags.removeCurrent(id);setTagFilters(ids=>ids.filter(id=>!removed.has(id)))}}/></>:undefined}
           transcript={transcript}
           readOnly={protectedReadOnly} pending={tags.busy}
           readOnlyMessage={aiLocked ? msg('aiEditing.readOnly') : undefined}
@@ -1541,6 +1565,7 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
       </div>
 
       <PlayerBar
+        originalAudio={projectProps.originalAudio ?? (audioFilename ? {file: audioFilename} : undefined)}
         audioRef={audioRef}
         audioUrl={audioUrl}
         isPlaying={isPlaying}
@@ -1570,7 +1595,8 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
             saveSelectedProviderId(id);
           }}
           hasAudio={!!selectedAudio && !!audioUrl}
-          audioFilename={audioFilename || transcript.audio.filename}
+          audioFilename={projectProps.recordingLabel ?? audioFilename ?? transcript.audio.filename}
+          audioSource={dirHandle&&typeof dirHandle.getFileHandle==='function'&&selectedAudio?{dir:dirHandle,audio:selectedAudio,info:projectProps.originalAudio,seconds:actualDuration}:undefined}
           busy={transcribing}
           preserveExisting={models.length > 0}
           onClose={() => setTranscriptionDialogOpen(false)}

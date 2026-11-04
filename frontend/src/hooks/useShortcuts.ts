@@ -8,6 +8,8 @@ import { flushEditorDrafts, isEditorComposing } from "../lib/editorDrafts";
 /** 全局键盘快捷键（编辑器操作在输入控件内由各组件自行处理）。
  *  所有动作通过回调注入，本 hook 只负责监听 window keydown 与分发。 */
 export interface UseShortcutsDeps {
+  exportBlocked?: () => string | null;
+  onBlockedAction?: (message: string) => void;
   visibleSegmentIds?:ReadonlySet<string>;
   disabled?: boolean;
   copySegment?: (id: string) => void;
@@ -127,6 +129,8 @@ export function useShortcuts(deps: UseShortcutsDeps) {
         // Windows 需要 Ctrl+Shift+E（纯 Ctrl+E 被浏览器地址栏占用），Mac 用 ⌘E。
         if (!IS_MAC && !event.shiftKey) return;
         event.preventDefault();
+        const blocked=deps.exportBlocked?.();
+        if(blocked){deps.onBlockedAction?.(blocked);return;}
         setExportMenuOpen((open) => !open);
         return;
       }
@@ -194,6 +198,7 @@ export function useShortcuts(deps: UseShortcutsDeps) {
     deps.nativeTagShortcut,
     deps.tagWriteDisabled,
     deps.visibleSegmentIds,
+    deps.exportBlocked, deps.onBlockedAction,
     disabled,
     transcript,
     viewingOriginal,

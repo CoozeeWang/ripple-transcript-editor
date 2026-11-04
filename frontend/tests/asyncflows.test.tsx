@@ -31,7 +31,7 @@ test('R14 older audio load must not replace the most recently selected file',asy
   await act(async()=>{a.resolve('blob:A');await pa;});expect(ui.result.current.selectedAudio).toBe('b.wav');
 });
 test('R15 background transcription of A must not replace editor after selection changes to B',async()=>{
-  const job=deferred<any>();fake.transcription=job.promise;const reset=vi.fn();const dir={current:{} as any};
+  const job=deferred<any>();fake.transcription=job.promise;const reset=vi.fn();const dir={current:{getFileHandle:async()=>{throw new DOMException('Synthetic absent','NotFoundError')}} as any};
   const deps={dirHandleRef:dir,selectedAudio:'a.wav',providers:[{id:'test',name:'test'}],processStatus:'idle',setActiveProviderName:noop,setProcessStatus:noop,setProcessMessage:noop,setMetadata:noop,reset,setSelectedSegmentId:noop,setHasLoadedTranscript:noop,setSaveStatus:noop,applyManifest:noop,setNamingTarget:noop,setNamingOpen:noop,setNamingValue:noop,refreshAudioList:async()=>{}};
   const ui=renderHook((p)=>useTranscription(p as any),{initialProps:deps});let pending!:Promise<void>;
   act(()=>{pending=ui.result.current.startTranscription({} as any,'test');});

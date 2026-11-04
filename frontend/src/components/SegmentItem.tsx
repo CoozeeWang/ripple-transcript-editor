@@ -33,6 +33,7 @@ export interface SegmentItemProps {
   tags?: ProjectTag[];
   availableTags?: ProjectTag[];
   tagRenameEnabled?: boolean;
+  tagCopyBlockedByFilter?: boolean;
   onRenameTag?: (id: string, name: string) => Promise<void>;
   registerTagEntry?: (id: string, open: (() => void) | null) => void;
   tagWriteDisabled?:boolean;
@@ -343,7 +344,7 @@ export const SegmentItem = memo(function SegmentItem(props: SegmentItemProps) {
         </div>
         </div>
         <div ref={tagFooter} className={'segment-tag-footer' + (tagInput ? ' has-tag-input' : '')}>
-          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} fullPath={props.tagPaths?.[tag.id]} stopPropagation dragSource={!viewingOriginal?{segmentId:segment.id,tagId:tag.id}:undefined} dragReady={transferReady} editingBlockedByFilter={!viewingOriginal&&!props.tagRenameEnabled} renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
+          <div className="segment-tag-items">{props.tags?.map(tag=><TagPill key={tag.id} name={tag.name} fullPath={props.tagPaths?.[tag.id]} stopPropagation dragSource={!viewingOriginal?{segmentId:segment.id,tagId:tag.id}:undefined} dragReady={transferReady} copyBlockedByFilter={props.tagCopyBlockedByFilter} renameEnabled={!viewingOriginal && props.tagRenameEnabled} onRename={props.onRenameTag ? name=>props.onRenameTag!(tag.id,name) : undefined} disabled={props.tagWriteDisabled} removeLabel={`${msg('tags.remove')}: ${tag.name}`} onRemove={!viewingOriginal && props.onRemoveTag ? ()=>props.onRemoveTag?.(segment.id,tag.id) : undefined}/>)}</div>
           {tagInput&&!viewingOriginal&&<TagInput availableTags={props.availableTags} assignedIds={props.tags?.map(tag=>tag.id)} onCancel={reason=>closeTagEntry(reason==='escape')} onCommit={async(name,id)=>{await(id&&props.onAddTagId?props.onAddTagId(segment.id,id):props.onAddTag?.(segment.id,name));closeTagEntry(true)}}/>}
         <div className="segment-actions__icons">
           {!viewingOriginal ? (

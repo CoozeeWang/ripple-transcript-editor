@@ -1,6 +1,6 @@
 import { msg } from '../i18n';
 import { SUCCESS_FEEDBACK_MS, useTransientState } from './useTransientState';
-import { recordProblem } from "../lib/diagnostics";
+import { recordProblem, type Problem } from "../lib/diagnostics";
 import { flushEditorDrafts, hasEditorDrafts } from "../lib/editorDrafts";
 import { useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -16,6 +16,8 @@ import type { SaveStatus } from "./useTranscription";
  *  保留在 App 由本 hook 通过 deps 读写；本 hook 只拥有 toast 与保存计时器。 */
 export interface UsePersistenceDeps {
   /** Exact references published only after reading or successfully persisting a document. */
+  manualSaveBlocked?: () => string | null;
+  onManualSaveBlocked?: (message: string) => void;
   persistedContent?: { transcript: Transcript; metadata: InterviewMetadata } | null;
   dirHandleRef: { current: FileSystemDirectoryHandle | null };
   initialLoadRef: { current: boolean };
@@ -36,7 +38,9 @@ export function usePersistence(deps: UsePersistenceDeps) {
   const [saveToast, setSaveToast] = useTransientState<{
     kind: "error" | "ok";
     text: string;
+    problem?: Problem;
   } | null>(null, null, value => value?.kind === 'ok' ? SUCCESS_FEEDBACK_MS : null);
+  const failureProblem=useRef<Problem|undefined>(undefined);
   const [saveFailure, setSaveFailure] = useState("");
   const [previousSaveStatus, setPreviousSaveStatus] = useState<SaveStatus>("loading");
 
@@ -52,6 +56,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
     toastGeneration.current++;
     if (saveToast !== null) setSaveToast(null);
     setSaveFailure('');
+    failureProblem.current=undefined;
   }, [toastDocument, saveToast, setSaveToast]);
 
   const latest = useRef(deps);
@@ -109,13 +114,13 @@ export function usePersistence(deps: UsePersistenceDeps) {
           latest.current.setSaveStatus(hasEditorDrafts() ? "unsaved" : "saved");
         }
       } catch (error) {
-        recordProblem("save", error);
+        failureProblem.current=recordProblem("save", error);
         const message=(error as {name?:string})?.name==="NotAllowedError"
           ? msg('usePersistence.m1131')
           : error instanceof Error ? error.message : msg('usePersistence.m1132');
         // A failed write remains actionable and blocks navigation; it is not a disposable query receipt.
         setSaveFailure(message);
-        setSaveToast({kind:"error",text:msg('usePersistence.m1133', { v0: message })});
+        setSaveToast({kind:"error",text:msg('usePersistence.m1133', { v0: message }),problem:failureProblem.current});
         latest.current.setSaveStatus("error");
         throw error;
       }
@@ -200,7 +205,7 @@ export function usePersistence(deps: UsePersistenceDeps) {
   if (previousSaveStatus !== deps.saveStatus) {
     setPreviousSaveStatus(deps.saveStatus);
     if (deps.saveStatus === "error") {
-      setSaveToast({ kind: "error", text: msg('usePersistence.m1134', { v0: saveFailure || msg('usePersistence.m1135') }) });
+      setSaveToast({ kind: "error", text: msg('usePersistence.m1134', { v0: saveFailure || msg('usePersistence.m1135') }), problem:failureProblem.current });
     } else if (deps.saveStatus === "saved" &&
       (previousSaveStatus === "error" || previousSaveStatus === "saving")) {
       setSaveToast({ kind: "ok", text: previousSaveStatus === "error" ? msg('usePersistence.m1136') : msg('usePersistence.m1137') });
@@ -208,6 +213,8 @@ export function usePersistence(deps: UsePersistenceDeps) {
   }
 
   const handleSave = async () => {
+    const blocked=latest.current.manualSaveBlocked?.();
+    if(blocked){latest.current.onManualSaveBlocked?.(blocked);return;}
     if(transcriptChangePending.current)return;
     if (!snapshot()) { setSaveToast({kind:"error",text:msg('usePersistence.m1138')}); return; }
     const owner = toastGeneration.current;

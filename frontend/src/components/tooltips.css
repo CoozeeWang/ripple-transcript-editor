@@ -17,3 +17,6 @@
 }
 .ripple-tooltip--control { background: var(--tooltip-control-bg); color: var(--tooltip-control-text); }
 .ripple-tooltip--action { background: var(--tooltip-action-bg); color: var(--tooltip-action-text); border-color: var(--color-border); }
+
+/* A blocked operation is guidance, not a save error. */
+.ripple-tooltip--restriction { background:var(--color-restriction-bg);border-color:var(--color-restriction-border);color:var(--color-restriction-text); }

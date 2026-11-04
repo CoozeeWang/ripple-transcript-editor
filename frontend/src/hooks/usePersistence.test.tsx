@@ -194,3 +194,11 @@ it('does not publish a failed association or retry it on later navigation', asyn
   await act(async()=>{await result.current.flushPendingSave()});
   expect(saveActiveEdit).toHaveBeenCalledTimes(1);
 });
+it('blocks manual and shortcut saves while leaving internal flush persistence available',async()=>{
+ const blocked=vi.fn(),deps={...loadedDeps(),manualSaveBlocked:()=> 'Synthetic AI request owns this version',onManualSaveBlocked:blocked};
+ const {result,rerender}=renderHook(usePersistence,{initialProps:deps});rerender({...deps,transcript:changed(deps)});
+ const before=vi.mocked(saveActiveEdit).mock.calls.length;
+ await act(async()=>{await result.current.handleSave();window.dispatchEvent(new KeyboardEvent('keydown',{key:'s',metaKey:true,bubbles:true}));});
+ expect(blocked).toHaveBeenCalledTimes(2);expect(vi.mocked(saveActiveEdit).mock.calls.length).toBe(before);
+ await act(async()=>{await result.current.flushPendingSave()});expect(vi.mocked(saveActiveEdit).mock.calls.length).toBe(before+1);
+});

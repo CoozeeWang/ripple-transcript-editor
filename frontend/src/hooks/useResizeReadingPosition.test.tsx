@@ -4,7 +4,7 @@ import {afterEach,expect,it,vi} from "vitest";
 import {useResizeReadingPosition} from "./useResizeReadingPosition";
 let resize:()=>void;
 afterEach(()=>{cleanup();document.body.replaceChildren();vi.unstubAllGlobals();});
-function setup(){
+function setup(intent?:{current:number}){
  vi.stubGlobal("ResizeObserver",class {constructor(callback:()=>void){resize=callback;}observe(){}disconnect(){}});
  const panel=document.createElement("div");panel.innerHTML='<article class="segment" id="segment-a"><p class="rt-para">前文</p></article><article class="segment" id="segment-b"><p class="rt-para">正在看的内容</p></article>';
  document.body.append(panel);panel.scrollTop=1000;
@@ -14,7 +14,7 @@ function setup(){
  first.getBoundingClientRect=()=>({top:-1000,bottom:-10,height:990} as DOMRect);
  second.getBoundingClientRect=p.getBoundingClientRect=()=>({top,bottom:top+height,height} as DOMRect);
  panel.scrollTo=vi.fn((options?:ScrollToOptions|number,y?:number)=>{const next=typeof options==="number"?y??0:options?.top??0;top-=next-panel.scrollTop;panel.scrollTop=next;});
- const ref={current:panel};const hook=renderHook(({context})=>useResizeReadingPosition(ref,context,true),{initialProps:{context:"one"}});
+ const ref={current:panel};const hook=renderHook(({context})=>useResizeReadingPosition(ref,context,true,intent),{initialProps:{context:"one"}});
  return {panel,p,hook,change:(w:number,t:number,h=100)=>{width=w;top=t;height=h;}};
 }
 it("keeps the visible paragraph when narrowing and widening, ignoring reflow scroll events",()=>{
@@ -36,4 +36,8 @@ it("resets the reading anchor when another document opens and disconnects on unm
  const {panel,hook,change}=setup();change(400,100);hook.rerender({context:"two"});
  act(()=>resize());expect(panel.scrollTo).not.toHaveBeenCalled();
  hook.unmount();expect(panel.style.overflowAnchor).toBe("");
+});
+
+it("does not let a stale resize snapshot overwrite an explicit filter restoration",()=>{
+ const intent={current:0};const {panel,change}=setup(intent);intent.current++;change(400,600);act(()=>resize());expect(panel.scrollTo).not.toHaveBeenCalled();
 });

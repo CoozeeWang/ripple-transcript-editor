@@ -12,6 +12,6 @@ export function OriginalDesignationDialog({name,busy,error,onCancel,onConfirm}:{
   <p className="trash-material-name">{name}</p>
   <p className="settings-hint">{msg('OriginalDesignationDialog.m0621')}</p>
   {error&&<p className="form-error" role="alert">{uiMessage(error)}</p>}
-  <div className="project-actions audio-project-footer"><button className="cred-btn" data-dialog-initial-focus disabled={busy} onClick={onCancel}>{msg('OriginalDesignationDialog.m0622')}</button><button className="cred-btn" disabled={busy} onClick={onConfirm}>{msg('OriginalDesignationDialog.m0623')}</button></div>
+  <div className="project-actions audio-project-footer"><button className="button button--secondary" data-dialog-initial-focus disabled={busy} onClick={onCancel}>{msg('OriginalDesignationDialog.m0622')}</button><button className="button button--primary" disabled={busy} onClick={onConfirm}>{msg('OriginalDesignationDialog.m0623')}</button></div>
  </dialog>,document.body);
 }

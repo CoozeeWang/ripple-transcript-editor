@@ -1,3 +1,5 @@
+import { RecentProjectRecovery, type RecentRecoveryReason } from './RecentProjectRecovery';
+import {assertSharedTagLibraryUnchanged,rejectSharedTagStructure} from '../lib/sharedTagGuard';
 import { createSegmentLinkDelivery, type SegmentLinkReceiver } from '../lib/segmentLinkDelivery';
 import { resolveLinkProject } from '../lib/segmentLinkProject';
 import { parseSegmentLink, type SegmentTarget } from '../lib/segmentTransfer';
@@ -8,6 +10,7 @@ import { ActionIcon } from './ActionIcon';
 import {flushSync} from 'react-dom';
 import { restoreProjectTagTransaction, transactProjectTags } from '../lib/projectTagRepository';
 import {readProjectTagCounts} from '../lib/projectTagRepository';
+import {readProjectTreeOrderPlan} from '../lib/projectTagRepository';
 import {migrateProjectTagStorage} from '../lib/tagMigration';
 import { recordProblem } from '../lib/diagnostics';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
@@ -49,6 +52,11 @@ type Picker = Window & {
   showOpenFilePicker: (options: { multiple: boolean; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
 };
 const NO_IMPORT_NOTES: MaterialImportNote[] = [];
+function recentRecoveryReason(error: unknown): RecentRecoveryReason {
+  const name = (error as {name?:string})?.name;
+  return name === 'NotFoundError' ? 'missing' : name === 'NotAllowedError' || name === 'SecurityError' ? 'permission' : 'unreadable';
+}
+
 export function ProjectWorkspace() {
   const aiConnector = useContext(ConnectorContext);
   useInterfaceLanguage();
@@ -174,25 +182,32 @@ export function ProjectWorkspace() {
     try { await work(); } catch (e) { if ((e as { name?: string }).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectWorkspace.m0901')); }
     finally { busyRef.current = false; setBusy(false); setShowProgress(false); setQuietSaving(false); setImportStage(null); }
   };
-  const projectHasAIWork = () => Boolean(aiConnector?.state.activities?.some(blocksHumanEditing));
+  const projectHasAIWork = () => Boolean(aiConnector?.state.activities?.some(task=>(!task.target||task.target.project_id===current.current?.data.id)&&blocksHumanEditing(task))||current.current?.data.interviews.some(session=>session.recordings.some(recording=>aiConnector?.state.targetLocked('',recording.id,session.id,current.current?.data.id))));
+  const sharedTagMessage=()=>{
+    const held=aiConnector?.state.activities.filter(task=>(!task.target||task.target.project_id===current.current?.data.id)&&blocksHumanEditing(task))??[];
+    const active=held.filter(task=>!['paused','ended','completed','failed'].includes(task.state)&&!['waiting','failed','stopped'].includes(task.requestStatus??''));
+    return msg(active.some(task=>task.target&&task.target.recording_id!==editor?.recording.id)?'tags.sharedAiRestrictionActiveOther':active.length?'tags.sharedAiRestrictionActiveCurrent':'tags.sharedAiRestriction');
+  };
   const openChosenProject = async (directory?: FileSystemDirectoryHandle, expectedId?: string) => {
     if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
     let handle = directory;
-    if (handle && expectedId && nativeDesktopAvailable()) {
-      const status = await nativeAccessStatus(handle);
-      if (status !== 'granted') {
-        setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,reason:status});
-        return false;
-      }
-    }
     handle ??= await chooseDirectory('open-project');
-    await permit(handle, 'readwrite');
     let next: OpenProject;
-    try { next = await openProject(handle); }
+    try {
+      if (directory && expectedId && nativeDesktopAvailable()) {
+        const status = await nativeAccessStatus(handle);
+        if (status !== 'granted') {
+          setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,reason:status});
+          return false;
+        }
+      }
+      await permit(handle, 'readwrite');
+      next = await openProject(handle);
+    }
     catch (error) {
       if (directory && expectedId) {
         setRecentRecovery({id:expectedId,title:recent.find(item=>item.id===expectedId)?.title ?? handle.name,
-          reason:(error as {name?:string})?.name==='NotFoundError'?'missing':'unreadable'});
+          reason:recentRecoveryReason(error)});
         return false;
       }
       throw error;
@@ -338,31 +353,36 @@ export function ProjectWorkspace() {
   };
   if (settings) return <App onReturnToProjects={() => { restoreSettingsFocus.current = true; setSettings(false); }} openSettingsInitially={settings} />;
   if (editor && project) return <App registerSegmentLinkReceiver={registerLinkReceiver} onOpenSegmentLink={openSegmentLink} initialSegmentTarget={linkTarget ?? undefined} initialOriginalModelId={editor.originalModelId} key={`${project.data.id}:${editor.recording.id}:${linkOpenSequence}`} projectDirectory={editor.directory}
-    onUpgradeTagStorage={async()=>{
+    onInspectTagOrder={async()=>{const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');return readProjectTreeOrderPlan(snapshot)}}
+    onUpgradeTagStorage={async options=>{
       if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
       const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
       const backup=await chooseDirectory('save-project');
-      const next=await migrateProjectTagStorage(snapshot,backup,{backupMode:'rollback'});await publish(next);
+      const next=await migrateProjectTagStorage(snapshot,backup,{backupMode:'rollback',...options,assertCanCommit:async()=>{if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'))}});await publish(next);
       const recording=next.data.interviews.flatMap(i=>i.recordings).find(r=>r.id===editor.recording.id);
       if(recording){setEditor({...editor,directory:await recordingDirectory(next,interview!.id,recording)});setLinkOpenSequence(value=>value+1)}
     }}
     tagLibrary={project.data.tagLibrary} tagStorage={{
       projectRevision:project.data.revision,counts:id=>readProjectTagCounts(project,id),
-      requiresMigration:project.data.schemaVersion!==2,
-      projectId:project.data.id,
+      requiresMigration:project.data.schemaVersion!==2||project.data.tagLibrary?.schemaVersion!==4,
+      projectId:project.data.id,structureBlocked:()=>projectHasAIWork()?sharedTagMessage():null,
       publish:publishTags,
       transact:async(version,operation,scope)=>{
-        if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
         const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
-        return await transactProjectTags(snapshot,version,operation,scope);
+        const session=snapshot.data.interviews.find(s=>s.recordings.some(r=>r.id===version.recordingId));
+        const assertTarget=()=>{if(aiConnector?.state.targetLocked(`${version.modelId}:${version.editId}`,version.recordingId,session?.id,snapshot.data.id))throw Error(msg('aiEditing.inUse'));};
+        assertTarget();if(projectHasAIWork()&&(!scope||scope==='project'||scope==='order'))rejectSharedTagStructure(sharedTagMessage());
+        return await transactProjectTags(snapshot,version,(library,consumers,id)=>{assertTarget();const result=operation(library,consumers,id);assertSharedTagLibraryUnchanged(projectHasAIWork(),library,result.library,sharedTagMessage());return result;},scope);
       },
       restore:async(receipt,redo)=>{
-        if(projectHasAIWork())throw Error(msg('ProjectWorkspace.openProjectAI'));
         const snapshot=current.current;if(!snapshot||snapshot.data.id!==project.data.id)throw Error('project_changed');
+        if(projectHasAIWork()&&JSON.stringify(receipt.beforeLibrary)!==JSON.stringify(receipt.afterLibrary))rejectSharedTagStructure(sharedTagMessage());
+        for(const change of receipt.versions){const id=change.id;if(!id){if(projectHasAIWork())rejectSharedTagStructure(sharedTagMessage());continue;}for(const session of snapshot.data.interviews)for(const recording of session.recordings)if(id.startsWith(recording.id+':')&&aiConnector?.state.targetLocked(id.slice(recording.id.length+1),recording.id,session.id,snapshot.data.id))throw Error(msg('aiEditing.inUse'));}
         return await restoreProjectTagTransaction(snapshot,receipt,redo);
       },
     }}
     connectorProject={() => current.current} publishTagProject={async(next,publishVersion)=>{if(current.current?.data.id===next.data.id)publishTags(next,publishVersion)}} projectInterviewId={interview!.id} projectRecordingId={editor.recording.id}
+    originalAudio={interview?.recordings.find(item=>item.id===editor.recording.id) ?? editor.recording}
     projectLabel={project.data.title} interviewTitle={editor.title} recordingLabel={interview?.recordings.find(item=>item.id===editor.recording.id)?.name ?? editor.recording.name}
     onAudioDuration={async seconds => {
       const snapshot = current.current;
@@ -407,13 +427,8 @@ export function ProjectWorkspace() {
       {project?.finderIconWarning && <p role="status" className="settings-hint">{msg('ProjectWorkspace.finderIconWarning')}</p>}
       {project && recentWriteFailure === project.data.id && <RecentProjectsNotice busy={busy}
         onRetry={()=>void run(async()=>{const snapshot=current.current;if(snapshot)await updateRecent(snapshot);},false)} onDismiss={()=>setRecentWriteFailure(null)}/>}
-      {recentRecovery && <div className="project-error-notice recent-project-recovery" role="status">
-        <p>{msg(recentRecovery.reason==='missing'?'ProjectWorkspace.recentMissing':recentRecovery.reason==='permission'?'ProjectWorkspace.recentPermission':'ProjectWorkspace.recentUnreadable',{title:recentRecovery.title})}</p>
-        <div className="recent-project-recovery__actions">
-          <button type="button" className="button button--secondary" disabled={busy} onClick={()=>chooseProject(undefined,recentRecovery.id)}>{msg('ProjectWorkspace.recentRecover')}</button>
-          <button type="button" className="button button--secondary" disabled={busy} onClick={()=>setRecentRecovery(null)}>{msg('ProjectWorkspace.recentDismiss')}</button>
-        </div>
-      </div>}
+      {recentRecovery && <RecentProjectRecovery title={recentRecovery.title} reason={recentRecovery.reason} busy={busy}
+        onRecover={()=>chooseProject(undefined,recentRecovery.id)} onDismiss={()=>setRecentRecovery(null)}/>}
       {error && !welcoming && <div ref={errorNotice} className="project-error-notice" role="alert" aria-atomic="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg>
         <p>{uiMessage(error)}</p><button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={()=>setError('')}>×</button>

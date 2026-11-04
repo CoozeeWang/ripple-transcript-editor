@@ -7,7 +7,7 @@ import { RESTORE_EDIT_POSITION_KEY } from '../lib/editPosition';
 import type { Segment } from '../types';
 const segments: Segment[] = ['a','b'].map((id,index)=>({id,text:'合成阅读段落',speaker_id:'s',start:index,end:index+1}));
 afterEach(()=>{cleanup();localStorage.clear();document.body.replaceChildren();vi.restoreAllMocks();vi.unstubAllGlobals()});
-async function fixture(saved?: ReadingAnchor){
+async function fixture(saved?: ReadingAnchor, intent?: {current:number}){
  localStorage.setItem(RESTORE_EDIT_POSITION_KEY,'1');
  const frames=new Map<number,FrameRequestCallback>();let n=0;vi.stubGlobal('requestAnimationFrame',(f:FrameRequestCallback)=>{frames.set(++n,f);return n});vi.stubGlobal('cancelAnimationFrame',(id:number)=>frames.delete(id));
  const panel=document.createElement('div');panel.innerHTML='<article class="segment" id="segment-a"><p class="rt-para">合成甲</p></article><article class="segment" id="segment-b"><p class="rt-para">合成乙</p></article>';document.body.append(panel);
@@ -19,7 +19,7 @@ async function fixture(saved?: ReadingAnchor){
  panel.scrollTo=vi.fn((o?:ScrollToOptions|number)=>{panel.scrollTop=typeof o==='number'?o:o?.top??0});
  const scope:ReadingScope={directory:{storeIdentity:'synthetic-folder'}as unknown as FileSystemDirectoryHandle,audio:'synthetic.wav',model:'model',version:'v1',project:'project',recording:'recording'};
  if(saved)saveReadingAnchor(await readingKey(scope),saved);
- const ref={current:panel};const hook=renderHook(({target,items,ready,explicit}:{target:ReadingScope;items:Segment[];ready:boolean;explicit:boolean})=>useReadingPosition(target,ref,ready,items,explicit),{initialProps:{target:scope,items:segments,ready:true,explicit:false}});
+ const ref={current:panel};const hook=renderHook(({target,items,ready,explicit}:{target:ReadingScope;items:Segment[];ready:boolean;explicit:boolean})=>useReadingPosition(target,ref,ready,items,explicit,intent),{initialProps:{target:scope,items:segments,ready:true,explicit:false}});
  const frame=async()=>{await act(async()=>{await Promise.resolve()});await act(async()=>{for(const cb of [...frames.values()])cb(0);frames.clear()})};
  return{panel,scope,hook,frame,height:(value:number)=>{height=value}};
 }
@@ -50,4 +50,9 @@ it('normal-close preparation writes the view preference but a cancelled beforeun
  act(()=>f.hook.result.current());expect(readReadingAnchor(await readingKey(f.scope))?.id).toBe('b');
  const cancel=(e:Event)=>e.preventDefault();window.addEventListener('beforeunload',cancel);act(()=>window.dispatchEvent(new Event('beforeunload',{cancelable:true})));window.removeEventListener('beforeunload',cancel);
  f.panel.scrollTop=40;act(()=>f.panel.dispatchEvent(new Event('scroll')));act(()=>f.hook.result.current());expect(readReadingAnchor(await readingKey(f.scope))?.id).toBe('a');
+});
+
+it('does not let a delayed opening restore replace a newer filter reading intent',async()=>{
+ const intent={current:0};const f=await fixture({id:'b',index:1,paragraph:0,offset:0,fraction:0},intent);
+ f.panel.scrollTop=1200;intent.current++;await f.frame();expect(f.panel.scrollTop).toBe(1200);expect(f.panel.scrollTo).not.toHaveBeenCalled();
 });

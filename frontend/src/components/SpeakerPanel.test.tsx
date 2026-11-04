@@ -13,7 +13,7 @@ function Panel({ readonly = false }: { readonly?: boolean }) {
   return <><SpeakerPanel speakers={transcript.speakers} hiddenSpeakerIds={new Set()} viewingOriginal={readonly}
     mergeMenuFor={null} setMergeMenuFor={vi.fn()} mergeMenuRef={{ current: null }} collapsed={false} setCollapsed={vi.fn()}
     mutateTranscript={update} toggleHideSpeaker={vi.fn()} setMergePrompt={vi.fn()} deleteSpeaker={vi.fn()} addSpeaker={vi.fn()}
-    hasEnglishSpeakerTemplate={false} normalizeEnglishSpeakerTemplates={vi.fn()} />
+     />
     <output>{JSON.stringify(transcript)}</output></>;
 }
 test('changing color updates only that speaker and the shared display and export color', () => {

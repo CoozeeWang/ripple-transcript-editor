@@ -4,7 +4,7 @@ import { ACTION_HINT_EVENT, type ActionHintRequest } from '../lib/actionHint';
 import { IS_MAC } from '../lib/format';
 import './tooltips.css';
 
-type Hint = { target: HTMLElement; described: HTMLElement; text: string; kind: 'control' | 'action' };
+type Hint = { target: HTMLElement; described: HTMLElement; text: string; kind: 'control' | 'action'; tone?: 'restriction' };
 const selector = '[data-action-tip],[data-tip]';
 
 /** One window-wide lifecycle for explicit hints, including dialogs and portals. */
@@ -17,7 +17,7 @@ export function TooltipHost() {
         const hide = (suppress = false) => { clear(); if (suppress) session.current.suppressed = true; setHint(null); };
         const reset = () => { hide(); session.current.target = null; session.current.suppressed = false; session.current.overTrigger = false; session.current.overTip = false; session.current.focus = false; session.current.requested = false; };
         const targetFor = (node: EventTarget | null) => node instanceof Element ? node.closest<HTMLElement>(selector) : null;
-        const allowed = (target: HTMLElement) => target.dataset.tooltipDisabled !== 'true' && !!(target.dataset.actionTip || target.dataset.tip);
+        const allowed = (target: HTMLElement) => target.dataset.tooltipDisabled !== 'true' && !target.closest('[data-tag-writing="true"]') && !!(target.dataset.actionTip || target.dataset.tip);
         const choose = (target: HTMLElement) => {
             if (session.current.target !== target) { clear(); session.current.target = target; session.current.suppressed = false; session.current.overTip = false; session.current.focus = false; session.current.requested = false; setHint(null); }
         };
@@ -25,7 +25,7 @@ export function TooltipHost() {
             const s = session.current, target = s.target;
             if (!target?.isConnected || !allowed(target) || s.suppressed || s.modifier || (!s.overTrigger && !s.focus)) return;
             const described = s.focus && document.activeElement instanceof HTMLElement && target.contains(document.activeElement) ? document.activeElement : target;
-            setHint({ target, described, text: target.dataset.actionTip || target.dataset.tip!, kind: target.dataset.actionTip ? 'action' : 'control' });
+            setHint({ target, described, text: target.dataset.actionTip || target.dataset.tip!, kind: target.dataset.actionTip ? 'action' : 'control', tone: target.dataset.tipTone === 'restriction' ? 'restriction' : undefined });
         };
         const arm = (keyboard = false) => {
             clearTimeout(timer);
@@ -76,7 +76,7 @@ export function TooltipHost() {
             const request = (event as CustomEvent<ActionHintRequest>).detail;
             if (!request?.target?.isConnected || !request.text) return;
             choose(request.target); clear(); session.current.requested = true; session.current.overTrigger = true; session.current.suppressed = true;
-            setHint({ target: request.target, described: request.target, text: request.text, kind: 'action' });
+            setHint({ target: request.target, described: request.target, text: request.text, kind: 'action', tone: request.tone });
         };
         document.addEventListener(ACTION_HINT_EVENT, requestedHint);
         const dismiss = () => hide(true);
@@ -118,8 +118,10 @@ export function TooltipHost() {
             element.style.top = `${Math.max(edge, Math.min(top, innerHeight - edge - b.height))}px`;
             element.dataset.placement = placement; element.style.visibility = 'visible';
         };
-        const detached = new MutationObserver(() => { if (!hint.target.isConnected || hint.target.dataset.tooltipDisabled === 'true') setHint(null); });
+        const detached = new MutationObserver(() => { if (!hint.target.isConnected || hint.target.dataset.tooltipDisabled === 'true' || hint.target.closest('[data-tag-writing="true"]')) setHint(null); });
         detached.observe(document.body, { childList: true, subtree: true }); detached.observe(hint.target, { attributes: true, attributeFilter: ['data-tooltip-disabled'] });
+        const writingRegion=hint.target.closest('[data-tag-writing]');
+        if(writingRegion)detached.observe(writingRegion,{attributes:true,attributeFilter:['data-tag-writing']});
         position(); const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(position); observer?.observe(hint.target); observer?.observe(element);
         return () => {
             observer?.disconnect(); detached.disconnect();
@@ -128,5 +130,5 @@ export function TooltipHost() {
     }, [hint, id]);
     if (!hint?.target.isConnected) return null;
     const container = hint.target.closest('dialog[open]') ?? document.body;
-    return createPortal(<div ref={popup} id={id} role="tooltip" popover="manual" data-shared-tooltip className={`ripple-tooltip ripple-tooltip--${hint.kind}`} style={{ visibility: 'hidden' }}>{hint.text}</div>, container);
+    return createPortal(<div ref={popup} id={id} role="tooltip" popover="manual" data-shared-tooltip className={`ripple-tooltip ripple-tooltip--${hint.kind}${hint.tone ? ` ripple-tooltip--${hint.tone}` : ''}`} style={{ visibility: 'hidden' }}>{hint.text}</div>, container);
 }

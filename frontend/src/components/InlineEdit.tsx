@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 export interface InlineEditProps {
   value: string;
+  validate?: (value: string) => string | undefined;
   doubleClick?: boolean;
   disabled?: boolean;
   onCommit: (next: string) => void;
@@ -19,6 +20,7 @@ export interface InlineEditProps {
 
 export function InlineEdit({
   value,
+  validate,
   doubleClick = false,
   disabled = false,
   onCommit,
@@ -32,6 +34,7 @@ export function InlineEdit({
   useInterfaceLanguage();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const [validationError, setValidationError] = useState('');
   const [dateError,setDateError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -52,11 +55,14 @@ export function InlineEdit({
   const startEdit = () => {
     if (disabled) return;
     setDraft(value);
+    setValidationError('');
     setDateError(false);
     setEditing(true);
   };
   const commitValue = (next: string) => {
     if((inputType==="datetime-local" || inputType==="date") && !validDateTime(next)){setDateError(true);return;}
+    const error = validate?.(next);
+    if (error) { setValidationError(error); return; }
     setEditing(false);
     if (next !== value) onCommit(next);
   };
@@ -68,11 +74,11 @@ export function InlineEdit({
 
   useEffect(() => {
     const isDirty = () => editing && draft !== value && ((inputType!=="datetime-local" && inputType!=="date") || validDateTime(draft));
-    const flush = () => { if (isDirty()) onCommit(draft); };
+    const flush = () => { if (isDirty()) { const error=validate?.(draft); if(error){setValidationError(error);return;} onCommit(draft); } };
     const unregister = registerEditorDraft(isDirty);
     window.addEventListener("te:flush-drafts", flush);
     return () => { unregister(); window.removeEventListener("te:flush-drafts", flush); };
-  }, [editing, draft, value, onCommit, inputType]);
+  }, [editing, draft, value, onCommit, inputType, validate]);
 
   if (editing) {
     if((inputType==="datetime-local" || inputType==="date"))return <span className="inline-date-edit">
@@ -88,7 +94,7 @@ export function InlineEdit({
           aria-label={ariaLabel}
           value={draft}
           rows={3}
-          onChange={(event) => { setDraft(event.target.value); window.dispatchEvent(new Event("te:draft-dirty")); }}
+          onChange={(event) => { setValidationError(''); setDraft(event.target.value); window.dispatchEvent(new Event("te:draft-dirty")); }}
           onBlur={commit}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -102,13 +108,14 @@ export function InlineEdit({
       );
     }
     return (
-      <input
+      <span className="inline-name-editor"><input
         ref={inputRef}
         className="inline-edit__input"
         type={inputType}
         aria-label={ariaLabel}
+        aria-invalid={!!validationError}
         value={draft}
-        onChange={(event) => { setDraft(event.target.value); window.dispatchEvent(new Event("te:draft-dirty")); }}
+        onChange={(event) => { setValidationError(''); setDraft(event.target.value); window.dispatchEvent(new Event("te:draft-dirty")); }}
         onBlur={commit}
         onKeyDown={(event) => {
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -121,7 +128,7 @@ export function InlineEdit({
           }
           event.stopPropagation();
         }}
-      />
+      />{validationError && <span className="form-error" role="alert">{validationError}</span>}</span>
     );
   }
 
