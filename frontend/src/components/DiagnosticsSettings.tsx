@@ -1,7 +1,8 @@
+import {RefreshIcon} from './RefreshIcon';
 import { msg, useInterfaceLanguage, interfaceLanguage } from '../i18n';
 import { useEffect, useState } from "react";
 import { diagnosticEnvironment, diagnosticsPersistent, DIAGNOSTICS_EVENT, operations, reasons,
-  problemSummary, readProblems, type Problem } from "../lib/diagnostics";
+  diagnosticTime, problemSummary, readProblems, type Problem } from "../lib/diagnostics";
 import { CopyProblem } from "./CopyProblem";
 import { readTranscriptionTimings, TRANSCRIPTION_TIMINGS_EVENT } from "../lib/transcriptionTimings";
 import { DiagnosticCopyIcon } from "./DiagnosticCopyIcon";
@@ -89,17 +90,17 @@ export function DiagnosticsSettings() {
       <div className="diagnostic-actions">
         <button type="button" className="cred-btn diagnostic-refresh" aria-label={msg('DiagnosticsSettings.m0423')} data-tip={msg('DiagnosticsSettings.m0424')} disabled={loading} onClick={() => {
           setLocal(readProblems()); setTranscriptionTimings(readTranscriptionTimings()); setLoading(true); setRefresh(n => n + 1);
-        }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5" /><path d="M20 12a8 8 0 1 0-2.3 5.7M20 7v5" /></svg></button>
+        }}><RefreshIcon/></button>
       </div>
       </div>
       {serviceState && <p className="settings-hint" role="status">{serviceState}</p>}
       {!diagnosticsPersistent() && <p className="form-error">{msg('DiagnosticsSettings.m0425')}</p>}
       {!records.length && <p className="settings-hint diagnostic-empty">{loading ? msg('DiagnosticsSettings.m0426') : msg('DiagnosticsSettings.m0427')}</p>}
       {!!records.length && <ul className="diagnostic-list diagnostic-problems">{records.map(p => <li key={`${p.source}:${p.id}`}>
-        <div className="diagnostic-problem-info"><p>{p.title}</p><small>{new Date(p.time).toLocaleString(interfaceLanguage())} · {p.source}{p.local && p.local.count > 1 ? msg('DiagnosticsSettings.m0428', { v0: p.local.count }) : ""}</small></div>
+        <div className="diagnostic-problem-info"><p>{p.title}</p><small>{diagnosticTime(p.time)} · {p.source}{p.local && p.local.count > 1 ? msg('DiagnosticsSettings.m0428', { v0: p.local.count }) : ""}</small></div>
         {p.local ? <CopyProblem problem={p.local} iconOnly /> : <button type="button" className="cred-btn diagnostic-icon" aria-label={msg('DiagnosticsSettings.m0429')} data-tip={msg('DiagnosticsSettings.m0430')} onClick={async () => {
           setNotice(''); setSuccess('');
-          try { await navigator.clipboard.writeText(msg('DiagnosticsSettings.m0431', { v0: diagnosticEnvironment().version, v1: p.id, v2: p.time, v3: p.title, v4: p.status })); setSuccess(msg('CopyProblem.m0381')); }
+          try { await navigator.clipboard.writeText(msg('DiagnosticsSettings.m0431', { v0: diagnosticEnvironment().version, v1: p.id, v2: diagnosticTime(p.time), v3: p.title, v4: p.status })); setSuccess(msg('CopyProblem.m0381')); }
           catch { setNotice(msg('DiagnosticsSettings.m0432')); }
         }}><DiagnosticCopyIcon /></button>}
       </li>)}</ul>}

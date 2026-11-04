@@ -1,3 +1,5 @@
+import {audioIdentity} from './lib/audioIdentity';
+import {readLegacyPreparation,type LegacyAudioPreparation} from './lib/legacyAudioPreparation';
 import { importedManuscriptName } from './lib/transcriptLabels';
 import {hydrateTagDocument, writeTagDocument,isTagStorageFile,hasTagStorage,rewriteTagDocuments} from './lib/tagSidecar';
 import {readTagFile} from './lib/tagFileTransaction';
@@ -346,9 +348,6 @@ async function audioFingerprint(dir: FileSystemDirectoryHandle, name: string): P
   const fileHandle = await (dir as unknown as {
     getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File>; getPlaybackUrl?: () => Promise<string> }>;
   }).getFileHandle(name);
-  // Raw AAC still needs the existing ADTS-to-M4A adapter. Other native media
-  // is streamed by the authorized asset protocol instead of copied into JS.
-  if (fileHandle.getPlaybackUrl && !/\.aac$/i.test(name)) return fileHandle.getPlaybackUrl();
   const file = await fileHandle.getFile();
   const head = await file.slice(0, 65536).arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", head);
@@ -637,10 +636,13 @@ export async function listAudioFiles(dir: FileSystemDirectoryHandle): Promise<Au
 /** 给播放器用的地址；保存和转录继续使用原文件句柄。 */
 export async function readAudioUrl(dir: FileSystemDirectoryHandle, name: string): Promise<string> {
   const fileHandle = await (dir as unknown as {
-    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
+    getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File>; getPlaybackUrl?: () => Promise<string> }>;
   }).getFileHandle(name);
+  // Preserve the established Blob playback path in the native WebKit window too.
+  // getFile retains project authorization and fingerprint checks; asset URLs are
+  // not a validated replacement for media playback on all desktop engines.
   const file = await fileHandle.getFile();
-  return URL.createObjectURL(await prepareAudioForPlayback(file, name));
+  return URL.createObjectURL(await prepareAudioForPlayback(file, file.name || name));
 }
 
 /**
@@ -1068,6 +1070,7 @@ async function createModelUnlocked(
   name: string,
   params: {
     engine: string;
+    preparationId?: string;
     label?: string;
     transcript: Transcript;
     original?: Transcript;
@@ -1094,6 +1097,12 @@ async function createModelUnlocked(
     models: [] as TranscriptModel[],
     activeModelId: "",
   };
+  const prior=params.preparationId?existing.models.find(m=>m.preparationId===params.preparationId):undefined;
+  if(prior){
+    const saved=await readModelOriginalUnlocked(dir,name,prior.id);
+    if(!saved)throw Error(msg('audioRecovery.retained'));
+    return {model:prior,manifest:existing,edited:{kind:'te-edited',audio:name,metadata:{...defaultMetadata(stem),...params.metadata,...existing.interviewDetails,title:existing.title??params.metadata?.title??stem},transcript:saved.transcript}};
+  }
   const id = nextModelId(existing);
   const createdAt = new Date().toISOString();
 
@@ -1124,6 +1133,7 @@ async function createModelUnlocked(
   const model: TranscriptModel = {
     id,
     engine: params.engine,
+    ...(params.preparationId?{preparationId:params.preparationId}:{}),
     sourceKind: params.sourceKind ?? "transcription",
     ...((params.originalGroupId || params.designatedOriginal || (params.original && params.sourceKind !== 'import'))
       ? { originalGroupId:params.originalGroupId ?? crypto.randomUUID() } : {}),
@@ -1691,6 +1701,7 @@ async function readTranscriptionMarker(dir: FileSystemDirectoryHandle, name: str
 }
 export async function acknowledgeTranscription(dir: FileSystemDirectoryHandle, name: string) {
   const marker = await readTranscriptionMarker(dir, name);
+  if(!marker)return; // Acknowledgment is repeatable after a partial cleanup.
   // The transcript has already been saved. Removing the marker prevents a duplicate local version.
   await dir.removeEntry(transcriptionMarker(name));
   if (marker) await fetch(`/api/transcribe/jobs/${encodeURIComponent(marker.jobId)}`, {method:"DELETE"}).catch(() => {});
@@ -1703,7 +1714,7 @@ async function waitForTranscription(jobId: string, hooks?: {signal?: AbortSignal
     try { response = await fetch(`/api/transcribe/jobs/${encodeURIComponent(jobId)}`, {signal: hooks?.signal ? AbortSignal.any([hooks.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000)}); }
     catch { throw new TranscriptionError(hooks?.signal?.aborted ? msg('localStore.m1532') : msg('localStore.m1533'), hooks?.signal?.aborted ? "aborted" : "backend_unreachable"); }
     if (response.status === 404) throw new TranscriptionError(msg('localStore.m1534'), "job_expired");
-    if (!response.ok) throw failureForStatus(response.status, await response.json());
+    if (!response.ok) throw failureForStatus(response.status, await response.json().catch(()=>null));
     const state = await response.json();
     if (state.state === "completed") return state.transcript as Transcript;
     if (state.state === "failed") throw failureForStatus(state.status, {detail:state.detail});
@@ -1725,8 +1736,28 @@ export async function transcribeAudio(
     signal?: AbortSignal;
     onProgress?: (phase: TranscriptionPhase, ratio?: number) => void;
     providerId?: string;
+    legacyPreparation?: LegacyAudioPreparation;
   },
 ): Promise<Transcript> {
+  // Recovery of old conversion jobs is strictly GET-only. Never fall back to new submission.
+  const legacy=await readLegacyPreparation(dir,name);
+  if(legacy){
+    const refuse=()=>new TranscriptionError(msg('audioRecovery.retained'),'recovery_required');
+    if(legacy.provider!==hooks?.providerId||legacy.state==='preparing')throw refuse();
+    const manifest=await readManifest(dir,name),prior=manifest?.models.find(m=>m.preparationId===legacy.file);
+    if(prior){const saved=await readModelOriginal(dir,name,prior.id);if(!saved)throw refuse();return saved.transcript}
+    if(legacy.state==='saved'||!legacy.configuration)throw refuse();
+    const marker=await readTranscriptionMarker(dir,name);
+    const expected=JSON.stringify(['strict-audio',legacy.sourceIdentity,legacy.identity,legacy.configuration.profileId,legacy.provider,legacy.configuration.options]);
+    if(!marker||marker.signature!==expected)throw refuse();
+    const source=await(await dir.getFileHandle(name)).getFile();
+    const sourceId=await audioIdentity(source);
+    if(sourceId!==legacy.sourceIdentity&&sourceId!==legacy.identity)throw refuse();
+    const work=await(await dir.getFileHandle(legacy.file)).getFile();
+    if(await audioIdentity(work)!==legacy.identity)throw refuse();
+    return waitForTranscription(marker.jobId,hooks);
+  }
+  if(hooks?.legacyPreparation)throw new TranscriptionError(msg('audioRecovery.retained'),'recovery_required');
   const file = await (await (dir as unknown as {
     getFileHandle: (n: string) => Promise<{ getFile: () => Promise<File> }>;
   }).getFileHandle(name)).getFile();
@@ -1734,6 +1765,7 @@ export async function transcribeAudio(
   const signature = JSON.stringify([file.size, file.lastModified, hooks?.providerId, options]);
   const previous = await readTranscriptionMarker(dir, name);
   if (previous) {
+    try{if(JSON.parse(previous.signature)[0]==='strict-audio')throw new TranscriptionError(msg('audioRecovery.retained'),'recovery_required')}catch(error){if(error instanceof TranscriptionError)throw error}
     if (previous.signature !== signature) {
       if (!window.confirm(msg('localStore.m1535'))) throw new TranscriptionError(msg('localStore.m1536'), "aborted");
     } else {
@@ -1750,7 +1782,7 @@ export async function transcribeAudio(
   await writeJson(dir, transcriptionMarker(name), {jobId, signature});
   hooks?.onProgress?.("uploading", 0);
   const formData = new FormData();
-  formData.append("file", file, name);
+  formData.append("file", file, file.name || name);
   formData.append("job_id", jobId);
   formData.append("background", "true");
   formData.append(
@@ -2105,7 +2137,8 @@ export function saveConnectorVersion(dir: FileSystemDirectoryHandle, audio: stri
       : await readModelEditUnlocked(dir, audio, model.id, options.version.edit_id);
     if (!data) throw Error('target_version_unavailable');
     if (!options.allowRebase && JSON.stringify(data.transcript) !== JSON.stringify(options.baseline)) throw Error('source_changed_read_current_again');
-    const transcript = options.update(data.transcript);
+    const updatedTranscript = options.update(data.transcript);
+    const transcript = options.name ? updatedTranscript : stampContinuationReceipt(updatedTranscript,options.version.id);
     await options.check();
     if (!options.name && transcript === data.transcript) return { version: options.version, transcript };
     if (options.name) {
@@ -2224,4 +2257,10 @@ export async function ensureVersionLinkIdentity(dir: FileSystemDirectoryHandle, 
   await writeFileJson(container,MANIFEST_NAME,{...manifest,models});
   return identity;
  });
+}
+
+/** Read-only status for concise recovery UI; never submits an audio request. */
+export async function transcriptionRecoveryState(dir:FileSystemDirectoryHandle,audio:string):Promise<'none'|'running'|'completed'|'failed'|'unknown'>{
+ const marker=await readTranscriptionMarker(dir,audio);if(!marker)return 'none';
+ try{const r=await fetch(`/api/transcribe/jobs/${encodeURIComponent(marker.jobId)}`,{signal:AbortSignal.timeout(5000)});if(!r.ok)return 'unknown';const d=await r.json();return ['running','completed','failed'].includes(d.state)?d.state:'unknown'}catch{return 'unknown'}
 }

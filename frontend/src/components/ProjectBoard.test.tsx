@@ -417,8 +417,9 @@ it.each(['zh-CN','zh-TW','en'] as const)('shows persistent duration beneath audi
  try {
   const ui=render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
   await waitFor(()=>expect(ui.container.querySelectorAll('.setup-audio-duration')).toHaveLength(3));
-  expect([...ui.container.querySelectorAll('.setup-audio-duration')].map(node=>node.textContent?.trim())).toEqual(['01:05:24','--:--:--','--:--:--']);
+  expect([...ui.container.querySelectorAll('.setup-audio-duration')].map(node=>node.firstElementChild?.textContent?.trim())).toEqual(['01:05:24','--:--:--','--:--:--']);
   expect(ui.container.querySelector('.setup-audio-name strong + small')).toBeTruthy();
+  expect([...ui.container.querySelectorAll('.original-audio-info')].map(node=>node.textContent)).toEqual(Array(3).fill('M4A · <0.01 MB'));
  } finally {await setInterfaceLanguage('zh-CN');}
 });
 
@@ -461,4 +462,63 @@ it.each(['zh-CN','zh-TW','en'] as const)('shows each original with flat related 
  fireEvent.keyDown(group.querySelector('[data-root-version-id="a:original"] .setup-grip')!,{key:'ArrowUp',altKey:true});
  expect(save.mock.calls.at(-1)?.[0][0].recordings[0].manuscriptOrder).toEqual(['a','ac','as','b','u']);
  cleanup();await setInterfaceLanguage('zh-CN');
+});
+
+// Session details and recordings have independent scroll owners; focus can enter the list.
+it.each([0,12])('keeps session details outside the focusable audio scroll region (%s recordings)',async count=>{
+ const recordings=Array.from({length:count},(_,i)=>({id:'r'+i,file:'sample'+i+'.wav',name:'Synthetic audio '+i,storage:'copy'}));
+ vi.mocked(local.readManifest).mockResolvedValue(null);
+ const project={data:{id:'synthetic-scroll',interviews:[{id:'s',title:'Synthetic session',recordings}]}} as OpenProject;
+ renderBoard(project);const info=document.querySelector('.setup-session-info')!,list=document.querySelector<HTMLElement>('.setup-recordings-scroll')!;
+ expect(info.parentElement).toBe(list.parentElement);expect(list.contains(info)).toBe(false);expect(list.tabIndex).toBe(0);expect(list.getAttribute('role')).toBe('region');
+ expect(list.querySelectorAll('.setup-audio')).toHaveLength(count);list.focus();expect(document.activeElement).toBe(list);
+});
+
+it('hides original file facts when media becomes unavailable and refreshes facts after relinking',async()=>{
+ const store=await import('../lib/projectStore');
+ vi.mocked(local.readManifest).mockResolvedValue(null);
+ vi.mocked(store.checkProjectMedia).mockRejectedValueOnce(new DOMException('Synthetic missing media','NotFoundError')).mockResolvedValue(undefined);
+ const recording={id:'audio-info',name:'Synthetic display name',file:'synthetic.aac',storage:'copy',fingerprint:`12345678:${'a'.repeat(64)}`};
+ const project={data:{id:'synthetic-info-project',interviews:[{id:'s',title:'Synthetic session',recordings:[recording]}]}} as OpenProject;
+ const props={project,selected:'s',busy:false,select:vi.fn(),save:vi.fn(),add:vi.fn(),importDocuments:async()=>{},createSession:async()=>{},open:vi.fn(),run:async(work:()=>Promise<void>)=>{await work();},legacy:vi.fn(),relink:vi.fn(),associate:vi.fn()};
+ const h=render(<ProjectBoard {...props} mediaRevision={0}/>);
+ await waitFor(()=>expect(h.container.querySelector('.settings-hint')).toBeTruthy());
+ expect(h.container.querySelector('.original-audio-info')).toBeNull();
+ const next={...project,data:{...project.data,interviews:[{...project.data.interviews[0],recordings:[{...recording,file:'synthetic.wav',fingerprint:`50000000:${'b'.repeat(64)}`}]}]}} as OpenProject;
+ h.rerender(<ProjectBoard {...props} project={next} mediaRevision={1}/>);
+ await waitFor(()=>expect(h.container.querySelector('.original-audio-info')?.textContent).toBe('WAV · 50.00 MB'));
+ expect(store.checkProjectMedia).toHaveBeenCalledTimes(2);
+});
+
+ it('puts AI status beside the exact target version in the project list, without a top notice',async()=>{
+ const {ConnectorContext}=await import('../hooks/connectorContext');
+ const model={id:'m',label:'Synthetic',engine:'test',sourceKind:'import',edits:[{id:'e1',label:'Synthetic one'},{id:'e2',label:'Synthetic two'}],activeEditId:'e1'} as TranscriptModel;
+ vi.mocked(local.readManifest).mockResolvedValue({models:[model]} as never);
+ const project={data:{id:'p',interviews:[{id:'i',title:'Synthetic session',recordings:[{id:'a',file:'a.wav',name:'Synthetic A',storage:'copy'},{id:'b',file:'b.wav',name:'Synthetic B',storage:'copy'}]}]}} as OpenProject;
+ const task={task_id:'synthetic-task',client:'chatgpt',key:'key',version:'Synthetic two',version_id:'m:e2',target:{project_id:'p',interview_id:'i',recording_id:'a'},kind:'incremental',state:'processing',requestId:'request',requestStatus:'editing',processed:0,saved:0,total:100,inFlight:0,touched:0};
+ const state={activities:[task]};
+ const view=()=> <ConnectorContext.Provider value={{state:state as never,register:vi.fn(),unregister:vi.fn()}}><ProjectBoard project={project} selected="i" busy={false} select={()=>{}} save={()=>{}} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work()}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/></ConnectorContext.Provider>;
+ const ui=render(view());await screen.findAllByRole('button',{name:'打开 转录稿 Synthetic two'});
+ const badges=ui.container.querySelectorAll('.ai-editing-badge');expect(badges).toHaveLength(1);expect(badges[0].closest('[data-version-id]')?.getAttribute('data-version-id')).toBe('m:e2');expect(badges[0].textContent).toBe('AI 编辑中');expect(ui.container.querySelector('.ai-editing-region')).toBeNull();
+ state.activities=[{...task,state:'completed',requestStatus:'completed',requestComplete:true} as typeof task];ui.rerender(view());expect(ui.container.querySelector('.ai-editing-badge')).toBeNull();
+ });
+
+it.each(['zh-CN','zh-TW','en'] as const)('keeps conflicting title drafts editable without saving (%s)',async language=>{
+ await setInterfaceLanguage(language);
+ try {
+  vi.mocked(local.readManifest).mockResolvedValue(null);
+  const sessions=[{id:'s',title:'Synthetic session',recordings:[{id:'a',name:'One.wav',file:'a.wav',storage:'copy' as const},{id:'b',name:'Two.wav',file:'b.wav',storage:'copy' as const}]},{id:'other',title:'Other session',recordings:[]}];
+  const project={data:{id:'p',interviews:sessions}} as OpenProject,save=vi.fn();
+  render(<ProjectBoard project={project} selected="s" busy={false} select={()=>{}} save={save} add={()=>{}} importDocuments={async()=>{}} createSession={async()=>{}} open={()=>{}} run={async work=>{await work();}} legacy={()=>{}} relink={()=>{}} associate={()=>{}}/>);
+  const heading=document.querySelector('.project-session-heading .inline-edit')!;
+  fireEvent.doubleClick(heading);
+  const input=document.querySelector<HTMLInputElement>('.project-session-heading input')!;
+  fireEvent.change(input,{target:{value:' Other session '}});fireEvent.keyDown(input,{key:'Enter'});
+  expect(input.isConnected).toBe(true);expect(input.value).toBe(' Other session ');expect(screen.getByRole('alert').textContent).toBe(msg('projectStore.sessionNameConflict',{name:'Other session'}));expect(save).not.toHaveBeenCalled();
+  fireEvent.keyDown(input,{key:'Escape'});
+  fireEvent.click(screen.getByRole('button',{name:msg('ProjectBoard.m0663',{v0:'One.wav'})}));
+  const audio=document.querySelector<HTMLInputElement>('.project-file-name-edit')!;
+  fireEvent.change(audio,{target:{value:'Two.wav'}});fireEvent.keyDown(audio,{key:'Enter'});
+  expect(audio.isConnected).toBe(true);expect(screen.getByRole('alert').textContent).toBe(msg('projectStore.audioNameConflict',{name:'Two.wav'}));expect(save).not.toHaveBeenCalled();
+ } finally {await setInterfaceLanguage('zh-CN');}
 });

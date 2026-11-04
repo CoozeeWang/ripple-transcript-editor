@@ -215,28 +215,13 @@ it('does not export invented zero timestamps for untimed manuscripts',()=>{
  expect(buildJsonPayload(t,undefined).timeAligned).toBe(false);
 });
 
-describe('subtitle export', () => {
-  const t: Transcript = { audio: { filename: '访谈.wav', duration: 70 }, speakers: [], segments: [{ id: 'a', speaker_id: '', start: 59.9996, end: 65.25, text: '第一句\n第二句' }] };
-  it('uses millisecond timestamps with carry and the correct subtitle headers', async () => {
-    const { renderSubtitles } = await import('./export');
-    expect(renderSubtitles(t, 'srt')).toBe('1\n00:01:00,000 --> 00:01:05,250\n第一句\n第二句\n');
-    expect(renderSubtitles(t, 'vtt')).toContain('WEBVTT\n\n1\n00:01:00.000 --> 00:01:05.250');
-  });
-  it('rejects untimed imports and invalid durations rather than inventing timing', async () => {
-    const { renderSubtitles, canExportSubtitles } = await import('./export');
-    expect(() => renderSubtitles({ ...t, timeAligned: false }, 'srt')).toThrow('没有有效时间戳');
-    expect(canExportSubtitles({ ...t, segments: [{ ...t.segments[0], end: 0 }] })).toBe(false);
-    expect(canExportSubtitles({ ...t, segments: [] })).toBe(false);
-  });
-});
-
 it('uses locale punctuation in format labels while keeping export format IDs stable',async()=>{
  const chinese=exportFormats();
  await setInterfaceLanguage('en');
  try {
   const english=exportFormats();
   expect(english.map(item=>item[1])).toEqual(chinese.map(item=>item[1]));
-  expect(english.filter(item=>['docx','json','md'].includes(item[1])).map(item=>item[0])).toEqual(['Word (.docx)','JSON (.json)','Markdown (.md)']);
+  expect(english.filter(item=>['docx','json','md'].includes(item[1])).map(item=>item[0])).toEqual(['Word','JSON','Markdown']);
  } finally { await setInterfaceLanguage('zh-CN'); }
 });
 

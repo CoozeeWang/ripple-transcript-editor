@@ -1,8 +1,9 @@
+import {readLegacyPreparation} from '../lib/legacyAudioPreparation';
 import { msg } from '../i18n';
 import { serviceText } from '../i18n/serviceText';
 import { formatPlaybackTime } from '../lib/format';
 import { startTranscriptionTiming } from "../lib/transcriptionTimings";
-import { recordProblem } from "../lib/diagnostics";
+import { recordProblem, type Problem } from "../lib/diagnostics";
 import { useLayoutEffect, useEffect, useRef, useState } from "react";
 import type {
   InterviewMetadata,
@@ -95,6 +96,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
   const [transcribeRatio, setTranscribeRatio] = useState<number | null>(0);
   const [transcribeElapsed, setTranscribeElapsed] = useState(0);
   const [transcribeHint, setTranscribeHint] = useState("");
+  const [transcribeProblem,setTranscribeProblem]=useState<Problem|undefined>(undefined);
   const [transcribeRaw, setTranscribeRaw] = useState("");
   const [transcribeJob, setTranscribeJob] = useState<TranscribeJob | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -146,6 +148,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
     setTranscribeRatio(0);
     setTranscribeElapsed(0);
     setTranscribeHint("");
+    setTranscribeProblem(undefined);
     setTranscribeRaw("");
     deps.setActiveProviderName(engineLabel);
     deps.setProcessMessage(msg('useTranscription.m1170'));
@@ -164,7 +167,10 @@ export function useTranscription(deps: UseTranscriptionDeps) {
       await deps.beforeChange?.();
       const initialMetadata = latest.current.initialMetadata;
       const initialSpeakers = latest.current.initialSpeakers;
-      const transcript = await transcribeAudio(dir, audioName, options, {
+      const pending=await readLegacyPreparation(dir,audioName);
+      setTranscribePhase('uploading');
+      const received = await transcribeAudio(dir, audioName, options, {
+        legacyPreparation:pending ?? undefined,
         signal: controller.signal,
         providerId,
         onProgress: (phase, ratio) => {
@@ -173,6 +179,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
           setTranscribeRatio(ratio ?? null);
         },
       });
+      const transcript={...received,audio:{...received.audio,filename:audioName}};
       if (controller.signal.aborted) throw new TranscriptionError(msg('useTranscription.m1171'), "aborted");
       if (!transcript.segments || transcript.segments.length === 0) {
         // 识别成功但一个片段都没有：多半是音频无声或格式被静音处理，
@@ -188,6 +195,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
       setTranscribePhase("saving");
       const { model, manifest, edited } = await createModel(dir, audioName, {
         engine: engineLabel,
+        preparationId:pending?.file,
         transcript,
         original: transcript,
         originalOnly: true,
@@ -195,7 +203,8 @@ export function useTranscription(deps: UseTranscriptionDeps) {
         sharedSpeakers: initialSpeakers,
       });
       saved = true;
-      await acknowledgeTranscription(dir, audioName).catch(() => {});
+      // Legacy journals/work copies stay intact; recovery never creates another cloud task.
+      if(!pending)await acknowledgeTranscription(dir, audioName).catch(() => {});
       if (!isCurrent()) {
         // 用户已经切走（换了文件或换了版本）。稿子已经写进磁盘，但绝不能拿它去覆盖
         // 他正在看的内容；只刷新文件列表，并留一句话告诉他成果在哪。
@@ -220,9 +229,12 @@ export function useTranscription(deps: UseTranscriptionDeps) {
       setTranscriptionDialogOpen(false);
 
       await deps.refreshAudioList(dir);
-    } catch (error) {
+    } catch (caught) {
+      const error=caught;
       const failure =
-        error instanceof TranscriptionError
+        controller.signal.aborted
+          ? new TranscriptionError(msg('useTranscription.m1171'),'aborted')
+          : error instanceof TranscriptionError
           ? error
           : new TranscriptionError(
               error instanceof Error ? error.message : msg('useTranscription.m1176'),
@@ -231,7 +243,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
       // 用户自己取消不算出错，用中性样式显示，不染成红色。
       const cancelled = failure.code === "aborted";
       wasCancelled = cancelled;
-      if (!cancelled) recordProblem("transcription", failure);
+      setTranscribeProblem(cancelled ? undefined : recordProblem("transcription", failure));
       if (!isCurrent()) {
         // 切走之后才失败/取消的：调用方早已不在界面上，别再往它那儿抛，
         // 只在当前这一屏留一句交代，说明刚才那个任务怎么了。
@@ -270,6 +282,7 @@ export function useTranscription(deps: UseTranscriptionDeps) {
     transcribeElapsed,
     transcribeHint,
     transcribeRaw,
+    transcribeProblem,
     startTranscription,
     cancelTranscription,
   };

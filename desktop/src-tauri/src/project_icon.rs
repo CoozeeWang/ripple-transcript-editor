@@ -4,7 +4,7 @@ pub fn validate_project(path: &Path) -> Result<(), String> {
     if !path.is_dir() || path.extension().and_then(|s|s.to_str()) != Some("ripple") { return Err("invalid_project_icon_target".into()); }
     let raw = fs::read(path.join("ripple-project.json")).map_err(|_|"invalid_project_icon_target")?;
     let data: serde_json::Value = serde_json::from_slice(&raw).map_err(|_|"invalid_project_icon_target")?;
-    if data["kind"] != "ripple-project" || data["schemaVersion"] != 1 || !data["id"].is_string() { return Err("invalid_project_icon_target".into()); }
+    if data["kind"] != "ripple-project" || !matches!(data["schemaVersion"].as_u64(), Some(1 | 2)) || !data["id"].is_string() { return Err("invalid_project_icon_target".into()); }
     Ok(())
 }
 #[cfg(target_os = "macos")]
@@ -34,10 +34,21 @@ mod tests {
         fs::write(tmp.path().join("synthetic.ripple/ripple-project.json"),b"broken").unwrap();
         assert!(validate_project(&tmp.path().join("synthetic.ripple")).is_err());
     }
+    #[test]
+    fn accepts_supported_versions_and_rejects_unknown_versions_without_writing() {
+        let tmp=fixture(); let folder=tmp.path().join("synthetic.ripple");
+        for version in [1, 2, 0, 3] {
+            let bytes=serde_json::to_vec(&serde_json::json!({"kind":"ripple-project","schemaVersion":version,"id":"synthetic"})).unwrap();
+            fs::write(folder.join("ripple-project.json"), &bytes).unwrap();
+            assert_eq!(validate_project(&folder).is_ok(), version == 1 || version == 2);
+            assert_eq!(fs::read(folder.join("ripple-project.json")).unwrap(), bytes);
+        }
+    }
     #[cfg(target_os = "macos")]
     #[test]
     fn sets_a_finder_custom_icon_without_changing_the_project_index_or_folder_kind() {
         let tmp=fixture(); let folder=tmp.path().join("synthetic.ripple");
+        fs::write(folder.join("ripple-project.json"), br#"{"kind":"ripple-project","schemaVersion":2,"id":"synthetic"}"#).unwrap();
         let original=fs::read(folder.join("ripple-project.json")).unwrap();
         assert!(apply(&folder).unwrap()); assert!(folder.is_dir());
         assert_eq!(fs::read(folder.join("ripple-project.json")).unwrap(),original);

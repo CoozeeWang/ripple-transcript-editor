@@ -80,7 +80,7 @@ export function NamingModal(props: NamingModalProps) {
     confirmNaming,
   } = props;
   const [draft, setDraft] = useState(value);
-  const titleId=useId();
+  const titleId=useId(), errorId=useId();
   useDialogEntryFocus(modalRef);
 
   return (
@@ -97,6 +97,8 @@ export function NamingModal(props: NamingModalProps) {
         <h3 id={titleId}>{msg('Dialogs.m0476')}</h3>
         <input
           aria-label={msg('Dialogs.m0477')}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           data-dialog-initial-focus
           type="text"
           value={draft}
@@ -118,13 +120,14 @@ export function NamingModal(props: NamingModalProps) {
             </ul>
           </div>
         )}
-        {error && <p className="naming-modal__error" role="alert">{uiMessage(error)}</p>}
+        {error && <p id={errorId} className="naming-modal__error" role="alert">{uiMessage(error)}</p>}
         <div className="modal-actions">
-          <button type="button" className="button--primary" onClick={() => void confirmNaming(draft)} disabled={busy}>
+          <button type="button" className="button button--primary" onClick={() => void confirmNaming(draft)} disabled={busy}>
             {busy ? msg('Dialogs.m0479') : msg('Dialogs.m0480')}
           </button>
           <button
             type="button"
+            className="button button--secondary"
             onClick={() => {
               setRepairs([]);
               setError("");
@@ -189,9 +192,9 @@ export function DeleteDialog({ prompt, dialogRef, setPrompt, confirmDelete }: De
         )}
         <p className="delete-modal__hint">{msg('extra.deleteBackup', { key: keys('E') })}</p>
         <div className="modal-actions">
-          <button type="button" className="delete-modal__danger" onClick={() => void confirmDelete()}>
+          <button type="button" className="button button--danger" onClick={() => void confirmDelete()}>
             {msg('Dialogs.m0490')}</button>
-          <button ref={cancelRef} type="button" onClick={() => setPrompt(null)}>
+          <button ref={cancelRef} className="button button--secondary" type="button" onClick={() => setPrompt(null)}>
             {msg('Dialogs.m0491')}</button>
         </div>
       </div>
@@ -253,6 +256,7 @@ export function MatchDialog({ prompt, dialogRef, setPrompt, finishImport, confir
             <>
               <button
                 type="button"
+                className="button button--primary"
                 onClick={() => {
                   const { transcript, choice } = prompt;
                   setPrompt(null);
@@ -260,15 +264,15 @@ export function MatchDialog({ prompt, dialogRef, setPrompt, finishImport, confir
                 }}
               >
                 {msg('Dialogs.m0496')}</button>
-              <button data-dialog-initial-focus type="button" onClick={() => setPrompt((prev) => (prev ? { ...prev, warning: null } : prev))}>
+              <button className="button button--secondary" data-dialog-initial-focus type="button" onClick={() => setPrompt((prev) => (prev ? { ...prev, warning: null } : prev))}>
                 {msg('Dialogs.m0497')}</button>
             </>
           ) : (
             <>
-              <button type="button" disabled={prompt.checking} onClick={() => void confirmMatch()}>
+              <button className="button button--primary" type="button" disabled={prompt.checking} onClick={() => void confirmMatch()}>
                 {prompt.checking ? msg('Dialogs.m0498') : msg('Dialogs.m0499')}
               </button>
-              <button data-dialog-initial-focus type="button" onClick={() => setPrompt(null)}>
+              <button className="button button--secondary" data-dialog-initial-focus type="button" onClick={() => setPrompt(null)}>
                 {msg('Dialogs.m0500')}</button>
             </>
           )}

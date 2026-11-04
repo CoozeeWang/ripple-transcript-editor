@@ -16,8 +16,15 @@ from .providers.diagnostics import human_bytes, provider_call
 from .providers.registry import get_provider
 from .settings import reconcile_env_from_profiles
 from .storage import (
-    audio_path, create_interview, list_interviews, load_metadata, load_transcript,
-    save_normalized_transcript, save_original_response, save_transcript, update_metadata,
+    audio_path,
+    create_interview,
+    list_interviews,
+    load_metadata,
+    load_transcript,
+    save_normalized_transcript,
+    save_original_response,
+    save_transcript,
+    update_metadata,
 )
 
 router = APIRouter(tags=["legacy-interviews"])

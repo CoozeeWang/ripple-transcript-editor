@@ -8,14 +8,15 @@ import type { Transcript } from '../types';
 import type { OpenProject } from '../lib/projectStore';
 import {tagFields} from '../lib/projectTagRepository';
 import { versionTagCollection } from '../lib/tagCollections';
-import { tagPath, type TagLibrary } from '../lib/tags';
+import { removeTagBranch, tagPath, type TagLibrary } from '../lib/tags';
 const source = (): Transcript => ({ audio: { filename: 'synthetic.wav', duration: 2 }, speakers: [], segments: [{ id: 's', speaker_id: 'v', text: 'Synthetic text', start: 0, end: 2 }] });
 afterEach(cleanup);
-function setup() {
+function setup(shared=false,twoSegments=false) {
  const writes = vi.fn(async () => {}), errors = vi.fn(), flush = vi.fn(async () => {}), lock = vi.fn();
  const hook = renderHook(({ readOnly, context }: {readOnly:boolean;context:string}) => {
-  const [library, setLibrary] = useState<TagLibrary>({schemaVersion:3,tags:[],groups:[]}), history = useTranscriptHistory<Transcript>();
-  const value = history.transcript ?? source();
+  const [library, setLibrary] = useState<TagLibrary>(shared?{schemaVersion:4,tags:[],groups:[],treeOrder:[]}:{schemaVersion:3,tags:[],groups:[]}), history = useTranscriptHistory<Transcript>();
+  const initial=source();if(twoSegments)initial.segments.push({...initial.segments[0],id:'s2'});
+  const value = history.transcript ?? initial;
   const storage: TagStorage = {
    transact: async (current, operation) => {
     const previous = {...current.transcript,tagCollection:versionTagCollection(current.transcript,library)};
@@ -32,6 +33,20 @@ function setup() {
  },{initialProps:{readOnly:false,context:'v1'}});
  return {...hook,writes,errors,flush,lock};
 }
+it('keeps project name sorting across tag undo/redo while preserving legacy collections',async()=>{
+ const h=setup(true);await act(()=>h.result.current.create('Root/Zeta'));await act(()=>h.result.current.create('Root/Alpha'));
+ const id=(name:string)=>h.result.current.library.tags.find(tag=>tag.name===name)!.id;
+ await act(()=>h.result.current.reorder('level',id('Zeta'),id('Alpha'),false));const collection=h.result.current.collection;
+ await act(()=>h.result.current.sortByName('level'));const sorted=[id('Root'),id('Alpha'),id('Zeta')];expect(h.result.current.library.treeOrder).toEqual(sorted);expect(h.result.current.collection).toEqual(collection);
+ await act(()=>h.result.current.undo());expect(h.result.current.library.treeOrder).toEqual(sorted);
+ await act(()=>h.result.current.undo());expect(h.result.current.library.tags.some(tag=>tag.name==='Alpha')).toBe(false);expect(h.result.current.library.treeOrder).toEqual([id('Root'),id('Zeta')]);
+ await act(()=>h.result.current.redo());expect(h.result.current.library.treeOrder).toEqual(sorted);
+ await expect(h.result.current.sortByName('groups')).rejects.toThrow('unsupported_tag_operation');
+});
+it('preserves body undo after a shared project name sort',async()=>{
+ const h=setup(true);await act(()=>h.result.current.create('Root/Zeta'));await act(()=>h.result.current.create('Root/Alpha'));act(()=>h.result.current.editText());
+ await act(()=>h.result.current.sortByName('level'));const order=h.result.current.library.treeOrder;act(()=>h.result.current.undoText());expect(h.result.current.transcript.segments[0].text).toBe('Synthetic text');expect(h.result.current.library.treeOrder).toEqual(order);
+});
 it('admits ancestors and assigns only the leaf in one reversible transaction',async()=>{
  const h=setup();await act(()=>h.result.current.add('s','经历/求学/小学'));const leaf=h.result.current.library.tags.find(t=>t.name==='小学')!;
  expect(h.writes).toHaveBeenCalledTimes(1);expect(h.result.current.collection.tagIds).toHaveLength(3);expect(h.result.current.transcript.segments[0].tagIds).toEqual([leaf.id]);expect(h.result.current.canUndo).toBe(true);
@@ -56,6 +71,20 @@ it('keeps explicit group membership version-owned and reversible',async()=>{
  const h=setup();await act(()=>h.result.current.create('Root/Child'));const child=h.result.current.library.tags.find(t=>t.name==='Child')!;
  await act(()=>h.result.current.change({...h.result.current.library,groups:[{id:'g',name:'Synthetic group',parentId:null}],tags:h.result.current.library.tags.map(t=>({...t,groupIds:t.id===child.id?['g']:[]}))}));
  expect(h.result.current.collection.groups[0].tagIds).toEqual([child.id]);await act(()=>h.result.current.undo());expect(h.result.current.collection.groups).toEqual([]);await act(()=>h.result.current.redo());expect(h.result.current.collection.groups[0].tagIds).toEqual([child.id]);
+});
+it('deletes an unused project tag with saved group order and restores its exact membership and orders',async()=>{
+ const h=setup();await act(()=>h.result.current.create('Root/Leaf'));await act(()=>h.result.current.create('Other'));
+ const leaf=h.result.current.library.tags.find(t=>t.name==='Leaf')!,other=h.result.current.library.tags.find(t=>t.name==='Other')!;
+ await act(()=>h.result.current.change({...h.result.current.library,groups:[{id:'g',name:'Synthetic group',parentId:null}],tags:h.result.current.library.tags.map(t=>({...t,groupIds:t.id===leaf.id?['g']:[]}))}));
+ await act(()=>h.result.current.sortByName('groups'));await act(()=>h.result.current.sortByName('level'));
+ const before=h.result.current.collection,library=h.result.current.library,text=h.result.current.transcript.segments[0].text;
+ expect(h.result.current.transcript.segments[0].tagIds).toBeUndefined();expect(before.groups[0].order).toContain(leaf.id);expect(before.levelOrder).toContain(leaf.id);
+ await act(()=>h.result.current.change(removeTagBranch(h.result.current.library,leaf.id)));
+ expect(h.result.current.library.tags.some(t=>t.id===leaf.id)).toBe(false);expect(h.result.current.library.tags.some(t=>t.id===other.id)).toBe(true);
+ expect(h.result.current.collection.tagIds).not.toContain(leaf.id);expect(h.result.current.collection.groups[0].tagIds).toEqual([]);expect(h.result.current.collection.groups[0].order).toEqual([]);expect(h.result.current.collection.levelOrder).not.toContain(leaf.id);
+ expect(h.result.current.transcript.segments[0].text).toBe(text);expect(h.errors).not.toHaveBeenCalled();
+ await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(library);expect(h.result.current.collection).toEqual(before);
+ await act(()=>h.result.current.redo());expect(h.result.current.collection.groups[0].order).toEqual([]);expect(h.result.current.library.tags.some(t=>t.id===leaf.id)).toBe(false);
 });
 it('renames a shared parent with stable child references',async()=>{
  const h=setup();await act(()=>h.result.current.add('s','Root/Child'));const root=h.result.current.library.tags.find(t=>t.name==='Root')!,child=h.result.current.library.tags.find(t=>t.name==='Child')!;
@@ -90,4 +119,37 @@ it('sorting an already sorted result rebases older order snapshots without remov
  const h=setup();await act(()=>h.result.current.create('Root/Beta'));await act(()=>h.result.current.create('Root/Alpha'));const id=(name:string)=>h.result.current.library.tags.find(t=>t.name===name)!.id;await act(()=>h.result.current.sortByName('level'));
  await act(()=>h.result.current.reorder('level',id('Beta'),id('Alpha'),false));await act(()=>h.result.current.reorder('level',id('Alpha'),id('Beta'),false));expect(h.result.current.canUndo).toBe(true);const sorted=h.result.current.collection;
  await act(()=>h.result.current.sortByName('level'));expect(h.result.current.collection).toEqual(sorted);expect(h.result.current.canUndo).toBe(true);expect(h.result.current.editorCanUndo).toBe(true);await act(()=>h.result.current.undo());expect(h.result.current.collection).toEqual(sorted);
+});
+
+for(const input of ['Parent/Target','Target'])it(`cancels and explicitly confirms the same segment-rename merge for ${input}`,async()=>{
+ const h=setup();await act(()=>h.result.current.add('s','Parent/Source'));await act(()=>h.result.current.add('s','Target'));
+ const source=h.result.current.library.tags.find(t=>t.name==='Source')!.id,target=h.result.current.library.tags.find(t=>t.name==='Target')!.id;
+ const before=h.result.current.library,writes=h.writes.mock.calls.length;let pending!:Promise<void>;
+ await act(async()=>{pending=h.result.current.renamePath(source,input);void pending.catch(()=>{});await Promise.resolve();await Promise.resolve()});
+ expect(h.result.current.mergePrompt?.request.targetId).toBe(target);expect(h.writes).toHaveBeenCalledTimes(writes);
+ await expect(h.result.current.renamePath(source,input)).rejects.toThrow();expect(h.writes).toHaveBeenCalledTimes(writes);
+ await act(async()=>{h.result.current.mergePrompt!.finish(false);await pending.catch(()=>{})});expect(h.result.current.library).toEqual(before);expect(h.writes).toHaveBeenCalledTimes(writes);
+ await act(async()=>{pending=h.result.current.renamePath(source,input);await Promise.resolve();await Promise.resolve()});
+ expect(h.result.current.mergePrompt?.request.targetId).toBe(target);
+ await act(async()=>{h.result.current.mergePrompt!.finish(true);await pending});expect(h.writes).toHaveBeenCalledTimes(writes+1);expect(h.result.current.transcript.segments[0].tagIds).toEqual([target]);
+ await act(()=>h.result.current.undo());expect(h.result.current.library).toEqual(before);
+ h.rerender({readOnly:true,context:'v1'});await expect(h.result.current.renamePath(source,input)).rejects.toThrow();expect(h.result.current.mergePrompt).toBeNull();
+});
+
+it('replaces one segment association with a new child and keeps the shared parent and other segments',async()=>{
+ const h=setup(true,true);await act(()=>h.result.current.add('s','Timeline/Stage/Project'));
+ const parent=h.result.current.library.tags.find(tag=>tag.name==='Project')!.id;
+ await act(()=>h.result.current.attach('s2',parent));await act(()=>h.result.current.replace('s',parent,'Timeline/Stage/Project/Client'));
+ const child=h.result.current.library.tags.find(tag=>tag.name==='Client')!.id;
+ expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([[child],[parent]]);
+ expect(tagPath(h.result.current.library,parent)).toBe('Timeline/Stage/Project');
+ await act(()=>h.result.current.undo());expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([[parent],[parent]]);
+ await act(()=>h.result.current.redo());expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([[child],[parent]]);
+ await act(()=>h.result.current.replace('s',child,'Project'));expect(h.result.current.transcript.segments.map(s=>s.tagIds)).toEqual([[parent],[parent]]);
+});
+it('rejects a conflicting segment replacement without moving or merging a shared tag',async()=>{
+ const h=setup(true);await act(()=>h.result.current.add('s','Parent/Existing'));await act(()=>h.result.current.create('Other'));
+ const before=structuredClone(h.result.current.library),old=h.result.current.transcript.segments[0].tagIds![0];
+ await act(async()=>{await expect(h.result.current.replace('s',old,'Other/Existing')).rejects.toThrow();});
+ expect(h.result.current.library).toEqual(before);expect(h.result.current.transcript.segments[0].tagIds).toEqual([old]);expect(h.result.current.mergePrompt).toBeNull();
 });

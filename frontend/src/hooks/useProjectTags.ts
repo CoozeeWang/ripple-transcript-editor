@@ -1,12 +1,14 @@
+import {isSharedTagRestriction,rejectSharedTagStructure,showSharedTagRestriction} from '../lib/sharedTagGuard';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Transcript } from '../types';
 import {msg} from '../i18n';
 import {beginTagProbe} from '../lib/tagPerformance';
 import {placeGroupTag,type GroupTagPlacement} from '../lib/tagPlacement';
-import {dragSiblingOrder,sortVersionTagsByName,type TagOrderView} from '../lib/tagOrdering';
+import {cleanTagOrders,dragSiblingOrder,sortVersionTagsByName,type TagOrderView} from '../lib/tagOrdering';
 import { tagOrderHistoryRebase } from '../lib/tagOrderHistory';
+import {dragProjectTree,sortProjectTree} from '../lib/projectTreeOrder';
 import { tagErrorMessage } from '../lib/tagErrors';
-import { emptyTagLibrary, normalizeTagName, setTagPath, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
+import { TagTreeError, emptyTagLibrary, normalizeTagName, resolveTagInput, setSegmentTag, tagAncestors, tagHistoryAnchor, tagPath, type TagLibrary } from '../lib/tags';
 import { admitTags, changeSharedTag, collectionFromLibrary, collectionLibrary, projectTagCatalog, removeVersionTagBranch, TagMergeRequired, versionTagCollection, type TagConsumer } from '../lib/tagCollections';
 import type { CurrentTagVersion, ProjectTagChange, TagTransactionReceipt, TagTransactionScope } from '../lib/projectTagRepository';
 import type { OpenProject } from '../lib/projectStore';
@@ -15,6 +17,7 @@ import { applyTagFields, tagFields } from '../lib/projectTagRepository';
 export interface TagStorage {
     /** Publish catalog and editor history together, after durability; never await recents between them. */
     publish?: (project: OpenProject, publishVersion: () => void) => void;
+    structureBlocked?:()=>string|null;
     projectId?:string;
     projectRevision?:number;counts?:(currentId?:string)=>Promise<import('../lib/tagCountCache').TagCountTotals>;
     requiresMigration?: boolean;
@@ -131,7 +134,8 @@ export function useProjectTags(o: Options) {
             probe?.mark('published');
             return result;
         } catch (error) {
-            if (!(error instanceof TagMergeRequired) && (error as Error)?.message !== 'tag_operation_cancelled') latest.current.onError(tagErrorMessage(error));
+            if(isSharedTagRestriction(error))showSharedTagRestriction(undefined,error);
+            else if (!(error instanceof TagTreeError && error.code === 'name_conflict') && !(error instanceof TagMergeRequired) && (error as Error)?.message !== 'tag_operation_cancelled') latest.current.onError(tagErrorMessage(error));
             throw error;
         } finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false);probe?.finish(); }
     }, []);
@@ -143,7 +147,7 @@ export function useProjectTags(o: Options) {
                 const before = consumer.transcript.tagCollection!;
                 const retained = { ...before, tagIds: before.tagIds.filter(id => valid.has(id)),
                     groups: before.groups.map(group => ({ ...group, tagIds: group.tagIds.filter(id => valid.has(id)) })) };
-                const collection = admitTags(library, retained, [] , consumer.label);
+                const collection = admitTags(library, cleanTagOrders(library, retained), [] , consumer.label);
                 return { ...consumer, transcript: { ...consumer.transcript,
                     tagCollection: consumer.id === currentId ? collectionFromLibrary(next, collection, consumer.label) : collection,
                     segments: consumer.transcript.segments.map(segment => {
@@ -155,11 +159,15 @@ export function useProjectTags(o: Options) {
     }, [run]);
     const create = useCallback(async (raw: string, existingId?: string, segmentId?: string) => {
         let created = '';
+        const restriction=latest.current.storage?.structureBlocked?.();
+        if(restriction&&!existingId&&resolveTagInput(projection.library,raw).library!==projection.library){showSharedTagRestriction(undefined,restriction);rejectSharedTagStructure(restriction);}
         await run((_merge, library, consumers, currentId) => {
             if(segmentId&&!consumers.find(consumer=>consumer.id===currentId)?.transcript.segments.some(segment=>segment.id===segmentId))throw Error('tag_segment_not_found');
             const found = existingId ? library.tags.find(tag => tag.id === existingId) : undefined;
             if (existingId && !found) throw Error('tag_entity_not_found');
-            const result = found ? { library, tag: found } : setTagPath(library, raw);
+            const result = found ? { library, tag: found } : resolveTagInput(library, raw);
+            const currentRestriction=latest.current.storage?.structureBlocked?.();
+            if(currentRestriction&&result.library!==library)rejectSharedTagStructure(currentRestriction);
             created = result.tag.id;
             return { library: result.library, consumers: consumers.map(consumer => consumer.id !== currentId ? consumer : {
                 ...consumer, transcript: { ...(segmentId ? setSegmentTag(consumer.transcript, segmentId, created, true) : consumer.transcript),
@@ -167,9 +175,24 @@ export function useProjectTags(o: Options) {
             }) };
         }, 'additions');
         return created;
-    }, [run]);
+    }, [run,projection.library]);
     const add = useCallback(async (segmentId: string, raw: string) => { if (normalizeTagName(raw)) await create(raw, undefined, segmentId); }, [create]);
     const attach = useCallback(async (segmentId: string, id: string) => { await create('', id, segmentId); }, [create]);
+    const replace = useCallback(async (segmentId:string,oldId:string,raw:string) => {
+        try { await run((_merge,library,consumers,currentId)=>{
+            const current=consumers.find(consumer=>consumer.id===currentId);
+            const segment=current?.transcript.segments.find(segment=>segment.id===segmentId);
+            if(!segment?.tagIds?.includes(oldId))throw Error('tag_segment_not_found');
+            const resolved=resolveTagInput(library,raw);
+            if(resolved.tag.id===oldId)return {library,consumers};
+            const restriction=latest.current.storage?.structureBlocked?.();
+            if(restriction&&resolved.library!==library)rejectSharedTagStructure(restriction);
+            return {library:resolved.library,consumers:consumers.map(consumer=>consumer.id!==currentId?consumer:{...consumer,transcript:{
+                ...setSegmentTag(setSegmentTag(consumer.transcript,segmentId,oldId,false),segmentId,resolved.tag.id,true),
+                tagCollection:admitTags(resolved.library,consumer.transcript.tagCollection!,[resolved.tag.id],consumer.label),
+            }})};
+        },'additions'); } catch(error) {throw Error(tagErrorMessage(error),{cause:error});}
+    },[run]);
     const remove = useCallback((segmentId: string, id: string) => {
         return run((_merge, library, consumers, currentId) => ({ library, consumers: consumers.map(consumer => consumer.id !== currentId ? consumer
             : { ...consumer, transcript: setSegmentTag(consumer.transcript, segmentId, id, false) }) }), 'current').catch(() => {});
@@ -190,18 +213,22 @@ export function useProjectTags(o: Options) {
             const path=[parentId?tagPath(library,parentId):'',library.tags.find(tag=>tag.id===id)!.name].filter(Boolean).join('/');
             const changed=changeSharedTag(library,id,path,consumers,merge);
             const retainedId=changed.library.tags.some(tag=>tag.id===id)?id:changed.library.tags.find(tag=>tagPath(changed.library,tag.id).toLowerCase()===path.toLowerCase())!.id;
-            if(anchor!==undefined)changed.consumers=changed.consumers.map(consumer=>consumer.id===currentId?{...consumer,transcript:{...consumer.transcript,
-                tagCollection:dragSiblingOrder(changed.library,consumer.transcript.tagCollection!,'level',retainedId,anchor,after)}}:consumer);
+            if(anchor!==undefined){
+                if(changed.library.schemaVersion===4)changed.library=dragProjectTree(changed.library,retainedId,anchor,after);
+                else changed.consumers=changed.consumers.map(consumer=>consumer.id===currentId?{...consumer,transcript:{...consumer.transcript,tagCollection:dragSiblingOrder(changed.library,consumer.transcript.tagCollection!,'level',retainedId,anchor,after)}}:consumer);
+            }
             return changed;
         });
     }, [run]);
     const reorder = useCallback(async(view:TagOrderView,id:string,anchor:string|null,after:boolean,groupId?:string)=>{
-        await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
-            {...consumer,transcript:{...consumer.transcript,tagCollection:dragSiblingOrder(library,consumer.transcript.tagCollection!,view,id,anchor,after,groupId)}}:consumer)}),'current');
+        const shared=latest.current.library?.schemaVersion===4;
+        if(shared&&view!=='level')throw Error('unsupported_tag_operation');
+        await run((_merge,library,consumers,currentId)=>shared?{library:dragProjectTree(library,id,anchor,after),consumers}:{library,consumers:consumers.map(row=>row.id===currentId?{...row,transcript:{...row.transcript,tagCollection:dragSiblingOrder(library,row.transcript.tagCollection!,view,id,anchor,after,groupId)}}:row)},shared?'order':'current');
     },[run]);
     const sortByName=useCallback(async(view:'level'|'groups')=>{
-        await run((_merge,library,consumers,currentId)=>({library,consumers:consumers.map(consumer=>consumer.id===currentId?
-            {...consumer,transcript:{...consumer.transcript,tagCollection:sortVersionTagsByName(library,consumer.transcript.tagCollection!,view)}}:consumer)}),'current',view);
+        const shared=latest.current.library?.schemaVersion===4;
+        if(shared&&view!=='level')throw Error('unsupported_tag_operation');
+        await run((_merge,library,consumers,currentId)=>shared?{library:sortProjectTree(library),consumers}:{library,consumers:consumers.map(row=>row.id===currentId?{...row,transcript:{...row.transcript,tagCollection:sortVersionTagsByName(library,row.transcript.tagCollection!,view)}}:row)},shared?'order':'current',view);
     },[run]);
     const placeInGroup=useCallback(async(placement:GroupTagPlacement)=>{
         const source=latest.current.library?.tags.find(tag=>tag.id===placement.tagId);
@@ -227,9 +254,9 @@ export function useProjectTags(o: Options) {
                 setBusy(false);
             };
             if(current.storage.publish)current.storage.publish(project,publish);else publish();
-        } catch (error) { current.onError(tagErrorMessage(error)); }
+        } catch (error) { if(isSharedTagRestriction(error))showSharedTagRestriction(undefined,error);else current.onError(tagErrorMessage(error)); }
         finally { pending.current = false; current.lock(false); if (mounted.current) setBusy(false); }
     };
-    return { ...projection, busy, change, create, add, remove, removeCurrent, rename, renamePath, reparent,reorder,sortByName,placeInGroup, attach, canUndo, canRedo, acceptTransaction,
+    return { ...projection, busy, change, create, add, replace, remove, removeCurrent, rename, renamePath, reparent,reorder,sortByName,placeInGroup, attach, canUndo, canRedo, acceptTransaction,
         undo: () => history(false), redo: () => history(true), discardRedo, mergePrompt };
 }

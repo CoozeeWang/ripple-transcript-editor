@@ -1,13 +1,19 @@
+import {useContext} from 'react';
+import {ConnectorContext} from '../hooks/connectorContext';
+import {ExportMarkOptions} from './ExportMarkOptions';
+import {useExportMarks} from '../hooks/useExportMarks';
+import {effectiveExportMarks} from '../lib/exportOptions';
+import {blocksHumanEditing} from '../lib/aiEditOwnership';
 import { connectorVersions } from '../lib/connectorVersions';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { trapDialogFocus } from '../lib/dialogFocus';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { defaultMetadata, readManifest, readModelEdit, readModelOriginal, sanitizeForFilename } from '../localStore';
-import { recordingDirectory, checkedMediaFile, savePortableProject, type OpenProject } from '../lib/projectStore';
-import { exportFormats, canExportSubtitles, downloadBlob, transcriptBlob, type ExportFormat } from '../lib/export';
+import { recordingDirectory, checkedMediaFile, savePortableProject, readProjectExportState, type OpenProject } from '../lib/projectStore';
+import { exportFormats, selectExportScope, downloadBlob, transcriptBlob, type ExportFormat } from '../lib/export';
 import { ProjectIcon } from './ProjectIcon';
 import type { InterviewMetadata, Transcript } from '../types';
-type Entry = { id: string; session: string; recording: string; document?: string; name: string; versionLabel?: string; current: boolean; reference?: string; audio?: () => Promise<File>; transcript?: Transcript; metadata?: InterviewMetadata; engine?: string };
+type Entry = { id: string; session: string; recording: string; document?: string;versionId?:string;modelId?:string;editId?:string; name: string; versionLabel?: string; current: boolean; reference?: string; audio?: () => Promise<File>; transcript?: Transcript; metadata?: InterviewMetadata; engine?: string };
 function audioExportName(name: string, file: string) {
   const extension = file.match(/\.[^.]+$/)?.[0] ?? '';
   const stem = name.replace(/\.(m4a|mp3|wav|aac|flac|ogg|opus|aiff?|wma|mp4|webm)$/i, '');
@@ -15,6 +21,8 @@ function audioExportName(name: string, file: string) {
 }
 export function ProjectExportDialog({ project, onClose, returnFocusRef }: { project: OpenProject; onClose: () => void; returnFocusRef?: RefObject<HTMLElement | null> }) {
   useInterfaceLanguage();
+  const connector=useContext(ConnectorContext);
+  const marks=useExportMarks();
   const dialog = useRef<HTMLDialogElement>(null);
   const [mode, setMode] = useState('materials');
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -54,7 +62,7 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
           for (const version of versions) {
             const data = version.edit_id === 'original' ? await readModelOriginal(dir, recording.file, model.id) : await readModelEdit(dir, recording.file, model.id, version.edit_id);
             if (!data) throw new Error(msg('ProjectExportDialog.m0721', { v0: model.label || recording.name }));
-            rows.push({ id: `${base}/${version.id}`, session: session.id, recording: recording.id, document: `${base}/${model.id}`, name: version.edit_id === 'original' ? model.label || model.sourceName || version.name : version.name, versionLabel: version.name, current: true, transcript: data.transcript, metadata: 'metadata' in data ? data.metadata as InterviewMetadata : { ...defaultMetadata(model.label || recording.name), ...session.metadata, ...manifest?.interviewDetails, title: manifest?.title || model.label || recording.name }, engine: model.engine });
+            rows.push({ id: `${base}/${version.id}`, session: session.id, recording: recording.id, document: `${base}/${model.id}`,versionId:version.id,modelId:model.id,editId:version.edit_id, name: version.edit_id === 'original' ? model.label || model.sourceName || version.name : version.name, versionLabel: version.name, current: true, transcript: data.transcript, metadata: 'metadata' in data ? data.metadata as InterviewMetadata : { ...defaultMetadata(model.label || recording.name), ...session.metadata, ...manifest?.interviewDetails, title: manifest?.title || model.label || recording.name }, engine: model.engine });
           }
         }
       }
@@ -66,7 +74,11 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
   const chosen = visibleEntries.filter(e => selected.has(e.id));
   const allSelected = chosen.length === visibleEntries.length;
   const entryFormat = (entry: Entry) => formats[entry.id] ?? 'docx';
-  const invalidSubtitle = chosen.some(e => e.transcript && ['srt', 'vtt'].includes(entryFormat(e)) && !canExportSubtitles(e.transcript));
+  const isHeld=(entry:Entry)=>!!entry.versionId&&!!connector?.state.targetLocked(entry.versionId,entry.recording,entry.session,project.data.id);
+  const blockedEntry=chosen.find(isHeld);
+  const projectHeld=!!connector?.state.activities.some(task=>blocksHumanEditing(task)&&(!task.target||task.target.project_id===project.data.id));
+  const assertAvailable=()=>{const blocked=chosen.find(isHeld);if(blocked)throw Error(msg('export.aiBlockedTarget',{name:blocked.name}));};
+  const activeFormats=exportFormats().filter(([,format])=>chosen.some(entry=>entry.transcript&&entryFormat(entry)===format));
   const fileName = (entry: Entry) => entry.audio ? entry.name : `${entry.name.replace(/\.(docx?|txt|srt|vtt|json|md|pdf)$/i, '')}.${entryFormat(entry)}`;
   const paths = new Map<string, string>();
   const used = new Set<string>();
@@ -83,15 +95,31 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
     paths.set(entry.id, name);
   }
   const toggle = (ids: string[], checked: boolean) => setSelected(old => { const next = new Set(old); for (const id of ids) if (checked) next.add(id); else next.delete(id); return next; });
+  const readFresh = async(entry:Entry,snapshot:OpenProject)=>{
+    const session=snapshot.data.interviews.find(s=>s.id===entry.session),recording=session?.recordings.find(r=>r.id===entry.recording);
+    if(!session||!recording||!entry.modelId||!entry.editId)throw Error(msg('export.exportChanged'));
+    const directory=await recordingDirectory(snapshot,session.id,recording),manifest=await readManifest(directory,recording.file),model=manifest?.models.find(m=>m.id===entry.modelId);
+    if(!model||!connectorVersions([model]).some(v=>v.id===entry.versionId))throw Error(msg('export.exportChanged'));
+    const data=entry.editId==='original'?await readModelOriginal(directory,recording.file,entry.modelId):await readModelEdit(directory,recording.file,entry.modelId,entry.editId);
+    if(!data)throw Error(msg('export.exportChanged'));
+    return {transcript:data.transcript,metadata:'metadata' in data?data.metadata as InterviewMetadata:{...(entry.metadata??defaultMetadata(model.label||recording.name)),...session.metadata,...manifest?.interviewDetails,title:manifest?.title||model.label||recording.name},engine:model.engine};
+  };
   const exportFiles = async (kind = mode) => {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
     try {
+      assertAvailable();
       if (kind === 'project') {
+        const assertProjectAvailable=()=>{if(connector?.state.activities.some(task=>blocksHumanEditing(task)&&(!task.target||task.target.project_id===project.data.id)))throw Error(msg('export.aiBlockedTarget',{name:project.data.title}));};
+        assertProjectAvailable();
         const parent = await (window as unknown as { showDirectoryPicker: (o: { mode: string }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ mode: 'readwrite' });
-        await savePortableProject(project, parent, title);
+        assertProjectAvailable();await savePortableProject(project, parent, title);
       } else {
-        if (!chosen.length || invalidSubtitle) throw new Error(msg('ProjectExportDialog.m0725'));
+        if (!chosen.length) throw new Error(msg('ProjectExportDialog.m0725'));
+        const hasManuscripts=chosen.some(e=>e.transcript);
+        const snapshot=hasManuscripts?await readProjectExportState(project):project;
+        if(hasManuscripts&&snapshot.data.revision!==project.data.revision)throw Error(msg('export.exportChanged'));
+        const checks:{entry:Entry;signature:string}[]=[];
         const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
         let count = 0;
@@ -123,10 +151,17 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
             zip.file(`${folder}/${name}`, await file.arrayBuffer()); count++;
           } else if (entry.transcript) {
             if (format === 'pdf') throw new Error(msg('ProjectExportDialog.materialPdfUnavailable'));
-            zip.file(`${folder}/${name}`, await (await transcriptBlob(format, entry.transcript, entry.metadata ?? null, entry.engine)).arrayBuffer()); count++;
+            assertAvailable();const fresh=await readFresh(entry,snapshot);assertAvailable();
+            checks.push({entry,signature:JSON.stringify(fresh)});
+            zip.file(`${folder}/${name}`, await (await transcriptBlob(format, fresh.transcript.segments.length?selectExportScope(fresh.transcript,'full',new Set(),null):fresh.transcript, fresh.metadata, fresh.engine,{options:effectiveExportMarks(format,marks.get(format)),library:snapshot.data.tagLibrary})).arrayBuffer()); count++;
           }
         }
-        if (count) await downloadBlob(await zip.generateAsync({ type: 'blob' }), msg('ProjectExportDialog.m0729', { v0: sanitizeForFilename(project.data.title) }));
+        if (count) {
+          const blob=await zip.generateAsync({type:'blob'});assertAvailable();
+          for(const check of checks){if(JSON.stringify(await readFresh(check.entry,snapshot))!==check.signature)throw Error(msg('export.exportChanged'));assertAvailable();}
+          if(hasManuscripts&&(await readProjectExportState(project)).data.revision!==snapshot.data.revision)throw Error(msg('export.exportChanged'));
+          assertAvailable();await downloadBlob(blob,msg('ProjectExportDialog.m0729',{v0:sanitizeForFilename(project.data.title)}));
+        }
       }
       onClose();
     } catch (e) { if ((e as Error).name !== 'AbortError') setError(e instanceof Error ? e.message : msg('ProjectExportDialog.m0733')); }
@@ -145,14 +180,13 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
   }
   function renderEntry(entry: Entry) {
     const name = paths.get(entry.id) ?? fileName(entry);
-    const untimed = Boolean(entry.transcript && !canExportSubtitles(entry.transcript));
     return <li className="export-document-row" key={entry.id}>
       <div className="export-entry">
         <span className="export-disclosure-spacer"/>
         <label><input className="ripple-checkbox" type="checkbox" disabled={busy} checked={selected.has(entry.id)} onChange={event => toggle([entry.id], event.target.checked)}/><ProjectIcon kind="document"/><span className="export-entry-name">{name}</span></label>
         <div className="export-entry-options">
-          <select aria-label={msg('ProjectExportDialog.m0736', { v0: entry.name })} data-tip={untimed ? undefined : msg('ProjectExportDialog.m0738')} data-action-tip={untimed ? msg('ProjectExportDialog.m0737') : undefined} value={entryFormat(entry)} disabled={busy} onChange={e => setFormats(old => ({ ...old, [entry.id]: e.target.value as ExportFormat }))}>
-            {exportFormats().filter(([,format])=>format !== 'pdf').map(([label, value]) => <option key={value} value={value} disabled={untimed && (value === 'srt' || value === 'vtt')}>{label}</option>)}
+          <select aria-label={msg('ProjectExportDialog.m0736', { v0: entry.name })} data-tip={msg('ProjectExportDialog.m0738')} value={entryFormat(entry)} disabled={busy} onChange={e => setFormats(old => ({ ...old, [entry.id]: e.target.value as ExportFormat }))}>
+            {exportFormats().filter(([,format])=>format !== 'pdf').map(([label, value]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
       </div>
@@ -167,7 +201,9 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
       <button className="export-choice-option" disabled={busy} onClick={() => void exportFiles('materials')}><ProjectIcon kind="document"/><span><strong>{msg('ProjectExportDialog.m0744')}</strong><small>{msg('ProjectExportDialog.m0745')}</small></span></button>
     </div> : mode === 'project' ? <><p className="settings-hint">{msg('ProjectExportDialog.m0746')}</p><label className="field"><span>{msg('ProjectExportDialog.m0747')}</span><input value={title} disabled={busy} onChange={e => setTitle(e.target.value)}/></label><p className="settings-hint">{msg('ProjectExportDialog.m0748')}</p></> : <>
       <p className="settings-hint">{msg('ProjectExportDialog.m0749')}</p>
-      <p className="settings-hint">{msg('ProjectExportDialog.materialPdfUnavailable')}</p>
+      <p className="settings-hint project-export-pdf-hint">{msg('ProjectExportDialog.materialPdfUnavailable')}</p>
+      {activeFormats.length>0&&<div className="project-export-mark-options">{activeFormats.map(([label,format])=><section key={format}><ExportMarkOptions heading={label} format={format} value={marks.get(format)} onChange={options=>marks.set(format,options)} disabled={busy}/>{format==='json'&&<p className="settings-hint">{msg('export.jsonImportBoundary')}</p>}</section>)}</div>}
+      {blockedEntry&&<p className="settings-hint" role="status">{msg('export.aiBlockedTarget',{name:blockedEntry.name})}</p>}
       <div className="export-selection-tools"><span className="settings-hint">{msg('review.selectedMaterials', { count: chosen.length })}</span><button type="button" className="cred-btn" disabled={busy || loading || loadFailed} onClick={() => setSelected(new Set(visibleEntries.map(e => e.id)))}>{msg('ProjectExportDialog.m0754')}</button><button type="button" className="cred-btn" disabled={busy || loading || loadFailed} onClick={() => setSelected(new Set())}>{msg('ProjectExportDialog.m0755')}</button></div>
       {!loading && !loadFailed && !chosen.length && <p className="settings-hint" role="status">{visibleEntries.length ? msg('ProjectExportDialog.m0756') : msg('ProjectExportDialog.m0757')}</p>}
       {loading ? <p role="status">{msg('ProjectExportDialog.m0758')}</p> : loadFailed ? <button type="button" className="cred-btn" onClick={() => { setLoading(true); setLoadFailed(false); setError(''); setLoadAttempt(n => n + 1); }}>{msg('ProjectExportDialog.m0759')}</button> : project.data.interviews.map(session => {
@@ -196,6 +232,6 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
 
     </>}
     {error && <p role="alert" className="form-error">{uiMessage(error)}</p>}
-    </div><div className="project-actions audio-project-footer"><button className="button button--secondary" disabled={busy} onClick={() => mode === 'materials' ? onClose() : setMode('materials')}>{mode === 'materials' ? msg('ProjectExportDialog.m0760') : msg('ProjectExportDialog.m0761')}</button>{mode !== 'choice' && <button className="button button--primary" disabled={busy || (mode === 'project' ? !title.trim() : loading || loadFailed || (!chosen.length && !!visibleEntries.length) || invalidSubtitle)} onClick={() => { if (mode === 'materials' && !visibleEntries.length) setMode('project'); else if (mode === 'materials' && allSelected) setMode('choice'); else void exportFiles(); }}>{busy ? msg('ProjectExportDialog.m0762') : mode === 'project' ? msg('ProjectExportDialog.m0763') : !loading && !loadFailed && !visibleEntries.length ? msg('ProjectExportDialog.m0764') : msg('ProjectExportDialog.m0765')}</button>}</div>
+    </div><div className="project-actions audio-project-footer"><button className="button button--secondary" disabled={busy} onClick={() => mode === 'materials' ? onClose() : setMode('materials')}>{mode === 'materials' ? msg('ProjectExportDialog.m0760') : msg('ProjectExportDialog.m0761')}</button>{mode !== 'choice' && <button className="button button--primary" disabled={busy || (mode === 'project' ? !title.trim()||projectHeld : loading || loadFailed || !!blockedEntry || (!chosen.length && !!visibleEntries.length))} onClick={() => { if (mode === 'materials' && !visibleEntries.length) setMode('project'); else if (mode === 'materials' && allSelected) setMode('choice'); else void exportFiles(); }}>{busy ? msg('ProjectExportDialog.m0762') : mode === 'project' ? msg('ProjectExportDialog.m0763') : !loading && !loadFailed && !visibleEntries.length ? msg('ProjectExportDialog.m0764') : msg('ProjectExportDialog.m0765')}</button>}</div>
   </dialog>;
 }

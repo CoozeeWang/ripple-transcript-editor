@@ -1,19 +1,17 @@
 import { useState, type ReactNode } from 'react';
 import { msg, useInterfaceLanguage } from '../i18n';
 import { blocksHumanEditing, ownsEditing, visibleAIActivities, type AIEditActivity } from '../lib/aiEditOwnership';
-import { useExpiredFeedback } from '../hooks/useExpiredFeedback';
+import { AISaveDiagnostics } from './AISaveDiagnostics';
 
-const receipt = (task: AIEditActivity) => JSON.stringify([task.task_id, task.touched, task.saved, task.total]);
-
-export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurrent = () => true }: {
+export function AIEditingNotice({ activities, onEnd, onDismiss, onInspect, children, isCurrent = () => true }: {
   activities: AIEditActivity[]; onEnd: (id: string) => Promise<unknown>; onDismiss?: (id: string) => Promise<unknown>; children?: ReactNode;
   isCurrent?: (task: AIEditActivity) => boolean;
+  onInspect?: (id: string) => Promise<unknown>;
 }) {
   useInterfaceLanguage();
   const [busy, setBusy] = useState<string | null>(null);
   const candidates = visibleAIActivities(activities);
-  const expired = useExpiredFeedback(candidates.filter(task => task.state === 'completed' && !blocksHumanEditing(task)).map(receipt));
-  const visible = candidates.filter(task => task.state !== 'completed' || blocksHumanEditing(task) || !expired.has(receipt(task)));
+  const visible = candidates.filter(task => blocksHumanEditing(task) || task.state === 'failed' || task.reason === 'failure');
   const run = async (task: AIEditActivity) => {
     setBusy(task.task_id);
     try { await (blocksHumanEditing(task) ? onEnd(task.task_id) : onDismiss?.(task.task_id)); }
@@ -27,15 +25,21 @@ export function AIEditingNotice({ activities, onEnd, onDismiss, children, isCurr
       const active = ownsEditing(task);
       const ending = task.state === 'ended' && task.inFlight > 0;
       const protectedTask = blocksHumanEditing(task);
-      const complete = task.state === 'completed';
+      const complete = task.state === 'completed' && !protectedTask;
+      const roundSaved = task.state === 'completed' && protectedTask && task.inFlight === 0;
+      const requestStatus = task.state === 'failed' || task.reason === 'failure' ? 'failed'
+        : /^connection_|task_timeout/.test(task.reason ?? '') ? 'waiting'
+        : task.state === 'ended' ? ['phase_transition','round_end'].includes(task.reason ?? '') ? 'waiting' : 'stopped'
+        : task.requestStatus;
       const client = ({ chatgpt: 'ChatGPT', claude: 'Claude', workbuddy: 'WorkBuddy' })[task.client] ?? 'AI';
-      return <div className={`ai-editing-notice${complete ? ' is-completed' : ''}`} key={task.task_id}>
+      return <div className={`ai-editing-notice${complete ? ' is-completed' : roundSaved ? ' is-round-saved' : ''}`} key={task.task_id}>
         {!complete && <svg className="ai-editing-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg>}
         <div className="ai-editing-copy" role="status" aria-live="polite">
-          <span>{complete ? msg(task.kind==='tags'?'aiEditing.tagsCompleted':'aiEditing.completed', { saved: task.saved, total: task.total, count: task.total }) : ending ? msg('aiEditing.ending') : task.state === 'failed' ? msg('aiEditing.failed') : task.state === 'paused' ? msg('aiEditing.paused') : active ? msg(isCurrent(task) ? 'aiEditing.locked' : 'aiEditing.background', { client, recording: task.target?.recording ?? task.version }) : msg('aiEditing.ended')}</span>
+          <span>{roundSaved ? msg('aiEditing.roundSaved') : task.requestId && !ending ? msg(`aiEditing.request_${requestStatus ?? 'waiting'}`) : complete ? msg(task.kind==='tags'?'aiEditing.tagsCompleted':'aiEditing.completed', { saved: task.saved, total: task.total, count: task.total }) : ending ? msg('aiEditing.ending') : task.state === 'failed' ? msg('aiEditing.failed') : task.state === 'paused' ? msg('aiEditing.paused') : active ? msg(isCurrent(task) ? 'aiEditing.locked' : 'aiEditing.background', { client, recording: task.target?.recording ?? task.version }) : msg('aiEditing.ended')}</span>
           <span className="ai-editing-detail">{task.target ? `${task.target.recording} · ${task.version}` : task.version}
-            {!complete && <> · {task.kind==='tags'?msg('aiEditing.tagsCounts',{processed:task.processed,total:task.total}):msg(`aiEditing.${!task.total ? 'preparing' : active ? task.state : 'counts'}`, { processed: task.processed, saved: task.saved, total: task.total, count: task.total })}</>}</span>
-          {protectedTask && !ending && <span className="ai-editing-detail">{msg('aiEditing.endHelp')}</span>}
+            {task.requestId ? <> · {msg('aiEditing.request_counts',{saved:task.saved,total:task.total})} · {msg(`aiEditing.request_phase_${task.phase ?? 'editing'}`)}{task.phase === 'proofreading' ? ` · ${msg('aiEditing.request_proofread',{saved:task.proofreadSaved ?? 0})}` : ''}{task.endedBy ? ` · ${msg(`aiEditing.request_by_${task.endedBy}`)}` : ''}</> : !complete && <> · {task.kind==='tags'?msg('aiEditing.tagsCounts',{processed:task.processed,total:task.total}):msg(`aiEditing.${!task.total ? 'preparing' : active ? task.state : 'counts'}`, { processed: task.processed, saved: task.saved, total: task.total, count: task.total })}</>}</span>
+          {protectedTask && !ending && <span className="ai-editing-detail">{msg(roundSaved ? 'aiEditing.roundSavedHelp' : 'aiEditing.endHelp')}</span>}
+          {task.kind === 'incremental' && onInspect && !complete && <AISaveDiagnostics onInspect={()=>onInspect(task.task_id)}/>}
         </div>
         <button type="button" className={protectedTask ? 'ai-editing-end' : 'ai-editing-close'} disabled={busy === task.task_id || ending} onClick={() => void run(task)} aria-label={protectedTask ? undefined : msg('aiEditing.dismiss')}>
           {protectedTask ? msg(ending ? 'aiEditing.endingAction' : 'aiEditing.end') : '×'}

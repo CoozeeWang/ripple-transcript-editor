@@ -2,6 +2,9 @@ import { describe,it,expect } from 'vitest';
 import { applyTagBatch,validateTagChanges,tagBatchScope,type TagChange } from './tagBatch';
 import { emptyTagLibrary,tagPath } from './tags';
 import type { Transcript } from '../types';
+it.each(['create_group','rename_group','dissolve_group','set_group_tags','transfer_group_tag','reorder_groups','place_group_tag'])('rejects removed %s requests explicitly before any mutation',action=>{
+ const before=emptyTagLibrary(),raw=JSON.stringify(before);expect(()=>validateTagChanges([{action}], [action])).toThrow('unsupported_tag_operation');expect(JSON.stringify(before)).toBe(raw);
+});
 const transcript=():Transcript=>({audio:{filename:'synthetic.wav',duration:2},speakers:[],segments:[{id:'s',text:'Synthetic public test',speaker_id:'p',start:0,end:2}]});
 function run(changes:TagChange[]){return applyTagBatch(emptyTagLibrary(),[{id:'a',label:'Synthetic A',transcript:transcript()},{id:'b',label:'Synthetic B',transcript:transcript()}],'a',changes)}
 describe('atomic tag batch business operations',()=>{
@@ -11,16 +14,6 @@ describe('atomic tag batch business operations',()=>{
   expect(r.consumers[0].transcript.segments[0].tagIds).toEqual([r.references.tags.school]);
   expect(r.consumers[1].transcript.segments[0].tagIds).toBeUndefined();
   expect(r.consumers[1].transcript.tagCollection?.tagIds).toEqual([]);
- });
- it('manages flat groups explicitly without parent selection cascading or changing hierarchy',()=>{
-  const r=run([{action:'create_tag',path:'经历/求学',ref:'school'},{action:'create_group',name:'甲',ref:'a'},
-   {action:'create_group',name:'乙',ref:'b'},{action:'set_group_tags',group_id:'ref:a',tag_ids:['ref:school']},
-   {action:'transfer_group_tag',tag_id:'ref:school',source_group_id:'ref:a',group_id:'ref:b',copy:true},
-   {action:'rename_group',group_id:'ref:b',name:'新乙'},{action:'reorder_groups',group_ids:['ref:b','ref:a']}]);
-  const groups=r.consumers[0].transcript.tagCollection!.groups;
-  expect(groups.map(g=>g.name)).toEqual(['新乙','甲']);expect(groups.every(g=>g.tagIds.length===1)).toBe(true);
-  const moved=applyTagBatch(r.library,r.consumers,'a',[{action:'transfer_group_tag',tag_id:r.references.tags.school,source_group_id:r.references.groups.a,group_id:r.references.groups.b,copy:false},{action:'dissolve_group',group_id:r.references.groups.a}]);
-  expect(moved.consumers[0].transcript.tagCollection!.groups).toHaveLength(1);expect(tagPath(moved.library,r.references.tags.school)).toBe('经历/求学');
  });
  it('rejects an entire batch when a later operation fails, never mutating its input',()=>{
   const library=emptyTagLibrary(),t=transcript(),before=structuredClone(t);

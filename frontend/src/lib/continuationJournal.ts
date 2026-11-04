@@ -8,7 +8,8 @@ const version = (value: unknown) => object(value) &&
   ['original', 'edit'].includes(String(value.kind));
 const receipt = (value: unknown) => object(value) &&
   ['task_id', 'batch_id', 'source_version_id', 'version_id'].every(key => typeof value[key] === 'string') &&
-  strings(value.processed_ids) && ['changed_segments', 'deleted_segments', 'merged_segments'].every(key =>
+  strings(value.processed_ids) && (value.removed_ids === undefined || strings(value.removed_ids)) &&
+  (value.proofread_invalidated_ids === undefined || strings(value.proofread_invalidated_ids)) && ['changed_segments', 'deleted_segments', 'merged_segments'].every(key =>
     typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && value[key] >= 0);
 const segment = (value: unknown) => object(value) &&
   typeof value.id === 'string' && typeof value.text === 'string';
@@ -31,6 +32,10 @@ export function isContinuationTask(value: unknown): value is ContinuationTask {
     new Set(ids).size === ids.length && strings(value.done) && value.done.every(id => ids.includes(id)) &&
     ['draft', 'paused', 'completed', 'cancelled'].includes(String(value.state)) &&
     (value.previous_task_id === undefined || typeof value.previous_task_id === 'string' && /^[a-f0-9-]{36}$/.test(value.previous_task_id)) &&
+    (value.phase === undefined || ['editing','proofreading'].includes(String(value.phase))) &&
+    (value.ended_by === undefined || ['user','ai','system'].includes(String(value.ended_by))) &&
+    (value.next_phase === undefined || ['editing','proofreading'].includes(String(value.next_phase))) &&
+    (value.request === undefined || object(value.request) && typeof value.request.id === 'string' && strings(value.request.ids) && new Set(value.request.ids).size === value.request.ids.length && typeof value.request.whole === 'boolean' && typeof value.request.proofreading_required === 'boolean' && ids.every(id => (value.request as {ids:string[]}).ids.includes(id))) &&
     (value.owner_client === undefined || typeof value.owner_client === 'string') &&
     (value.reason === undefined || typeof value.reason === 'string') &&
     Array.isArray(value.held) && value.held.every(batch) && (value.batch === undefined || batch(value.batch)) &&

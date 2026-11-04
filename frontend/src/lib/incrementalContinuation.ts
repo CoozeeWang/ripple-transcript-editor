@@ -4,6 +4,8 @@ import { applyAISuggestions, nextAIEditName } from './aiVersionEdits';
 import { checkContinuationGuard, type ContinuationGuard } from './continuationBatch';
 import type { ProjectTarget } from './projectConnectorHost';
 
+export type EditingPhase = 'editing' | 'proofreading';
+export interface EditingRequest { id: string; ids: string[]; whole: boolean; proofreading_required: boolean }
 type Action = 'edit' | 'delete' | 'merge_previous';
 interface Change { segment_id: string; before: string; after: string; action: Action }
 interface Batch {
@@ -11,6 +13,8 @@ interface Batch {
   changes: Change[]; checked: string[];
 }
 export interface ContinuationTask {
+  request?: EditingRequest; phase?: EditingPhase;
+  ended_by?: 'user' | 'ai' | 'system'; next_phase?: EditingPhase;
   owner_client?: string;
   previous_task_id?: string;
   schema: 1; id: string; source: ConnectorVersion; target: ConnectorVersion;
@@ -28,19 +32,47 @@ export interface ContinuationStore {
   write: (task: ContinuationTask) => Promise<void>;
 }
 export interface ContinuationProgress {
+  request_id?: string; request_saved?: number; request_total?: number; proofread_saved?: number;
+  request_remaining_count?: number; proofreading_remaining_count?: number;
+  request_complete?: boolean; whole_request?: boolean; phase?: EditingPhase;
+  request_status?: 'editing' | 'proofreading' | 'preparing_next' | 'waiting' | 'stopped' | 'failed' | 'completed' | 'range_completed';
+  ended_by?: 'user' | 'ai' | 'system'; next_phase?: EditingPhase;
   project_target?: ProjectTarget;
   task_id: string; state: ContinuationTask['state']; reason?: string;
   version: string; version_id: string; saved_segments: number; total_segments: number; staged: number;
   held_batches: number; is_current: boolean;
   saved_batches?: number; batch_number?: number; updated?: string;
 }
-const progress = (task: ContinuationTask, doc: ConnectorDocument): ContinuationProgress => {
+const progress = (task: ContinuationTask, doc: ConnectorDocument, tasks: ContinuationTask[]): ContinuationProgress => {
+  const request = task.request;
+  const linked: ContinuationTask[] = [];
+  let cursor: ContinuationTask | undefined = task;
+  while (cursor && !linked.some(t => t.id === cursor!.id)) { linked.unshift(cursor); cursor = tasks.find(t => t.id === cursor!.previous_task_id); }
+  const original = new Set(request?.ids ?? task.ids);
+  const saved = new Set(linked.filter(t => t.phase !== 'proofreading').flatMap(t => t.done).filter(id => original.has(id)));
+  const checked = new Set<string>(), removed = new Set<string>();
+  for (const round of linked) {
+    if (round.phase === 'proofreading') round.done.filter(id => original.has(id)).forEach(id => checked.add(id));
+    for (const receipt of round.receipts ?? (round.lastReceipt ? [round.lastReceipt] : [])) {
+      receipt.removed_ids?.forEach(id => removed.add(id));
+      if (round.phase !== 'proofreading') receipt.proofread_invalidated_ids?.forEach(id => checked.delete(id));
+    }
+  }
+  const allSaved = saved.size === original.size && (!request?.proofreading_required || [...original].every(id => removed.has(id) || checked.has(id)));
+  const complete = task.state === 'completed' && !task.pending && allSaved;
+  const status: ContinuationProgress['request_status'] = task.state === 'cancelled' ? (['phase_transition','round_end'].includes(task.reason ?? '') ? 'waiting' : task.reason === 'failure' ? 'failed' : 'stopped')
+    : task.state === 'paused' ? (task.reason === 'user_paused' || task.reason === 'connection_recovered' ? 'waiting' : 'failed')
+    : task.state === 'completed' ? (complete ? request?.whole ? 'completed' : 'range_completed' : 'waiting')
+    : task.done.length > 0 && !task.batch ? 'preparing_next' : task.phase === 'proofreading' ? 'proofreading' : 'editing';
   const history = [...(task.receipts ?? []), ...(task.lastReceipt ? [task.lastReceipt] : [])];
   const receipts = new Set(history.map(receipt => receipt.batch_id));
   const covered = new Set(history.flatMap(receipt => receipt.processed_ids));
   // Older journals may know the saved segments without a complete batch history.
   const savedBatches = task.done.length === 0 ? 0 : task.done.every(id => covered.has(id)) ? receipts.size : undefined;
   return {
+  request_id: request?.id, request_saved: saved.size, request_total: original.size, proofread_saved: checked.size,
+  request_remaining_count: original.size-saved.size, proofreading_remaining_count: [...saved].filter(id=>!removed.has(id)&&!checked.has(id)).length,
+  request_complete: complete, whole_request: request?.whole === true, phase: task.phase ?? 'editing', request_status: status, ended_by: task.ended_by, next_phase: task.next_phase,
   task_id: task.id, state: task.state, reason: task.reason, version: task.target.id===doc.version.id?doc.version.name:task.target.name,
   version_id: task.target.id, saved_segments: task.done.length, total_segments: task.ids.length,
   staged: task.batch?.checked.length ?? 0, held_batches: task.held.length,
@@ -84,7 +116,7 @@ export class IncrementalContinuation {
     }
     this.notify(doc);
   }
-  private notify(doc: ConnectorDocument) { this.host.continuationProgress?.([...this.tasks.values()].map(task => progress(task, doc))); }
+  private notify(doc: ConnectorDocument) { this.host.continuationProgress?.([...this.tasks.values()].map(task => progress(task, doc, [...this.tasks.values()]))); }
   private async save(task: ContinuationTask, doc: ConnectorDocument) {
     task.updated = new Date().toISOString();
     if (!doc.continuations) fail('durable_tasks_unavailable');
@@ -96,18 +128,23 @@ export class IncrementalContinuation {
     task.done = [...new Set([...task.done, ...receipt.processed_ids])];
     task.lastReceipt = receipt; task.pending = undefined; task.batch = undefined; task.reason = undefined;
     task.receipts=[...(task.receipts??[]).filter(r=>r.batch_id!==receipt.batch_id),receipt];
-    if (task.state !== 'cancelled') task.state = task.done.length === task.ids.length ? 'completed' : 'draft';
-    else task.reason = 'user_cancelled';
+    if (task.state !== 'cancelled') {
+      task.state = task.done.length === task.ids.length ? 'completed' : 'draft';
+      if (task.state === 'completed') {task.reason='normal_completion';task.ended_by='ai';}
+    }
+    // Preserve the explicit end reason when recovering an in-flight save.
+    else task.reason ??= 'user_cancelled';
   }
   private requireTarget(task: ContinuationTask, doc: ConnectorDocument) {
     if (doc.version.id !== task.target.id) fail('open_task_target_version_first');
   }
   private result(task: ContinuationTask, doc: ConnectorDocument, includeHistory = false) {
-    return { ...progress(task, doc), result_version: task.target.id===doc.version.id?doc.version:task.target, save_mode: task.saveMode,
+    const scope=progress(task, doc, [...this.tasks.values()]);
+    return { ...scope, result_version: task.target.id===doc.version.id?doc.version:task.target, save_mode: task.saveMode,
       batch_id: task.lastReceipt?.batch_id ?? null, changed_segments: task.lastReceipt?.changed_segments ?? 0,
       deleted_segments: task.lastReceipt?.deleted_segments ?? 0, merged_segments: task.lastReceipt?.merged_segments ?? 0,
-      complete: task.state === 'completed', previous_task_id: task.previous_task_id,
-      next_action: task.pending ? 'check_status_before_retry' : task.state === 'cancelled' ? (task.done.length === task.ids.length ? 'none' : 'prepare_remaining_as_new_task') : task.state === 'completed' ? 'none' : task.state === 'paused' ? 'resume_after_user_request' : 'continue_task',
+      complete: task.state === 'completed', task_complete: task.state === 'completed', previous_task_id: task.previous_task_id,
+      next_action: task.pending ? 'check_status_before_retry' : task.reason === 'phase_transition' ? 'prepare_explicit_next_phase' : task.state === 'completed' && scope.request_remaining_count ? 'prepare_remaining_as_new_task' : task.state === 'completed' && task.request?.proofreading_required && scope.proofreading_remaining_count ? 'prepare_proofreading_for_request' : task.state === 'cancelled' ? (task.done.length === task.ids.length ? 'none' : 'prepare_remaining_as_new_task') : task.state === 'completed' ? 'none' : task.state === 'paused' ? 'resume_after_user_request' : 'continue_task',
       ...(task.state === 'draft' || task.state === 'paused' || includeHistory ? { summary: task.summary,
         rules_scope: task.state === 'cancelled' || task.state === 'completed' ? 'historical-not-current-instructions' : 'this-task-only' } : {}) };
   }
@@ -130,25 +167,37 @@ export class IncrementalContinuation {
       if ([...this.tasks.values()].some(t => t.target.id === doc.version.id && ['draft','paused'].includes(t.state))) fail('resume_or_cancel_existing_continuation');
       const ids = segments.slice(first,last+1).map(s => s.id);
       if (ids.length !== new Set(ids).size || segments.slice(first,last+1).some(s => s.text.length > 12000)) fail('segment_too_large_or_duplicate');
+      if (a.phase !== undefined && !['editing','proofreading'].includes(String(a.phase))) fail('invalid_editing_phase');
+      if (a.proofreading_required !== undefined && typeof a.proofreading_required !== 'boolean') fail('invalid_proofreading_requirement');
+      const phase = (a.phase ?? 'editing') as EditingPhase;
       let previous: ContinuationTask | undefined;
       if (a.previous_task_id !== undefined) {
         previous = this.tasks.get(String(a.previous_task_id));
-        if (!previous || previous.state !== 'cancelled') fail('successor_requires_cancelled_task');
+        if (!previous || !['cancelled','completed'].includes(previous.state)) fail('successor_requires_cancelled_task');
         if (previous.pending) fail('previous_save_uncertain_check_status');
         if (previous.target.id !== doc.version.id) fail('successor_requires_exact_saved_version');
         const savedReceipt = doc.transcript.aiContinuationReceipts?.[previous.id];
         if (previous.done.length && (!previous.lastReceipt || savedReceipt?.batch_id !== previous.lastReceipt.batch_id || savedReceipt.version_id !== doc.version.id)) fail('saved_receipt_missing_review_current_manuscript');
         if ([...this.tasks.values()].some(t => t.previous_task_id === previous!.id)) fail('successor_already_exists_list_history');
-        const remaining = previous.ids.filter(id => !previous!.done.includes(id));
-        if (!remaining.length) fail('no_remaining_segments');
-        // Exact ID order excludes already-saved segments and detects structural edits.
-        // Fresh snapshots/batches then read current text rather than replaying proposals.
-        if (JSON.stringify(ids) !== JSON.stringify(remaining)) fail('remaining_scope_changed_review_current_manuscript');
+        const requestIds = previous.request?.ids ?? previous.ids;
+        const linked = [...this.tasks.values()].filter(t => previous!.request ? t.request?.id === previous!.request.id : t.id === previous!.id);
+        const saved = new Set(linked.filter(t => t.phase !== 'proofreading').flatMap(t => t.done));
+        if (phase === 'proofreading') {
+          if (ids.some(id => !saved.has(id))) fail('proofreading_requires_saved_scope');
+        } else {
+          const remaining = requestIds.filter(id => !saved.has(id));
+          if (!remaining.length) fail('no_remaining_segments');
+          if (JSON.stringify(ids) !== JSON.stringify(remaining)) fail('remaining_scope_changed_review_current_manuscript');
+        }
       }
+      if (previous?.next_phase && previous.next_phase !== phase) fail('handoff_phase_mismatch');
+      if (phase === 'proofreading' && !previous) fail('proofreading_requires_previous_task');
       const name = a.save_mode === 'new_version' ? nextAIEditName(doc.label,doc.names) : doc.label;
       const id = crypto.randomUUID();
-      const summary = JSON.stringify({ ...(doc.target ? { target: doc.target } : {}), ...(previous ? { previous_task_id: previous.id } : {}), source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
-      const task: ContinuationTask = { previous_task_id: previous?.id, owner_client: typeof a.owner_client === 'string' ? a.owner_client : undefined, schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
+      const request: EditingRequest = previous?.request ?? { id: previous?.id ?? id, ids: previous?.ids ?? ids, whole: !previous && ids.length === segments.length, proofreading_required: a.proofreading_required === true };
+      if (previous?.request && a.proofreading_required !== undefined && a.proofreading_required !== request.proofreading_required) fail('request_proofreading_requirement_changed');
+      const summary = JSON.stringify({ phase, request_id: request.id, proofreading_required: request.proofreading_required, ...(doc.target ? { target: doc.target } : {}), ...(previous ? { previous_task_id: previous.id } : {}), source_version: doc.version, save_mode: a.save_mode, start_id: ids[0], end_id: ids.at(-1), rules: a.rules, allowed_actions: actions, delivery_mode: 'incremental', result_version_name: name });
+      const task: ContinuationTask = { request, phase, previous_task_id: previous?.id, owner_client: typeof a.owner_client === 'string' ? a.owner_client : undefined, schema:1,id,source:doc.version,target:doc.version,saveMode:a.save_mode as ConnectorSaveMode,name,rules:a.rules as string[],actions:actions as Action[],ids,done:[],summary,state:'draft',held:[],updated:'' };
       await this.save(task,doc);
       return { task_id:id,summary,segment_count:ids.length,delivery_mode:'incremental',target_version:doc.version,
         instruction:'Confirm this scope and save choice once. Read a continuation batch, stage changed segments and unchanged_ids, then save_continuation_batch using its batch_id and the agreed summary. Each saved batch is visible in Ripple. Repeat until complete. Resume a paused batch only after the user asks; do not overwrite manual changes.' };
@@ -162,7 +211,7 @@ export class IncrementalContinuation {
   }
   private async execute(operation:string,a:Record<string,unknown>):Promise<Record<string,unknown>> {
       const doc = await this.host.current(); await this.load(doc);
-      if (operation === 'tasks') return { tasks:[...this.tasks.values()].filter(t => a.include_history === true || t.state === 'draft' || t.state === 'paused').map(t => ({ ...progress(t,doc), previous_task_id: t.previous_task_id })),current_version:doc.version };
+      if (operation === 'tasks') return { tasks:[...this.tasks.values()].filter(t => a.include_history === true || t.state === 'draft' || t.state === 'paused').map(t => ({ ...progress(t,doc,[...this.tasks.values()]), previous_task_id: t.previous_task_id })),current_version:doc.version };
       const task = this.tasks.get(String(a.task_id)); if (!task) fail('task_not_found_in_current_interview');
       if(operation==='proposals') {
         const batch=task.batch?.changes.length?task.batch:task.held.at(-1);
@@ -172,17 +221,36 @@ export class IncrementalContinuation {
           index:doc.transcript.segments.findIndex(s=>s.id===c.segment_id)+1,
         }))};
       }
-      if (operation === 'status') return { ...this.result(task,doc,a.include_history_details === true), published:task.done.length > 0,
+      if (operation === 'status') {
+        const batchId = typeof a.batch_id === 'string' ? a.batch_id : task.pending?.batch_id ?? task.batch?.id ?? task.lastReceipt?.batch_id ?? null;
+        const savedReceipt = (task.receipts ?? []).find(receipt => receipt.batch_id === batchId)
+          ?? (task.lastReceipt?.batch_id === batchId ? task.lastReceipt : undefined);
+        const receiptStatus = savedReceipt ? 'confirmed_saved' : task.pending?.batch_id === batchId && batchId !== null ? 'save_uncertain'
+          : task.batch?.id === batchId && batchId !== null ? 'no_saved_receipt' : 'unknown_batch';
+        return { ...this.result(task,doc,a.include_history_details === true), published:task.done.length > 0,
+        // Only local durable evidence. A platform refusal never reaches this service,
+        // so absence of a receipt cannot identify the external call's rejection layer.
+        save_diagnostics: { task_id: task.id, batch_id: receiptStatus === 'unknown_batch' ? null : batchId, receipt_status: receiptStatus,
+          checked_at: new Date().toISOString(), journal_updated_at: task.updated,
+          external_call_status: 'not_observable', saved_segments: savedReceipt?.processed_ids.length ?? 0,
+          saved_version_id: savedReceipt?.version_id ?? null },
         remaining_ids:task.ids.filter(id => !task.done.includes(id)).slice(0,32),
         remaining_count: task.ids.length - task.done.length,
         remaining_start_id: task.ids.find(id => !task.done.includes(id)) ?? null,
         remaining_end_id: task.ids.filter(id => !task.done.includes(id)).at(-1) ?? null,
         pending_batch_id:task.batch?.id ?? null, pending_changes:task.batch?.changes.length ?? 0 };
+      }
       this.requireTarget(task,doc);
       if (operation === 'cancel') {
-        if (task.state === 'completed') fail('task_already_completed');
-        const cancelled = structuredClone(task); cancelled.state='cancelled';cancelled.reason='user_cancelled';await this.save(cancelled,doc);
-        return { cancelled:true,saved_segments:task.done.length,already_saved_batches_retained:true };
+        if (task.state === 'completed' && (!task.request || progress(task,doc,[...this.tasks.values()]).request_complete)) fail('task_already_completed');
+        const reason = a.reason ?? 'round_end', initiator = a.initiator ?? 'ai';
+        if (!['user_stop','phase_transition','round_end','failure'].includes(String(reason)) || !['user','ai','system'].includes(String(initiator))) fail('invalid_end_reason');
+        if (reason === 'phase_transition' && (initiator !== 'ai' || !['editing','proofreading'].includes(String(a.next_phase)))) fail('explicit_handoff_phase_required');
+        if (reason === 'user_stop' && initiator !== 'user') fail('invalid_end_initiator');
+        const cancelled = structuredClone(task); cancelled.state='cancelled';cancelled.reason=reason === 'user_stop' ? 'user_cancelled' : String(reason);
+        cancelled.ended_by=initiator as ContinuationTask['ended_by']; cancelled.next_phase=reason === 'phase_transition' ? a.next_phase as EditingPhase : undefined;
+        await this.save(cancelled,doc);
+        return { ...this.result(cancelled,doc), cancelled:true,already_saved_batches_retained:true };
       }
       if (operation === 'pause') {
         if (task.state !== 'draft') fail('task_not_editable');
@@ -283,7 +351,13 @@ export class IncrementalContinuation {
         if(operation==='checkpoint'&&a.batch_id!==batch.id)fail('batch_id_mismatch');
         if(batch.checked.length!==batch.segments.length)fail('incomplete_batch_continue_staging');
         const changes=batch.changes.filter(c=>c.action!=='edit'||c.before!==c.after);
-        const receipt:ContinuationReceipt={task_id:task.id,batch_id:batch.id,source_version_id:task.source.id,version_id:'',processed_ids:batch.segments.map(s=>s.id),changed_segments:changes.length,deleted_segments:changes.filter(c=>c.action==='delete').length,merged_segments:changes.filter(c=>c.action==='merge_previous').length};
+        const invalidated = new Set(changes.map(c=>c.segment_id));
+        for (const change of changes.filter(c=>c.action==='merge_previous')) {
+          let index=batch.guard.segments.findIndex(s=>s.id===change.segment_id)-1;
+          while(index>=0&&changes.some(c=>c.segment_id===batch.guard.segments[index].id&&c.action==='delete')) index--;
+          if(index>=0) invalidated.add(batch.guard.segments[index].id);
+        }
+        const receipt:ContinuationReceipt={removed_ids:changes.filter(c=>c.action==='delete'||c.action==='merge_previous').map(c=>c.segment_id),proofread_invalidated_ids:[...invalidated],task_id:task.id,batch_id:batch.id,source_version_id:task.source.id,version_id:'',processed_ids:batch.segments.map(s=>s.id),changed_segments:changes.length,deleted_segments:changes.filter(c=>c.action==='delete').length,merged_segments:changes.filter(c=>c.action==='merge_previous').length};
         task.pending=receipt;await this.save(task,doc);
         try {
           const result=await this.host.publish(doc.transcript,changes.map(c=>({id:c.segment_id,text:c.after,action:c.action,reason:task.rules.join('; ')})),task.name,

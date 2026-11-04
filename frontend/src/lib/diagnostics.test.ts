@@ -40,3 +40,22 @@ it('records safe drag failure categories without storing native text',()=>{
  expect(recordProblem('export','Drag already active').reason).toBe('drag_busy');
  expect(JSON.stringify(readProblems())).not.toContain('Mouse released before drag started');
 });
+
+it.each(['format','storage','permission'])('preserves safe local conversion category %s without storing error details',code=>{
+ const problem=recordProblem('transcription',Object.assign(Error('Synthetic private decoder detail'),{code}));expect(problem.reason).toBe(code);expect(JSON.stringify(readProblems())).not.toContain('decoder');
+});
+
+it('retains first/latest occurrence with explicit timezone through restored records',()=>{
+ vi.spyOn(Date,'now').mockReturnValue(Date.parse('2026-11-04T01:00:00Z'));
+ const first=recordProblem('open','ENOENT');
+ vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-04T01:00:03Z'));
+ const last=recordProblem('open','ENOENT');
+ expect(last).toMatchObject({id:first.id,firstTime:'2026-11-04T01:00:00.000Z',time:'2026-11-04T01:00:03.000Z',count:2,reason:'missing'});
+ expect(readProblems()[0]).toEqual(last);
+ expect(problemDetails(last)).toContain('2026-11-04T01:00:00.000Z (UTC)');
+ expect(problemDetails(last)).toContain('2026-11-04T01:00:03.000Z (UTC)');
+ expect(problemDetails(first)).not.toContain('01:00:03');
+});
+it.each([['invalid_api_key','permission'],['upstream_error','upstream_http'],['backend_unreachable','connect'],['read_timeout','read_timeout']])('preserves %s diagnostic category', (code,reason)=>{
+ expect(recordProblem('transcription',{code,message:'Synthetic private text'}).reason).toBe(reason);
+});

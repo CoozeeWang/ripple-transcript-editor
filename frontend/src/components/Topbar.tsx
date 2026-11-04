@@ -1,3 +1,7 @@
+import {Fragment} from 'react';
+import {ExportMarkOptions} from './ExportMarkOptions';
+import {useExportMarks} from '../hooks/useExportMarks';
+import {effectiveExportMarks,type ExportMarkOptions as MarkOptions} from '../lib/exportOptions';
 import {pendingWriteControl} from '../lib/pendingWriteControl';
 import { ActionIcon } from './ActionIcon';
 import { LanguageControl } from './LanguageControl';
@@ -13,6 +17,7 @@ import { IS_MAC, keys } from "../lib/format";
  *  依赖密集（跨 useFolder/useVersions/useFindReplace/useTranscription 等域），
  *  全部通过 props 注入。 */
 export interface TopbarProps {
+  aiActionHint?: string | null;
   taskOnly?: boolean;
   projectMode?: boolean;
   projectLabel?: string;
@@ -46,12 +51,11 @@ export interface TopbarProps {
   exportMenuOpen: boolean;
   setExportMenuOpen: Dispatch<SetStateAction<boolean>>;
   exportMenuRef: RefObject<HTMLDivElement | null>;
-  exportAs: (format: ExportFormat) => void;
+  exportAs: (format: ExportFormat,options?:MarkOptions) => void;
   exportScope?:'full'|'visible';
   setExportScope?:(scope:'full'|'visible')=>void;
   fullCount?:number;
   visibleCount?:number;
-  subtitlesAvailable?: boolean;
   exportProjectFiles?: () => void;
   handleSave: () => void;
   openSettings: () => void;
@@ -98,6 +102,9 @@ export function Topbar(props: TopbarProps) {
     };
   }, [exportMenuOpen, exportMenuRef]);
 
+  useEffect(()=>{if(props.aiActionHint)setExportMenuOpen(false)},[props.aiActionHint,setExportMenuOpen]);
+  const exportMarks=useExportMarks();
+  const [exportFormat,setExportFormat]=useState<ExportFormat>('docx');
   const Brand = props.onReturnToProjects ? "button" : "div";
 
   return (
@@ -364,18 +371,21 @@ export function Topbar(props: TopbarProps) {
           <button
             className="button button--secondary button--icon"
             type="button"
-            onClick={() => setExportMenuOpen((open) => !open)}
+            disabled={!!props.aiActionHint}
+            aria-description={props.aiActionHint??undefined}
+            data-action-tip={props.aiActionHint??undefined}
+            onClick={() => {if(!props.aiActionHint)setExportMenuOpen((open) => !open)}}
             onKeyDown={event => {
-              if (event.key === 'ArrowDown') { event.preventDefault(); event.stopPropagation(); setExportMenuOpen(true); }
+              if (event.key === 'ArrowDown') { event.preventDefault(); event.stopPropagation(); if(!props.aiActionHint)setExportMenuOpen(true); }
             }}
             aria-label={msg('Topbar.m1057')}
             aria-haspopup="menu"
             aria-expanded={exportMenuOpen}
-            data-tip={msg('Topbar.m1058', { v0: IS_MAC ? keys("E") : keys("E", true) })}
+            data-tip={props.aiActionHint?undefined:msg('Topbar.m1058', { v0: IS_MAC ? keys("E") : keys("E", true) })}
           >
             <ActionIcon kind="export"/>
           </button>
-          {exportMenuOpen && (
+          {exportMenuOpen && !props.aiActionHint && (
             <ul className="menu-list transcript-export-menu" role="menu" aria-label={msg('Topbar.m1059')} onKeyDown={event => {
               if (event.nativeEvent.isComposing || event.keyCode === 229) return;
               if (event.key === 'Tab') { setExportMenuOpen(false); return; }
@@ -387,7 +397,7 @@ export function Topbar(props: TopbarProps) {
               const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
               items[next].focus();
             }}>
-              <ExportChoices scope={props.exportScope} onScope={props.setExportScope} visibleCount={props.visibleCount??0} subtitlesAvailable={!!props.subtitlesAvailable} onExport={format=>{setExportMenuOpen(false);void exportAs(format)}} onProject={props.exportProjectFiles?()=>{setExportMenuOpen(false);props.exportProjectFiles?.()}:undefined}/>
+              <ExportChoices scope={props.exportScope} onScope={props.setExportScope} visibleCount={props.visibleCount??0} format={exportFormat} onFormat={setExportFormat} options={exportMarks.get(exportFormat)} onOptions={options=>exportMarks.set(exportFormat,options)} onExport={(format,options)=>{setExportMenuOpen(false);void exportAs(format,options)}} onProject={props.exportProjectFiles?()=>{setExportMenuOpen(false);props.exportProjectFiles?.()}:undefined}/>
             </ul>
           )}
         </div>
@@ -395,8 +405,11 @@ export function Topbar(props: TopbarProps) {
         <button
           className="icon-button"
           type="button"
-          onClick={() => void handleSave()}
-          data-tip={msg('Topbar.m1064', { v0: keys("S") })}
+          disabled={!!props.aiActionHint}
+          aria-description={props.aiActionHint??undefined}
+          data-action-tip={props.aiActionHint??undefined}
+          onClick={() => {if(!props.aiActionHint)void handleSave()}}
+          data-tip={props.aiActionHint?undefined:msg('Topbar.m1064', { v0: keys("S") })}
           aria-label={msg('Topbar.m1065')}
         >
           <svg
@@ -431,9 +444,10 @@ export function Topbar(props: TopbarProps) {
 }
 
 /** The second step replaces the scope menu rather than appending formats below it. */
-function ExportChoices({ scope, onScope, visibleCount, subtitlesAvailable, onExport, onProject }: {
+function ExportChoices({ scope, onScope, visibleCount, onExport, onProject,format,onFormat,options,onOptions }: {
   scope?: 'full'|'visible'; onScope?: (scope:'full'|'visible')=>void; visibleCount:number;
-  subtitlesAvailable:boolean; onExport:(format:ExportFormat)=>void; onProject?:()=>void;
+  onExport:(format:ExportFormat,options:MarkOptions)=>void; onProject?:()=>void;
+  format:ExportFormat;onFormat:(format:ExportFormat)=>void;options:MarkOptions;onOptions:(options:MarkOptions)=>void;
 }) {
   const [step,setStep]=useState<'scope'|'formats'>(onScope?'scope':'formats'), first=useRef<HTMLButtonElement>(null), previousStep=useRef(step);
   useLayoutEffect(()=>{if(previousStep.current!==step)first.current?.focus();previousStep.current=step},[step]);
@@ -443,7 +457,8 @@ function ExportChoices({ scope, onScope, visibleCount, subtitlesAvailable, onExp
   </>;
   return <>
     {onScope&&<li className="export-step-heading"><button className="export-step-back" ref={first} type="button" role="menuitem" tabIndex={-1} onClick={()=>setStep('scope')}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m10 3-5 5 5 5"/></svg>{msg('tags.exportBack')}</button><span className="export-step-scope">{msg(scope==='visible'?'tags.exportVisibleScope':'tags.full',{count:visibleCount})}</span></li>}
-    {exportFormats().map(([label,format])=><li key={format}><button type="button" role="menuitem" tabIndex={-1} disabled={scope==='visible'&&!visibleCount||(format==='srt'||format==='vtt')&&!subtitlesAvailable} data-action-tip={(format==='srt'||format==='vtt')&&!subtitlesAvailable?msg('Topbar.m1060'):undefined} onClick={()=>onExport(format)}>{label}</button></li>)}
+    {exportFormats().map(([label,value])=><Fragment key={value}><li><button type="button" role="menuitemradio" aria-checked={format===value} className={format===value?'export-format-selected':undefined} tabIndex={-1} disabled={scope==='visible'&&!visibleCount} onClick={()=>onFormat(value)}>{label}</button></li>{format===value&&<li><ExportMarkOptions menu format={value} value={options} onChange={onOptions}/>{value==='json'&&<p className="export-format-hint">{msg('export.jsonImportBoundary')}</p>}</li>}</Fragment>)}
+    <li className="export-menu-confirm"><button type="button" role="menuitem" tabIndex={-1} disabled={scope==='visible'&&!visibleCount} onClick={()=>onExport(format,effectiveExportMarks(format,options))}>{msg('export.confirm')}</button></li>
     {onProject&&<><li className="menu-divider export-other-divider" role="separator" aria-hidden="true"/><li><button type="button" role="menuitem" tabIndex={-1} onClick={onProject}>{msg('tags.exportOther')}</button></li></>}
   </>;
 }

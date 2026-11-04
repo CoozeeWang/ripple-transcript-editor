@@ -1,0 +1,26 @@
+import {expect,it} from 'vitest';
+import {projectConnectorFixture} from '../testUtils/syntheticProjectConnector';
+import {ProjectAIConnector} from './projectAIConnector';
+import {readModelEdit,saveActiveEdit} from '../localStore';
+import {transactProjectTags} from './projectTagRepository';
+import {admitTags} from './tagCollections';
+import {setTagPath,setSegmentTag} from './tags';
+import {assertSharedTagLibraryUnchanged} from './sharedTagGuard';
+import {blocksHumanEditing} from './aiEditOwnership';
+it('keeps AI A bound through B body/mark/tag saves, rejecting shared mutations without overwriting either manuscript',async()=>{
+ const f=await projectConnectorFixture(true);const rawB=(await readModelEdit(f.dirB,'session-b.wav','m1','e1'))!;
+ const version=(transcript=rawB.transcript)=>({recordingId:'recording-session-b',modelId:'m1',editId:'e1',transcript});
+ const catalog=await transactProjectTags(f.project!,version(),(library,consumers)=>({library:setTagPath(library,'Synthetic topic').library,consumers}),'additions');f.project=catalog.project;const tag=f.project.data.tagLibrary!.tags[0];
+ const c=new ProjectAIConnector(f.active,()=>({project:()=>f.project,active:()=>({interview_id:'session-b',recording_id:'recording-session-b',directory:f.dirB,version_id:'m1:e1'})}));
+ const read=await c.handle('read_project',{interview_id:'session-a',recording_id:'recording-session-a',version_id:'m1:e1'});
+ const plan=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s1',save_mode:'current_version',delivery_mode:'incremental',proofreading_required:false,rules:['Synthetic A edits']});const batch=await c.handle('batch',{task_id:plan.task_id});
+ const b={...rawB,transcript:{...rawB.transcript,segments:rawB.transcript.segments.map((s,i)=>i===0?{...s,text:'Human B changed',annotations:[...s.annotations!,{id:'human-new',text:'B note',createdAt:'2026-01-01'}],highlights:[{id:'b-h',start:0,end:5}]}:s)}};
+ await saveActiveEdit(f.dirB,'session-b.wav','m1','e1',b);
+ const linked=await transactProjectTags(f.project!,version(b.transcript),(library,consumers,id)=>{const result={library,consumers:consumers.map(row=>row.id===id?{...row,transcript:{...setSegmentTag(row.transcript,'s1',tag.id,true),tagCollection:admitTags(library,row.transcript.tagCollection!,[tag.id],row.label)}}:row)};assertSharedTagLibraryUnchanged(blocksHumanEditing(c.editing.get(String(plan.task_id))!),library,result.library);return result;},'additions');f.project=linked.project;
+ await expect(transactProjectTags(f.project!,version(linked.transcript),(library,consumers)=>{const changed=setTagPath(library,'Forbidden while A is owned').library;assertSharedTagLibraryUnchanged(true,library,changed);return{library:changed,consumers};},'additions')).rejects.toThrow('tag_shared_ai_restricted');
+ await c.handle('checkpoint',{task_id:plan.task_id,batch_id:batch.batch_id,confirmed_summary:plan.summary,changes:[{segment_id:'s1',before:'A0',after:'AI A revised'}],unchanged_ids:['s2']});
+ const a=(await readModelEdit(f.dirA,'session-a.wav','m1','e1'))!,savedB=(await readModelEdit(f.dirB,'session-b.wav','m1','e1'))!;
+ expect(a.transcript.segments[0].text).toBe('AI A revised');expect(a.transcript.aiContinuationReceipts?.[String(plan.task_id)].version_id).toBe('m1:e1');
+ expect(savedB.transcript.segments[0]).toMatchObject({text:'Human B changed',tagIds:[tag.id],highlights:[{id:'b-h',start:0,end:5}]});expect(savedB.transcript.segments[0].annotations).toContainEqual({id:'human-new',text:'B note',createdAt:'2026-01-01'});
+ expect(blocksHumanEditing(c.editing.get(String(plan.task_id))!)).toBe(false);
+});

@@ -191,27 +191,6 @@ export function useEditor(deps: UseEditorDeps) {
     }, `add-speaker:${id}`);
   };
 
-  // 检测是否匹配已知的英文默认模板（早期版本的导入数据）。
-  const isEnglishSpeakerTemplate = (name: string): RegExpMatchArray | null =>
-    /^Speaker (\d+)$/.exec(name.trim());
-
-  // 是否有需要规范化的英文模板 speaker。
-  const hasEnglishSpeakerTemplate = transcript
-    ? transcript.speakers.some((s) => isEnglishSpeakerTemplate(s.name) !== null)
-    : false;
-
-  // 批量把英文模板 speaker 改成中文默认名「说话人 N」；仅改 name，保留 id 与颜色槽位。
-  const normalizeEnglishSpeakerTemplates = () => {
-    if (!transcript) return;
-    mutateTranscript((current) => ({
-      ...current,
-      speakers: current.speakers.map((speaker, index) => {
-        const m = isEnglishSpeakerTemplate(speaker.name);
-        return m ? { ...speaker, name: `说话人 ${index + 1}` } : speaker;
-      }),
-    }), "normalize-speaker-templates");
-  };
-
   // 删除一个说话人：仅当没有任何 segment 分配给它时才允许（先弹窗确认）；
   // 若已有段在用，提示用户先改派或合并，避免留下悬空 speaker_id。
   const deleteSpeaker = (speakerId: string) => {
@@ -496,8 +475,6 @@ export function useEditor(deps: UseEditorDeps) {
     mergeSpeaker,
     confirmMerge,
     addSpeaker,
-    hasEnglishSpeakerTemplate,
-    normalizeEnglishSpeakerTemplates,
     deleteSpeaker,
     addAnnotation,
     updateAnnotation,

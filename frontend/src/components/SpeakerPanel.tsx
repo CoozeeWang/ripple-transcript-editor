@@ -27,8 +27,6 @@ export interface SpeakerPanelProps {
   setMergePrompt: Dispatch<SetStateAction<MergePrompt | null>>;
   deleteSpeaker: (id: string) => void;
   addSpeaker: (assignSegmentId?: string) => void;
-  hasEnglishSpeakerTemplate: boolean;
-  normalizeEnglishSpeakerTemplates: () => void;
 }
 
 export function SpeakerPanel(props: SpeakerPanelProps) {
@@ -47,8 +45,6 @@ export function SpeakerPanel(props: SpeakerPanelProps) {
     setMergePrompt,
     deleteSpeaker,
     addSpeaker,
-    hasEnglishSpeakerTemplate,
-    normalizeEnglishSpeakerTemplates,
   } = props;
 
   if (collapsed) {
@@ -323,15 +319,6 @@ export function SpeakerPanel(props: SpeakerPanelProps) {
           data-tip={msg('SpeakerPanel.m1025')}
         >
           {msg('SpeakerPanel.m1026')}</button>
-      ) : null}
-      {!viewingOriginal && hasEnglishSpeakerTemplate ? (
-        <button
-          type="button"
-          className="speaker-add speaker-add--minor"
-          onClick={normalizeEnglishSpeakerTemplates}
-          data-action-tip={msg('SpeakerPanel.m1027')}
-        >
-          {msg('SpeakerPanel.m1028')}</button>
       ) : null}
       {viewingOriginal ? (
         <div className="tip">

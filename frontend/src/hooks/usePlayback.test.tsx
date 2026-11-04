@@ -14,7 +14,7 @@ const transcript: Transcript = {
   ],
 };
 afterEach(() => {cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers();});
-function setup(editors = new Map<string, ParagraphEditorElement>(), confirmed = vi.fn()) {
+function setup(editors = new Map<string, ParagraphEditorElement>(), confirmed = vi.fn(), onError = vi.fn()) {
   let playback!: ReturnType<typeof usePlayback>;
   let selected = "";
   function Harness() {
@@ -23,7 +23,7 @@ function setup(editors = new Map<string, ParagraphEditorElement>(), confirmed = 
     selected = selection;
     playback = usePlayback({transcript, mutateTranscript: () => {}, activeSegmentId: active,
       setActiveSegmentId: setActive, setSelectedSegmentId: setSelection,
-      effectiveSelectedSegmentId: selection, textareaRefs: {current: editors}, setLoadError: () => {}, onDurationConfirmed: confirmed});
+      effectiveSelectedSegmentId: selection, textareaRefs: {current: editors}, setLoadError: onError, onDurationConfirmed: confirmed});
     return <section data-testid="panel" ref={playback.transcriptPanelRef}>
       <audio ref={playback.audioRef} src={playback.audioUrl || undefined}/>
       <button onClick={() => setSelection("a")}>选择甲</button>
@@ -287,4 +287,16 @@ it('keeps the explicitly navigated segment while audio continues without seeking
 });
 it('an explicit audio seek supersedes the segment-number navigation',()=>{
   const app=setup();act(()=>app.playback.selectSegmentForNavigation('a'));act(()=>app.playback.seekTo(12));expect(app.selected).toBe('b');
+});
+
+it("uses the same localized message for media load failure and rejected playback", async () => {
+  const onError = vi.fn(), app = setup(undefined, undefined, onError);
+  Object.defineProperty(app.playback.audioRef.current!, 'error', {configurable: true, value: {code: 4}});
+  act(() => app.playback.handleAudioError());
+  const initialMessage = onError.mock.calls.at(-1)![0];
+  expect(initialMessage).toContain('无法播放');
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(new DOMException('The operation is not supported.', 'NotSupportedError'));
+  await act(async () => app.playback.togglePlayback());
+  expect(onError.mock.calls.at(-1)![0]).toBe(initialMessage);
+  expect(onError.mock.calls.at(-1)![0]).not.toContain('not supported');
 });

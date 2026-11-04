@@ -43,3 +43,8 @@ it.each([
   null, { ...task(), target: null }, { ...task(), rules: null }, { ...task(), done: ['unplanned'] },
   { ...task(), held: [{}] }, { ...task(), receipts: [{}] }, { ...task(), batch: { checked: null } },
 ])('rejects malformed nested journal data before recovery: %j', value => expect(isContinuationTask(value)).toBe(false));
+it('validates request scope metadata instead of trusting malformed cumulative progress',()=>{
+ const t=task();expect(isContinuationTask({...t,phase:'editing',request:{id:t.id,ids:['s1'],whole:true,proofreading_required:true}})).toBe(true);
+ expect(isContinuationTask({...t,request:{id:t.id,ids:['other'],whole:true,proofreading_required:true}})).toBe(false);
+ expect(isContinuationTask({...t,request:{id:t.id,ids:['s1','s1'],whole:true,proofreading_required:true}})).toBe(false);
+});

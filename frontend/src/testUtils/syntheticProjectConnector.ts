@@ -9,7 +9,7 @@ import type { Transcript } from '../types';
 
 export async function projectConnectorFixture(sidecars=false) {
   const fs = syntheticDirectory();
-  let project: OpenProject | null = { directory: fs.handle, data: { kind: 'ripple-project', schemaVersion: sidecars?2:1,
+  let project: OpenProject | null = { directory: fs.handle, data: { kind: 'ripple-project', schemaVersion: sidecars?2:1,...(sidecars?{tagLibrary:{schemaVersion:4 as const,tags:[],groups:[],treeOrder:[]}}:{}),
     id: 'synthetic-project', title: 'Synthetic project', description: '', revision: 0,
     interviews: ['session-a','session-b'].map(id => ({ id, title: 'Synthetic duplicate session',
       recordings: [{ id: `recording-${id}`, name: 'Synthetic duplicate manuscript', file: `${id}.wav`, storage: 'none', fingerprint: '' }] })) } };

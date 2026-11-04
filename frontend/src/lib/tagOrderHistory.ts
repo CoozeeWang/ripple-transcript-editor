@@ -1,6 +1,7 @@
 import type { Transcript } from '../types';
 import type { TagCollection } from './tagCollections';
 import type { TagLibrary } from './tags';
+import {carryProjectTreeOrder} from './projectTreeOrder';
 import { cleanTagOrders } from './tagOrdering';
 import { tagFields, type TagFields, type TagTransactionReceipt } from './projectTagRepository';
 
@@ -22,6 +23,10 @@ export function carryTagOrder(library: TagLibrary, collection: TagCollection, ba
 /** Rebase both editor snapshots and exact durable receipts, never the manuscript text. */
 export function tagOrderHistoryRebase(base: TagCollection, view: View, versionId: string,
     receipts: readonly TagTransactionReceipt[], sorted: TagTransactionReceipt, current: Transcript) {
+    if(sorted.afterLibrary.schemaVersion===4){
+        const order=sorted.afterLibrary.treeOrder!;
+        return{receipt:(receipt:TagTransactionReceipt)=>({...receipt,beforeLibrary:carryProjectTreeOrder(receipt.beforeLibrary,order),afterLibrary:carryProjectTreeOrder(receipt.afterLibrary,order)}),snapshot:(transcript:Transcript)=>transcript};
+    }
     const catalogs = new Map<string, TagLibrary>();
     const snapshots = new Map<string, { fields: TagFields; revision?: string }>();
     // A no-op sort has no file patch, but this exact current revision must survive later redo.

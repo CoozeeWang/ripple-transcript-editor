@@ -17,6 +17,5 @@ html.desktop-update-document, .desktop-update-document body, .desktop-update-doc
 .desktop-update-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:16px 28px; border-top:1px solid var(--color-border); flex-shrink:0; }
 .desktop-update-controls .desktop-update-actions { flex:1; }
 .desktop-update-window .cred-btn { font-size:.84rem; }
-.desktop-update-window .cred-btn--primary { background:var(--color-accent); border-color:var(--color-accent); color:var(--color-surface); }
 .desktop-update-release-link { padding:4px 0; border:0; background:transparent; color:var(--color-accent); font-size:.84rem; }
 .desktop-update-release-link:hover:not(:disabled) { text-decoration:underline; }

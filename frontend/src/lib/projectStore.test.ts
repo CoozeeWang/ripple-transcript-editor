@@ -53,6 +53,7 @@ beforeEach(() => {
 async function fixture(storage: 'copy' | 'reference' = 'copy') {
   const parent = directory(); const source = directory('source');
   source.files.set('interview.wav', new File(['original audio'], 'interview.wav'));
+  source.files.set('second.wav', new File(['original audio'], 'second.wav'));
   let p = await createProject(parent.handle, '研究');
   p = await addInterview(p, '第一次访谈');
   p = await addRecordings(p, p.data.interviews[0].id, [await source.handle.getFileHandle('interview.wav')], storage);
@@ -67,7 +68,7 @@ it('creates a separate project, rejects existing folders, and keeps source audio
 });
 it('supports multiple recordings and independent interviews without filename collisions', async () => {
   const { p, source, interview } = await fixture();
-  const next = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], 'copy');
+  const next = await addRecordings(p, interview.id, [await source.handle.getFileHandle('second.wav')], 'copy');
   const final = await addInterview(next, '第二次访谈');
   expect(final.data.interviews).toHaveLength(2);
   const recordings = final.data.interviews[0].recordings;
@@ -75,7 +76,7 @@ it('supports multiple recordings and independent interviews without filename col
 });
 it('keeps an audio draft without a transcript and carries its details into the first versions', async () => {
   const { p, interview, recording, source } = await fixture();
-  const second = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], 'copy');
+  const second = await addRecordings(p, interview.id, [await source.handle.getFileHandle('second.wav')], 'copy');
   const details = { ...interview.metadata!, title: '音频 A', recorded_at: '2026-09-20T10:30:00',
     location: '合成地点', participants: [{ name: '合成受访者', role: '受访者' }] };
   const speakers = [{ id: 'draft-speaker', name: '合成说话人', colorIndex: 2 }];
@@ -247,6 +248,7 @@ it('rejects mismatched audio and incomplete version sets before publishing an im
   expect(await findExistingManuscripts(source.handle, [recording])).toEqual([]);
   await expect(importExistingManuscript(p, interview.id, recording, candidate)).rejects.toThrow('内容已变化');
   source.files.set('interview.wav', new File(['original audio'], 'interview.wav'));
+  source.files.set('second.wav', new File(['original audio'], 'second.wav'));
   files.delete('v1.json');
   await expect(importExistingManuscript(p, interview.id, recording, candidate)).rejects.toThrow('缺少文件');
   expect((await openProject(p.directory)).data).toEqual(p.data);
@@ -391,7 +393,7 @@ it('detaches and reassigns the complete manuscript without overwriting versions 
 });
 it('rejects reassignment onto existing manuscripts and keeps both histories intact', async () => {
   const { p, recording, interview, source } = await fixture();
-  const next = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], 'copy');
+  const next = await addRecordings(p, interview.id, [await source.handle.getFileHandle('second.wav')], 'copy');
   const target = next.data.interviews[0].recordings[1];
   for (const record of [recording, target]) {
     const transcript = { audio: { filename: record.file, duration: 1 }, speakers: [], segments: [{ id: 's1', speaker_id: 's', start: 0, end: 1, text: record.id }] };
@@ -426,13 +428,13 @@ it('imports multiple editable transcripts for one audio with independent files a
   } finally { vi.useRealTimers(); }
 });
 
-it('saves explicitly ordered scenes with identical names and independently seeded transcript metadata', async () => {
+it('saves explicitly ordered scenes with unique names and independently seeded transcript metadata', async () => {
   const parent = directory(); const source = directory('files');
   source.files.set('one.txt', new File(['one'], 'one.txt'));
   source.files.set('two.txt', new File(['two'], 'two.txt'));
   const p = await createProject(parent.handle, '新流程');
   const { defaultMetadata } = await import('../localStore');
-  const sessions = ['scene-b', 'scene-a'].map(id => ({ id, title: '同名访谈', metadata: { ...defaultMetadata('同名访谈'), id, recorded_at: '2026-09-11', location: '家中' }, recordings: [] }));
+  const sessions = ['scene-b', 'scene-a'].map(id => ({ id, title: `合成访谈 ${id}`, metadata: { ...defaultMetadata('同名访谈'), id, recorded_at: '2026-09-11', location: '家中' }, recordings: [] }));
   const materials = await prepareMaterials([{ handle: await source.handle.getFileHandle('one.txt'), group: 'scene-b' }, { handle: await source.handle.getFileHandle('two.txt'), group: 'scene-a' }]);
   const saved = await importProjectMaterials(p, materials, 'copy', undefined, sessions);
   expect(saved.data.interviews.map(i => i.id)).toEqual(['scene-b', 'scene-a']);
@@ -846,7 +848,7 @@ it('preserves the previous association when a recovery file becomes unreadable d
 
 it.each(['copy', 'reference'] as const)('moves a full batch and preserves versions, marks, metadata and audio (%s)', async storage => {
   const { p, interview, recording, source } = await fixture(storage);
-  let project = await addRecordings(p, interview.id, [await source.handle.getFileHandle('interview.wav')], storage);
+  let project = await addRecordings(p, interview.id, [await source.handle.getFileHandle('second.wav')], storage);
   project = await addInterview(project, 'Synthetic destination');
   const target = project.data.interviews[1];
   const dir = await recordingDirectory(project, interview.id, recording);
@@ -893,7 +895,7 @@ it('preserves an offline external reference and a recording-specific draft', asy
 
 it('keeps the original batch indexed if a later audio is missing during staging', async () => {
   const {p,source,interview}=await fixture();
-  let project=await addRecordings(p,interview.id,[await source.handle.getFileHandle('interview.wav')],'copy');
+  let project=await addRecordings(p,interview.id,[await source.handle.getFileHandle('second.wav')],'copy');
   project=await addInterview(project,'Synthetic destination');
   const second=project.data.interviews[0].recordings[1];
   const sessions=await project.directory.getDirectoryHandle('interviews');
@@ -939,7 +941,7 @@ it('refuses a missing version file and leaves destination recordings untouched',
  const {p,interview,recording,source}=await fixture();
  let project=await addInterview(p,'Synthetic destination');
  const target=project.data.interviews[1];
- project=await addRecordings(project,target.id,[await source.handle.getFileHandle('interview.wav')],'copy');
+ project=await addRecordings(project,target.id,[await source.handle.getFileHandle('second.wav')],'copy');
  const dir=await recordingDirectory(project,interview.id,recording);
  const transcript={audio:{filename:recording.file,duration:1},speakers:[],segments:[{id:'1',start:0,end:1,speaker_id:'',text:'Synthetic text'}]};
  const made=await createModel(dir,recording.file,{engine:'synthetic',transcript,label:'Synthetic edit'});
@@ -1325,4 +1327,71 @@ it('copies a version-owned collection, then keeps later tag assignment changes i
  await saveActiveEdit(view,recording.file,copy.model.id,copy.edit.id,{...copy.edited,transcript:{...copy.edited.transcript,segments:copy.edited.transcript.segments.map(segment=>({...segment,tagIds:[]}))}});
  const originalVersion=await readModelEdit(view,recording.file,first.model.id,first.model.activeEditId),original=await readModelOriginal(view,recording.file,first.model.id);
  expect(originalVersion?.transcript.segments[0].tagIds).toEqual(['tag-child']);expect(original?.transcript.segments[0].tagIds).toBeUndefined();expect(originalVersion?.transcript.tagCollection).toEqual(tagCollection);
+});
+
+it('saves a prepared transcription exactly once even when its local receipt was not acknowledged',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const transcript={audio:{filename:recording.file,duration:1},speakers:[{id:'s',name:'Synthetic'}],segments:[{id:'segment',start:0,end:1,text:'Synthetic words',speaker_id:'s',words:[]}]} as import('../types').Transcript;
+ const options={engine:'synthetic',transcript,original:transcript,originalOnly:true,preparationId:'.ripple-work-12345678.wav'};
+ const first=await createModel(dir,recording.file,options);const before=await readModelOriginal(dir,recording.file,first.model.id);
+ const second=await createModel(dir,recording.file,options);
+ expect(second.model.id).toBe(first.model.id);expect(second.manifest.models).toHaveLength(1);expect(await readModelOriginal(dir,recording.file,first.model.id)).toEqual(before);
+ const journal=await dir.getFileHandle(`.${recording.file}.audio-preparation.json`,{create:true}),stream=await journal.createWritable();
+ await stream.write(JSON.stringify({schema:1,provider:'synthetic',source:recording.file,format:'wav',purpose:'temporary',file:options.preparationId,state:'saved',identity:`1:${'b'.repeat(64)}`,sourceIdentity:`1:${'a'.repeat(64)}`}));await stream.close();
+ const fetch=vi.fn();vi.stubGlobal('fetch',fetch);const {transcribeAudio}=await import('../localStore');
+ expect(await transcribeAudio(dir,recording.file,{} as never,{providerId:'synthetic'})).toEqual(before!.transcript);expect(fetch).not.toHaveBeenCalled();
+ expect(await(await journal.getFile()).text()).toContain('saved');
+
+});
+
+
+it('reads an old published physical source without rewriting manuscripts or restoring conversion controls',async()=>{
+ const {p,interview,recording}=await fixture();const dir=await recordingDirectory(p,interview.id,recording);
+ const original={audio:{filename:recording.file,duration:1},speakers:[],segments:[{id:'segment',speaker_id:'',text:'Synthetic words',start:0,end:1}]};
+ const model=await createModel(dir,recording.file,{engine:'synthetic',transcript:original,original:original,originalOnly:true});
+ const media=await(await p.directory.getDirectoryHandle('interviews')).getDirectoryHandle(interview.id);const folder=await media.getDirectoryHandle('media');
+ const handle=await folder.getFileHandle('converted-1234.wav',{create:true});const writable=await handle.createWritable();await writable.write(new Blob(['synthetic retained physical source']));await writable.close();
+ const fingerprint=await mediaFingerprint(await handle.getFile());
+ const next=await saveProject(p,{...p.data,interviews:p.data.interviews.map(i=>({...i,recordings:i.recordings.map(r=>({...r,sourceFile:'converted-1234.wav',sourceFormat:'wav',fingerprint}))}))});
+ const reopened=await openProject(next.directory),rec=reopened.data.interviews[0].recordings[0];expect(await(await readProjectMedia(reopened,interview.id,rec)).text()).toBe('synthetic retained physical source');
+ expect(await readModelOriginal(await recordingDirectory(reopened,interview.id,rec),recording.file,model.model.id)).toEqual(await readModelOriginal(dir,recording.file,model.model.id));
+ const portable=await savePortableProject(reopened,directory('destination').handle,'Synthetic copy');expect(await(await readProjectMedia(portable,interview.id,portable.data.interviews[0].recordings[0])).text()).toBe('synthetic retained physical source');
+});
+
+it('rejects duplicate session and cross-session audio names before creating files', async () => {
+  const {p,source,interview,parent}=await fixture();
+  const root=parent.dirs.values().next().value!;
+  const before=JSON.stringify([...root.dirs.get('interviews')!.dirs.keys()]);
+  await expect(addInterview(p,` ${interview.title} `)).rejects.toThrow('已有场次');
+  expect(JSON.stringify([...root.dirs.get('interviews')!.dirs.keys()])).toBe(before);
+  const next=await addInterview(p,'Synthetic second session');
+  const target=next.data.interviews[1];
+  const targetDir=root.dirs.get('interviews')!.dirs.get(target.id)!;
+  await expect(addRecordings(next,target.id,[await source.handle.getFileHandle('interview.wav')],'copy')).rejects.toThrow('已有音频');
+  expect(targetDir.dirs.size).toBe(0);
+  const audio={id:'incoming',handle:await source.handle.getFileHandle('interview.wav'),name:' interview.wav ',kind:'audio' as const,group:target.title,audioId:''};
+  await expect(importProjectMaterials(next,[audio],'reference',target.id)).rejects.toThrow('已有音频');
+  expect(targetDir.dirs.size).toBe(0);
+  expect((await openProject(next.directory)).data).toEqual(next.data);
+});
+it('blocks direct duplicate renames but reads and preserves unchanged legacy duplicate identities', async () => {
+  const {p}=await fixture();
+  const next=await addInterview(p,'Synthetic second session');
+  const duplicate={...next.data,interviews:next.data.interviews.map(s=>({...s,title:p.data.interviews[0].title}))};
+  await expect(saveProject(next,duplicate)).rejects.toThrow('已有场次');
+  // Explicit synthetic legacy index; reading it must never merge or rename identities.
+  const writer=await (await next.directory.getFileHandle('ripple-project.json')).createWritable();
+  await writer.write(JSON.stringify(duplicate));await writer.close();
+  const legacy=await openProject(next.directory);
+  expect(legacy.data.interviews.map(s=>s.id)).toEqual(next.data.interviews.map(s=>s.id));
+  const saved=await saveProject(legacy,{...legacy.data,description:'Synthetic unrelated edit'});
+  expect(saved.data.interviews).toEqual(duplicate.interviews);
+  const resolved=await saveProject(saved,{...saved.data,interviews:saved.data.interviews.map((s,i)=>i?{...s,title:'Resolved synthetic title'}:s)});
+  expect(resolved.data.interviews[1].title).toBe('Resolved synthetic title');
+});
+it('rejects duplicate names inside a new import batch before material writes', async () => {
+  const parent=directory();const p=await createProject(parent.handle,'Synthetic project');
+  const sessions=['one','two'].map(id=>({id,title:'Synthetic duplicate',recordings:[]}));
+  await expect(importProjectMaterials(p,[],'copy',undefined,sessions)).rejects.toThrow('已有场次');
+  expect(parent.dirs.values().next().value!.dirs.has('interviews')).toBe(false);
 });

@@ -1,4 +1,6 @@
-import {recordingSources} from './projectTagRepository';
+import {recordingSources,upgradeProjectTreeOrder} from './projectTagRepository';
+import {initializeProjectTreeOrder} from './projectTreeOrder';
+import type {TagConsumer} from './tagCollections';
 import {parseProject,recordingDirectory,withProjectLock,type OpenProject} from './projectStore';
 import {withTagVersionStorage} from '../localStore';
 import {commitTagFileTransaction,readTagFile,type TagFilePatch} from './tagFileTransaction';
@@ -25,15 +27,17 @@ async function backupProject(source:FileSystemDirectoryHandle,destination:FileSy
     }
     await copy(source,destination,[]);return hashes;
 }
-export async function migrateProjectTagStorage(project:OpenProject,backup:FileSystemDirectoryHandle,options:{backupMode?:'full'|'rollback';assertCanCommit?:()=>Promise<void>}={}):Promise<OpenProject> {
+export async function migrateProjectTagStorage(project:OpenProject,backup:FileSystemDirectoryHandle,options:{backupMode?:'full'|'rollback';orderBaseline?:string;expectedRevision?:number;assertCanCommit?:()=>Promise<void>}={}):Promise<OpenProject> {
+    if(project.data.schemaVersion===2)return upgradeProjectTreeOrder(project,backup,options);
     return withProjectLock(project.data.id,async()=>{
         const index=await readTagFile(project.directory,['ripple-project.json']);if(!index)throw Error('project_changed');
         const data=parseProject(index);if(data.id!==project.data.id||data.revision!==project.data.revision)throw Error('project_changed');
-        if(data.schemaVersion===2)return{...project,data};
+        if(data.schemaVersion===2)throw Error('project_changed');
         if(await readTagFile(project.directory,['.ripple-tag-transaction.json'])!==null)throw Error('tag_upgrade_pending_recovery');
         const light=options.backupMode==='rollback';
         if(light)await assertTagBackupDestination(project.directory,backup);
         const hashes=light?new Map<string,string>():await backupProject(project.directory,backup),originals=new Map<string,string>([['ripple-project.json',index]]);
+        const consumers:TagConsumer[]=[];
         const library=projectTagCatalog(data.tagLibrary??{schemaVersion:3,tags:[],groups:[]}),patches:TagFilePatch[]=[],sources:{handle:FileSystemFileHandle;stat:{size:number;modified:string}}[]=[];
         for(const {session,recording}of recordingSources(project)){
             const directory=await recordingDirectory(project,session.id,recording);
@@ -54,7 +58,8 @@ export async function migrateProjectTagStorage(project:OpenProject,backup:FileSy
                     let document:{kind?:string;transcript?:Transcript};try{document=JSON.parse(raw)}catch(error){if(indexed.has(file))throw error;continue}
                     const transcript=document.transcript;
                     if(!Array.isArray(transcript?.segments)||!['te-original','te-edited','te-imported'].includes(document.kind??'')){if(indexed.has(file))throw Error('tag_consumer_version_unavailable');continue}
-                    const metadata=makeTagSidecar(file,transcript,library,{hash,...stat});validateTagCollection(library,metadata.collection);parseTagSidecar(JSON.stringify(metadata),file);
+                    const metadata=makeTagSidecar(file,transcript,library,{hash,...stat});
+                    if(indexed.has(file)){const model=manifest.models.find(model=>model.original===file||model.edits.some(edit=>edit.file===file))!,edit=model.original===file?'original':model.edits.find(edit=>edit.file===file)!.id;consumers.push({id:`${recording.id}:${model.id}:${edit}`,label:`${recording.name} · ${file}`,transcript:{...transcript,tagCollection:metadata.collection}})}validateTagCollection(library,metadata.collection);parseTagSidecar(JSON.stringify(metadata),file);
                     const target=[...path.slice(0,-1),await sidecarName(file)];
                     if(await readTagFile(project.directory,target)!==null)throw Error('tag_migration_existing_metadata');
                     patches.push({path:target,before:null,after:JSON.stringify(metadata)});sources.push({handle,stat});
@@ -64,7 +69,7 @@ export async function migrateProjectTagStorage(project:OpenProject,backup:FileSy
                 patches.push({path:marker,before:null,after:JSON.stringify({schemaVersion:1})});
             },{readOnlyManifest:true});
         }
-        const next={...data,schemaVersion:2 as const,tagLibrary:library,revision:data.revision+1};
+        const next={...data,schemaVersion:2 as const,tagLibrary:initializeProjectTreeOrder(library,consumers,options.orderBaseline),revision:data.revision+1};
         patches.push({path:['ripple-project.json'],before:index,after:JSON.stringify(next,null,2)});
         if(light)await writeTagUpgradeCheckpoint(project.directory,backup,data.id,patches,originals,hashes);
         for(const {handle,stat}of sources)if(JSON.stringify(await fileMetadata(handle))!==JSON.stringify(stat))throw Error('tag_migration_source_changed');

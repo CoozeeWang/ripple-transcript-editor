@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { prepareAudioForPlayback, stripStubFirstFrame } from "./adts";
 
 /**
- * 造一个真实形态的 ADTS 帧。字段取值刻意抄自出问题的真文件：
+ * 构造明确合成的 ADTS 帧，用于覆盖短帧与正常帧边界：
  * MPEG-2 头（0xFFF9）、AAC LC / 32kHz（0x54）、无 CRC、载荷填 0x4B。
  */
 function adtsFrame(payloadBytes: number): Uint8Array<ArrayBuffer> {
@@ -23,7 +23,7 @@ function stream(...frames: Uint8Array<ArrayBuffer>[]): Blob {
   return new Blob(frames);
 }
 
-/** 9 字节桩帧 + 若干 775 字节正常帧 —— 用户那 59 个录音的形态。 */
+/** 合成 9 字节短帧和若干 775 字节普通帧。 */
 function stubStream(normalFrames: number): Blob {
   const frames = [adtsFrame(2)];
   for (let i = 0; i < normalFrames; i++) frames.push(adtsFrame(768));
@@ -101,4 +101,20 @@ test('playback rewraps a stub-frame ADTS file while preserving its original byte
   const playable = await prepareAudioForPlayback(original, 'sample.aac');
   expect(playable.type).toBe('audio/mp4');
   expect(new Uint8Array(await original.arrayBuffer())).toEqual(before);
+});
+
+test.each(['m4a','mp3','wav','flac','ogg'])('sets the playback MIME for an untyped %s file without changing bytes',async extension=>{
+ const source=new Blob(['Synthetic container bytes']);const result=await prepareAudioForPlayback(source,`synthetic.${extension}`);
+ expect(result.type).toMatch(/^audio\//);expect(await result.arrayBuffer()).toEqual(await source.arrayBuffer());
+});
+
+test('playback retains every ADTS sample, including a short first frame', async () => {
+  const result=await prepareAudioForPlayback(stubStream(2),'synthetic.aac');
+  const bytes=new Uint8Array(await result.arrayBuffer());
+  const text=new TextDecoder('latin1').decode(bytes);
+  const stsz=text.indexOf('stsz');
+  expect(stsz).toBeGreaterThan(0);
+  const view=new DataView(bytes.buffer);
+  expect(view.getUint32(stsz+12)).toBe(3);
+  expect([0,1,2].map(i=>view.getUint32(stsz+16+i*4))).toEqual([2,768,768]);
 });

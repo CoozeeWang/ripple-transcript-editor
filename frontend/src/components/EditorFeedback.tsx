@@ -10,11 +10,11 @@ export function LoadErrorNotice({ text, onDismiss, problem }: { text: string; on
   </div>;
 }
 
-export function SaveToastNotice({ toast, onDismiss }: { toast: { kind: 'error' | 'ok'; text: string }; onDismiss: () => void }) {
+export function SaveToastNotice({ toast, onDismiss }: { toast: { kind: 'error' | 'ok'; text: string; problem?: Problem }; onDismiss: () => void }) {
   useInterfaceLanguage();
   return <div className={`save-toast save-toast--${toast.kind} notice-row`} role={toast.kind === 'error' ? 'alert' : 'status'}>
     <span className="save-toast__dot" aria-hidden="true" />
     <span className="notice-row__message">{uiMessage(toast.text)}</span>
-    <div className="notice-row__actions">{toast.kind === 'error' && <CopyProblem operation="save"/>}<button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={onDismiss}>×</button></div>
+    <div className="notice-row__actions">{toast.kind === 'error' && <CopyProblem problem={toast.problem}/>}<button type="button" className="notice-dismiss" aria-label={msg('notice.dismiss')} onClick={onDismiss}>×</button></div>
   </div>;
 }

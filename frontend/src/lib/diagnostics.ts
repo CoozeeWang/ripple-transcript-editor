@@ -1,4 +1,4 @@
-import { msg } from '../i18n';
+import { msg, interfaceLanguage } from '../i18n';
 import { version } from "../../../desktop/src-tauri/tauri.conf.json";
 
 export const DIAGNOSTICS_KEY = "ripple-diagnostics-v1";
@@ -25,7 +25,7 @@ export const reasons = {
 } as const;
 type Reason = keyof typeof reasons;
 export interface Problem {
-  id: string; time: string; operation: Operation; reason: Reason; count: number;
+  id: string; time: string; firstTime?: string; operation: Operation; reason: Reason; count: number;
 }
 let memory: Problem[] = [];
 let persistent = true;
@@ -37,7 +37,11 @@ function reasonOf(error: unknown): Reason {
   if (native === 'Drag already active') return 'drag_busy';
   const value = error as { name?: unknown; code?: unknown; message?: unknown } | null;
   // Inspect only to classify. Never retain exception messages, stacks or upstream bodies.
-  const text = [value?.name, value?.code, value?.message].filter(v => typeof v === "string").join(" ");
+  const text = [native, value?.name, value?.code, value?.message].filter(v => typeof v === "string").join(" ");
+  if (typeof value?.code === 'string' && Object.hasOwn(reasons,value.code)) return value.code as Reason;
+  const codes:Record<string,Reason>={invalid_api_key:'permission',no_api_key:'permission',quota_exceeded:'rate_limit',rate_limited:'rate_limit',upstream_error:'upstream_http',backend_unreachable:'connect',job_expired:'missing',decode_error:'format',audio_decode_failed:'format'};
+  if (typeof value?.code === 'string' && codes[value.code]) return codes[value.code];
+  if (/^http_5\d\d$/.test(String(value?.code))) return 'upstream_http';
   if (/^(too_long|file_too_large)$/.test(String(value?.code ?? ""))) return "input_limit";
   if (/NotAllowed|SecurityError|permission|权限|密钥|401|403/i.test(text)) return "permission";
   if (/timeout|timed out|超时/i.test(text)) return "timeout";
@@ -56,7 +60,7 @@ function validRows(value: unknown): Problem[] {
     Date.parse(p.time) >= Date.now() - RETENTION_MS && Date.parse(p.time) <= Date.now() + 60000 &&
     Object.hasOwn(operations, p.operation) && Object.hasOwn(reasons, p.reason) &&
     Number.isInteger(p.count) && p.count > 0 && p.count <= 9999)
-    .slice(-MAX_PROBLEMS).map(({ id, time, operation, reason, count }) => ({ id, time, operation, reason, count }));
+    .slice(-MAX_PROBLEMS).map(({ id, time, firstTime, operation, reason, count }) => ({ id, time, firstTime: typeof firstTime === "string" && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(firstTime) && Number.isFinite(Date.parse(firstTime)) && Date.parse(firstTime)<=Date.parse(time) ? firstTime : time, operation, reason, count }));
 }
 export function readProblems(): Problem[] {
   if (!persistent) return validRows(memory);
@@ -71,8 +75,8 @@ export function diagnosticsPersistent() { return persistent; }
 export function recordProblem(operation: Operation, error?: unknown): Problem {
   const rows = readProblems(), reason = reasonOf(error), last = rows.at(-1), now = Date.now();
   const problem: Problem = last && last.operation === operation && last.reason === reason &&
-    now - Date.parse(last.time) < 5000 ? { ...last, time: new Date(now).toISOString(), count: Math.min(9999, last.count + 1) }
-    : { id: crypto.randomUUID(), time: new Date(now).toISOString(), operation, reason, count: 1 };
+    now - Date.parse(last.time) < 5000 ? { ...last, firstTime:last.firstTime??last.time, time: new Date(now).toISOString(), count: Math.min(9999, last.count + 1) }
+    : { id: crypto.randomUUID(), time: new Date(now).toISOString(), firstTime:new Date(now).toISOString(), operation, reason, count: 1 };
   if (last?.id === problem.id) rows.pop();
   memory = [...rows, problem].slice(-MAX_PROBLEMS);
   try { localStorage.setItem(DIAGNOSTICS_KEY, JSON.stringify(memory)); persistent = true; } catch { persistent = false; }
@@ -80,8 +84,11 @@ export function recordProblem(operation: Operation, error?: unknown): Problem {
   return problem;
 }
 export function problemSummary(p: Problem) { return `${operations[p.operation]}：${reasons[p.reason]}`; }
+export function diagnosticTime(time:string) {
+  return `${new Date(time).toLocaleString(interfaceLanguage(),{timeZoneName:"short"})} · ${new Date(time).toISOString()} (UTC)`;
+}
 export function problemDetails(p: Problem) {
-  return msg('diagnostics.m1279', { v0: version, v1: p.id, v2: p.time, v3: operations[p.operation], v4: reasons[p.reason], v5: p.reason, v6: p.count });
+  return msg('diagnostics.m1279', { v0: version, v1: p.id, v2: diagnosticTime(p.time), v3: operations[p.operation], v4: reasons[p.reason], v5: p.reason, v6: p.count }) + (p.count>1 ? `\n${msg("diagnostics.firstOccurrence",{time:diagnosticTime(p.firstTime??p.time)})}` : "");
 }
 export function diagnosticEnvironment() {
   const ua = navigator.userAgent;

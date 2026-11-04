@@ -3,7 +3,6 @@ import { ConnectorContext } from '../hooks/connectorContext';
 import { useAIConnectorRuntime } from '../hooks/useAIConnector';
 import type { ConnectorHost } from '../lib/aiConnector';
 import type { ProjectConnectorAccess } from '../lib/projectConnectorHost';
-import { AIEditingNotice } from './AIEditingNotice';
 import { ContinuationProgress } from './ContinuationProgress';
 
 /** The transport and task identities belong to the window, never to a keyed editor. */
@@ -47,11 +46,9 @@ export function AIConnectorProvider({ children }: { children: ReactNode }) {
     onSaved: target => binding.current?.project?.onSaved?.(target),
   };
   const state = useAIConnectorRuntime(host, context, project);
-  const globalError = state.taskActionError || (visibleProject === null || state.recoveryProjectIds.includes(visibleProject) ? state.recoveryWarning : '');
+  const globalError = visibleProject === null || state.recoveryProjectIds.includes(visibleProject) ? state.recoveryWarning : '';
   return <ConnectorContext.Provider value={{ state, register, unregister, reportProject }}>
-    {!context && <div className="ai-editing-global"><AIEditingNotice activities={state.activities.filter(task => task.state !== 'completed')} isCurrent={() => false} onDismiss={id => state.taskAction('dismiss_editing', id)} onEnd={id => state.taskAction('end_editing', id)}>
-      {globalError && <ContinuationProgress embedded tasks={state.tasks} error={globalError} onAction={(operation,id)=>state.taskAction(operation,id,true)} onDismissError={state.dismissTaskError}/>}
-    </AIEditingNotice></div>}
+    {!context && globalError && <div className="ai-editing-global"><ContinuationProgress embedded tasks={[]} error={globalError} onAction={(operation,id)=>state.taskAction(operation,id,true)} onDismissError={state.dismissTaskError}/></div>}
     {children}
   </ConnectorContext.Provider>;
 }

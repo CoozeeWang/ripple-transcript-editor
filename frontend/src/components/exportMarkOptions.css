@@ -1,0 +1,12 @@
+.export-mark-options { display:flex; flex-wrap:wrap; gap:8px 14px; min-width:0; margin:8px 0; padding:0; border:0; font:400 .78rem/1.5 var(--font-sans); }
+.export-mark-prefix { flex:none; color:var(--color-text-3); font:inherit; }
+.export-mark-options label { display:inline-flex; align-items:center; gap:6px; min-width:0; overflow-wrap:anywhere; }
+.export-mark-options input { flex:none; }
+.transcript-export-menu .export-mark-options { margin:4px 12px 8px 26px; }
+.transcript-export-menu .export-format-selected { color:var(--color-accent); background:var(--color-accent-tint); }
+.transcript-export-menu .export-menu-confirm { border-top:1px solid var(--color-border); margin-top:6px; padding-top:6px; }
+.transcript-export-menu .export-menu-confirm button { color:var(--color-accent); font-weight:500; }
+.project-export-mark-options { border-bottom:1px solid var(--color-border); margin:12px 0 16px; padding:0 0 8px; }
+.project-export-mark-options .export-mark-prefix { min-width:64px; color:var(--color-text); font-weight:500; }
+
+.transcript-export-menu .export-format-hint { max-width:240px; margin:4px 12px 8px 26px; color:var(--color-text-3); font:400 .78rem/1.5 var(--font-sans); overflow-wrap:anywhere; }

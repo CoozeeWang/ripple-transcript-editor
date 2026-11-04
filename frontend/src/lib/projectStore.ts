@@ -1,7 +1,8 @@
 import { msg } from '../i18n';
+import { assertProjectNameChange } from './projectNames';
 import {hasTagStorage,initializeTagStorage,seedImportedTagStorage,hydrateTagDocument,writeTagDocument,sidecarName,TAG_STORAGE_MARKER,refreshCopiedTagStamps} from './tagSidecar';
 import {readTagFile} from './tagFileTransaction';
-import { isTagLibrary, type TagLibrary } from './tags';
+import { assertTagNameChange, isTagLibrary, type TagLibrary } from './tags';
 import { recoverTagFileTransaction } from './tagFileTransaction';
 import { validOriginalGroupId, withOriginalGroups } from './originalGroups';
 import { readRecoverableManifest } from './manifestRecovery';
@@ -16,6 +17,9 @@ export interface ProjectRecording {
   id: string; name: string; file: string; storage: 'copy' | 'reference' | 'none'; fingerprint: string;
   /** Last duration accepted by the player for this exact audio content. */
   duration?: { seconds: number; fingerprint: string };
+  /** Physical project-owned source after an explicitly backed-up replacement. Logical file stays stable. */
+  sourceFile?: string;
+  sourceFormat?: 'm4a'|'wav'|'flac';
   manuscriptDirectory?: string;
   manuscriptOrder?: string[];
   /** Details entered before the first transcript exists. Scoped to this audio. */
@@ -51,7 +55,7 @@ export interface RippleProject {
 }
 export interface TagRequestReceipt {
   signature: string; client: string; recording: string; model: string; version: string;
-  count: number; savedAt: string; references: {tags:Record<string,string>;groups:Record<string,string>}; undone?: boolean;
+  count: number; savedAt: string; references: {tags:Record<string,string>;groups?:Record<string,string>}; undone?: boolean;
 }
 export interface OpenProject { directory: FileSystemDirectoryHandle; data: RippleProject; finderIconWarning?: boolean }
 const INDEX = 'ripple-project.json';
@@ -71,7 +75,7 @@ export function parseProject(raw: string): RippleProject {
       || !/^[a-f0-9]{64}$/.test(r.signature) || typeof r.client !== 'string' || !r.client || r.client.length>80
       || ![r.recording,r.model,r.version].every(id) || !Number.isInteger(r.count) || r.count<1 || r.count>64
       || !Number.isFinite(Date.parse(r.savedAt)) || !r.references || ['tags','groups'].some(kind => {
-        const values=r.references[kind as 'tags'|'groups'];return !values || typeof values!=='object' || Array.isArray(values)
+        const values=r.references[kind as 'tags'|'groups'];if(kind==='groups'&&values===undefined)return false;return !values || typeof values!=='object' || Array.isArray(values)
           || Object.entries(values).some(([key,value])=>!id(key)||!id(value));
       }) || r.undone!==undefined&&typeof r.undone!=='boolean'))) throw new Error(msg('projectStore.m1383'));
   const identifiers = new Set<string>();
@@ -94,6 +98,8 @@ export function parseProject(raw: string): RippleProject {
           || !Array.isArray(recording.draft.speakers)
           || !recording.draft.speakers.every(speaker => speaker && typeof speaker.id === 'string' && typeof speaker.name === 'string'))) throw new Error(msg('projectStore.m1386'));
       identifiers.add(recording.id);
+      if(recording.sourceFormat!==undefined&&!['m4a','wav','flac'].includes(recording.sourceFormat))throw new Error(msg('projectStore.m1388'));
+      if(recording.sourceFile!==undefined&&(!safeName(recording.sourceFile)||!/^converted-[a-f0-9-]+\.(m4a|wav|flac)$/.test(recording.sourceFile)||recording.storage!=='copy'))throw new Error(msg('projectStore.m1388'));
       if (recording.manuscriptDirectory !== undefined && (!safeName(recording.manuscriptDirectory) || !/^import-[a-zA-Z0-9-]+\.transcript$/.test(recording.manuscriptDirectory))) throw new Error(msg('projectStore.m1388'));
     }
   }
@@ -166,6 +172,10 @@ export async function openProject(directory: FileSystemDirectoryHandle): Promise
     const next=await readOpenProjectUnlocked(directory);if(next.data.id!==initial.id)throw Error(msg('projectStore.m1396'));return next;
   });
 }
+/** Read-only export preflight: never decorate, migrate, recover or write a project. */
+export async function readProjectExportState(project:OpenProject):Promise<OpenProject>{
+ return withProjectLock(project.data.id,async()=>{const raw=await readText(project.directory,INDEX);if(raw===null)throw Error(msg('export.exportChanged'));const data=parseProject(raw);if(data.id!==project.data.id)throw Error(msg('export.exportChanged'));return{directory:project.directory,data};});
+}
 /** Call only while holding this project's lock. */
 async function readOpenProjectUnlocked(directory: FileSystemDirectoryHandle): Promise<OpenProject> {
   const raw=await readText(directory,INDEX);
@@ -189,13 +199,17 @@ export async function withProjectLock<T>(projectId: string, work: () => Promise<
 }
 const locked = withProjectLock;
 export async function saveProject(project: OpenProject, next: RippleProject): Promise<OpenProject> {
-  return locked(project.data.id, async () => {
+  return locked(project.data.id, () => saveProjectUnlocked(project,next));
+}
+async function saveProjectUnlocked(project:OpenProject,next:RippleProject):Promise<OpenProject> {
     await recoverTagFileTransaction(project.directory);
     const original = await readText(project.directory, INDEX);
     if (original === null) throw new Error(msg('projectStore.m1395'));
     const current = parseProject(original);
     if (current.id !== project.data.id || current.revision !== project.data.revision) throw new Error(msg('projectStore.m1396'));
     const updated = { ...next, id: current.id, revision: current.revision + 1 };
+    assertProjectNameChange(current.interviews, updated.interviews);
+    assertTagNameChange(current.tagLibrary??{schemaVersion:3,tags:[],groups:[]},updated.tagLibrary??{schemaVersion:3,tags:[],groups:[]});
     const text = JSON.stringify(updated, null, 2);
     parseProject(text);
     await writeText(project.directory, `${INDEX}.bak`, original);
@@ -205,7 +219,6 @@ export async function saveProject(project: OpenProject, next: RippleProject): Pr
       throw error;
     }
     return { directory: project.directory, data: updated };
-  });
 }
 export async function createProject(parent: FileSystemDirectoryHandle, title: string): Promise<OpenProject> {
   const name = title.trim();
@@ -214,7 +227,7 @@ export async function createProject(parent: FileSystemDirectoryHandle, title: st
   try { await parent.getDirectoryHandle(folder); throw new Error(msg('projectStore.m1398')); }
   catch (error) { if (!notFound(error)) throw error; }
   const directory = await parent.getDirectoryHandle(folder, { create: true });
-  const data: RippleProject = { kind: 'ripple-project', schemaVersion: 2, id: crypto.randomUUID(), title: name, description: '', revision: 0, interviews: [] };
+  const data: RippleProject = { kind: 'ripple-project', schemaVersion: 2, tagLibrary:{schemaVersion:4,tags:[],groups:[],treeOrder:[]}, id: crypto.randomUUID(), title: name, description: '', revision: 0, interviews: [] };
   await writeText(directory, INDEX, JSON.stringify(data, null, 2));
   const finderIconWarning = !await decorateNativeProject(directory);
   return { directory, data, ...(finderIconWarning ? { finderIconWarning } : {}) };
@@ -286,23 +299,27 @@ export async function addInterview(project: OpenProject, title: string): Promise
   if (!title.trim()) throw new Error(msg('projectStore.m1400'));
   const interviewId = crypto.randomUUID();
   const interview: ProjectInterview = { id: interviewId, title: title.trim(), metadata: { ...defaultMetadata(title.trim()), id: interviewId }, recordings: [] };
+  assertProjectNameChange(project.data.interviews, [...project.data.interviews, interview]);
   await interviewDirectory(project, interview.id, true);
   return saveProject(project, { ...project.data, interviews: [...project.data.interviews, interview] });
 }
 export async function addRecordings(project: OpenProject, interviewId: string, handles: FileSystemFileHandle[], storage: 'copy' | 'reference'): Promise<OpenProject> {
   const interview = project.data.interviews.find(i => i.id === interviewId);
   if (!interview) throw new Error(msg('projectStore.m1401'));
+  const incoming = await Promise.all(handles.map(handle => handle.getFile()));
+  const planned = incoming.map(file => ({ id: crypto.randomUUID(), name: file.name.trim(), file: file.name, storage, fingerprint: '' }));
+  assertProjectNameChange(project.data.interviews, project.data.interviews.map(s => s.id === interviewId ? { ...s, recordings: [...s.recordings, ...planned] } : s));
   const directory = await interviewDirectory(project, interviewId, true);
   const media = await directory.getDirectoryHandle('media', { create: true });
   const added: ProjectRecording[] = [];
-  for (const handle of handles) {
-    const file = await handle.getFile();
+  for (const [index, handle] of handles.entries()) {
+    const file = incoming[index];
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     if (!AUDIO_EXT.includes(ext)) throw new Error(msg('projectStore.m1402', { v0: file.name }));
-    const recordingId = crypto.randomUUID();
-    const recording: ProjectRecording = { id: recordingId, name: file.name, file: `${recordingId}.${ext}`, storage, fingerprint: await mediaFingerprint(file) };
+    const recordingId = planned[index].id;
+    const recording: ProjectRecording = { id: recordingId, name: file.name.trim(), file: `${recordingId}.${ext}`, storage, fingerprint: await mediaFingerprint(file) };
     if (storage === 'copy') {
-      const target = await media.getFileHandle(recording.file, { create: true });
+      const target = await media.getFileHandle(recording.sourceFile ?? recording.file, { create: true });
       const writable = await target.createWritable();
       try { await file.stream().pipeTo(writable); } catch (error) { await writable.abort().catch(() => {}); throw error; }
       if (await mediaFingerprint(await target.getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1403'));
@@ -315,7 +332,7 @@ export async function resolveMedia(project: OpenProject, interviewId: string, re
   if (recording.storage === 'none') throw new ProjectMediaUnavailable('');
   if (recording.storage === 'copy') {
     const dir = await interviewDirectory(project, interviewId);
-    return (await dir.getDirectoryHandle('media')).getFileHandle(recording.file);
+    return (await dir.getDirectoryHandle('media')).getFileHandle(recording.sourceFile ?? recording.file);
   }
   const handle = await handleValue<FileSystemFileHandle>(`media:${project.data.id}:${recording.id}`);
   // A lost machine-local handle says nothing about whether the external file exists.
@@ -331,7 +348,7 @@ export async function relinkMedia(project: OpenProject, interviewId: string, rec
   if (!AUDIO_EXT.includes(ext)) throw new Error(msg('projectStore.m1405'));
   if (recording.storage !== 'none' && fingerprint !== recording.fingerprint) throw new Error(msg('projectStore.m1406'));
   await handleValue(`media:${project.data.id}:${recording.id}`, handle);
-  return saveProject(project, { ...project.data, interviews: project.data.interviews.map(i => i.id === interviewId ? { ...i, recordings: i.recordings.map(r => r.id === recording.id ? { ...r, storage: 'reference', fingerprint, ...(r.storage === 'none' ? { file: `${r.id}.${ext}`, name: file.name } : {}) } : r) } : i) });
+  return saveProject(project, { ...project.data, interviews: project.data.interviews.map(i => i.id === interviewId ? { ...i, recordings: i.recordings.map(r => r.id === recording.id ? { ...r, storage: 'reference', sourceFile: undefined, fingerprint, ...(r.storage === 'none' ? { file: `${r.id}.${ext}`, name: file.name } : {}) } : r) } : i) });
   });
 }
 export type MediaFailureReason = 'permission' | 'missing' | 'changed' | 'unreadable';
@@ -531,8 +548,8 @@ export async function savePortableProject(project: OpenProject, parent: FileSyst
         }
         const file = await checkedMediaFile(source, interview.id, recording);
         const media = await to.getDirectoryHandle('media', { create: true });
-        await file.stream().pipeTo(await (await media.getFileHandle(recording.file, { create: true })).createWritable());
-        if (await mediaFingerprint(await (await media.getFileHandle(recording.file)).getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1421'));
+        await file.stream().pipeTo(await (await media.getFileHandle(recording.sourceFile ?? recording.file, { create: true })).createWritable());
+        if (await mediaFingerprint(await (await media.getFileHandle(recording.sourceFile ?? recording.file)).getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1421'));
       }
     }
     const finalSource = await readOpenProjectUnlocked(project.directory);
@@ -678,7 +695,6 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       if (!session.title.trim()) throw new Error(msg('projectStore.m1441'));
       const matched = project.data.interviews.find(i => i.id === session.id);
       groups.set(session.id, { ...session, recordings: [...(matched?.recordings ?? [])] });
-      await interviewDirectory(project, session.id, true);
     }
     for (const item of materials) {
       if (sessions && !groups.has(item.group)) throw new Error(msg('projectStore.m1442'));
@@ -693,6 +709,15 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
         groups.set(group, matched ? { ...matched, recordings: [...matched.recordings] } : { id: interviewId, title: group, metadata: { ...defaultMetadata(group), id: interviewId }, recordings: [] });
       }
     }
+    // Validate the whole batch before creating directories, copying audio or saving manuscripts.
+    const plannedGroups = new Map([...groups].map(([key, group]) => [key, { ...group, recordings: [...group.recordings] }]));
+    for (const item of materials.filter(m => m.kind === 'audio' || !m.audioId)) {
+      const group = plannedGroups.get(sessions ? item.group : existing?.title ?? item.group.trim())!;
+      if (item.existingRecordingId) group.recordings = group.recordings.map(r => r.id === item.existingRecordingId ? { ...r, name: item.name.trim() } : r);
+      else group.recordings.push({ id: crypto.randomUUID(), name: item.name.trim(), file: 'synthetic.wav', storage: item.kind === 'audio' ? item.storage ?? storage : 'none', fingerprint: '' });
+    }
+    const plannedSessions = new Map([...plannedGroups.values()].map(s => [s.id, s]));
+    assertProjectNameChange(project.data.interviews, [...project.data.interviews.map(s => plannedSessions.get(s.id) ?? s), ...[...plannedSessions.values()].filter(s => !project.data.interviews.some(old => old.id === s.id))]);
     const records = new Map<string, ProjectRecording>();
     for (const item of materials.filter(m => m.kind === 'audio' || !m.audioId)) {
       const interview = groups.get(sessions ? item.group : existing?.title ?? item.group.trim())!;
@@ -700,7 +725,7 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       if (item.existingRecordingId) {
         const original = interview.recordings.find(r => r.id === item.existingRecordingId && r.storage !== 'none');
         if (!original) throw new Error(msg('projectStore.m1446'));
-        const recording = { ...original, name: item.name };
+        const recording = { ...original, name: item.name.trim() };
         if (materials.some(m => m.audioId === item.id)) {
           const stagedName = `import-${crypto.randomUUID()}.transcript`;
           const staged = await directory.getDirectoryHandle(stagedName, { create: true });
@@ -719,11 +744,11 @@ export async function importProjectMaterials(project: OpenProject, materials: Im
       const id = crypto.randomUUID();
       const file = item.kind === 'audio' ? await item.handle.getFile() : undefined;
       const ext = file?.name.split('.').pop()?.toLowerCase() ?? 'wav';
-      const recording: ProjectRecording = { id, name: item.name, file: `${id}.${ext}`, storage: file ? item.storage ?? storage : 'none', fingerprint: file ? await mediaFingerprint(file, signal) : '' };
+      const recording: ProjectRecording = { id, name: item.name.trim(), file: `${id}.${ext}`, storage: file ? item.storage ?? storage : 'none', fingerprint: file ? await mediaFingerprint(file, signal) : '' };
       if (file && recording.storage === 'copy') {
         onStage?.('copying');
         const media = await directory.getDirectoryHandle('media', { create: true });
-        const target = await media.getFileHandle(recording.file, { create: true });
+        const target = await media.getFileHandle(recording.sourceFile ?? recording.file, { create: true });
         stagedEntries.push(() => media.removeEntry(recording.file));
         checkCancelled();
         await file.stream().pipeTo(await target.createWritable(), { signal });
@@ -880,16 +905,17 @@ export async function moveProjectRecordings(project: OpenProject, sourceId: stri
       if (snapshot) {
         manuscriptDirectory = await stageModels(destination, snapshot.folder, { ...snapshot.manifest, audio: file });
       }
+      const physicalFile=recording.sourceFile?`converted-${crypto.randomUUID()}.${recording.sourceFormat??recording.sourceFile.split('.').pop()}`:file;
       if (recording.storage === 'copy') {
         const audio = await readProjectMedia(project, sourceId, recording);
         const media = await destination.getDirectoryHandle('media', { create: true });
-        const handle = await media.getFileHandle(file, { create: true });
+        const handle = await media.getFileHandle(physicalFile, { create: true });
         await audio.stream().pipeTo(await handle.createWritable());
         if (await mediaFingerprint(await handle.getFile()) !== recording.fingerprint) throw new Error(msg('projectStore.m1412'));
       }
       // External handles are keyed by project/recording ID, so referenced audio stays linked,
       // including offline audio. Freeze inherited details before changing the parent session.
-      moved.push({ ...recording, file, manuscriptDirectory,
+      moved.push({ ...recording, file, sourceFile:recording.sourceFile?physicalFile:undefined, manuscriptDirectory,
         draft: recording.draft ?? { metadata: { ...(source.metadata ?? defaultMetadata(recording.name)), id: recording.id, title: recording.name }, speakers: [] } });
     }
     // AI hosts re-read the index: after this commit the old session no longer owns these IDs.
@@ -1045,8 +1071,8 @@ export async function clearProjectTrash(project:OpenProject):Promise<OpenProject
         const folder=item.recording.manuscriptDirectory??`${stemOf(item.recording.file)}.transcript`;
         if(!active.some(r=>(r.manuscriptDirectory??`${stemOf(r.file)}.transcript`)===folder))await directory.removeEntry(folder,{recursive:true});
       }catch{/* Unreferenced recovery files may remain if the filesystem refuses cleanup. */}
-      if(item.recording.storage==='copy'&&!active.some(r=>r.storage==='copy'&&r.file===item.recording.file)){
-        try{await(await(await interviewDirectory(next,item.interviewId)).getDirectoryHandle('media')).removeEntry(item.recording.file);}catch{/* Never touch external audio. */}
+      if(item.recording.storage==='copy'&&!active.some(r=>r.storage==='copy'&&(r.sourceFile??r.file)===(item.recording.sourceFile??item.recording.file))){
+        try{await(await(await interviewDirectory(next,item.interviewId)).getDirectoryHandle('media')).removeEntry(item.recording.sourceFile??item.recording.file);}catch{/* Never touch external audio. */}
       }
     }
     for (const item of project.data.sessionTrash ?? []) {

@@ -38,7 +38,7 @@ function makeDeps(overrides: Partial<UseTranscriptionDeps> = {}): UseTranscripti
   return {
     beforeChange: vi.fn(async () => {}),
     contextKey: ":false",
-    dirHandleRef: { current: { name: "采访" } as unknown as FileSystemDirectoryHandle },
+    dirHandleRef: { current: { name: "采访", getFileHandle: async()=>{throw new DOMException("Synthetic absent", "NotFoundError")} } as unknown as FileSystemDirectoryHandle },
     selectedAudio: "a.wav",
     providers: [{ id: "iflytek", name: "讯飞" }],
     setActiveProviderName: vi.fn(),

@@ -55,3 +55,23 @@ describe('AI write ownership', () => {
     own.acquire('two', 'claude', doc, 'text', 1);
   });
 });
+
+it('holds an unfinished request across round completion, handoff, failure and disconnect until an explicit stable stop',()=>{
+ const own=new AIEditOwnership(()=>{});own.acquire('round','chatgpt',doc,'incremental',3);
+ own.update('round',{requestId:'request',requestComplete:false,requestStatus:'waiting',state:'completed',saved:1});
+ expect(blocksHumanEditing(own.get('round')!)).toBe(true);
+ for(const reason of ['phase_transition','round_end','failure','connection_lost']){
+  own.update('round',{state:'ended',reason});expect(blocksHumanEditing(own.get('round')!)).toBe(true);
+ }
+ own.update('round',{inFlight:1});own.end('round');expect(blocksHumanEditing(own.get('round')!)).toBe(true);
+ own.update('round',{inFlight:0});expect(blocksHumanEditing(own.get('round')!)).toBe(false);
+});
+it('does not drop the request lease or reset counts while reserving a linked successor',()=>{
+ const snapshots:ReturnType<AIEditOwnership['values']>[]=[];const own=new AIEditOwnership(rows=>snapshots.push(rows));
+ own.acquire('old','chatgpt',doc,'incremental',2312);own.update('old',{requestId:'request',requestStatus:'waiting',state:'ended',reason:'phase_transition',saved:240});
+ expect(()=>own.acquire('foreign','claude',doc,'incremental',0,false,'old')).toThrow('locked_by_other_ai');
+ own.acquire('new','chatgpt',doc,'incremental',0,false,'old');expect(own.get('new')).toMatchObject({saved:240,total:2312,requestId:'request'});
+ own.update('old',{leaseSuperseded:true});expect(blocksHumanEditing(own.get('old')!)).toBe(false);
+ expect(snapshots.every(rows=>rows.some(blocksHumanEditing))).toBe(true);
+ own.update('new',{state:'completed',requestComplete:true,saved:2312});expect(blocksHumanEditing(own.get('new')!)).toBe(false);
+});

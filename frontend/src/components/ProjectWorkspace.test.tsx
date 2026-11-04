@@ -56,7 +56,8 @@ it('opens an authorized recent project from the native menu without a picker', a
   fireEvent.click(screen.getByRole('button', {name:'最近项目'}));
   await screen.findByRole('button', {name:'测试项目'});
   await act(async () => { window.dispatchEvent(new CustomEvent('ripple-open-recent-project', {detail:'p'})); });
-  expect(await screen.findByText('测试项目')).toBeTruthy();
+  // The recent-menu button already contains this text; wait for the opened page.
+  expect(await screen.findByRole('heading', {name:'测试项目'})).toBeTruthy();
   expect(state.picker).not.toHaveBeenCalled();
   expect(store.openProject).toHaveBeenCalledWith(project.directory);
 });
@@ -806,4 +807,41 @@ it('publishes a durable tag catalog and editor callback together without waiting
  act(()=>state.editorTags!.publish!(next,apply));
  expect(apply).toHaveBeenCalledOnce();expect(state.catalog).toEqual(next.data.tagLibrary);expect(store.rememberProject).toHaveBeenCalledWith(next);
  await act(async()=>release());
+});
+it('allows B-only tag associations while AI owns A and blocks shared definitions with the exact requested explanation',async()=>{
+ const repository=await import('../lib/projectTagRepository');const library={schemaVersion:4 as const,tags:[{id:'t',name:'Synthetic tag',parentId:null,groupIds:[]}],groups:[],treeOrder:['t']};
+ const transcript={audio:{filename:'synthetic.wav',duration:1},speakers:[],segments:[{id:'s',speaker_id:'',start:0,end:1,text:'Synthetic B'}],tagCollection:{schemaVersion:1 as const,tagIds:['t'],groups:[]}};
+ let held=false;const activity={task_id:'a-task',client:'chatgpt',key:'a',version:'A v1',version_id:'m:e1',target:{project_id:'p',project:'Synthetic',interview_id:'i',interview:'Synthetic',recording_id:'a',recording:'Synthetic A',version_id:'m:e1',version:'A v1'},kind:'incremental' as const,state:'processing' as const,processed:0,saved:0,total:2,touched:0,inFlight:0,requestId:'request',requestStatus:'editing' as const};
+ const connector={activities:[] as import('../lib/aiEditOwnership').AIEditActivity[],targetLocked:(_v:string,r?:string)=>held&&r==='a'};
+ const view=()=> <ConnectorContext.Provider value={{state:connector as never,register:vi.fn(),unregister:vi.fn()}}><ProjectWorkspace/></ConnectorContext.Provider>;
+ const ui=render(view());fireEvent.click(screen.getByRole('button',{name:'打开项目'}));await screen.findByText('测试项目');fireEvent.click(screen.getByRole('button',{name:/第一次访谈.*音频：1 个/}));fireEvent.click(await screen.findByRole('button',{name:'打开 音频 录音.wav'}));await screen.findByText('编辑 第一次访谈');
+ const transact=vi.spyOn(repository,'transactProjectTags').mockImplementation(async(p,current,operation)=>{const result=await operation(library,[{id:'b',label:'Synthetic B',transcript:current.transcript}],'b');return{project:p,changed:true,transcript:result.consumers[0].transcript,receipt:{beforeLibrary:library,afterLibrary:result.library,versions:[]}};});
+ held=true;connector.activities=[activity];ui.rerender(view());
+ expect(state.editorTags!.structureBlocked!()).toBe('AI 正在编辑本项目的其他转录稿，暂不能修改项目标签库内容。请先停止 AI 编辑，或等待 AI 编辑完成。');
+ const current={recordingId:'r',modelId:'m',editId:'e1',transcript};
+ await expect(state.editorTags!.transact(current,(lib,rows)=>({library:lib,consumers:rows.map(row=>({...row,transcript:{...row.transcript,segments:row.transcript.segments.map(s=>({...s,tagIds:['t']}))}}))}),'additions')).resolves.toBeTruthy();
+ await expect(state.editorTags!.transact(current,(lib,rows)=>({library:{...lib,tags:[...lib.tags,{id:'new',name:'New',parentId:null,groupIds:[]}]},consumers:rows}),'additions')).rejects.toThrow('tag_shared_ai_restricted');
+ await expect(state.editorTags!.transact(current,(lib,rows)=>({library:lib,consumers:rows}),'order')).rejects.toThrow('tag_shared_ai_restricted');
+ connector.activities=[{...activity,state:'ended',reason:'phase_transition',requestStatus:'waiting'}];ui.rerender(view());expect(state.editorTags!.structureBlocked!()).toBe(msg('tags.sharedAiRestriction'));expect(state.editorTags!.structureBlocked!()).not.toContain('正在编辑');
+ held=false;connector.activities=[];ui.rerender(view());expect(state.editorTags!.structureBlocked!()).toBeNull();transact.mockRestore();
+});
+
+it('opens a still-authorized recent desktop project without a picker or recovery notice',async()=>{
+ const directory={name:'synthetic.ripple',queryPermission:vi.fn(async()=> 'granted')} as unknown as FileSystemDirectoryHandle;
+ Object.assign(window,{__TAURI__:{core:{}}});
+ vi.mocked(store.recentProjects).mockResolvedValueOnce([{id:'p',title:'测试项目',directory}]);
+ vi.mocked(store.openProject).mockResolvedValue({...project,directory});
+ render(<ProjectWorkspace/>);fireEvent.click(screen.getByRole('button',{name:'最近项目'}));fireEvent.click(await screen.findByRole('button',{name:'测试项目'}));
+ await screen.findByRole('heading',{name:'测试项目'});
+ expect(state.picker).not.toHaveBeenCalled();expect(document.querySelector('.recent-project-recovery')).toBeNull();
+});
+it.each(['NotAllowedError','NotFoundError','UnknownError'])('classifies an actual recent read failure without automatically reopening a picker (%s)',async name=>{
+ const directory={name:'synthetic.ripple',queryPermission:vi.fn(async()=> 'granted')} as unknown as FileSystemDirectoryHandle;
+ Object.assign(window,{__TAURI__:{core:{}}});
+ vi.mocked(store.recentProjects).mockResolvedValueOnce([{id:'p',title:'测试项目',directory}]);
+ vi.mocked(store.openProject).mockRejectedValueOnce(new DOMException('Synthetic read failure',name));
+ render(<ProjectWorkspace/>);fireEvent.click(screen.getByRole('button',{name:'最近项目'}));fireEvent.click(await screen.findByRole('button',{name:'测试项目'}));
+ await screen.findByRole('button',{name:'重新选择原项目'});
+ expect(document.querySelector('.recent-project-recovery')?.textContent).toContain(msg(name==='NotAllowedError'?'ProjectWorkspace.recentPermission':name==='NotFoundError'?'ProjectWorkspace.recentMissing':'ProjectWorkspace.recentUnreadable',{title:'测试项目'}));
+ expect(state.picker).not.toHaveBeenCalled();expect(store.rememberProject).not.toHaveBeenCalled();
 });

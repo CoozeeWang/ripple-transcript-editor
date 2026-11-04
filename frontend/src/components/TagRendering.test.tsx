@@ -6,6 +6,7 @@ import { SegmentItem } from './SegmentItem';
 import { createTagPresenter } from '../lib/tagPresentation';
 import { TagCandidatesContext, TagWritingContext } from '../lib/tagCandidates';
 import { setSegmentTag, type TagLibrary } from '../lib/tags';
+import { segmentPlaybackTime } from '../lib/playbackPresentation';
 import { useStableCallbacks } from '../hooks/useStableCallbacks';
 import type { Transcript } from '../types';
 const renders = vi.hoisted(() => new Map<string, number>());
@@ -39,4 +40,13 @@ it('does not refresh unrelated cards on tag assignment or sidebar-only parent up
  fireEvent.click(ui.container.querySelector<HTMLButtonElement>('#segment-s1 [data-add-tag]')!);
  expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1);
  fireEvent.click(screen.getByText('Catalog'));expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(2);expect(renders.get('s0')).toBe(2);expect(renders.get('s2')).toBe(1);
+});
+it('renders only the current and previous playback rows on ticks and seeks',()=>{
+ vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{});
+ const noop=()=>{},segments=Array.from({length:4},(_,i)=>({id:'p'+i,text:'Synthetic '+i,speaker_id:'s',start:i,end:i+1}));
+ const shared={speakers:[{id:'s',name:'Synthetic'}],isPlaying:true,findQuery:'',audioUrl:'',viewingOriginal:false,audioRef:{current:null},textareaRefs:{current:new Map()},editingRef:{current:false},effectiveSelectedSegmentId:'',totalSegments:4,setSelectedSegmentId:noop,seekTo:noop,recordEditorCursor:noop,addSpeaker:noop,updateSegment:noop,removeSegment:noop,splitSegment:noop,mergeWithNext:noop,handleEditorKeydown:noop};
+ function Harness(){const[time,setTime]=useState(.1);return <><button onClick={()=>setTime(.25)}>Tick</button><button onClick={()=>setTime(1.25)}>Next</button><button onClick={()=>setTime(3.25)}>Seek</button>{segments.map((segment,index)=><SegmentItem {...shared} key={segment.id} segment={segment} index={index} currentTime={segmentPlaybackTime(segment,time,true)}/>)}</>}
+ render(<Harness/>);renders.clear();fireEvent.click(screen.getByText('Tick'));expect([...renders.keys()]).toEqual(['p0']);
+ renders.clear();fireEvent.click(screen.getByText('Next'));expect([...renders.keys()]).toEqual(['p0','p1']);
+ renders.clear();fireEvent.click(screen.getByText('Seek'));expect([...renders.keys()]).toEqual(['p1','p3']);
 });

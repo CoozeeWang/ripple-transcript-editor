@@ -1,4 +1,5 @@
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
+import type { Problem } from "../lib/diagnostics";
 import { CopyProblem } from "./CopyProblem";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
@@ -6,6 +7,7 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
  *  文件夹域状态与操作 props 注入。 */
 export interface LoadingScreenProps {
   loadError: string;
+  problem?: Problem;
   folderShortcutHint: string;
   handleOpenFolder: () => void;
   recentMenuRef: RefObject<HTMLDivElement | null>;
@@ -37,7 +39,7 @@ export function LoadingScreen(props: LoadingScreenProps) {
       <section className="welcome-content" aria-label={msg('LoadingScreen.m0544')}>
       <img className="brand-mark" src="/ripple-icon.svg?v=transparent-2" alt="" width={108} height={108} />
       <div className="welcome-identity"><h1>Ripple</h1><p>{msg('LoadingScreen.m0545')}</p></div>
-      {loadError && <p className="welcome-error" role="alert">{uiMessage(loadError)} <CopyProblem operation="open" /></p>}
+      {loadError && <p className="welcome-error" role="alert">{uiMessage(loadError)} <CopyProblem problem={props.problem} /></p>}
       <div className="welcome">
         <button
           type="button"

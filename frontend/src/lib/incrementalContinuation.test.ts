@@ -1,3 +1,5 @@
+import {ProjectAIConnector} from './projectAIConnector';
+import {blocksHumanEditing} from './aiEditOwnership';
 import {expect,it,vi} from 'vitest';
 import {AIConnector,type ConnectorDocument,type ConnectorHost} from './aiConnector';
 import {applyContinuationBatch,stampContinuationReceipt} from './continuationBatch';
@@ -251,4 +253,119 @@ it('resolves a cancelled pending save receipt after restart without resurrecting
     await expect(f.c.handle('resume',{task_id:task.task_id})).rejects.toThrow('task_not_paused');
     expect(f.writes).toBe(1);
   }
+});
+
+it('keeps the 2312 original denominator across edit, proofreading and fresh continuation without adding repeated proofreading', async () => {
+  const f=fixture(2312), root=await f.plan('current_version',{proofreading_required:true});
+  async function batches(plan:Record<string,unknown>,count:number){for(let i=0;i<count;i++){const b=await f.c.handle('batch',{task_id:plan.task_id});await f.c.handle('checkpoint',{task_id:plan.task_id,batch_id:b.batch_id,confirmed_summary:plan.summary,unchanged_ids:(b.segments as Segment[]).map(s=>s.id)});}}
+  await batches(root,10);await f.c.handle('cancel',{task_id:root.task_id,initiator:'ai',reason:'phase_transition',next_phase:'proofreading'});
+  const proof=await f.plan('current_version',{previous_task_id:root.task_id,phase:'proofreading',end_id:'s239'});await batches(proof,10);
+  expect(await f.c.handle('status',{task_id:proof.task_id})).toMatchObject({request_saved:240,request_total:2312,proofread_saved:240,request_status:'waiting',request_complete:false});
+  const second=await f.plan('current_version',{previous_task_id:proof.task_id,start_id:'s240'});await batches(second,10);
+  expect(await f.c.handle('status',{task_id:second.task_id})).toMatchObject({saved_segments:240,total_segments:2072,request_saved:480,request_total:2312,proofread_saved:240,phase:'editing'});
+  await f.c.handle('cancel',{task_id:second.task_id,initiator:'ai',reason:'phase_transition',next_phase:'proofreading'});
+  const again=await f.plan('current_version',{previous_task_id:second.task_id,phase:'proofreading',end_id:'s239'});await batches(again,10);f.restart();
+  expect(await f.c.handle('status',{task_id:again.task_id})).toMatchObject({request_saved:480,request_total:2312,proofread_saved:240,request_complete:false});
+},15000);
+it('publishes durable progress before slow next-batch preparation returns',async()=>{
+ const f=fixture(30),plan=await f.plan(),s=await stage(f,plan);const observed:unknown[]=[];f.host.continuationProgress=tasks=>observed.push(structuredClone(tasks));
+ const current=f.host.current;let release!:()=>void,enter!:()=>void;const gate=new Promise<void>(r=>release=r),entered=new Promise<void>(r=>enter=r);
+ f.host.current=async()=>{if(f.writes===1){enter();await gate;}return current();};const saving=f.c.handle('checkpoint',s.args);await entered;
+ expect(observed).toContainEqual(expect.arrayContaining([expect.objectContaining({request_saved:24,request_total:30,request_status:'preparing_next'})]));release();await saving;
+});
+it('does not count failed or uncertain saves until a durable manuscript receipt is recovered',async()=>{
+ const f=fixture(30),plan=await f.plan(),s=await stage(f,plan);f.failSave();await expect(f.c.handle('checkpoint',s.args)).rejects.toThrow();
+ expect(await f.c.handle('status',{task_id:plan.task_id})).toMatchObject({request_saved:0,request_status:'failed',request_complete:false});
+ f.allowSave();await f.c.handle('resume',{task_id:plan.task_id});f.failProgress();await expect(f.c.handle('checkpoint',s.args)).rejects.toThrow();f.restart();
+ expect(await f.c.handle('status',{task_id:plan.task_id})).toMatchObject({request_saved:24,request_total:30});
+});
+it('requires explicit AI handoff and keeps user stops distinct from failures',async()=>{
+ const f=fixture(),p=await f.plan();await expect(f.c.handle('cancel',{task_id:p.task_id,initiator:'ai',reason:'phase_transition'})).rejects.toThrow('explicit_handoff');
+ expect(await f.c.handle('cancel',{task_id:p.task_id,initiator:'system',reason:'failure'})).toMatchObject({ended_by:'system',reason:'failure',request_status:'failed'});
+ const next=await f.plan('current_version',{previous_task_id:p.task_id});expect(await f.c.handle('cancel',{task_id:next.task_id,initiator:'user',reason:'user_stop'})).toMatchObject({ended_by:'user',reason:'user_cancelled',request_status:'stopped'});
+});
+it('requires the whole original scope and required proofreading before whole completion; partial completion stays local',async()=>{
+ const f=fixture(3),p=await f.plan('current_version',{proofreading_required:true});const s=await stage(f,p);await f.c.handle('checkpoint',s.args);
+ expect(await f.c.handle('status',{task_id:p.task_id})).toMatchObject({complete:true,request_complete:false,request_status:'waiting'});
+ const proof=await f.plan('current_version',{previous_task_id:p.task_id,phase:'proofreading'});const b=await stage(f,proof);await f.c.handle('checkpoint',b.args);
+ expect(await f.c.handle('status',{task_id:proof.task_id})).toMatchObject({request_complete:true,request_status:'completed',request_saved:3,proofread_saved:3});
+ const partial=fixture(3),q=await partial.plan('current_version',{end_id:'s1',proofreading_required:false}),qb=await stage(partial,q);await partial.c.handle('checkpoint',qb.args);
+ expect(await partial.c.handle('status',{task_id:q.task_id})).toMatchObject({request_complete:true,whole_request:false,request_status:'range_completed'});
+});
+it('keeps structural deletions and merges in the original saved denominator, not the smaller current manuscript',async()=>{
+ const f=fixture(4),p=await f.plan('current_version',{allowed_actions:['edit','delete','merge_previous'],proofreading_required:false});
+ const b=await f.c.handle('batch',{task_id:p.task_id});
+ const r=await f.c.handle('checkpoint',{task_id:p.task_id,batch_id:b.batch_id,confirmed_summary:p.summary,changes:[{segment_id:'s1',before:'Synthetic segment 1',after:'',action:'delete'},{segment_id:'s2',before:'Synthetic segment 2',after:'Merged synthetic',action:'merge_previous'}],unchanged_ids:['s0','s3']});
+ expect(f.doc.transcript.segments).toHaveLength(2);expect(r).toMatchObject({request_saved:4,request_total:4,request_complete:true});
+});
+it.each(['current_version','new_version'])('refreshes durable counts and the exact %s version before the slow next batch returns',async saveMode=>{
+ const f=fixture(30),current=f.host.current;let release!:()=>void,enter!:()=>void;
+ const gate=new Promise<void>(r=>release=r),entered=new Promise<void>(r=>enter=r);
+ f.host.current=async()=>{if(f.writes===1){enter();await gate;}return current();};
+ const c=new ProjectAIConnector(f.host,()=>undefined);
+ const read=await c.handle('read_current',{}),p=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s0',rules:['Synthetic'],save_mode:saveMode,delivery_mode:'incremental'});
+ const b=await c.handle('batch',{task_id:p.task_id});
+ const saving=c.handle('checkpoint',{task_id:p.task_id,batch_id:b.batch_id,confirmed_summary:p.summary,unchanged_ids:(b.segments as Segment[]).map(s=>s.id)});
+ await entered;
+ try {expect(c.editing.get(String(p.task_id))).toMatchObject({saved:24,total:30,requestStatus:'preparing_next',inFlight:1,version_id:saveMode==='new_version'?'m:e2':'m:e1'});}finally{release();}
+ await saving;
+});
+it('does not invent an unfinished request lease for completed legacy journals without request metadata',async()=>{
+ const f=fixture(2),p=await f.plan('current_version',{proofreading_required:false}),b=await stage(f,p);await f.c.handle('checkpoint',b.args);
+ const legacy=f.files.get(String(p.task_id))!;delete legacy.request;delete legacy.phase;f.restart();
+ const status=await f.c.handle('status',{task_id:p.task_id});expect(status).toMatchObject({state:'completed',saved_segments:2,total_segments:2});expect(status.request_id).toBeUndefined();
+});
+
+it('releases a fully saved requested range without claiming the whole manuscript is complete',async()=>{
+ const f=fixture(4),c=new ProjectAIConnector(f.host,()=>undefined);
+ const read=await c.handle('read_current',{});
+ const p=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s0',end_id:'s1',rules:['Synthetic'],save_mode:'current_version',delivery_mode:'incremental',proofreading_required:false});
+ const b=await c.handle('batch',{task_id:p.task_id});
+ await c.handle('checkpoint',{task_id:p.task_id,batch_id:b.batch_id,confirmed_summary:p.summary,unchanged_ids:['s0','s1']});
+ const activity=c.editing.get(String(p.task_id))!;
+ expect(activity).toMatchObject({state:'completed',requestComplete:true,requestStatus:'range_completed',saved:2,total:2,inFlight:0});
+ expect(blocksHumanEditing(activity)).toBe(false);
+ expect(f.doc.transcript.segments).toEqual(f.original.segments);
+});
+
+it('reports the exact batch receipt without attributing an unobserved call to a platform',async()=>{
+ const f=fixture(30),p=await f.plan(),b=await stage(f,p);
+ const status=()=>f.c.handle('status',{task_id:p.task_id,batch_id:b.batch.batch_id});
+ // Simulate a pre-dispatch block by making no checkpoint call at all.
+ expect((await status()).save_diagnostics).toMatchObject({receipt_status:'no_saved_receipt',external_call_status:'not_observable',saved_segments:0});
+ expect(f.writes).toBe(0);
+ f.failSave();await expect(f.c.handle('checkpoint',b.args)).rejects.toThrow('synthetic_disk_failure');
+ expect((await status()).save_diagnostics).toMatchObject({receipt_status:'save_uncertain',saved_segments:0});
+ f.allowSave();await f.c.handle('resume',{task_id:p.task_id});
+ f.failProgress();await expect(f.c.handle('checkpoint',b.args)).rejects.toThrow('synthetic_journal_failure');f.restart();
+ const saved=await status();
+ expect(saved.save_diagnostics).toMatchObject({receipt_status:'confirmed_saved',saved_segments:24,saved_version_id:'m:e1'});
+ expect(JSON.stringify(saved.save_diagnostics)).not.toMatch(/Synthetic|Revised|rules|summary|text/);
+ expect((await f.c.handle('status',{task_id:p.task_id})).save_diagnostics).toMatchObject({receipt_status:'confirmed_saved',batch_id:b.batch.batch_id});
+ const next=await f.c.handle('batch',{task_id:p.task_id});
+ expect((await f.c.handle('status',{task_id:p.task_id,batch_id:next.batch_id})).save_diagnostics).toMatchObject({receipt_status:'no_saved_receipt',saved_segments:0});
+ const unknown=(await f.c.handle('status',{task_id:p.task_id,batch_id:'/synthetic/private-note'})).save_diagnostics;
+ expect(unknown).toMatchObject({receipt_status:'unknown_batch',batch_id:null});
+ expect(JSON.stringify(unknown)).not.toContain('private-note');
+ await f.c.handle('checkpoint',b.args);expect(f.writes).toBe(1);
+});
+
+it('distinguishes observed checkpoint arrival from durable receipt and forgets only window arrival history on reopen',async()=>{
+ const f=fixture(3),c=new ProjectAIConnector(f.host,()=>undefined);
+ const read=await c.handle('read_current',{}),p=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s0',rules:['Synthetic'],save_mode:'current_version',delivery_mode:'incremental',proofreading_required:false});
+ const b=await c.handle('batch',{task_id:p.task_id});
+ expect((await c.handle('status',{task_id:p.task_id,batch_id:b.batch_id})).save_diagnostics).toMatchObject({window_save_attempt:null,receipt_status:'no_saved_receipt',external_call_status:'not_observable'});
+ f.failSave();await expect(c.handle('checkpoint',{task_id:p.task_id,batch_id:b.batch_id,confirmed_summary:p.summary,unchanged_ids:['s0','s1','s2']})).rejects.toThrow('synthetic_disk_failure');
+ expect((await c.handle('status',{task_id:p.task_id,batch_id:b.batch_id})).save_diagnostics).toMatchObject({window_save_attempt:{batch_id:b.batch_id},receipt_status:'save_uncertain',arrival_history_scope:'current_window_session'});
+ const reopened=new ProjectAIConnector(f.host,()=>undefined);
+ const status=await reopened.handle('status',{task_id:p.task_id,batch_id:b.batch_id});
+ expect(status.save_diagnostics).toMatchObject({receipt_status:'save_uncertain',external_call_status:'not_observable'});
+ expect((status.save_diagnostics as {window_save_attempt?:unknown}).window_save_attempt??null).toBeNull();
+});
+
+it('completes an agreed editing-only request by default without inventing a proofreading phase',async()=>{
+ const f=fixture(3),c=new ProjectAIConnector(f.host,()=>undefined);
+ const read=await c.handle('read_current',{}),p=await c.handle('prepare',{snapshot:read.snapshot,start_id:'s0',rules:['Synthetic editing-only request'],save_mode:'current_version',delivery_mode:'incremental'});
+ const b=await c.handle('batch',{task_id:p.task_id});await c.handle('checkpoint',{task_id:p.task_id,batch_id:b.batch_id,confirmed_summary:p.summary,unchanged_ids:['s0','s1','s2']});
+ expect(await c.handle('status',{task_id:p.task_id})).toMatchObject({request_complete:true,request_status:'completed'});expect(blocksHumanEditing(c.editing.get(String(p.task_id))!)).toBe(false);
 });

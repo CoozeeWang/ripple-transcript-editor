@@ -38,7 +38,7 @@ export interface Annotation {
   createdAt: string;
 }
 
-/** 片段内的一处高亮：编辑辅助记号，不参与任何导出（md/txt/docx/pdf/JSON 一律剥离）。
+/** 片段内的一处高亮：编辑辅助记号，JSON 可选择保留；其他导出格式不包含。
  *  范围相对所属 segment 的 text，左闭右开 [start, end)。编辑文本时由 reanchorRanges 重锚。 */
 export interface Highlight {
   source?: "ai";
@@ -88,6 +88,8 @@ export interface ContinuationReceipt {
   source_version_id: string;
   version_id: string;
   processed_ids: string[];
+  removed_ids?: string[];
+  proofread_invalidated_ids?: string[];
   changed_segments: number;
   deleted_segments: number;
   merged_segments: number;
@@ -214,6 +216,8 @@ export interface TranscriptEdit {
 }
 
 export interface TranscriptModel {
+  /** Idempotent save receipt for one explicitly prepared transcription input. */
+  preparationId?: string;
   originalLinkId?: string;
   /** Stable provenance shared by an original and all its related editing versions. */
   originalGroupId?: string;
