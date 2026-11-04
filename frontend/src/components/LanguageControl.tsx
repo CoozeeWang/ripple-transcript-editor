@@ -14,10 +14,16 @@ export function LanguageControl({welcome=false}:{welcome?:boolean}) {
   useLayoutEffect(()=>{
     if(!open||!menu.current||!trigger.current)return;
     const popup=menu.current;if(popup.showPopover)popup.showPopover();else popup.style.display='block';
-    const rect=trigger.current.getBoundingClientRect();
-    popup.style.left=`${Math.max(8,Math.min(rect.right-popup.offsetWidth,window.innerWidth-popup.offsetWidth-8))}px`;
-    popup.style.top=`${Math.min(rect.bottom+6,window.innerHeight-popup.offsetHeight-8)}px`;
+    const position=()=>{
+      const rect=trigger.current!.getBoundingClientRect();
+      popup.style.left=`${Math.max(8,Math.min(rect.right-popup.offsetWidth,window.innerWidth-popup.offsetWidth-8))}px`;
+      popup.style.top=`${Math.max(8,Math.min(rect.bottom+6,window.innerHeight-popup.offsetHeight-8))}px`;
+    };
+    position();
+    window.addEventListener('resize',position);
+    window.addEventListener('scroll',position,true);
     popup.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    return()=>{window.removeEventListener('resize',position);window.removeEventListener('scroll',position,true);};
   },[open,language]);
   return <div ref={root} className="language-control" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))close();}}
     onKeyDown={event=>{
