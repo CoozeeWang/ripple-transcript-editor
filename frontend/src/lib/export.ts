@@ -1,4 +1,6 @@
-import {filteredTagSegments,type TagFilter} from './tags';
+import {mergeHighlights} from './highlights';
+import {effectiveExportMarks,type ExportMarkOptions} from './exportOptions';
+import {filteredTagSegments,type TagFilter,type TagLibrary} from './tags';
 import { msg, interfaceLanguage } from '../i18n';
 import { validSpeakerColor, SPEAKER_PALETTE } from "./speakers";
 import type { InterviewMetadata, Speaker, Transcript } from "../types";
@@ -62,6 +64,7 @@ interface ExportSegment {
   sourceNumber?: number;
   text: string;
   annotations: ExportAnnotation[];
+  tags?: string[]; highlights?: {start:number;end:number}[];
 }
 export interface ExportModel {
   title: string;
@@ -84,7 +87,12 @@ export function speakerColorFor(speakerId: string, speakers: Speaker[]): string 
 export function buildExportModel(
   transcript: Transcript,
   metadata: InterviewMetadata | null,
+  options: ExportMarkOptions={tags:false,highlights:false,annotations:true},
+  library?:TagLibrary,
 ): ExportModel {
+  const definitions=options.tags?jsonTagDefinitions(transcript,library):[];
+  const byId=new Map(definitions.map(tag=>[tag.id,tag]));
+  const path=(id:string):string=>{const names:string[]=[];let cursor:string|null=id;while(cursor){const tag:{id:string;name:string;parentId:string|null}=byId.get(cursor)!;names.unshift(tag.name);cursor=tag.parentId;}return names.join('/');};
   const title = metadata?.title?.trim() || transcript.audio?.filename || msg('export.m1307');
   return {
     title,
@@ -104,7 +112,9 @@ export function buildExportModel(
         speakerColor: speakerColorFor(seg.speaker_id, transcript.speakers),
         timestamp: transcript.timeAligned === false ? "" : formatClock(seg.start),
         text: seg.text || "",
-        annotations: (seg.annotations ?? []).map((a) => ({
+        tags: options.tags?[...new Set(seg.tagIds??[])].map(path):[],
+        highlights:options.highlights?checkedHighlights(seg.text,seg.highlights??[]):[],
+        annotations: (options.annotations?seg.annotations??[]:[]).map((a) => ({
           text: a.text,
           date: formatDateField(a.createdAt),
         })),
@@ -134,6 +144,7 @@ export function renderMarkdown(m: ExportModel): string {
   for (const seg of m.segments) {
     const body = markdownText(seg.text.replace(/<br\s*\/?>/gi, "\n")).replace(/\n+/g, "\n\n");
     lines.push(`**${markdownText(seg.speakerName).replace(/\n/g, " ")}**${seg.timestamp ? ` [${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}：${body}`);
+    if(seg.tags?.length)lines.push('',markdownText(msg('export.tagLine',{tags:seg.tags.join(' · ')})));
     for (const a of seg.annotations) {
       // Separate the quote from the body, and keep every note line inside it.
       lines.push("", msg('export.m1315', { v0: markdownText(a.date), v1: markdownText(a.text).replace(/\n/g, "\n> ") }));
@@ -154,6 +165,7 @@ export function renderTxt(m: ExportModel): string {
   lines.push("", "========", "");
   for (const seg of m.segments) {
     lines.push(`${seg.speakerName}${seg.timestamp ? ` [${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}`, seg.text);
+    if(seg.tags?.length)lines.push(msg('export.tagLine',{tags:seg.tags.join(' · ')}));
     for (const a of seg.annotations) {
       lines.push(msg('export.m1322', { v0: a.date, v1: a.text }));
     }
@@ -182,6 +194,16 @@ function exportMetadata(m: ExportModel): Array<[string, string]> {
 }
 
 // PDF 通过浏览器打印导出：返回带内联打印样式的完整 HTML 文档。
+function checkedHighlights(text:string,ranges:readonly {id:string;start:number;end:number}[]){
+ for(const range of ranges)if(!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.end)||range.start<0||range.end<=range.start||range.end>text.length)throw Error(msg('export.jsonHighlightInvalid'));
+ return ranges.reduce((merged,range)=>mergeHighlights(merged,range),[] as import('../types').Highlight[]);
+}
+export function exportTextRuns(segment:Pick<ExportSegment,'text'|'highlights'>):{text:string;highlighted:boolean}[]{
+ const ranges=segment.highlights??[];const runs:{text:string;highlighted:boolean}[]=[];let cursor=0;
+ for(const range of ranges){if(cursor<range.start)runs.push({text:segment.text.slice(cursor,range.start),highlighted:false});runs.push({text:segment.text.slice(range.start,range.end),highlighted:true});cursor=range.end;}
+ if(cursor<segment.text.length)runs.push({text:segment.text.slice(cursor),highlighted:false});return runs;
+}
+
 export function renderPdfHtml(m: ExportModel): string {
   const meta = exportMetadata(m);
   const metaHtml = meta
@@ -197,9 +219,7 @@ export function renderPdfHtml(m: ExportModel): string {
         .join("");
       return `<div class="seg"><span class="sp" style="color:${seg.speakerColor}">${escapeHtml(
         seg.speakerName,
-      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : ""}</span><div class="body">${escapeHtml(
-        seg.text,
-      )}</div></div>${anns}`;
+      )}</span><span class="ts">${seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : ""}</span><div class="body">${exportTextRuns(seg).map(run=>run.highlighted?`<mark>${escapeHtml(run.text)}</mark>`:escapeHtml(run.text)).join('')}</div></div>${seg.tags?.length?`<div class="export-tags">${escapeHtml(msg('export.tagLine',{tags:seg.tags.join(' · ')}))}</div>`:''}${anns}`;
     })
     .join("");
   return `<!doctype html>
@@ -216,6 +236,8 @@ export function renderPdfHtml(m: ExportModel): string {
   hr { border: none; border-top: 1px solid #e2e0d8; margin: 16px 0; }
   .seg { margin: 16px 0 4px; }
   .body, .anno-text { white-space: pre-wrap; }
+  mark { background:#fff2a8; color:inherit; }
+  .export-tags { color:#666; font-size:13px; margin:4px 0; }
   .sp { font-weight: 700; }
   .ts { color:#999; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 0 4px; }
   .anno { margin: 2px 0 6px 0; padding: 6px 10px; background:#fff8e6; border-left: 3px solid #e0b84a; border-radius: 3px; font-size: 13.5px; }
@@ -277,7 +299,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
   m.segments.forEach((seg) => {
     const speakerRun = new TextRun({ text: `${seg.speakerName} `, bold: true, color: seg.speakerColor.replace("#", "") });
     const tsRun = new TextRun({ text: seg.timestamp ? `[${seg.timestamp}]${seg.sourceNumber ? ` (${seg.sourceNumber})` : ""}` : seg.sourceNumber ? `(${seg.sourceNumber})` : "", color: "999999" });
-    const bodyRuns = seg.text.split(/\r?\n/).map((text, index) => new TextRun({ text, break: index ? 1 : undefined }));
+    const bodyRuns = exportTextRuns(seg).flatMap(run=>run.text.split('\n').map((text,index)=>new TextRun({text:text.replace(/\r$/,''),break:index?1:undefined,...(run.highlighted?{highlight:'yellow' as const}:{})})));
 
     paragraphChildren.push(new Paragraph({ spacing: { before: 200, after: 60 }, keepNext: true, children: [speakerRun, tsRun] }));
     const runs: unknown[] = [];
@@ -304,6 +326,7 @@ export async function renderDocx(m: ExportModel): Promise<Blob> {
     paragraphChildren.push(
       new Paragraph({ spacing: { after: 160, line: 320 }, children: runs as never }),
     );
+    if(seg.tags?.length)paragraphChildren.push(new Paragraph({spacing:{after:120},children:[new TextRun({text:msg('export.tagLine',{tags:seg.tags.join(' · ')}),color:'666666',size:22})]}));
   });
 
   const doc = new Document({
@@ -327,18 +350,45 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<void> 
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export type JsonExportOptions = ExportMarkOptions;
+export const DEFAULT_JSON_EXPORT_OPTIONS: JsonExportOptions = {tags:true,highlights:true,annotations:true};
+export interface ExportSettings {options:ExportMarkOptions;library?:TagLibrary}
+export type JsonExportSettings=ExportSettings;
+
+function jsonTagDefinitions(transcript:Transcript,library?:TagLibrary){
+ const used=new Set(transcript.segments.flatMap(segment=>segment.tagIds??[]));
+ const definitions=new Map(library?.tags.map(tag=>[tag.id,tag])??[]),included=new Set<string>();
+ for(const id of used){
+  let cursor:string|null=id;const chain=new Set<string>();
+  while(cursor){
+   if(chain.has(cursor))throw Error(msg('export.jsonTagUnavailable'));
+   chain.add(cursor);const tag=definitions.get(cursor);if(!tag)throw Error(msg('export.jsonTagUnavailable'));
+   included.add(cursor);cursor=tag.parentId??null;
+  }
+ }
+ // Definitions contain only associated tags and their structural ancestors. No groups, project or unrelated tags.
+ return [...included].map(id=>{const tag=definitions.get(id)!;return{id:tag.id,name:tag.name,parentId:tag.parentId??null}});
+}
+
 /** 构造 JSON 导出的载荷：engine 非 imported 时在顶层标注来源引擎，否则原样导出。 */
 export function buildJsonPayload(
   transcript: Transcript,
   engine: string | undefined,
+  options: JsonExportOptions = DEFAULT_JSON_EXPORT_OPTIONS,
+  library?: TagLibrary,
 ): Record<string, unknown> {
-  // 高亮是编辑辅助记号，不随 JSON 导出：它不是稿件内容，落到别处只会变成
-  // 一堆脱离了上下文的偏移量。md/txt/docx/pdf 由各自 render 函数决定，
-  // 天然不含高亮——这里显式剥离，是为了让 JSON 也保持一致。
+  const definitions=options.tags?jsonTagDefinitions(transcript,library):undefined;
   const segments = transcript.segments.map((segment) => {
     const copy = { ...segment };
-    delete copy.highlights;
-    delete copy.tagIds;
+    if(!options.highlights)delete copy.highlights;
+    else if(copy.highlights)copy.highlights=copy.highlights.map(highlight=>{
+      if(!Number.isSafeInteger(highlight.start)||!Number.isSafeInteger(highlight.end)||highlight.start<0||highlight.end<=highlight.start||highlight.end>copy.text.length)throw Error(msg('export.jsonHighlightInvalid'));
+      return {...highlight};
+    });
+    if(!options.tags)delete copy.tagIds;
+    else if(copy.tagIds)copy.tagIds=[...new Set(copy.tagIds)];
+    if(!options.annotations)delete copy.annotations;
+    else if(copy.annotations)copy.annotations=copy.annotations.map(note=>({...note}));
     const number=(transcript as ExportSelection).exportSegmentNumbers?.[segment.id];
     if(number)Object.assign(copy,{sourceSegmentNumber:number});
     if(copy.words)copy.words=copy.words.map(word=>{
@@ -352,6 +402,7 @@ export function buildJsonPayload(
   delete base.tagStorageRevision;
   delete base.comparisonReviews;
   delete base.aiContinuationReceipts;
+  base.rippleExport={schemaVersion:1,included:{...options},highlightOffsetUnit:'utf16-code-units',...(definitions?{tagDefinitions:definitions}:{})};
   if (engine && engine !== "imported") {
     return { engine, ...base };
   }
@@ -370,11 +421,12 @@ export async function exportTranscript(
   metadata: InterviewMetadata | null,
   engine: string | undefined,
   versionLabel?: string,
+  json?: JsonExportSettings,
 ): Promise<void> {
-  const model = buildExportModel(transcript, metadata);
+  const model = buildExportModel(transcript, metadata,effectiveExportMarks(format,json?.options??{tags:false,highlights:false,annotations:true}),json?.library);
   const stem = exportFilenameStem(model.title, versionLabel);
   if (format !== 'pdf') {
-    await downloadBlob(await transcriptBlob(format, transcript, metadata, engine), `${stem}.${format}`);
+    await downloadBlob(await transcriptBlob(format, transcript, metadata, engine, json), `${stem}.${format}`);
     return;
   }
   if (format === "pdf") {
@@ -383,22 +435,14 @@ export async function exportTranscript(
   }
 }
 
-export const exportFormats = () => [
+export const exportFormats = () => ([
   [msg('export.formatDocx'), 'docx'], [msg('export.m1331'), 'txt'], [msg('export.m1332'), 'pdf'],
-  [msg('export.formatJson'), 'json'], [msg('export.m1333'), 'srt'], [msg('export.m1334'), 'vtt'], [msg('export.formatMarkdown'), 'md'],
-] as const;
+  [msg('export.formatJson'), 'json'], [msg('export.formatMarkdown'), 'md'],
+] as const).map(([label,format])=>[label.replace(/\s*[（(]\.[a-z0-9]+[)）]\s*$/i,''),format] as const);
 export type ExportFormat = ReturnType<typeof exportFormats>[number][1];
-export function canExportSubtitles(t: Transcript) {
-  return t.timeAligned !== false && t.segments.length > 0 && t.segments.every(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.start >= 0 && Math.round(s.end * 1000) > Math.round(s.start * 1000));
-}
-export function renderSubtitles(t: Transcript, format: 'srt' | 'vtt') {
-  if (!canExportSubtitles(t)) throw new Error(msg('export.m1335'));
-  const time = (seconds: number) => { const ms = Math.round(seconds * 1000); return `${formatClock(Math.floor(ms / 1000))}${format === 'srt' ? ',' : '.'}${String(ms % 1000).padStart(3, '0')}`; };
-  return (format === 'vtt' ? 'WEBVTT\n\n' : '') + t.segments.map((s, i) => `${(t as ExportSelection).exportSegmentNumbers?.[s.id]??i+1}\n${time(s.start)} --> ${time(s.end)}\n${s.text.replace(/\r?\n\s*\r?\n/g, '\n')}`).join('\n\n') + '\n';
-}
-export async function transcriptBlob(format: Exclude<ExportFormat, 'pdf'>, t: Transcript, metadata: InterviewMetadata | null, engine?: string): Promise<Blob> {
-  const model = buildExportModel(t, metadata);
+export async function transcriptBlob(format: Exclude<ExportFormat, 'pdf'>, t: Transcript, metadata: InterviewMetadata | null, engine?: string,json?:JsonExportSettings): Promise<Blob> {
+  const model = buildExportModel(t, metadata,effectiveExportMarks(format,json?.options??{tags:false,highlights:false,annotations:true}),json?.library);
   if (format === 'docx') return renderDocx(model);
-  const text = format === 'json' ? JSON.stringify(buildJsonPayload(t, engine), null, 2) : format === 'md' ? renderMarkdown(model) : format === 'txt' ? renderTxt(model) : renderSubtitles(t, format);
+  const text = format === 'json' ? JSON.stringify(buildJsonPayload(t, engine,json?.options??{tags:false,highlights:false,annotations:true},json?.library), null, 2) : format === 'md' ? renderMarkdown(model) : renderTxt(model);
   return new Blob([text], { type: format === 'json' ? 'application/json' : 'text/plain;charset=utf-8' });
 }

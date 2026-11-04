@@ -12,7 +12,7 @@ vi.mock('jszip', () => ({ default: class {
   async generateAsync() { return new Blob(['zip']); }
 } }));
 vi.mock('../lib/export', async original => ({ ...await original<typeof exporter>(), downloadBlob: vi.fn(), transcriptBlob: vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([4, 5]).buffer })) }));
-vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), checkedMediaFile: vi.fn(async () => ({ name:'source.m4a',arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer })), recordingDirectory: vi.fn(async () => ({})), resolveMedia: vi.fn(async () => ({ getFile: async () => ({ name: 'source.m4a', arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }) })), savePortableProject: vi.fn() }));
+vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), readProjectExportState:vi.fn(async(p:store.OpenProject)=>p),checkedMediaFile: vi.fn(async () => ({ name:'source.m4a',arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer })), recordingDirectory: vi.fn(async () => ({})), resolveMedia: vi.fn(async () => ({ getFile: async () => ({ name: 'source.m4a', arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }) })), savePortableProject: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof local>(), readManifest: vi.fn(), readModelOriginal: vi.fn(), readModelEdit: vi.fn() }));
 const project = { directory: { name: '研究.ripple' }, data: { id: 'p', title: '研究', interviews: [{ id: 's', title: '第一次', recordings: [{ id: 'r', name: '录音.m4a', file: 'a.m4a', storage: 'copy' }] }] } } as store.OpenProject;
 const transcript = { audio: { filename: 'a.m4a', duration: 10 }, speakers: [], segments: [{ id: 'a', speaker_id: '', start: 0, end: 10, text: '正文' }] };
@@ -44,7 +44,7 @@ it('exports selected current versions and original-format audio into session fol
   await waitFor(() => expect(exporter.downloadBlob).toHaveBeenCalled());
   expect(captured.files).toEqual(['研究/第一次/录音/录音.m4a', '研究/第一次/录音/定稿.docx']);
   expect(captured.contents[0]).toEqual([1, 2, 3]);
-  expect(exporter.transcriptBlob).toHaveBeenCalledWith('docx', transcript, expect.anything(), undefined);
+  expect(exporter.transcriptBlob).toHaveBeenCalledWith('docx',expect.objectContaining({segments:transcript.segments}),expect.anything(),undefined,expect.objectContaining({options:{tags:true,highlights:true,annotations:true}}));
 });
 it('exports only the current state and does not load or offer internal import copies', async () => {
   render(<ProjectExportDialog project={project} onClose={vi.fn()}/>);
@@ -106,12 +106,13 @@ it('keeps independent manuscripts at session level and exports mixed timed and u
   const doc = await screen.findByLabelText('补充材料.docx');
   const audio = screen.getByLabelText('录音.m4a');
   expect(audio.closest('li')?.contains(doc)).toBe(false);
-  fireEvent.change(screen.getByLabelText('访谈 的导出格式'), { target: { value: 'srt' } });
+  fireEvent.change(screen.getByLabelText('访谈 的导出格式'), { target: { value: 'txt' } });
   fireEvent.change(screen.getByLabelText('补充材料 的导出格式'), { target: { value: 'md' } });
-  expect((within(screen.getByLabelText('补充材料 的导出格式')).getByRole('option', { name: '字幕（.srt）' }) as HTMLOptionElement).disabled).toBe(true);
+  expect(within(screen.getByLabelText('补充材料 的导出格式')).queryByRole('option', {name:'SRT'})).toBeNull();
+  expect(screen.queryByRole('option', {name:'VTT'})).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '导出所选材料' }));
   fireEvent.click(screen.getByRole('button', { name: /材料压缩包（ZIP）/ }));
-  await waitFor(() => expect(captured.files).toEqual(['研究/第一次/录音/录音.m4a', '研究/第一次/录音/访谈.srt', '研究/第一次/独立文稿/补充材料.md']));
+  await waitFor(() => expect(captured.files).toEqual(['研究/第一次/录音/录音.m4a', '研究/第一次/录音/访谈.txt', '研究/第一次/独立文稿/补充材料.md']));
 });
 
 it('includes accessible linked audio without changing its external reference',async()=>{
@@ -209,4 +210,41 @@ it.each(['AbortError', 'NotReadableError'])('keeps the export dialog open after 
   else expect(screen.getByRole('alert').textContent).toBe('Synthetic save failure');
   fireEvent.click(screen.getByRole('button', { name: /材料压缩包（ZIP）/ }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+});
+
+it('rejects an AI-owned selected manuscript without silently producing a partial ZIP, but permits audio-only export',async()=>{
+ const {ConnectorContext}=await import('../hooks/connectorContext');let held=true;
+ const state={activities:[],targetLocked:()=>held} as unknown as import('../hooks/connectorContext').ConnectorState;
+ render(<ConnectorContext.Provider value={{state,register:vi.fn(),unregister:vi.fn()}}><ProjectExportDialog project={project} onClose={()=>{}}/></ConnectorContext.Provider>);
+ const doc=await screen.findByLabelText('定稿.docx');expect(screen.getByText(/定稿 正由 AI 编辑/)).toBeTruthy();expect(screen.getByRole('button',{name:'导出所选材料'})).toHaveProperty('disabled',true);
+ fireEvent.click(doc);fireEvent.click(screen.getByRole('button',{name:'导出所选材料'}));await waitFor(()=>expect(exporter.downloadBlob).toHaveBeenCalledTimes(1));expect(captured.files).toEqual(['研究/第一次/录音/录音.m4a']);expect(exporter.transcriptBlob).not.toHaveBeenCalled();held=false;
+});
+it('rechecks AI ownership at the execution boundary after a material choice was opened',async()=>{
+ const {ConnectorContext}=await import('../hooks/connectorContext');let held=false;const state={activities:[],targetLocked:()=>held} as unknown as import('../hooks/connectorContext').ConnectorState;
+ render(<ConnectorContext.Provider value={{state,register:vi.fn(),unregister:vi.fn()}}><ProjectExportDialog project={project} onClose={()=>{}}/></ConnectorContext.Provider>);await screen.findByLabelText('定稿.docx');fireEvent.click(screen.getByRole('button',{name:'导出所选材料'}));held=true;fireEvent.click(screen.getByRole('button',{name:/材料压缩包（ZIP）/}));await screen.findByRole('alert');expect(exporter.downloadBlob).not.toHaveBeenCalled();expect(exporter.transcriptBlob).not.toHaveBeenCalled();
+});
+it('rereads saved manuscripts at export and applies shared per-format options to the batch',async()=>{
+ const metadata=local.defaultMetadata('访谈'),data=(text:string)=>({kind:'te-edited' as const,audio:'a.m4a',transcript:{...transcript,segments:[{...transcript.segments[0],text}]},metadata});
+ vi.mocked(local.readModelEdit).mockResolvedValueOnce(data('Earlier')).mockResolvedValue(data('Latest saved'));
+ render(<ProjectExportDialog project={project} onClose={()=>{}}/>);await screen.findByLabelText('定稿.docx');fireEvent.click(screen.getByRole('checkbox',{name:'高亮'}));fireEvent.click(screen.getByRole('button',{name:'导出所选材料'}));fireEvent.click(screen.getByRole('button',{name:/材料压缩包（ZIP）/}));await waitFor(()=>expect(exporter.downloadBlob).toHaveBeenCalled());
+ expect(exporter.transcriptBlob).toHaveBeenCalledWith('docx',expect.objectContaining({segments:[expect.objectContaining({text:'Latest saved'})]}),expect.anything(),undefined,expect.objectContaining({options:{tags:true,highlights:false,annotations:true}}));
+});
+it('refuses changed manuscripts before downloading an assembled batch',async()=>{
+ const metadata=local.defaultMetadata('访谈'),data=(text:string)=>({kind:'te-edited' as const,audio:'a.m4a',transcript:{...transcript,segments:[{...transcript.segments[0],text}]},metadata});
+ vi.mocked(local.readModelEdit).mockResolvedValueOnce(data('Initial')).mockResolvedValueOnce(data('Read for export')).mockResolvedValue(data('Changed while rendering'));
+ render(<ProjectExportDialog project={project} onClose={()=>{}}/>);await screen.findByLabelText('定稿.docx');fireEvent.click(screen.getByRole('button',{name:'导出所选材料'}));fireEvent.click(screen.getByRole('button',{name:/材料压缩包（ZIP）/}));await screen.findByText('导出期间稿件或标签结构已变化，请重新核对后导出。');expect(exporter.downloadBlob).not.toHaveBeenCalled();
+});
+
+it.each(['txt','md'])('keeps %s available and releases selected project export after the exact AI lock ends',async format=>{
+ const {ConnectorContext}=await import('../hooks/connectorContext');let held=true;
+ const renderDialog=()=> <ConnectorContext.Provider value={{state:{activities:[],targetLocked:()=>held} as unknown as import('../hooks/connectorContext').ConnectorState,register:vi.fn(),unregister:vi.fn()}}><ProjectExportDialog project={project} onClose={()=>{}}/></ConnectorContext.Provider>;
+ const view=render(renderDialog());await screen.findByLabelText('定稿.docx');
+ const select=screen.getByLabelText('定稿 的导出格式');
+ expect(within(select).getByRole('option',{name:format==='txt'?'纯文本':'Markdown'})).toHaveProperty('disabled',false);
+ fireEvent.change(select,{target:{value:format}});
+ expect(screen.getByRole('button',{name:'导出所选材料'})).toHaveProperty('disabled',true);
+ expect(screen.queryByText(/时间范围/)).toBeNull();
+ held=false;view.rerender(renderDialog());
+ const action=screen.getByRole('button',{name:'导出所选材料'});expect(action).toHaveProperty('disabled',false);fireEvent.click(action);fireEvent.click(screen.getByRole('button',{name:/材料压缩包（ZIP）/}));
+ await waitFor(()=>expect(exporter.downloadBlob).toHaveBeenCalledOnce());expect(exporter.transcriptBlob).toHaveBeenCalledWith(format,expect.objectContaining({segments:transcript.segments}),expect.anything(),undefined,expect.anything());
 });
