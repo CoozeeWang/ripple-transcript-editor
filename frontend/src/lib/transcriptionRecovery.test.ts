@@ -6,7 +6,7 @@ const options = {} as TranscriptionOptions;
 function fixture(signatureOverride?: string) {
   const file = new File(['audio'], 'sample.wav', {lastModified:123});
   const marker = {jobId:'saved-job', signature:signatureOverride ?? JSON.stringify([file.size,file.lastModified,'test',options])};
-  const dir = {getFileHandle:vi.fn(async (name:string) => ({getFile:async () => name === 'sample.wav' ? file : {text:async () => JSON.stringify(marker)}})), removeEntry:vi.fn(async()=>{})} as unknown as FileSystemDirectoryHandle;
+  const dir = {getFileHandle:vi.fn(async (name:string) => {if(name.endsWith('.audio-preparation.json'))throw new DOMException('Synthetic absent','NotFoundError');return {getFile:async () => name === 'sample.wav' ? file : {text:async () => JSON.stringify(marker)}}}), removeEntry:vi.fn(async()=>{})} as unknown as FileSystemDirectoryHandle;
   return dir;
 }
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
@@ -60,7 +60,7 @@ it.each([
  const dir=fixture();
  const file=new File(['audio'],'sample.wav',{lastModified:123});
  const marker={jobId:'saved-job',signature:JSON.stringify([file.size,file.lastModified,providerId,options])};
- vi.mocked(dir.getFileHandle).mockImplementation(async(name:string)=>({getFile:async()=>name==='sample.wav'?file:{text:async()=>JSON.stringify(marker)}}) as FileSystemFileHandle);
+ vi.mocked(dir.getFileHandle).mockImplementation(async(name:string)=>{if(name.endsWith('.audio-preparation.json'))throw new DOMException('Synthetic absent','NotFoundError');return {getFile:async()=>name==='sample.wav'?file:{text:async()=>JSON.stringify(marker)}} as FileSystemFileHandle});
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.includes('/progress')?progress:++jobs===1?{state:'running'}:{state:'completed',transcript:{segments:[]}}))));
  const onProgress=vi.fn();
  try {
@@ -69,4 +69,10 @@ it.each([
    expect(onProgress.mock.calls[0]?.[0]).toBe(phase);
    expect(onProgress.mock.calls[0]?.[1]).toBe(ratio);
  } finally {vi.useRealTimers();}
+});
+
+it.each([502,403,429])('retains HTTP %i classification for a non-JSON recovery error without submitting again',async status=>{
+ const fetcher=vi.fn(async()=>new Response('<html>Synthetic proxy error</html>',{status}));vi.stubGlobal('fetch',fetcher);
+ const dir=fixture();await expect(transcribeAudio(dir,'sample.wav',options,{providerId:'test'})).rejects.toMatchObject({code:status===502?'upstream_error':status===403?'invalid_api_key':'rate_limited'});
+ expect(fetcher).toHaveBeenCalledTimes(1);expect(dir.removeEntry).not.toHaveBeenCalled();
 });

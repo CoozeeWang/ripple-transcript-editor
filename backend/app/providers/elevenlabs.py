@@ -150,8 +150,8 @@ def normalize_transcript(
         if not isinstance(item, dict) or not item.get("text"):
             continue
         text = str(item["text"])
-        start = float(item.get("start") or current_end)
-        end = float(item.get("end") or start)
+        start = float(current_end if item.get("start") is None else item["start"])
+        end = float(start if item.get("end") is None else item["end"])
         speaker_id = str(item.get("speaker_id") or current_speaker or "speaker_0")
 
         if current_speaker and speaker_id != current_speaker:
@@ -170,7 +170,10 @@ def normalize_transcript(
             and item.get("type") != "spacing"
         )
         current_text += (" " if needs_space else "") + text
-        current_end = end
+        # Preserve the full observed span: punctuation/spacing can carry an
+        # earlier or point timestamp and must not truncate the preceding word.
+        current_start = min(current_start, start)
+        current_end = max(current_end, end)
         if item.get("type") == "word":
             current_words.append(
                 Word(text=text, start=start, end=end, speaker_id=speaker_id)

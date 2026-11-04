@@ -11,7 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import connector, diagnostics, legacy_interviews, manuscripts, progress, transcription_jobs
+from . import (
+    audio_routes,
+    connector,
+    diagnostics,
+    legacy_interviews,
+    manuscripts,
+    progress,
+    transcription_jobs,
+)
 from .models import (
     CredentialUpsert,
     Transcript,
@@ -56,6 +64,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+app.include_router(audio_routes.router)
 app.include_router(diagnostics.router)
 app.include_router(manuscripts.router)
 app.include_router(legacy_interviews.router)

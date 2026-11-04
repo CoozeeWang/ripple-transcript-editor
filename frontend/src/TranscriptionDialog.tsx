@@ -1,3 +1,5 @@
+import {AudioEngineRules} from './components/AudioEngineRules';
+import {AudioSourceFacts,type AudioSource} from './components/AudioSourceFacts';
 import { serviceText } from './i18n/serviceText';
 import { msg, useInterfaceLanguage } from './i18n';
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -11,6 +13,7 @@ interface TranscriptionDialogProps {
   defaultProviderId: string | null;
   selectedProviderId: string;
   onSelectProvider: (id: string) => void;
+  audioSource?:AudioSource;
   hasAudio: boolean;
   audioFilename: string;
   busy: boolean;
@@ -21,6 +24,7 @@ interface TranscriptionDialogProps {
 
 export function TranscriptionDialog({
   providers,
+  audioSource,
   selectedProviderId,
   onSelectProvider,
   hasAudio,
@@ -181,18 +185,14 @@ export function TranscriptionDialog({
       >
         <header className="dialog-header">
           <div>
-            <p className="section-label">{(selectedProvider ? serviceText(selectedProvider.name) : undefined) ?? msg('TranscriptionDialog.m0114')}</p>
             <h2 id="transcription-dialog-title">{msg('TranscriptionDialog.m0115')}</h2>
           </div>
           <button type="button" onClick={dismiss} aria-label={msg('TranscriptionDialog.m0116')}>×</button>
         </header>
 
-        {preserveExisting && <div className="transcription-preserve" id="transcription-preserve">
-          <strong>{msg('transcriptionAction.preserve')}</strong>
-          <p>{msg('transcriptionAction.preserveDetails')}</p>
-        </div>}
-
         <form onSubmit={(event) => void submit(event)}>
+         <div className="transcription-form-body">
+          {preserveExisting && <p className="settings-hint transcription-preserve" id="transcription-preserve">{msg('transcriptionAction.preserve')}</p>}
           <section className="settings-block">
             <label className="field"><span>{msg('TranscriptionDialog.m0117')}</span>
               <select aria-label={msg('TranscriptionDialog.m0118')} disabled={busy || submitting || !profileLists}
@@ -209,6 +209,7 @@ export function TranscriptionDialog({
                 )))}
               </select>
             </label>
+            {audioSource&&selectedProvider&&<AudioEngineRules provider={selectedProvider.id} busy={busy||submitting}/>}
             {profileLists && !providers.some(provider => profilesByProvider[provider.id]?.profiles.length) &&
               <p className="settings-hint">{msg('TranscriptionDialog.m0123')}</p>}
           </section>
@@ -217,13 +218,13 @@ export function TranscriptionDialog({
             <div className="settings-heading">
               <div>
                 <h3>{msg('TranscriptionDialog.m0124')}</h3>
-                <p className="settings-hint">{msg('TranscriptionDialog.m0125')}</p>
-                <p>{hasAudio ? msg('TranscriptionDialog.m0126', { v0: audioFilename }) : msg('TranscriptionDialog.m0127')}</p>
+                <p>{hasAudio ? audioFilename : msg('TranscriptionDialog.m0127')}</p>
               </div>
               <span className={hasAudio ? "status-pill status-pill--ok" : "status-pill"}>
                 {hasAudio ? msg('TranscriptionDialog.m0128') : msg('TranscriptionDialog.m0129')}
               </span>
             </div>
+            {audioSource&&<AudioSourceFacts source={audioSource}/>}
             <div className="form-grid">
               {capabilities?.language_selection && (
                 <label className="field">
@@ -255,7 +256,7 @@ export function TranscriptionDialog({
               {capabilities?.diarization && (
                 <label>
                   <input type="checkbox" disabled={busy || submitting} checked={diarize} onChange={(event) => setDiarize(event.target.checked)} />
-                  <span><strong>{msg('TranscriptionDialog.m0137')}</strong><small>{msg('TranscriptionDialog.m0138')}</small></span>
+                  <span><strong>{msg('TranscriptionDialog.m0137')}</strong></span>
                 </label>
               )}
               {capabilities?.audio_events && (
@@ -288,6 +289,7 @@ export function TranscriptionDialog({
               )}
             </div>
           )}
+         </div>
           <footer className="dialog-actions">
             <button className="button button--secondary" type="button" data-dialog-initial-focus onClick={dismiss}>{msg('TranscriptionDialog.m0145')}</button>
             <button

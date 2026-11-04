@@ -10,15 +10,21 @@ export async function probeAudioDuration(
     url = await readAudioUrl(dir, name);
     return await new Promise<number | null>((resolve) => {
       const probe = new Audio();
+      let settled = false;
+      const timeout = window.setTimeout(() => settle(null), 10000);
       const settle = (value: number | null) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
         probe.onloadedmetadata = null;
         probe.onerror = null;
+        probe.removeAttribute('src');
+        probe.load();
         resolve(value);
       };
       probe.preload = "metadata";
       probe.onloadedmetadata = () => settle(Number.isFinite(probe.duration) ? probe.duration : null);
       probe.onerror = () => settle(null);
-      window.setTimeout(() => settle(null), 10000);
       probe.src = url as string;
     });
   } catch {

@@ -1213,3 +1213,21 @@ def test_clear_credentials_precise_match_does_not_erase_prefixed_provider(
     assert settings.get_credential("iflytek_llm", "app_id") == "llm-app"
     assert settings.get_credential("iflytek_llm", "api_key") == "llm-key"
     assert settings.get_credential("iflytek_llm", "api_secret") == "llm-sec"
+
+
+def test_elevenlabs_retains_observed_span_when_trailing_spacing_has_point_time():
+    transcript = normalize_transcript({"language_code": "eng", "words": [
+        {"text": "Synthetic", "type": "word", "speaker_id": "a", "start": 1, "end": 2},
+        {"text": " ", "type": "spacing", "speaker_id": "a", "start": 1, "end": 1},
+    ]}, "synthetic.wav")
+    assert transcript.segments[0].start == 1
+    assert transcript.segments[0].end == 2
+
+
+def test_elevenlabs_preserves_explicit_zero_time_after_speaker_change():
+    transcript = normalize_transcript({"language_code": "eng", "words": [
+        {"text": "First", "type": "word", "speaker_id": "a", "start": 0, "end": 1},
+        {"text": "Overlap", "type": "word", "speaker_id": "b", "start": 0, "end": 2},
+    ]}, "synthetic.wav")
+    assert transcript.segments[1].start == 0
+    assert transcript.segments[1].end == 2

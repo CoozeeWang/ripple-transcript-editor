@@ -1,18 +1,8 @@
 import { msg } from '../i18n';
 import { remuxAdtsToMp4, UnsupportedAdtsError } from './adtsMp4';
 
-/**
- * 裸 ADTS AAC 的「首帧桩帧」规避。
- *
- * 有些录音工具导出的裸 .aac（ADTS）文件，第一帧是个 9 字节的桩帧——7 字节头 + 2 字节载荷，
- * 头部自己就声明 frame_length=9。ffmpeg 把它当坏包跳过，照常解出后面的音频；
- * 但 Chrome 的 AAC 解码器把这帧判成致命错误，整段音频都放不出来，报错还会误导成
- * 「文件可能已损坏」。读前 1KB 就能认出来，认出来就让播放器从第二帧开始。
- *
- * 只影响播放：转录走的是原始文件句柄，不经过这里。
- */
-
-/** 低于这个长度的帧一律视作可疑；正常帧远大于它（实测 32kHz 192kbps 单声道为 775 字节）。 */
+/** Legacy helper retained for compatibility tests only. Playback must preserve every frame;
+ * a short AAC frame alone does not establish corruption. Do not call this from playback/import. */
 const SUSPICIOUS_FRAME_BYTES = 100;
 
 /** ADTS 帧头固定 7 字节（无 CRC）或 9 字节（含 CRC）。 */
@@ -51,10 +41,14 @@ export async function stripStubFirstFrame(blob: Blob): Promise<Blob> {
 
 /** The returned view is for playback only; callers retain the original file for saving/transcription. */
 export async function prepareAudioForPlayback(blob: Blob, name: string): Promise<Blob> {
-  if (!/\.aac$/i.test(name)) return blob;
-  const withoutStub = await stripStubFirstFrame(blob);
+  if (!/\.aac$/i.test(name)) {
+    const mime:Record<string,string>={m4a:'audio/mp4',m4b:'audio/mp4',mp4:'video/mp4',mp3:'audio/mpeg',wav:'audio/wav',flac:'audio/flac',ogg:'audio/ogg',oga:'audio/ogg',opus:'audio/ogg',webm:'audio/webm'};
+    const type=mime[name.split('.').at(-1)?.toLowerCase()??''];
+    return type&&(!blob.type||blob.type==='application/octet-stream')?blob.slice(0,blob.size,type):blob;
+  }
+  // Preserve every frame and its duration. A short frame is not proof of corrupt audio.
   try {
-    return await remuxAdtsToMp4(withoutStub);
+    return await remuxAdtsToMp4(blob);
   } catch (error) {
     if (error instanceof UnsupportedAdtsError) {
       throw new Error(msg('audioPlayback.unsupportedAdts', { v0: name }), { cause: error });

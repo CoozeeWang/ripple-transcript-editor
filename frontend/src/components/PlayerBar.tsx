@@ -1,4 +1,6 @@
 import { msg, useInterfaceLanguage } from '../i18n';
+import { OriginalAudioInfo } from "./OriginalAudioInfo";
+import type { OriginalAudioInfo as AudioInfo } from "../lib/originalAudioInfo";
 import type { CSSProperties } from "react";
 
 import { formatPlaybackTime } from "../lib/format";
@@ -8,6 +10,7 @@ import { formatPlaybackTime } from "../lib/format";
 export interface PlayerBarProps {
   audioRef: { current: HTMLAudioElement | null };
   audioUrl: string;
+  originalAudio?: AudioInfo;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -116,6 +119,7 @@ export function PlayerBar(props: PlayerBarProps) {
           {/* Recreate the text box when its digit count changes so the desktop
               webview cannot retain the shorter label's painted bounds. */}
           <span key={`current-${currentTimeLabel.length}`}>{currentTimeLabel}</span>
+          {audioUrl && props.originalAudio && <OriginalAudioInfo info={props.originalAudio} labeled />}
           <span key={`duration-${durationLabel.length}`}>{durationLabel}</span>
         </div>
       </div>

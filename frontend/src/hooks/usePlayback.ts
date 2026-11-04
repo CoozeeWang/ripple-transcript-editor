@@ -1,9 +1,9 @@
 import { msg } from '../i18n';
+import {recordProblem,type Problem} from '../lib/diagnostics';
 import { flushEditorDrafts } from "../lib/editorDrafts";
 import type { ParagraphEditorElement } from "../lib/paragraphEditor";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Transcript } from "../types";
-import { AUDIO_EXT_LABEL } from "../localStore";
 import {
   FOLLOW_PLAYBACK_KEY,
   PLAYBACK_RATE_KEY,
@@ -32,7 +32,7 @@ export interface UsePlaybackDeps {
   setSelectedSegmentId: (id: string) => void;
   effectiveSelectedSegmentId: string;
   textareaRefs: { current: Map<string, ParagraphEditorElement> };
-  setLoadError: (m: string) => void;
+  setLoadError: (m: string, problem?:Problem) => void;
   onDurationConfirmed?: (seconds: number) => void;
 }
 
@@ -120,6 +120,13 @@ export function usePlayback(deps: UsePlaybackDeps) {
     };
   }, [audioUrl]);
 
+  const reportAudioError = useCallback(() => {
+    const code = audioRef.current?.error?.code;
+    const problem = recordProblem('open', {code: code === 2 ? 'network' : code === 3 || code === 4 ? 'format' : 'unknown'});
+    setLoadError(msg('usePlayback.unavailable', {name: audioFilename || msg('usePlayback.m1141')}), problem);
+    setIsPlaying(false);
+  }, [audioFilename, setLoadError, setIsPlaying]);
+
   const playAudio = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -129,9 +136,9 @@ export function usePlayback(deps: UsePlaybackDeps) {
       if (requestId !== playRequestIdRef.current) return;
       playRequestedRef.current = false;
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setLoadError(error instanceof Error ? error.message : msg('usePlayback.m1140'));
+      reportAudioError();
     });
-  }, [setLoadError]);
+  }, [reportAudioError]);
 
   const seekTo = useCallback((seconds: number, shouldPlay = false) => {
     navigationSelectionRef.current = false;
@@ -254,24 +261,7 @@ export function usePlayback(deps: UsePlaybackDeps) {
     if (durationTimerRef.current) clearTimeout(durationTimerRef.current);
     durationTimerRef.current = null;
     setActualDuration(0);
-    const name = audioFilename || msg('usePlayback.m1141');
-    const code = audioRef.current?.error?.code;
-    if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-      deps.setLoadError(
-        msg('usePlayback.m1142', { v0: name, v1: AUDIO_EXT_LABEL }),
-      );
-    } else if (code === MediaError.MEDIA_ERR_DECODE) {
-      // 解码失败 ≠ 文件坏了：常见于录音工具导出的裸 .aac 带一个浏览器解不开的首帧。
-      // 别让用户去「重新导出一份音频」——先让他确认文件内容到底在不在。
-      deps.setLoadError(
-        msg('usePlayback.m1143', { v0: name }),
-      );
-    } else if (code === MediaError.MEDIA_ERR_NETWORK) {
-      deps.setLoadError(msg('usePlayback.m1144', { v0: name }));
-    } else {
-      deps.setLoadError(msg('usePlayback.m1145', { v0: name, v1: AUDIO_EXT_LABEL }));
-    }
-    setIsPlaying(false);
+    reportAudioError();
   };
 
   // 手动滚动只暂停视口跟随，不改变当前片段或右侧面板内容。

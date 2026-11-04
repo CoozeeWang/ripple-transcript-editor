@@ -100,8 +100,11 @@ test.each(['zh-CN','zh-TW','en'] as const)('title-row entry opens settings and c
   expect(opener.closest('.transcript-title-row')?.querySelector('h1')).toBeTruthy();
   expect(opener.parentElement?.getAttribute('data-tip')).toBe(msg('transcriptionAction.transcribe'));
   opener.focus(); await openSettings();
-  expect(screen.getByText(msg('transcriptionAction.preserve'))).toBeTruthy();
-  expect(screen.getByText(msg('transcriptionAction.preserveDetails'))).toBeTruthy();
+  const notice=document.getElementById('transcription-preserve')!;
+  expect(notice.textContent).toBe(msg('transcriptionAction.preserve'));
+  expect(notice.closest('.transcription-form-body')).toBeTruthy();
+  expect(notice.classList.contains('settings-hint')).toBe(true);
+  expect(notice.querySelector('strong')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name:msg('TranscriptionDialog.m0145') }));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(opener);
   expect(api.transcribe).not.toHaveBeenCalled(); f.unchanged();
