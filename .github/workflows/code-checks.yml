@@ -35,4 +35,4 @@ jobs:
       - run: npm test
         working-directory: frontend
       - run: node scripts/i18n-audit.mjs
-      - run: node --test scripts/launcher.test.mjs scripts/desktop-dev.test.mjs scripts/lifecycle-lock.test.mjs
+      - run: node --test scripts/*.test.mjs
