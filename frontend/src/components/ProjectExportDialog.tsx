@@ -13,7 +13,7 @@ import { recordingDirectory, checkedMediaFile, savePortableProject, readProjectE
 import { exportFormats, selectExportScope, downloadBlob, transcriptBlob, type ExportFormat } from '../lib/export';
 import { ProjectIcon } from './ProjectIcon';
 import type { InterviewMetadata, Transcript } from '../types';
-type Entry = { id: string; session: string; recording: string; document?: string;versionId?:string;modelId?:string;editId?:string; name: string; versionLabel?: string; current: boolean; reference?: string; audio?: () => Promise<File>; transcript?: Transcript; metadata?: InterviewMetadata; engine?: string };
+type Entry = { id: string; session: string; recording: string;versionId?:string;modelId?:string;editId?:string; name: string; audio?: () => Promise<File>; transcript?: Transcript; metadata?: InterviewMetadata; engine?: string };
 function audioExportName(name: string, file: string) {
   const extension = file.match(/\.[^.]+$/)?.[0] ?? '';
   const stem = name.replace(/\.(m4a|mp3|wav|aac|flac|ogg|opus|aiff?|wma|mp4|webm)$/i, '');
@@ -54,7 +54,7 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
       const rows: Entry[] = [];
       for (const session of project.data.interviews) for (const recording of session.recordings) {
         const base = `${session.id}/${recording.id}`;
-        if (recording.storage !== 'none') rows.push({ id: base, session: session.id, recording: recording.id, name: audioExportName(recording.name, recording.file || recording.name), current: true, audio: async () => checkedMediaFile(project, session.id, recording) });
+        if (recording.storage !== 'none') rows.push({ id: base, session: session.id, recording: recording.id, name: audioExportName(recording.name, recording.file || recording.name), audio: async () => checkedMediaFile(project, session.id, recording) });
         const dir = await recordingDirectory(project, session.id, recording);
         const manifest = await readManifest(dir, recording.file);
         for (const model of manifest?.models ?? []) {
@@ -62,11 +62,11 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
           for (const version of versions) {
             const data = version.edit_id === 'original' ? await readModelOriginal(dir, recording.file, model.id) : await readModelEdit(dir, recording.file, model.id, version.edit_id);
             if (!data) throw new Error(msg('ProjectExportDialog.m0721', { v0: model.label || recording.name }));
-            rows.push({ id: `${base}/${version.id}`, session: session.id, recording: recording.id, document: `${base}/${model.id}`,versionId:version.id,modelId:model.id,editId:version.edit_id, name: version.edit_id === 'original' ? model.label || model.sourceName || version.name : version.name, versionLabel: version.name, current: true, transcript: data.transcript, metadata: 'metadata' in data ? data.metadata as InterviewMetadata : { ...defaultMetadata(model.label || recording.name), ...session.metadata, ...manifest?.interviewDetails, title: manifest?.title || model.label || recording.name }, engine: model.engine });
+            rows.push({ id: `${base}/${version.id}`, session: session.id, recording: recording.id,versionId:version.id,modelId:model.id,editId:version.edit_id, name: version.edit_id === 'original' ? model.label || model.sourceName || version.name : version.name, transcript: data.transcript, metadata: 'metadata' in data ? data.metadata as InterviewMetadata : { ...defaultMetadata(model.label || recording.name), ...session.metadata, ...manifest?.interviewDetails, title: manifest?.title || model.label || recording.name }, engine: model.engine });
           }
         }
       }
-      if (!cancelled) { setEntries(rows); setSelected(new Set(rows.filter(e => e.current).map(e => e.id))); }
+      if (!cancelled) { setEntries(rows); setSelected(new Set(rows.map(e => e.id))); }
     })().catch(e => { if (!cancelled) { setLoadFailed(true); setError(e instanceof Error ? e.message : msg('ProjectExportDialog.m0722')); } }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [project, loadAttempt]);
@@ -82,7 +82,7 @@ export function ProjectExportDialog({ project, onClose, returnFocusRef }: { proj
   const fileName = (entry: Entry) => entry.audio ? entry.name : `${entry.name.replace(/\.(docx?|txt|srt|vtt|json|md|pdf)$/i, '')}.${entryFormat(entry)}`;
   const paths = new Map<string, string>();
   const used = new Set<string>();
-  for (const entry of [...chosen].sort((a, b) => Number(b.current) - Number(a.current))) {
+  for (const entry of chosen) {
     // Only disambiguate real collisions; internal IDs and version labels never enter filenames.
     const base = sanitizeForFilename(fileName(entry));
     let name = base;
