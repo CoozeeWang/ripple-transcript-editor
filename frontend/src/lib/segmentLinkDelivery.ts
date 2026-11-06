@@ -1,9 +1,9 @@
-export interface SegmentLinkReceiver { ready: () => boolean; open: (raw: string) => Promise<void> }
-/** Keep a fetched URL until the current editor can accept it; serialize the whole save/open operation. */
-export function createSegmentLinkDelivery(next: () => Promise<string | null>) {
- let pending: string | null = null;
+export interface SegmentLinkReceiver { ready: () => boolean; open: (raw: string) => Promise<void>; openProject?: (directory: FileSystemDirectoryHandle) => Promise<void> }
+/** Keep a fetched request until the current editor can accept it; serialize the whole save/open operation. */
+export function createSegmentLinkDelivery<T = string>(next: () => Promise<T | null>) {
+ let pending: T | null = null;
  let busy = false;
- return async (receiver: SegmentLinkReceiver) => {
+ return async (receiver: { ready: () => boolean; open: (value: T) => Promise<void> }) => {
   if (busy || !receiver.ready()) return;
   busy = true;
   try {
@@ -11,6 +11,7 @@ export function createSegmentLinkDelivery(next: () => Promise<string | null>) {
    if (!pending || !receiver.ready()) return;
    const raw = pending; pending = null;
    await receiver.open(raw);
+   return true;
   } finally { busy = false; }
  };
 }

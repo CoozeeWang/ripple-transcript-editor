@@ -16,3 +16,16 @@ it('serializes saving/opening and releases the queue after a handled failure',as
  await expect(deliver({ready:()=>true,open:async()=>{throw Error('save failed');}})).rejects.toThrow('save failed');
  await deliver({ready:()=>true,open:async()=>{}});expect(next).toHaveBeenCalledTimes(3);
 });
+it('retains a project handle while a dialog or editor input prevents switching', async () => {
+ const project={name:'Synthetic.ripple'} as FileSystemDirectoryHandle;
+ let ready=true;
+ const next=vi.fn(async()=>{ready=false;return project;});
+ const open=vi.fn(async()=>{});
+ const deliver=createSegmentLinkDelivery(next);
+ await deliver({ready:()=>ready,open});
+ expect(open).not.toHaveBeenCalled();
+ ready=true;
+ expect(await deliver({ready:()=>ready,open})).toBe(true);
+ expect(open).toHaveBeenCalledExactlyOnceWith(project);
+ expect(next).toHaveBeenCalledOnce();
+});

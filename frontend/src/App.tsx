@@ -144,7 +144,7 @@ export interface ProjectEditorProps {
   onAudioDuration?: (seconds: number) => Promise<void>;
   onRenameInterview?: (title: string) => Promise<void>;
   onReturnToProjects?: () => void;
-  onOpenProject?: (recentId?: string) => Promise<void>;
+  onOpenProject?: (recentId?: string, directory?: FileSystemDirectoryHandle) => Promise<void>;
   onExportProjectFiles?: () => void;
   openSettingsInitially?: boolean;
 }
@@ -1089,7 +1089,15 @@ const [viewingOriginal, setViewingOriginal] = useState(false);
   });
   useLayoutEffect(() => {
     projectProps.registerSegmentLinkReceiver?.({
-      ready: () => !tags.busy && !openingProjectRef.current && !renaming && !versionBusy && !transcribing && saveStatus !== 'loading' && !hasPendingInputs() && !isEditorComposing(),
+      ready: () => !tags.busy && !openingProjectRef.current && !renaming && !versionBusy && !transcribing && processStatus !== 'uploading' && saveStatus !== 'loading' && !hasPendingInputs() && !isEditorComposing(),
+      openProject: async directory => {
+        if (!projectProps.onOpenProject || openingProjectRef.current) return;
+        if (!canChangeDocumentRef.current()) { setLoadError(msg('ProjectWorkspace.openProjectBusy')); return; }
+        openingProjectRef.current = true;
+        try { await beforeChangeRef.current?.(); await projectProps.onOpenProject(undefined, directory); }
+        catch (error) { setLoadError(error instanceof Error ? error.message : msg('App.m0018')); }
+        finally { openingProjectRef.current = false; }
+      },
       open: async raw => {
         if (!projectProps.onOpenSegmentLink || openingProjectRef.current) return;
         if (!canChangeDocumentRef.current()) { setLoadError(msg('ProjectWorkspace.openProjectBusy')); return; }

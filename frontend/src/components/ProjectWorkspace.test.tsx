@@ -6,6 +6,7 @@ import { ProjectWorkspace } from './ProjectWorkspace';
 import * as store from '../lib/projectStore';
 import { msg, setInterfaceLanguage } from '../i18n';
 const state = vi.hoisted(() => ({ release: vi.fn(), picker: vi.fn(), editorTags:null as import('../hooks/useProjectTags').TagStorage|null, catalog:undefined as import('../lib/tags').TagLibrary|undefined }));
+vi.mock('../lib/desktopFs', async original => ({ ...await original<typeof import('../lib/desktopFs')>(), chooseNativeProject: () => state.picker(), nextNativeProject: vi.fn(async () => null) }));
 vi.mock('../App', () => ({ default: (props: { onReturnToProjects: () => void; onOpenProject?: (id?:string) => Promise<void>; onExportProjectFiles?: () => void; onAudioDuration?: (seconds:number) => Promise<void>; interviewTitle?: string; tagStorage?:import('../hooks/useProjectTags').TagStorage;tagLibrary?:import('../lib/tags').TagLibrary }) => {state.editorTags=props.tagStorage??null;state.catalog=props.tagLibrary;return <div><span>编辑 {props.interviewTitle}</span><button onClick={()=>void props.onAudioDuration?.(3924).catch(()=>{})}>Synthetic accepted duration</button><button onClick={props.onExportProjectFiles}>导出本项目其他文件</button><button onClick={() => void props.onOpenProject?.().catch(() => {})}>从菜单打开项目</button><button onClick={() => void props.onOpenProject?.('synthetic-other').catch(() => {})}>从菜单打开最近项目</button><button onClick={props.onReturnToProjects}>返回访谈</button></div>} }));
 vi.mock('../lib/projectStore', async original => ({ ...await original<typeof store>(), recentProjects: vi.fn(async () => []), rememberProject: vi.fn(async () => {}), forgetRecentProject: vi.fn(async () => {}), permit: vi.fn(async () => {}), openProject: vi.fn(), createProject: vi.fn(), saveProject: vi.fn(), saveRecordingDuration: vi.fn(), moveProjectRecordings: vi.fn(), importProjectMaterials: vi.fn(), resolveMedia: vi.fn(async () => ({})), recordingDirectory: vi.fn(async () => ({})), acquireProjectEditor: vi.fn(async () => state.release), trashProjectInterview: vi.fn(), restoreProjectTrashItem: vi.fn(), addInterview: vi.fn(), findExistingManuscripts: vi.fn(), importExistingManuscript: vi.fn() }));
 vi.mock('../localStore', async original => ({ ...await original<typeof import('../localStore')>(), readManifest: vi.fn(async () => null) }));
@@ -844,4 +845,23 @@ it.each(['NotAllowedError','NotFoundError','UnknownError'])('classifies an actua
  await screen.findByRole('button',{name:'重新选择原项目'});
  expect(document.querySelector('.recent-project-recovery')?.textContent).toContain(msg(name==='NotAllowedError'?'ProjectWorkspace.recentPermission':name==='NotFoundError'?'ProjectWorkspace.recentMissing':'ProjectWorkspace.recentUnreadable',{title:'测试项目'}));
  expect(state.picker).not.toHaveBeenCalled();expect(store.rememberProject).not.toHaveBeenCalled();
+});
+
+it('opens a queued Finder project without showing a directory picker', async () => {
+ const {nextNativeProject} = await import('../lib/desktopFs');
+ vi.mocked(nextNativeProject).mockResolvedValueOnce(project.directory);
+ render(<ProjectWorkspace />);
+ await screen.findByRole('heading', {name:'测试项目'}, {timeout:2000});
+ expect(store.openProject).toHaveBeenCalledWith(project.directory);
+ expect(state.picker).not.toHaveBeenCalled();
+});
+it('holds a Finder request while a new-project form is open', async () => {
+ const {nextNativeProject} = await import('../lib/desktopFs');
+ vi.mocked(nextNativeProject).mockResolvedValueOnce(project.directory);
+ render(<ProjectWorkspace />);
+ fireEvent.click(screen.getByRole('button', {name:'新建项目'}));
+ await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+ expect(nextNativeProject).not.toHaveBeenCalled();
+ expect(store.openProject).not.toHaveBeenCalled();
+ vi.mocked(nextNativeProject).mockReset().mockResolvedValue(null);
 });

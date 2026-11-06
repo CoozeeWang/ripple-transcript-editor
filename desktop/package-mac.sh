@@ -61,6 +61,7 @@ PY
 )
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/ripple-desktop"
+cp "$DESKTOP/src-tauri/icons/project.icns" "$APP/Contents/Resources/project.icns"
 cp "$DESKTOP/src-tauri/icons/icon.png" "$APP/Contents/Resources/icon.png"
 rm -f "$APP/Contents/Resources/icon.icns" "$APP/Contents/Resources/Ripple.icns" "$APP/Contents/Resources/Ripple-v014.icns"
 cp "$DESKTOP/src-tauri/icons/icon.icns" "$APP/Contents/Resources/$ICON_NAME"
@@ -101,11 +102,12 @@ metadata = {
     "RippleSourceFingerprint": fingerprint.hexdigest(),
     "NSHighResolutionCapable": True,
 }
+metadata.update(json.loads((Path(repo) / "desktop/project-document-type.json").read_text(encoding="utf-8")))
 with Path(path).open("wb") as stream:
     plistlib.dump(metadata, stream)
 with Path(path).open("rb") as stream:
     actual = plistlib.load(stream)
-for key in ("CFBundleVersion", "CFBundleShortVersionString", "RippleVersion", "RippleGitCommit", "CFBundleURLTypes", "RippleSourceFingerprint"):
+for key in ("CFBundleVersion", "CFBundleShortVersionString", "RippleVersion", "RippleGitCommit", "CFBundleURLTypes", "RippleSourceFingerprint", "CFBundleDocumentTypes", "UTExportedTypeDeclarations"):
     if actual[key] != metadata[key]:
         raise SystemExit(f"Packaged {key} does not match the requested build")
 PY

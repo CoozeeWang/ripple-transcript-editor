@@ -1,0 +1,17 @@
+{
+  "CFBundleDocumentTypes": [{
+    "CFBundleTypeName": "Ripple Project",
+    "CFBundleTypeRole": "Editor",
+    "CFBundleTypeIconFile": "project.icns",
+    "LSHandlerRank": "Owner",
+    "LSTypeIsPackage": true,
+    "LSItemContentTypes": ["studio.ripple.project"]
+  }],
+  "UTExportedTypeDeclarations": [{
+    "UTTypeIdentifier": "studio.ripple.project",
+    "UTTypeDescription": "Ripple Project",
+    "UTTypeConformsTo": ["com.apple.package"],
+    "UTTypeIconFile": "project.icns",
+    "UTTypeTagSpecification": { "public.filename-extension": ["ripple"] }
+  }]
+}

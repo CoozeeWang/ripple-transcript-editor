@@ -9,6 +9,7 @@ mod segment_drag;
 mod segment_protocol;
 mod file_transfer;
 mod project_icon;
+mod project_documents;
 mod backend_runtime;
 mod tunnel_proxy;
 mod tunnel_recovery;
@@ -152,6 +153,23 @@ async fn pick_directory(app: tauri::AppHandle, state: tauri::State<'_, Grants>) 
 }
 
 #[tauri::command]
+async fn pick_project(app: tauri::AppHandle, state: tauri::State<'_, Grants>) -> Result<SelectedPath, String> {
+    let path = project_documents::pick(app).await?;
+    add_grant(&state, path, true, true)
+}
+
+#[tauri::command]
+fn project_open_next(app: tauri::AppHandle, window: tauri::WebviewWindow, state: tauri::State<'_, Grants>) -> Result<Option<SelectedPath>, String> {
+    if window.label() != "main" { return Err("permission_required".into()); }
+    let pending = app.state::<project_documents::PendingProjects>();
+    let path = pending.pop()?;
+    path.map(|path| {
+        project_icon::validate_project(&path).map_err(|_| "invalid_project_folder".to_string())?;
+        add_grant(&state, path, true, true)
+    }).transpose()
+}
+
+#[tauri::command]
 async fn pick_files(app: tauri::AppHandle, state: tauri::State<'_, Grants>, multiple: bool) -> Result<Vec<SelectedPath>, String> {
     let selected = tauri::async_runtime::spawn_blocking(move || {
         if multiple { app.dialog().file().blocking_pick_files().unwrap_or_default() }
@@ -198,11 +216,15 @@ async fn fs_reauthorize(app: tauri::AppHandle, state: tauri::State<'_, Grants>, 
     }
     let is_directory = kind == "directory";
     if !is_directory && kind != "file" { return Err("无效文件类型".into()); }
-    let selected = tauri::async_runtime::spawn_blocking(move || {
-        if is_directory { app.dialog().file().blocking_pick_folder() }
-        else { app.dialog().file().blocking_pick_file() }
-    }).await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?;
-    let selected = selected.into_path().map_err(|e| e.to_string())?.canonicalize().map_err(|e| e.to_string())?;
+    let selected = if is_directory && expected.extension().and_then(|value| value.to_str()) == Some("ripple") {
+        project_documents::pick(app).await?
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            if is_directory { app.dialog().file().blocking_pick_folder() }
+            else { app.dialog().file().blocking_pick_file() }
+        }).await.map_err(|e| e.to_string())?.ok_or("selection_cancelled")?
+            .into_path().map_err(|e| e.to_string())?
+    }.canonicalize().map_err(|e| e.to_string())?;
     if expected.canonicalize().map_err(|e| e.to_string())? != selected { return Err("选择的不是原文件或原文件夹".into()); }
     state.remember(Grant::selected(root, selected, parts, is_directory, is_directory)?)?;
     Ok(())
@@ -789,6 +811,7 @@ fn main() {
         .manage(Writes::default())
         .manage(normal_close::NormalClose::default())
         .manage(SegmentLinks::default())
+        .manage(project_documents::PendingProjects::default())
         .manage(ConnectorTunnel(Mutex::new(TunnelState::default())))
         .setup(|app| {
             enqueue_segment_links(app.handle(),std::env::args().skip(1));
@@ -826,7 +849,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![reading_position::reading_position_read, reading_position::reading_position_write, normal_close::normal_close_ready, normal_close::finish_normal_close,segment_drag::start_segment_drag, segment_clipboard::copy_segment, segment_link_next, update_window::update_close, updates::update_status, updates::update_check, updates::update_open_releases, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
+        .invoke_handler(tauri::generate_handler![reading_position::reading_position_read, reading_position::reading_position_write, normal_close::normal_close_ready, normal_close::finish_normal_close,segment_drag::start_segment_drag, segment_clipboard::copy_segment, segment_link_next, update_window::update_close, updates::update_status, updates::update_check, updates::update_open_releases, pdf_print::preview_export_pdf, pdf_print::print_export_pdf, native_menu::set_menu_language, pick_project, project_open_next, pick_directory, pick_files, pick_save_file, fs_permission, fs_access_status, fs_reauthorize, project_set_icon, fs_stat,
             fs_mkdir, fs_create_file, fs_read, fs_size, fs_metadata, fs_read_chunk, fs_write, fs_media_check, fs_media_url,
             fs_begin_write, fs_write_chunk, fs_commit_write, fs_abort_write,
             fs_list, fs_remove, backend_ready, connector_window_key, connector_pick_client, connector_open_platform, connector_client_platform, connector_open_setup_link, audio_open_documentation, connector_setup_status, connector_setup, connector_client_status, connector_client_select, connector_client_delete, connector_client_export, connector_client_reveal, connector_client_add, connector_tunnel_start, connector_tunnel_ready, connector_tunnel_status, connector_local_ready, connector_tunnel_stop])
@@ -860,7 +883,8 @@ fn main() {
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { ref urls } = event {
-                if enqueue_segment_links(app,urls.iter().map(ToString::to_string)) {focus_segment_window(app);}
+                let projects = app.state::<project_documents::PendingProjects>().enqueue(urls);
+                if enqueue_segment_links(app,urls.iter().map(ToString::to_string)) || projects {focus_segment_window(app);}
             }
             match event {
                 tauri::RunEvent::ExitRequested { api, .. } if normal_close::request(app) => api.prevent_exit(),

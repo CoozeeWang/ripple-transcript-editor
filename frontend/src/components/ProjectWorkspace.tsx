@@ -14,7 +14,7 @@ import {readProjectTreeOrderPlan} from '../lib/projectTagRepository';
 import {migrateProjectTagStorage} from '../lib/tagMigration';
 import { recordProblem } from '../lib/diagnostics';
 import { selectAudioReferences } from '../lib/audioReferenceSelection';
-import { nativeDesktopAvailable, nativeAccessStatus } from '../lib/desktopFs';
+import { nativeDesktopAvailable, nativeAccessStatus, nextNativeProject } from '../lib/desktopFs';
 import { LanguageControl } from './LanguageControl';
 import { msg, uiMessage, useInterfaceLanguage } from '../i18n';
 import { chooseDirectory, pickerLocation, OPEN_LAST_PROJECT, restoredInterview, rememberInterview, canRestoreProject } from '../lib/projectPreferences';
@@ -80,6 +80,7 @@ export function ProjectWorkspace() {
   const [linkTarget, setLinkTarget] = useState<SegmentTarget | null>(null);
   const linkReceiver = useRef<SegmentLinkReceiver | null>(null);
   const registerLinkReceiver = useCallback((receiver: SegmentLinkReceiver | null) => { linkReceiver.current = receiver; }, []);
+  const deliverProject = useRef(createSegmentLinkDelivery(nextNativeProject));
   const deliverLink = useRef(createSegmentLinkDelivery(nextSegmentLink));
   const [association, setAssociation] = useState<{ source: string; modelId: string; name: string; anchor:DOMRect } | null>(null);
   const [recentOpen, setRecentOpen] = useState(false);
@@ -233,14 +234,14 @@ export function ProjectWorkspace() {
     return true;
   };
   const chooseProject = (directory?: FileSystemDirectoryHandle, expectedId?: string) => run(async () => { await openChosenProject(directory, expectedId); });
-  const openProjectFromEditor = async (recentId?: string) => {
+  const openProjectFromEditor = async (recentId?: string, directory?: FileSystemDirectoryHandle) => {
     if (busyRef.current) throw Error(msg('ProjectWorkspace.openProjectBusy'));
     if (projectHasAIWork()) throw Error(msg('ProjectWorkspace.openProjectAI'));
     busyRef.current = true; setBusy(true);
     try {
       const item = recentId ? (await recentProjects()).find(entry => entry.id === recentId) : undefined;
       if (recentId && !item) throw Error(msg('ProjectWorkspace.m0919'));
-      const opened = await openChosenProject(item?.directory, item?.id);
+      const opened = await openChosenProject(directory ?? item?.directory, item?.id);
       if (!opened) { setEditor(null); editorLease.current?.(); editorLease.current = null; }
     }
     finally { busyRef.current = false; setBusy(false); }
@@ -334,6 +335,12 @@ export function ProjectWorkspace() {
     linkPoll.current = async () => {
       const ready = () => !busyRef.current && !settings && !document.querySelector('dialog[open], [role="dialog"]') && (!editor || !!linkReceiver.current?.ready());
       try {
+        const projectReady = () => ready() && !projectHasAIWork() && !creating && materialTarget === undefined && (editor || !hasEditorDrafts())
+          && !(project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description);
+        if (await deliverProject.current({ ready: projectReady, open: async directory => {
+          if (editor) { await linkReceiver.current?.openProject?.(directory); return; }
+          await openProjectFromEditor(undefined, directory);
+        }})) return;
         await deliverLink.current({ready, open:async raw => {
           if (editor) { await linkReceiver.current?.open(raw); return; }
           if (creating || materialTarget !== undefined || hasEditorDrafts() || (project && descriptionDrafts[project.data.id] !== undefined && descriptionDrafts[project.data.id] !== project.data.description)) {
