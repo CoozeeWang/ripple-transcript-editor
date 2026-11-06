@@ -90,3 +90,20 @@ it('aborts a failed commit without claiming a successful write', async () => {
  await expect(saveNativeBlob(new Blob(['synthetic']),'edit.json')).rejects.toThrow('Synthetic commit failed');
  expect(invoke).toHaveBeenCalledWith('fs_abort_write',{id:22});
 });
+
+it('opens packages through the dedicated picker and OS queue without a frontend path argument', async () => {
+ const {chooseNativeProject,nextNativeProject}=await import('./desktopFs');
+ expect(await nextNativeProject()).toBeNull();
+ bridge(); invoke.mockResolvedValueOnce({root:'/synthetic/Project.ripple',kind:'directory'});
+ const chosen=await chooseNativeProject(); expect(chosen.name).toBe('Project.ripple');
+ expect(invoke).toHaveBeenLastCalledWith('pick_project',{});
+ invoke.mockResolvedValueOnce({root:'/synthetic/Other.ripple',kind:'directory'});
+ expect((await nextNativeProject())?.name).toBe('Other.ripple');
+ expect(invoke).toHaveBeenLastCalledWith('project_open_next',{});
+ invoke.mockResolvedValueOnce(null); expect(await nextNativeProject()).toBeNull();
+});
+it('localizes a non-directory project selection instead of exposing a native error code', async () => {
+ await setInterfaceLanguage('zh-CN'); bridge(); invoke.mockRejectedValueOnce('invalid_project_folder');
+ const {chooseNativeProject}=await import('./desktopFs');
+ await expect(chooseNativeProject()).rejects.toThrow('这个文件夹不是 Ripple 项目');
+});

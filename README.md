@@ -4,7 +4,7 @@ Ripple is a local-first desktop app for organizing recordings and editing long-f
 
 ## Current desktop workflow
 
-- Create or open a `.ripple` project folder, organize sessions, and add recordings or existing manuscripts.
+- Create or open a `.ripple` project (a Finder document package on macOS, a folder on Windows), organize sessions, and add recordings or existing manuscripts.
 - Copy audio into the project or keep a reference to the original file. Import DOCX, TXT, SRT, VTT, or JSON manuscripts; untimed text stays untimed.
 - Move recordings and their transcripts, versions, and annotations to another session in the same project, preserving recording details and external audio references.
 - Transcribe through a configured transcription engine, then keep the original transcript read-only and create named editable versions.

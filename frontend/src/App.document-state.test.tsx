@@ -332,3 +332,22 @@ it('opens and reopens manuscripts with tag filtering off after an explicit filte
   expect(document.querySelectorAll('.segment')).toHaveLength(1);
  }
 });
+
+it('saves before opening a Finder project and keeps the editor when saving fails', async () => {
+  let receiver: import('./lib/segmentLinkDelivery').SegmentLinkReceiver | null = null;
+  const open = vi.fn(async () => {});
+  render(<App onOpenProject={open} registerSegmentLinkReceiver={value => { receiver = value; }} />);
+  load('Synthetic.wav');
+  const directory = { name: 'Synthetic.ripple' } as FileSystemDirectoryHandle;
+  fixture.flush.mockRejectedValueOnce(new Error('Synthetic save failed'));
+  await act(async () => { await receiver!.openProject!(directory); });
+  expect(open).not.toHaveBeenCalled();
+  expect(screen.getByText('Synthetic.wav的内容')).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('Synthetic save failed');
+  const order: string[] = [];
+  fixture.flush.mockImplementationOnce(async () => { order.push('save'); });
+  open.mockImplementationOnce(async () => { order.push('open'); });
+  await act(async () => { await receiver!.openProject!(directory); });
+  expect(order).toEqual(['save', 'open']);
+  expect(open).toHaveBeenCalledExactlyOnceWith(undefined, directory);
+});

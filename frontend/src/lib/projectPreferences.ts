@@ -1,3 +1,4 @@
+import { nativeDesktopAvailable, chooseNativeProject } from './desktopFs';
 import { loadBooleanPreference } from './preferences';
 import { handleValue, type OpenProject } from './projectStore';
 
@@ -43,7 +44,8 @@ export async function pickerLocation(purpose: PickerPurpose, mode: 'read' | 'rea
 export async function chooseDirectory(purpose: PickerPurpose, mode: 'read' | 'readwrite' = 'readwrite') {
   const options = await pickerLocation(purpose, mode);
   const picker = window as unknown as { showDirectoryPicker: (o: { mode: string; id: string; startIn?: FileSystemDirectoryHandle }) => Promise<FileSystemDirectoryHandle> };
-  const handle = await picker.showDirectoryPicker({ ...options, mode });
+  const handle = purpose === 'open-project' && nativeDesktopAvailable()
+    ? await chooseNativeProject() : await picker.showDirectoryPicker({ ...options, mode });
   try {
     if (purpose === 'save-project') await saveProjectLocation(handle);
     else await handleValue(`picker:${purpose}`, handle);

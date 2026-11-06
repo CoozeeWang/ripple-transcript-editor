@@ -15,6 +15,7 @@ function invoke<T>(command: string, args: InvokeArgs, ...options: [] | [InvokeOp
   if (!tauri?.core) throw new Error('Native file bridge unavailable');
   const started=performance.now();
   return tauri.core.invoke(command, args, ...options).then(result=>{recordTagBridge(command,args,result,performance.now()-started,options[0]?.headers);return result}).catch(error => {
+    if (error === 'invalid_project_folder') throw new Error(msg('projectStore.m1393'));
     if (error === 'selection_cancelled') throw new DOMException('Selection cancelled', 'AbortError');
     if (error === 'permission_required') throw new DOMException('File access needs permission', 'NotAllowedError');
     if (error === 'file_missing') throw new DOMException('Selected file is missing', 'NotFoundError');
@@ -214,6 +215,20 @@ type SelectedPath = { root: string; kind: NativeKind };
 
 export async function chooseNativeDirectory(): Promise<FileSystemDirectoryHandle> {
   const selected = await invoke<SelectedPath>('pick_directory', {});
+  selectedRoots.add(selected.root);
+  return new NativeDirectoryHandle(selected.root, []) as unknown as FileSystemDirectoryHandle;
+}
+
+export async function chooseNativeProject(): Promise<FileSystemDirectoryHandle> {
+  const selected = await invoke<SelectedPath>('pick_project', {});
+  selectedRoots.add(selected.root);
+  return new NativeDirectoryHandle(selected.root, []) as unknown as FileSystemDirectoryHandle;
+}
+
+export async function nextNativeProject(): Promise<FileSystemDirectoryHandle | null> {
+  if (!nativeDesktopAvailable()) return null;
+  const selected = await invoke<SelectedPath | null>('project_open_next', {});
+  if (!selected) return null;
   selectedRoots.add(selected.root);
   return new NativeDirectoryHandle(selected.root, []) as unknown as FileSystemDirectoryHandle;
 }
